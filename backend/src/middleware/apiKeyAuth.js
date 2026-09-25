@@ -18,6 +18,61 @@ function sendAuthError(req, res, status, code, message, extra = {}) {
 }
 
 /**
+ * Resolve a raw API key to its request identity. Returns null when the key is
+ * unknown, inactive, expired, or belongs to a deactivated user.
+ *
+ * The owner is loaded through the same cached lookup JWT auth uses, so
+ * API-key requests see the full user row (timezone, tier, ...) and a
+ * deactivated account's keys stop working immediately.
+ */
+async function resolveApiKeyIdentity(rawKey) {
+  const keyData = await ApiKey.verifyKey(rawKey);
+  if (!keyData) {
+    return { error: 'INVALID_API_KEY' };
+  }
+
+  if (!keyData.is_active) {
+    return { error: 'API_KEY_INACTIVE' };
+  }
+
+  if (keyData.expires_at && new Date(keyData.expires_at) < new Date()) {
+    return { error: 'API_KEY_EXPIRED' };
+  }
+
+  const user = await findActiveUserForAuth(keyData.user_id);
+  if (!user || !user.is_active) {
+    return { error: 'API_KEY_OWNER_INACTIVE' };
+  }
+
+  return {
+    user,
+    apiKey: {
+      id: keyData.id,
+      name: keyData.name,
+      permissions: keyData.permissions,
+      scopes: keyData.scopes || [],
+      effectiveScopes: resolveEffectiveScopes({
+        permissions: keyData.permissions,
+        scopes: keyData.scopes
+      })
+    }
+  };
+}
+
+const API_KEY_ERROR_MESSAGES = {
+  INVALID_API_KEY: 'Invalid API key',
+  API_KEY_INACTIVE: 'API key is inactive',
+  API_KEY_EXPIRED: 'API key has expired',
+  API_KEY_OWNER_INACTIVE: 'API key owner account is inactive'
+};
+
+function attachApiKeyIdentity(req, identity) {
+  req.user = identity.user;
+  req.apiKey = identity.apiKey;
+  req.authMethod = 'api_key';
+}
+
+/**
  * Middleware to authenticate requests using API keys
  * Can be used as an alternative to JWT authentication
  */
@@ -25,53 +80,20 @@ const apiKeyAuth = async (req, res, next) => {
   try {
     // Check for API key in headers
     const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
-    
+
     if (!apiKey) {
       return sendAuthError(req, res, 401, 'API_KEY_REQUIRED', 'API key required');
     }
 
-    // Verify the API key
-    const keyData = await ApiKey.verifyKey(apiKey);
-    
-    if (!keyData) {
-      console.warn('Invalid API key attempted');
-      return sendAuthError(req, res, 401, 'INVALID_API_KEY', 'Invalid API key');
+    const identity = await resolveApiKeyIdentity(apiKey);
+    if (identity.error) {
+      if (identity.error === 'INVALID_API_KEY') {
+        console.warn('Invalid API key attempted');
+      }
+      return sendAuthError(req, res, 401, identity.error, API_KEY_ERROR_MESSAGES[identity.error]);
     }
 
-    // Check if key is active and not expired
-    if (!keyData.is_active) {
-      return sendAuthError(req, res, 401, 'API_KEY_INACTIVE', 'API key is inactive');
-    }
-
-    if (keyData.expires_at && new Date(keyData.expires_at) < new Date()) {
-      return sendAuthError(req, res, 401, 'API_KEY_EXPIRED', 'API key has expired');
-    }
-
-    const effectiveScopes = resolveEffectiveScopes({
-      permissions: keyData.permissions,
-      scopes: keyData.scopes
-    });
-
-    // Attach user and API key info to request
-    req.user = {
-      id: keyData.user_id,
-      username: keyData.username,
-      email: keyData.email,
-      role: keyData.role
-    };
-    
-    req.apiKey = {
-      id: keyData.id,
-      name: keyData.name,
-      permissions: keyData.permissions,
-      scopes: keyData.scopes || [],
-      effectiveScopes
-    };
-    req.authMethod = 'api_key';
-
-    // Log API usage for rate limiting and analytics
-    console.log(`API key used: ${keyData.name} by ${keyData.username}`);
-
+    attachApiKeyIdentity(req, identity);
     next();
   } catch (error) {
     logger.logError('API key authentication error: ' + error.message);
@@ -201,13 +223,8 @@ const flexibleOptionalAuth = async (req, res, next) => {
       if (token.startsWith('tt_live_') || token.startsWith('tt_test_')) {
         // API key in Bearer header — authenticate but don't fail hard
         try {
-          const keyData = await ApiKey.verifyKey(token);
-          if (keyData && keyData.is_active && (!keyData.expires_at || new Date(keyData.expires_at) >= new Date())) {
-            const effectiveScopes = resolveEffectiveScopes({ permissions: keyData.permissions, scopes: keyData.scopes });
-            req.user = { id: keyData.user_id, username: keyData.username, email: keyData.email, role: keyData.role };
-            req.apiKey = { id: keyData.id, name: keyData.name, permissions: keyData.permissions, scopes: keyData.scopes || [], effectiveScopes };
-            req.authMethod = 'api_key';
-          }
+          const identity = await resolveApiKeyIdentity(token);
+          if (!identity.error) attachApiKeyIdentity(req, identity);
         } catch (_) { /* fall through unauthenticated */ }
         return next();
       }
@@ -226,13 +243,8 @@ const flexibleOptionalAuth = async (req, res, next) => {
 
     if (apiKeyHeader) {
       try {
-        const keyData = await ApiKey.verifyKey(apiKeyHeader);
-        if (keyData && keyData.is_active && (!keyData.expires_at || new Date(keyData.expires_at) >= new Date())) {
-          const effectiveScopes = resolveEffectiveScopes({ permissions: keyData.permissions, scopes: keyData.scopes });
-          req.user = { id: keyData.user_id, username: keyData.username, email: keyData.email, role: keyData.role };
-          req.apiKey = { id: keyData.id, name: keyData.name, permissions: keyData.permissions, scopes: keyData.scopes || [], effectiveScopes };
-          req.authMethod = 'api_key';
-        }
+        const identity = await resolveApiKeyIdentity(apiKeyHeader);
+        if (!identity.error) attachApiKeyIdentity(req, identity);
       } catch (_) { /* fall through unauthenticated */ }
       return next();
     }

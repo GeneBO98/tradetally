@@ -74,7 +74,7 @@ const settingsV1Controller = {
           },
           display: {
             theme: settings.theme || 'light',
-            currency: 'USD',
+            currency: settings.displayCurrency || 'USD',
             dateFormat: 'MM/DD/YYYY',
             timeFormat: '12h'
           }
@@ -158,7 +158,7 @@ const settingsV1Controller = {
       res.json({
         display: {
           theme: settings.theme || 'light',
-          currency: 'USD',
+          currency: settings.displayCurrency || 'USD',
           timezone: req.user.timezone || 'UTC',
           dateFormat: 'MM/DD/YYYY',
           timeFormat: '12h',
@@ -208,7 +208,7 @@ const settingsV1Controller = {
         updated: true,
         display: {
           theme: settings.theme || theme || 'light',
-          currency: 'USD',
+          currency: settings.displayCurrency || 'USD',
           timezone: user.timezone || timezone || 'UTC',
           dateFormat: 'MM/DD/YYYY',
           timeFormat: '12h',

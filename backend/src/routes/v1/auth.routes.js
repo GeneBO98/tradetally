@@ -4,7 +4,7 @@ const router = express.Router();
 const authController = require('../../controllers/auth.controller');
 const authV1Controller = require('../../controllers/v1/auth.controller');
 const { validate, schemas } = require('../../middleware/validation');
-const { authenticate } = require('../../middleware/auth');
+const { authenticate, optionalAuth } = require('../../middleware/auth');
 
 // Mirrors the legacy authLimiter in auth.routes.js — 10 attempts per 15 min per IP
 const authLimiter = rateLimit({
@@ -34,7 +34,7 @@ router.post('/forgot-password', authLimiter, authController.forgotPassword);
 router.post('/reset-password', authLimiter, authController.resetPassword);
 router.get('/verify-email/:token', authController.verifyEmail);
 router.post('/resend-verification', authLimiter, authController.resendVerification);
-router.post('/test-email', authController.sendTestEmail);
+router.post('/test-email', optionalAuth, authController.sendTestEmail);
 
 // Mobile-specific endpoints
 router.get('/session/status', authenticate, authV1Controller.getSessionStatus);

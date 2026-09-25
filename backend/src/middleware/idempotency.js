@@ -186,11 +186,35 @@ function idempotencyMiddleware(options = {}) {
       const originalJson = res.json.bind(res);
       const originalSend = res.send.bind(res);
 
+      // Server errors are transient, so they must not be replayed for the
+      // key's lifetime. Drop the reservation and let the client retry with
+      // the same key.
+      const releaseReservation = async () => {
+        await db.query('DELETE FROM idempotency_keys WHERE id = $1 AND response_status IS NULL', [reservationId]);
+      };
+
+      // If the connection closes before any response was written (handler
+      // crashed or hung), release the key rather than leaving it
+      // "in progress" until TTL expiry.
+      res.on('close', () => {
+        if (!persisted) {
+          persisted = true;
+          releaseReservation().catch((error) => {
+            console.error('Failed to release idempotency reservation:', error.message);
+          });
+        }
+      });
+
       const persistResponse = async (body) => {
         if (persisted) {
           return;
         }
         persisted = true;
+
+        if (statusCode >= 500) {
+          await releaseReservation();
+          return;
+        }
 
         const normalizedBody = normalizeResponseBody(body);
         await db.query(

@@ -40,6 +40,7 @@ function getPublicEndpoints(baseUrl = '/api/v1') {
     auth: {
       register: `${baseUrl}/auth/register`,
       login: `${baseUrl}/auth/login`,
+      verify2FA: `${baseUrl}/auth/verify-2fa`,
       logout: `${baseUrl}/auth/logout`,
       refresh: `${baseUrl}/auth/refresh`,
       me: `${baseUrl}/auth/me`,
@@ -66,6 +67,9 @@ function getPublicEndpoints(baseUrl = '/api/v1') {
       recent: `${baseUrl}/trades/recent`,
       quickSummary: `${baseUrl}/trades/summary/quick`
     },
+    analytics: {
+      drawdown: `${baseUrl}/analytics/drawdown`
+    },
     users: {
       profile: `${baseUrl}/users/profile`,
       avatar: `${baseUrl}/users/profile/avatar`,
@@ -78,7 +82,19 @@ function getPublicEndpoints(baseUrl = '/api/v1') {
       notifications: `${baseUrl}/settings/notifications`,
       display: `${baseUrl}/settings/display`,
       privacy: `${baseUrl}/settings/privacy`
-    }
+    },
+    ...(webhooksEnabled
+      ? {
+          webhooks: {
+            list: `${baseUrl}/webhooks`,
+            create: `${baseUrl}/webhooks`,
+            update: `${baseUrl}/webhooks/{id}`,
+            delete: `${baseUrl}/webhooks/{id}`,
+            test: `${baseUrl}/webhooks/{id}/test`,
+            deliveries: `${baseUrl}/webhooks/{id}/deliveries`
+          }
+        }
+      : {})
   };
 }
 
@@ -88,13 +104,17 @@ function standardResponseHeaders() {
       description: 'Request correlation ID echoed by the API',
       schema: { type: 'string', example: '0c1893d7-b322-4e44-9d3e-3c33dc4a5b36' }
     },
-    'X-Rate-Limit-Remaining': {
+    'RateLimit-Limit': {
+      description: 'Maximum requests allowed in the current rate limit window',
+      schema: { type: 'integer', example: 1000 }
+    },
+    'RateLimit-Remaining': {
       description: 'Remaining requests in the current rate limit window',
       schema: { type: 'integer', example: 992 }
     },
-    'X-Rate-Limit-Reset': {
-      description: 'Unix timestamp when the current window resets',
-      schema: { type: 'integer', example: 1730061600 }
+    'RateLimit-Reset': {
+      description: 'Seconds until the current rate limit window resets',
+      schema: { type: 'integer', example: 540 }
     },
     'X-Idempotency-Replayed': {
       description: 'Present and set to true when a stored idempotent response is replayed',
@@ -126,6 +146,18 @@ function buildPaths(baseUrl) {
   const notFound = errorResponse('#/components/schemas/ErrorEnvelope', 'Resource not found');
   const conflict = errorResponse('#/components/schemas/ErrorEnvelope', 'Conflict');
   const tradeSecurity = [{ bearerAuth: [] }, { apiKeyAuth: [] }];
+  const tradeFilterParams = [
+    { name: 'symbol', in: 'query', schema: { type: 'string' } },
+    { name: 'side', in: 'query', schema: { type: 'string', enum: ['long', 'short'] } },
+    { name: 'status', in: 'query', schema: { type: 'string', enum: ['open', 'closed'] } },
+    { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' } },
+    { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date' } },
+    { name: 'accounts', in: 'query', schema: { type: 'string' }, description: 'Comma-separated account identifiers' },
+    { name: 'broker', in: 'query', schema: { type: 'string' } },
+    { name: 'strategy', in: 'query', schema: { type: 'string' } },
+    { name: 'tags', in: 'query', schema: { type: 'string' }, description: 'Comma-separated tag names' }
+  ];
+  const tooManyItems = errorResponse('#/components/schemas/ErrorEnvelope', 'Empty array or more than 500 items (BULK_LIMIT_EXCEEDED)');
 
   return {
     [endpoints.auth.register]: {
@@ -152,11 +184,12 @@ function buildPaths(baseUrl) {
             headers: standardResponseHeaders(),
             content: {
               'application/json': {
-                schema: { $ref: '#/components/schemas/AuthSessionResponse' }
+                schema: { $ref: '#/components/schemas/RegisterResponse' }
               }
             }
           },
           400: badRequest,
+          403: errorResponse('#/components/schemas/LegacyError', 'Registration disabled'),
           409: conflict
         }
       }
@@ -174,6 +207,49 @@ function buildPaths(baseUrl) {
               example: {
                 email: 'trader@example.com',
                 password: 'SecurePassword123!'
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Authenticated, or a 2FA challenge when the account has two-factor enabled (complete it with POST /auth/verify-2fa)',
+            headers: standardResponseHeaders(),
+            content: {
+              'application/json': {
+                schema: {
+                  oneOf: [
+                    { $ref: '#/components/schemas/AuthSessionResponse' },
+                    { $ref: '#/components/schemas/TwoFactorChallenge' }
+                  ]
+                }
+              }
+            }
+          },
+          400: badRequest,
+          401: unauthorized,
+          403: errorResponse('#/components/schemas/LegacyError', 'Account pending admin approval'),
+          423: errorResponse('#/components/schemas/LegacyError', 'Account temporarily locked after repeated failures'),
+          429: errorResponse('#/components/schemas/LegacyError', 'Too many attempts')
+        }
+      }
+    },
+    [endpoints.auth.verify2FA]: {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Complete a two-factor login challenge',
+        parameters: [requestIdHeaderRef],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['tempToken', 'twoFactorCode'],
+                properties: {
+                  tempToken: { type: 'string', description: 'tempToken from the login 2FA challenge (valid 15 minutes)' },
+                  twoFactorCode: { type: 'string', description: 'TOTP code or an unused backup code' }
+                }
               }
             }
           }
@@ -199,6 +275,19 @@ function buildPaths(baseUrl) {
         summary: 'Invalidate the current session',
         security: [{ bearerAuth: [] }],
         parameters: [authHeaderRef, requestIdHeaderRef],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  refreshToken: { type: 'string', description: 'Refresh token to revoke' }
+                }
+              }
+            }
+          }
+        },
         responses: {
           200: {
             description: 'Session invalidated',
@@ -208,7 +297,7 @@ function buildPaths(baseUrl) {
                 schema: {
                   type: 'object',
                   properties: {
-                    message: { type: 'string', example: 'Logged out successfully' }
+                    message: { type: 'string', example: 'Logout successful' }
                   }
                 }
               }
@@ -239,19 +328,15 @@ function buildPaths(baseUrl) {
         },
         responses: {
           200: {
-            description: 'Token refreshed',
+            description: 'Token refreshed. The refresh token is rotated; store the new one.',
             headers: standardResponseHeaders(),
             content: {
               'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    accessToken: { type: 'string' }
-                  }
-                }
+                schema: { $ref: '#/components/schemas/AuthSessionResponse' }
               }
             }
           },
+          400: errorResponse('#/components/schemas/LegacyError', 'Missing or malformed refresh token'),
           401: unauthorized
         }
       }
@@ -264,11 +349,16 @@ function buildPaths(baseUrl) {
         parameters: [authHeaderRef, requestIdHeaderRef],
         responses: {
           200: {
-            description: 'Current session details',
+            description: 'Current user',
             headers: standardResponseHeaders(),
             content: {
               'application/json': {
-                schema: { $ref: '#/components/schemas/AuthSessionResponse' }
+                schema: {
+                  type: 'object',
+                  properties: {
+                    user: { type: 'object', additionalProperties: true }
+                  }
+                }
               }
             }
           },
@@ -291,8 +381,21 @@ function buildPaths(baseUrl) {
                 schema: {
                   type: 'object',
                   properties: {
-                    active: { type: 'boolean', example: true },
-                    expiresAt: { type: 'string', format: 'date-time' }
+                    activeTokens: { type: 'integer', example: 2 },
+                    tokens: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string' },
+                          deviceName: { type: 'string', nullable: true },
+                          deviceType: { type: 'string', nullable: true },
+                          createdAt: { type: 'string', format: 'date-time' },
+                          lastUsed: { type: 'string', format: 'date-time' },
+                          expiresAt: { type: 'string', format: 'date-time' }
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -318,7 +421,7 @@ function buildPaths(baseUrl) {
                   type: 'object',
                   properties: {
                     message: { type: 'string', example: 'Session extended' },
-                    expiresAt: { type: 'string', format: 'date-time' }
+                    expiresIn: { type: 'integer', description: 'Access token lifetime in seconds' }
                   }
                 }
               }
@@ -490,9 +593,8 @@ function buildPaths(baseUrl) {
           requestIdHeaderRef,
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 200, default: 50 } },
           { name: 'offset', in: 'query', schema: { type: 'integer', minimum: 0, default: 0 } },
-          { name: 'symbol', in: 'query', schema: { type: 'string' } },
-          { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' } },
-          { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date' } }
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1 }, description: '1-based page number, used when offset is omitted' },
+          ...tradeFilterParams
         ],
         responses: {
           200: {
@@ -508,9 +610,9 @@ function buildPaths(baseUrl) {
                       symbol: 'AAPL',
                       side: 'long',
                       quantity: 100,
-                      entryPrice: 150.25,
-                      exitPrice: 155.75,
-                      entryTime: '2026-02-20T14:30:00.000Z',
+                      entry_price: 150.25,
+                      exit_price: 155.75,
+                      entry_time: '2026-02-20T14:30:00.000Z',
                       pnl: 550
                     }
                   ],
@@ -675,6 +777,7 @@ function buildPaths(baseUrl) {
                   trades: {
                     type: 'array',
                     minItems: 1,
+                    maxItems: 500,
                     items: { $ref: '#/components/schemas/TradeWrite' }
                   }
                 }
@@ -692,7 +795,7 @@ function buildPaths(baseUrl) {
               }
             }
           },
-          400: badRequest,
+          400: tooManyItems,
           409: conflict,
           401: unauthorized
         }
@@ -713,6 +816,7 @@ function buildPaths(baseUrl) {
                   trades: {
                     type: 'array',
                     minItems: 1,
+                    maxItems: 500,
                     items: {
                       type: 'object',
                       required: ['id'],
@@ -748,7 +852,7 @@ function buildPaths(baseUrl) {
               }
             }
           },
-          400: badRequest,
+          400: tooManyItems,
           401: unauthorized
         }
       },
@@ -768,6 +872,7 @@ function buildPaths(baseUrl) {
                   tradeIds: {
                     type: 'array',
                     minItems: 1,
+                    maxItems: 500,
                     items: { type: 'string', format: 'uuid' }
                   }
                 }
@@ -785,7 +890,7 @@ function buildPaths(baseUrl) {
               }
             }
           },
-          400: badRequest,
+          400: tooManyItems,
           401: unauthorized
         }
       }
@@ -798,9 +903,7 @@ function buildPaths(baseUrl) {
         parameters: [
           requestIdHeaderRef,
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 200, default: 10 } },
-          { name: 'symbol', in: 'query', schema: { type: 'string' } },
-          { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' } },
-          { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date' } }
+          ...tradeFilterParams
         ],
         responses: {
           200: {
@@ -820,8 +923,9 @@ function buildPaths(baseUrl) {
       get: {
         tags: ['Trades'],
         summary: 'Get a compact trading summary',
+        description: 'Accepts the same filters as the trade list. Monetary values are in the user\'s display currency.',
         security: tradeSecurity,
-        parameters: [requestIdHeaderRef],
+        parameters: [requestIdHeaderRef, ...tradeFilterParams],
         responses: {
           200: {
             description: 'Quick summary',
@@ -833,6 +937,46 @@ function buildPaths(baseUrl) {
             }
           },
           401: unauthorized
+        }
+      }
+    },
+    [endpoints.analytics.drawdown]: {
+      get: {
+        tags: ['Analytics'],
+        summary: 'Daily P&L and drawdown series',
+        description: 'Daily P&L, cumulative P&L, running peak and drawdown ordered by trade date. Requires the analytics:read scope for API keys.',
+        security: tradeSecurity,
+        parameters: [requestIdHeaderRef, ...tradeFilterParams],
+        responses: {
+          200: {
+            description: 'Drawdown series',
+            headers: standardResponseHeaders(),
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    drawdown: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          trade_date: { type: 'string', format: 'date' },
+                          daily_pnl: { type: 'number' },
+                          cumulative_pnl: { type: 'number' },
+                          running_max_pnl: { type: 'number' },
+                          drawdown: { type: 'number' }
+                        }
+                      }
+                    }
+                  },
+                  additionalProperties: true
+                }
+              }
+            }
+          },
+          401: unauthorized,
+          403: forbidden
         }
       }
     },
@@ -1333,6 +1477,134 @@ function buildPaths(baseUrl) {
           403: forbidden
         }
       }
+    },
+    ...(endpoints.webhooks ? buildWebhookPaths(endpoints.webhooks, {
+      authHeaderRef, requestIdHeaderRef, badRequest, unauthorized, forbidden, notFound
+    }) : {})
+  };
+}
+
+function buildWebhookPaths(endpoints, refs) {
+  const { authHeaderRef, requestIdHeaderRef, badRequest, unauthorized, forbidden, notFound } = refs;
+  const security = [{ bearerAuth: [] }];
+  const idParam = { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } };
+  const pageParams = [
+    { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 200, default: 50 } },
+    { name: 'offset', in: 'query', schema: { type: 'integer', minimum: 0, default: 0 } }
+  ];
+  const ok = (description, schema) => ({
+    description,
+    headers: standardResponseHeaders(),
+    content: { 'application/json': { schema } }
+  });
+  const webhookEnvelope = { type: 'object', properties: { webhook: { $ref: '#/components/schemas/Webhook' } } };
+  const paginated = (itemSchema) => ({
+    type: 'object',
+    properties: {
+      data: { type: 'array', items: itemSchema },
+      pagination: { $ref: '#/components/schemas/Pagination' }
+    }
+  });
+  const common = { tags: ['Webhooks'], security };
+  const proNote = 'Requires a Pro tier account and JWT authentication.';
+
+  return {
+    [endpoints.list]: {
+      get: {
+        ...common,
+        summary: 'List webhook subscriptions',
+        description: proNote,
+        parameters: [authHeaderRef, requestIdHeaderRef, ...pageParams],
+        responses: {
+          200: ok('Webhook subscriptions', paginated({ $ref: '#/components/schemas/Webhook' })),
+          401: unauthorized,
+          403: forbidden
+        }
+      },
+      post: {
+        ...common,
+        summary: 'Create a webhook subscription',
+        description: proNote,
+        parameters: [authHeaderRef, requestIdHeaderRef],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/WebhookWrite' } } }
+        },
+        responses: {
+          201: ok('Webhook created', webhookEnvelope),
+          400: badRequest,
+          401: unauthorized,
+          403: forbidden
+        }
+      }
+    },
+    [endpoints.update]: {
+      put: {
+        ...common,
+        summary: 'Update a webhook subscription',
+        parameters: [authHeaderRef, requestIdHeaderRef, idParam],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [{ $ref: '#/components/schemas/WebhookWrite' }],
+                properties: { rotateSecret: { type: 'boolean' } }
+              }
+            }
+          }
+        },
+        responses: {
+          200: ok('Webhook updated', webhookEnvelope),
+          400: badRequest,
+          401: unauthorized,
+          403: forbidden,
+          404: notFound
+        }
+      },
+      delete: {
+        ...common,
+        summary: 'Delete a webhook subscription',
+        parameters: [authHeaderRef, requestIdHeaderRef, idParam],
+        responses: {
+          200: ok('Webhook deleted', {
+            type: 'object',
+            properties: { deleted: { type: 'boolean' }, message: { type: 'string' } }
+          }),
+          401: unauthorized,
+          403: forbidden,
+          404: notFound
+        }
+      }
+    },
+    [endpoints.test]: {
+      post: {
+        ...common,
+        summary: 'Send a test delivery',
+        parameters: [authHeaderRef, requestIdHeaderRef, idParam],
+        responses: {
+          200: ok('Test delivery result', {
+            type: 'object',
+            properties: { tested: { type: 'boolean' }, delivery: { type: 'object', additionalProperties: true } }
+          }),
+          401: unauthorized,
+          403: forbidden,
+          404: notFound
+        }
+      }
+    },
+    [endpoints.deliveries]: {
+      get: {
+        ...common,
+        summary: 'List deliveries for a webhook',
+        parameters: [authHeaderRef, requestIdHeaderRef, idParam, ...pageParams],
+        responses: {
+          200: ok('Deliveries', paginated({ type: 'object', additionalProperties: true })),
+          401: unauthorized,
+          403: forbidden,
+          404: notFound
+        }
+      }
     }
   };
 }
@@ -1362,8 +1634,10 @@ function buildV1OpenApiSpec(origin = '') {
       { name: 'Authentication' },
       { name: 'Server' },
       { name: 'Trades' },
+      { name: 'Analytics' },
       { name: 'Users' },
-      { name: 'Settings' }
+      { name: 'Settings' },
+      ...(webhooksEnabled ? [{ name: 'Webhooks' }] : [])
     ],
     components: {
       securitySchemes: {
@@ -1436,21 +1710,37 @@ function buildV1OpenApiSpec(origin = '') {
         },
         Trade: {
           type: 'object',
+          description: 'Trade as returned by the API. Fields use snake_case; additional fields may be present.',
+          additionalProperties: true,
           properties: {
             id: { type: 'string', format: 'uuid' },
             symbol: { type: 'string', example: 'AAPL' },
             side: { type: 'string', enum: ['long', 'short'] },
             quantity: { type: 'number', example: 100 },
-            entryPrice: { type: 'number', example: 150.25 },
-            exitPrice: { type: 'number', nullable: true, example: 155.75 },
-            entryTime: { type: 'string', format: 'date-time' },
-            exitTime: { type: 'string', format: 'date-time', nullable: true },
+            entry_price: { type: 'number', example: 150.25 },
+            exit_price: { type: 'number', nullable: true, example: 155.75 },
+            entry_time: { type: 'string', format: 'date-time' },
+            exit_time: { type: 'string', format: 'date-time', nullable: true },
+            trade_date: { type: 'string', format: 'date' },
             pnl: { type: 'number', nullable: true, example: 550.0 },
-            strategy: { type: 'string', nullable: true }
+            pnl_percent: { type: 'number', nullable: true },
+            commission: { type: 'number', nullable: true },
+            fees: { type: 'number', nullable: true },
+            instrument_type: { type: 'string', enum: ['stock', 'option', 'future', 'crypto', 'forex'] },
+            broker: { type: 'string', nullable: true },
+            account_identifier: { type: 'string', nullable: true },
+            strategy: { type: 'string', nullable: true },
+            setup: { type: 'string', nullable: true },
+            tags: { type: 'array', items: { type: 'string' }, nullable: true },
+            notes: { type: 'string', nullable: true },
+            stop_loss: { type: 'number', nullable: true },
+            take_profit: { type: 'number', nullable: true },
+            r_value: { type: 'number', nullable: true }
           }
         },
         TradeWrite: {
           type: 'object',
+          description: 'Trade input. camelCase field names are canonical; snake_case aliases (entry_price, instrument_type, ...) are also accepted.',
           required: ['symbol', 'entryTime', 'entryPrice', 'quantity', 'side'],
           properties: {
             symbol: { type: 'string', example: 'AAPL' },
@@ -1502,6 +1792,12 @@ function buildV1OpenApiSpec(origin = '') {
                   tradeId: { type: 'string', format: 'uuid', nullable: true },
                   status: { type: 'string', example: 'created' },
                   error: { type: 'string', nullable: true },
+                  details: {
+                    type: 'array',
+                    nullable: true,
+                    description: 'Per-field validation failures for the item',
+                    items: { type: 'object', additionalProperties: true }
+                  },
                   trade: { $ref: '#/components/schemas/Trade' }
                 }
               }
@@ -1521,7 +1817,8 @@ function buildV1OpenApiSpec(origin = '') {
                 monthPnL: { type: 'number' },
                 winRate: { type: 'number' },
                 avgWin: { type: 'number' },
-                avgLoss: { type: 'number' }
+                avgLoss: { type: 'number' },
+                currency: { type: 'string', example: 'USD' }
               }
             }
           }
@@ -1547,12 +1844,86 @@ function buildV1OpenApiSpec(origin = '') {
             settings: { type: 'object', additionalProperties: true }
           }
         },
+        AuthTokens: {
+          type: 'object',
+          properties: {
+            accessToken: { type: 'string' },
+            refreshToken: { type: 'string' },
+            expiresIn: { type: 'integer', description: 'Access token lifetime in seconds' },
+            tokenType: { type: 'string', example: 'Bearer' }
+          }
+        },
         AuthSessionResponse: {
           type: 'object',
           properties: {
+            message: { type: 'string', example: 'Login successful' },
             user: { type: 'object', additionalProperties: true },
-            token: { type: 'string' },
-            refreshToken: { type: 'string' }
+            tokens: { $ref: '#/components/schemas/AuthTokens' }
+          }
+        },
+        TwoFactorChallenge: {
+          type: 'object',
+          properties: {
+            requires2FA: { type: 'boolean', example: true },
+            tempToken: { type: 'string' },
+            message: { type: 'string' }
+          }
+        },
+        RegisterResponse: {
+          type: 'object',
+          properties: {
+            message: { type: 'string' },
+            requiresVerification: { type: 'boolean' },
+            requiresApproval: { type: 'boolean' },
+            registrationMode: { type: 'string', enum: ['open', 'approval', 'disabled'] },
+            isFirstUser: { type: 'boolean' },
+            user: { type: 'object', additionalProperties: true },
+            device: { type: 'object', nullable: true, additionalProperties: true },
+            tokens: {
+              nullable: true,
+              description: 'Null while the account awaits admin approval',
+              allOf: [{ $ref: '#/components/schemas/AuthTokens' }]
+            }
+          }
+        },
+        LegacyError: {
+          type: 'object',
+          description: 'Error shape used by the authentication endpoints',
+          properties: {
+            error: { type: 'string' }
+          },
+          additionalProperties: true
+        },
+        Webhook: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            url: { type: 'string', format: 'uri' },
+            providerType: { type: 'string', enum: ['custom', 'slack', 'discord'] },
+            description: { type: 'string', nullable: true },
+            eventTypes: { type: 'array', items: { type: 'string' } },
+            isActive: { type: 'boolean' }
+          }
+        },
+        WebhookWrite: {
+          type: 'object',
+          required: ['url'],
+          properties: {
+            url: { type: 'string', format: 'uri' },
+            providerType: { type: 'string', enum: ['custom', 'slack', 'discord'], default: 'custom' },
+            description: { type: 'string', maxLength: 500 },
+            eventTypes: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                type: 'string',
+                enum: ['trade.created', 'trade.updated', 'trade.deleted', 'import.completed', 'broker_sync.completed', 'price_alert.triggered', 'enrichment.completed']
+              }
+            },
+            customHeaders: { type: 'object', additionalProperties: { type: 'string' } },
+            isActive: { type: 'boolean', default: true },
+            secret: { type: 'string', maxLength: 255 }
           }
         },
         RegisterRequest: {
@@ -1604,8 +1975,9 @@ function getDocumentationMetadata(origin = '') {
       },
       headers: {
         request_id: 'X-Request-ID',
-        rate_limit_remaining: 'X-Rate-Limit-Remaining',
-        rate_limit_reset: 'X-Rate-Limit-Reset',
+        rate_limit_limit: 'RateLimit-Limit',
+        rate_limit_remaining: 'RateLimit-Remaining',
+        rate_limit_reset: 'RateLimit-Reset',
         idempotency_key: 'Idempotency-Key',
         idempotency_replayed: 'X-Idempotency-Replayed'
       },

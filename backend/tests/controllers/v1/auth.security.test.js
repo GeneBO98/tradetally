@@ -4,7 +4,12 @@ jest.mock('../../../src/models/User', () => ({
   getUserCount: jest.fn(),
   findByUsername: jest.fn(),
   create: jest.fn(),
-  createSettings: jest.fn()
+  createSettings: jest.fn(),
+  updateLastLogin: jest.fn()
+}));
+jest.mock('../../../src/services/newUserSetup', () => ({
+  queueVerificationEmail: jest.fn(),
+  applyNewUserTrial: jest.fn(async () => undefined)
 }));
 jest.mock('../../../src/services/refreshToken.service', () => ({
   generateAccessToken: jest.fn(),
@@ -21,6 +26,7 @@ jest.mock('../../../src/services/accountLockoutService', () => ({
 
 const User = require('../../../src/models/User');
 const refreshTokenService = require('../../../src/services/refreshToken.service');
+const newUserSetup = require('../../../src/services/newUserSetup');
 const controller = require('../../../src/controllers/v1/auth.controller');
 
 function response() {
@@ -116,12 +122,20 @@ describe('v1 auth security policy', () => {
     const res = response();
 
     await controller.register({
-      body: { email: 'new@example.com', username: 'new', password: 'password123' }
+      body: { email: 'new@example.com', username: 'new', password: 'password123' },
+      headers: { host: 'tradetally.example' }
     }, res, jest.fn());
 
     expect(res.statusCode).toBe(201);
     expect(res.payload.requiresVerification).toBe(true);
     expect(res.payload.tokens).toEqual(expect.objectContaining({ accessToken: 'access-token' }));
+    // Parity with the web registration flow.
+    expect(newUserSetup.queueVerificationEmail).toHaveBeenCalledWith('new@example.com', expect.any(String));
+    expect(newUserSetup.applyNewUserTrial).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'user-2' }),
+      { host: 'tradetally.example', isFirstUser: false }
+    );
+    expect(User.updateLastLogin).toHaveBeenCalledWith('user-2');
   });
 
   test('enforces disabled registration mode on v1 registration', async () => {

@@ -6,13 +6,13 @@ const bcrypt = require('bcryptjs');
 const TierService = require('../services/tierService');
 const YearWrappedService = require('../services/yearWrappedService');
 const refreshTokenService = require('../services/refreshToken.service');
-const SampleDataService = require('../services/sampleDataService');
 const activityTrackingService = require('../services/activityTrackingService');
 const accountLockout = require('../services/accountLockoutService');
 const { getClientIp } = require('../utils/clientIp');
 const { generateCsrfToken } = require('../middleware/csrf');
 const { clearAuthCookies, setAuthCookies } = require('../utils/authCookies');
 const jobQueue = require('../utils/jobQueue');
+const { queueVerificationEmail, applyNewUserTrial } = require('../services/newUserSetup');
 
 const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
 
@@ -79,15 +79,7 @@ function getBillingEnabled() {
 
 const maskEmail = require('../utils/maskEmail');
 
-function sendVerificationEmailInBackground(email, token) {
-  setImmediate(async () => {
-    try {
-      await jobQueue.addJob('verification_email', { email, token }, 2);
-    } catch (error) {
-      console.warn('[WARNING] Failed to send verification email after registration:', error.message);
-    }
-  });
-}
+const sendVerificationEmailInBackground = queueVerificationEmail;
 
 function queuePasswordResetEmail(email, token) {
   setImmediate(async () => {
@@ -210,41 +202,7 @@ const authController = {
         marketingConsent: marketing_consent
       });
 
-      // For new users on billing-enabled instances: seed sample data and grant
-      // a 14-day Pro trial. Both are best-effort and never block registration.
-      // First user is skipped — they're an admin and get Pro tier permanently.
-      let billingEnabled = false;
-      try {
-        billingEnabled = await TierService.isBillingEnabled(req.headers.host);
-        console.log(`[REGISTER] Billing check: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
-      } catch (billingErr) {
-        console.log('[REGISTER] Billing status check failed (non-blocking):', billingErr.message);
-      }
-
-      if (billingEnabled && !isFirstUser) {
-        try {
-          await SampleDataService.createForUser(user.id);
-          console.log(`[REGISTER] Sample data created for new user ${user.username}`);
-        } catch (sampleErr) {
-          console.log('[REGISTER] Sample data creation failed (non-blocking):', sampleErr.message);
-        }
-
-        // Auto-grant 14-day Pro trial. Reason matches the manual /billing/start-trial
-        // flow ('Free 14-day trial') so trialScheduler picks it up for reminder
-        // and expiration emails. A DB trigger sets users.trial_used = true when
-        // a tier_override with reason ILIKE '%trial%' is inserted.
-        try {
-          const expiresAt = new Date();
-          expiresAt.setDate(expiresAt.getDate() + 14);
-          await User.createTierOverride(user.id, 'pro', 'Free 14-day trial', expiresAt, null);
-          await User.setProOnboardingStep(user.id, 1);
-          console.log(`[REGISTER] 14-day Pro trial granted for new user ${user.username} (expires ${expiresAt.toISOString()})`);
-        } catch (trialErr) {
-          console.log('[REGISTER] Trial grant failed (non-blocking):', trialErr.message);
-        }
-      } else {
-        console.log(`[REGISTER] Skipping sample data + trial: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
-      }
+      await applyNewUserTrial(user, { host: req.headers.host, isFirstUser });
 
       // Log if this user was made an admin
       if (isFirstUser) {

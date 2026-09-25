@@ -5,6 +5,7 @@ const accountLockout = require('../../services/accountLockoutService');
 const crypto = require('crypto');
 const speakeasy = require('speakeasy');
 const { generateToken, TOKEN_PURPOSES, verifyJwtToken, clearAuthUserCache } = require('../../middleware/auth');
+const { queueVerificationEmail, applyNewUserTrial } = require('../../services/newUserSetup');
 
 function getRegistrationMode() {
   const mode = process.env.REGISTRATION_MODE || 'open';
@@ -107,7 +108,9 @@ const authV1Controller = {
       let isVerified = !emailConfigured || isFirstUser;
       const adminApproved = registrationMode !== 'approval' || isFirstUser;
 
-      if (emailConfigured) {
+      // The first user is auto-verified, so only later users get a token.
+      const needsVerificationEmail = emailConfigured && !isFirstUser;
+      if (needsVerificationEmail) {
         verificationToken = crypto.randomBytes(32).toString('hex');
         verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
       }
@@ -125,6 +128,7 @@ const authV1Controller = {
       });
       
       await User.createSettings(user.id);
+      await applyNewUserTrial(user, { host: req.headers.host, isFirstUser });
 
       // Register device if provided
       let device = null;
@@ -140,6 +144,7 @@ const authV1Controller = {
       // immediately while verification remains available as an account signal.
       let tokens = null;
       if (adminApproved) {
+        await User.updateLastLogin(user.id);
         const accessToken = refreshTokenService.generateAccessToken(user);
         const refreshTokenData = await refreshTokenService.generateRefreshToken(user.id, device?.id);
         
@@ -151,7 +156,9 @@ const authV1Controller = {
         };
       }
 
-      // TODO: Send verification email if needed (reuse existing logic)
+      if (needsVerificationEmail) {
+        queueVerificationEmail(user.email, verificationToken);
+      }
 
       res.status(201).json({
         message: isVerified ? 'Registration successful' : 'Registration successful. Please verify your email.',
@@ -219,6 +226,8 @@ const authV1Controller = {
       if (user.two_factor_enabled) {
         return res.json(buildTwoFactorChallenge(user));
       }
+
+      await User.updateLastLogin(user.id);
 
       // Generate both access and refresh tokens
       const accessToken = refreshTokenService.generateAccessToken(user);
@@ -306,6 +315,8 @@ const authV1Controller = {
         console.error('Device registration failed:', error);
         return res.status(400).json({ error: 'Failed to register device' });
       }
+
+      await User.updateLastLogin(user.id);
 
       // Generate tokens with device association
       const accessToken = refreshTokenService.generateAccessToken(user);

@@ -15,7 +15,8 @@ jest.mock('../../../src/models/Trade', () => ({
 }));
 
 jest.mock('../../../src/services/tradeQueries', () => ({
-  findByUser: jest.fn()
+  findByUser: jest.fn(),
+  _buildWhereClause: jest.fn()
 }));
 
 jest.mock('../../../src/config/database', () => ({
@@ -42,7 +43,18 @@ function createMockRes(requestId = 'req-trade') {
 
 describe('v1 trade controller', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
+    publish.mockResolvedValue({});
+    TradeQueries._buildWhereClause.mockResolvedValue({
+      whereClause: 'WHERE t.user_id = $1',
+      values: ['u1'],
+      paramCount: 2,
+      needsSectorOuterJoin: false
+    });
+  });
+
+  const validTrade = (overrides = {}) => ({
+    symbol: 'AAPL', side: 'long', quantity: 10, entryPrice: 100, entryTime: '2026-02-01T10:00:00Z', ...overrides
   });
 
   test('GET /api/v1/trades returns real rows with pagination envelope', async () => {
@@ -90,13 +102,10 @@ describe('v1 trade controller', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  test('POST /api/v1/trades/bulk reports partial failures', async () => {
+  test('POST /api/v1/trades/bulk validates each item before creating it', async () => {
     tradeController.createTrade
       .mockImplementationOnce((req, res) => {
         res.status(201).json({ trade: { id: 't-success', symbol: 'AAPL' } });
-      })
-      .mockImplementationOnce((req, res) => {
-        res.status(400).json({ message: 'Invalid trade payload' });
       });
 
     const req = {
@@ -115,24 +124,72 @@ describe('v1 trade controller', () => {
 
     await tradeV1Controller.bulkCreateTrades(req, res, next);
 
-    expect(res.json).toHaveBeenCalledWith({
-      created: 1,
-      duplicates: 0,
-      failed: 1,
-      results: [
-        {
-          index: 0,
-          status: 'created',
-          trade: { id: 't-success', symbol: 'AAPL' }
-        },
-        {
-          index: 1,
-          status: 'failed',
-          error: 'Invalid trade payload'
-        }
-      ]
+    // The invalid item never reaches the create flow.
+    expect(tradeController.createTrade).toHaveBeenCalledTimes(1);
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.created).toBe(1);
+    expect(payload.duplicates).toBe(0);
+    expect(payload.failed).toBe(1);
+    expect(payload.results[0]).toEqual({
+      index: 0,
+      status: 'created',
+      trade: { id: 't-success', symbol: 'AAPL' }
     });
+    expect(payload.results[1]).toMatchObject({ index: 1, status: 'failed' });
+    expect(payload.results[1].error).toMatch(/symbol/);
+    expect(payload.results[1].details[0].field).toBe('symbol');
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test('bulk create normalizes snake_case items like the single-trade route', async () => {
+    tradeController.createTrade.mockImplementation((req, res) => {
+      res.status(201).json({ trade: { id: 't1' } });
+    });
+    const req = {
+      body: { trades: [validTrade({ instrument_type: 'crypto' })] },
+      user: { id: 'u1' },
+      headers: {}
+    };
+    await tradeV1Controller.bulkCreateTrades(req, createMockRes(), jest.fn());
+
+    const calledBody = tradeController.createTrade.mock.calls[0][0].body;
+    expect(calledBody.instrumentType).toBe('crypto');
+    expect(calledBody.entryTime).toBeInstanceOf(Date);
+  });
+
+  test('bulk endpoints reject oversized batches instead of truncating them', async () => {
+    const trades = Array.from({ length: 501 }, () => validTrade());
+    const res = createMockRes();
+    await tradeV1Controller.bulkCreateTrades({ body: { trades }, user: { id: 'u1' }, headers: {} }, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].error.code).toBe('BULK_LIMIT_EXCEEDED');
+    expect(tradeController.createTrade).not.toHaveBeenCalled();
+  });
+
+  test('bulk delete accepts the ids alias', async () => {
+    tradeController.deleteTrade.mockImplementation((req, res) => res.json({ message: 'ok' }));
+    const res = createMockRes();
+    await tradeV1Controller.bulkDeleteTrades({ body: { ids: ['a', 'b'] }, user: { id: 'u1' }, headers: {} }, res, jest.fn());
+
+    expect(tradeController.deleteTrade).toHaveBeenCalledTimes(2);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ deleted: 2, failed: 0 });
+  });
+
+  test('bulk update validates each item', async () => {
+    tradeController.updateTrade.mockImplementation((req, res) => res.json({ trade: { id: req.params.id } }));
+    const res = createMockRes();
+    await tradeV1Controller.bulkUpdateTrades({
+      body: { trades: [{ id: 't1', quantity: -5 }, { id: 't2', notes: 'fine' }] },
+      user: { id: 'u1' },
+      headers: {}
+    }, res, jest.fn());
+
+    expect(tradeController.updateTrade).toHaveBeenCalledTimes(1);
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.updated).toBe(1);
+    expect(payload.results[0]).toMatchObject({ index: 0, tradeId: 't1', status: 'failed' });
+    expect(payload.results[1]).toMatchObject({ index: 1, tradeId: 't2', status: 'updated' });
   });
 
   test('POST /api/v1/trades delegates to existing create flow', async () => {
@@ -176,7 +233,7 @@ describe('v1 trade controller', () => {
       .mockImplementationOnce((req, res) => res.status(200).json({ trade: { id: 'existing' }, duplicate: true }))
       .mockImplementationOnce((req, res) => res.status(201).json({ trade: { id: 'new' } }))
       .mockImplementationOnce((req, res) => res.status(400).json({ error: 'Invalid trade' }));
-    const req = { body: { trades: [{}, {}, {}] }, user: { id: 'u1' }, headers: {} };
+    const req = { body: { trades: [validTrade(), validTrade(), validTrade()] }, user: { id: 'u1' }, headers: {} };
     const res = createMockRes();
     await tradeV1Controller.bulkCreateTrades(req, res, jest.fn());
     expect(res.json).toHaveBeenCalledWith({
@@ -191,15 +248,15 @@ describe('v1 trade controller', () => {
     expect(publish.mock.calls[0][0]).toBe('trade.created');
   });
 
-  test('GET /api/v1/trades/recent sorts by descending entry_time and paginates', async () => {
+  test('GET /api/v1/trades/recent applies trade-list filters and paginates', async () => {
     TradeQueries.findByUser.mockResolvedValue([
-      { id: 'old', entry_time: '2026-02-01T09:00:00Z' },
-      { id: 'new', entry_time: '2026-02-05T09:00:00Z' }
+      { id: 'new', entry_time: '2026-02-05T09:00:00Z' },
+      { id: 'old', entry_time: '2026-02-01T09:00:00Z' }
     ]);
     Trade.getCountWithFilters.mockResolvedValue(2);
 
     const req = {
-      query: { limit: '10' },
+      query: { limit: '10', accounts: 'ACC1,ACC2', side: 'long' },
       user: { id: 'u1' },
       headers: {},
       requestId: 'req-recent'
@@ -209,13 +266,15 @@ describe('v1 trade controller', () => {
 
     await tradeV1Controller.getRecentTrades(req, res, next);
 
-    expect(TradeQueries.findByUser).toHaveBeenCalledWith('u1', {
+    expect(TradeQueries.findByUser).toHaveBeenCalledWith('u1', expect.objectContaining({
       limit: 10,
       offset: 0,
-      symbol: undefined,
-      startDate: undefined,
-      endDate: undefined
-    });
+      accounts: ['ACC1', 'ACC2'],
+      side: 'long'
+    }));
+    expect(Trade.getCountWithFilters).toHaveBeenCalledWith('u1', expect.objectContaining({
+      accounts: ['ACC1', 'ACC2']
+    }));
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
       data: [
@@ -255,6 +314,7 @@ describe('v1 trade controller', () => {
     });
 
     const req = {
+      query: { accounts: 'ACC1' },
       user: { id: 'u1', timezone: 'UTC' },
       headers: {},
       requestId: 'req-summary'
@@ -279,6 +339,12 @@ describe('v1 trade controller', () => {
         currency: 'USD'
       }
     });
+    // Counts are scoped by the same canonical WHERE clause as the overview.
+    expect(TradeQueries._buildWhereClause).toHaveBeenCalledWith('u1', expect.objectContaining({ accounts: ['ACC1'] }));
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('WHERE t.user_id = $1');
+    expect(sql).toContain('AT TIME ZONE $2');
+    expect(params).toEqual(['u1', 'UTC']);
     expect(next).not.toHaveBeenCalled();
   });
 });

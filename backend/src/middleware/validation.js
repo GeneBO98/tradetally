@@ -54,6 +54,25 @@ const normalizeFieldNames = (body) => {
   return normalized;
 };
 
+/**
+ * Validate one payload against a schema outside the middleware chain (used by
+ * bulk endpoints, where each array item must pass the same schema as the
+ * single-item route). Returns { value } or { fields } on failure.
+ */
+const validatePayload = (schema, body) => {
+  const { error, value } = schema.validate(normalizeFieldNames(body));
+  if (error) {
+    return {
+      fields: error.details.map(d => ({
+        field: d.path.join('.'),
+        message: d.message,
+        type: d.type
+      }))
+    };
+  }
+  return { value };
+};
+
 const validate = (schema) => {
   return (req, res, next) => {
     // Normalize snake_case to camelCase before validation
@@ -981,4 +1000,4 @@ const schemas = {
 
 schemas.trade = schemas.createTrade;
 
-module.exports = { validate, schemas };
+module.exports = { validate, validatePayload, schemas };

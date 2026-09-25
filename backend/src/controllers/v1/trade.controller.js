@@ -8,6 +8,32 @@ const analyticsController = require('../analytics.controller');
 const { sendV1Error, sendV1ErrorFromLegacy, sendV1NotImplemented, sendV1Paginated } = require('../../utils/apiResponse');
 const { captureControllerResult } = require('../../utils/legacyControllerAdapter');
 const { publish } = require('../../events/domainEvents');
+const { validatePayload, schemas } = require('../../middleware/validation');
+const { parseTradeFilters, tradeFilterProfiles } = require('../../utils/tradeFilters');
+
+const BULK_LIMIT = 500;
+
+// Returns an error response when the bulk array is empty or over the cap.
+// Oversized batches are rejected outright: silently truncating them would
+// report success while dropping the tail of the caller's data.
+function rejectInvalidBulkArray(res, items, fieldName) {
+  if (items.length === 0) {
+    return sendV1Error(res, 400, 'BAD_REQUEST', `A non-empty ${fieldName} array is required`);
+  }
+  if (items.length > BULK_LIMIT) {
+    return sendV1Error(
+      res,
+      400,
+      'BULK_LIMIT_EXCEEDED',
+      `A maximum of ${BULK_LIMIT} ${fieldName} can be processed per request (received ${items.length})`
+    );
+  }
+  return null;
+}
+
+function formatValidationError(fields) {
+  return fields.map((f) => `${f.field}: ${f.message}`).join(', ');
+}
 
 function cloneRequest(req, overrides = {}) {
   return {
@@ -61,26 +87,38 @@ async function runTradeList(req, queryOverrides = {}) {
   return legacyResult;
 }
 
-async function queryQuickSummary(userId, timezone = 'UTC') {
+async function queryQuickSummary(userId, timezone = 'UTC', filters = {}) {
+  // Scope through the canonical trade WHERE clause so the counts and period
+  // totals honor the same filters (accounts, reporting exclusions, ...) as the
+  // overview figures they are merged with.
+  const { whereClause, values, paramCount, needsSectorOuterJoin } =
+    await TradeQueries._buildWhereClause(userId, filters);
+  const tzParam = `$${paramCount}`;
+  const sectorJoin = needsSectorOuterJoin ? 'LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol' : '';
+
   const result = await db.query(
     `
-      WITH completed AS (
-        -- Normalized to USD before summing; the caller converts the totals
-        -- to the user's display currency so they match the overview fields
-        -- it merges them with.
-        SELECT trade_date, ${fxUsd('pnl', 'trades')} AS pnl
-        FROM trades
-        WHERE user_id = $1
-          AND pnl IS NOT NULL
+      WITH scoped AS (
+        SELECT t.trade_date, t.exit_price, t.pnl AS raw_pnl,
+               -- Normalized to USD before summing; the caller converts the totals
+               -- to the user's display currency so they match the overview fields
+               -- it merges them with.
+               ${fxUsd('pnl', 't')} AS pnl
+        FROM trades t
+        ${sectorJoin}
+        ${whereClause}
+      ),
+      completed AS (
+        SELECT trade_date, pnl FROM scoped WHERE raw_pnl IS NOT NULL
       )
       SELECT
-        (SELECT COUNT(*)::integer FROM trades WHERE user_id = $1) AS total_trades,
-        (SELECT COUNT(*)::integer FROM trades WHERE user_id = $1 AND exit_price IS NULL) AS open_trades,
-        COALESCE((SELECT SUM(pnl) FROM completed WHERE trade_date = (NOW() AT TIME ZONE $2)::date), 0) AS today_pnl,
-        COALESCE((SELECT SUM(pnl) FROM completed WHERE trade_date >= date_trunc('week', NOW() AT TIME ZONE $2)::date), 0) AS week_pnl,
-        COALESCE((SELECT SUM(pnl) FROM completed WHERE trade_date >= date_trunc('month', NOW() AT TIME ZONE $2)::date), 0) AS month_pnl
+        (SELECT COUNT(*)::integer FROM scoped) AS total_trades,
+        (SELECT COUNT(*)::integer FROM scoped WHERE exit_price IS NULL) AS open_trades,
+        COALESCE((SELECT SUM(pnl) FROM completed WHERE trade_date = (NOW() AT TIME ZONE ${tzParam})::date), 0) AS today_pnl,
+        COALESCE((SELECT SUM(pnl) FROM completed WHERE trade_date >= date_trunc('week', NOW() AT TIME ZONE ${tzParam})::date), 0) AS week_pnl,
+        COALESCE((SELECT SUM(pnl) FROM completed WHERE trade_date >= date_trunc('month', NOW() AT TIME ZONE ${tzParam})::date), 0) AS month_pnl
     `,
-    [userId, timezone]
+    [...values, timezone]
   );
 
   return result.rows[0] || {};
@@ -224,20 +262,24 @@ const tradeV1Controller = {
 
   async bulkCreateTrades(req, res, next) {
     try {
-      const rawTrades = Array.isArray(req.body?.trades) ? req.body.trades : [];
-      const trades = rawTrades.slice(0, 500); // Cap bulk operations
-
-      if (trades.length === 0) {
-        return sendV1Error(res, 400, 'BAD_REQUEST', 'A non-empty trades array is required');
-      }
+      const trades = Array.isArray(req.body?.trades) ? req.body.trades : [];
+      const invalid = rejectInvalidBulkArray(res, trades, 'trades');
+      if (invalid) return invalid;
 
       const results = [];
       let created = 0;
       let duplicates = 0;
 
       for (let index = 0; index < trades.length; index += 1) {
+        // Each item gets the same validation/normalization as POST /trades.
+        const { value, fields } = validatePayload(schemas.trade, trades[index]);
+        if (fields) {
+          results.push({ index, status: 'failed', error: formatValidationError(fields), details: fields });
+          continue;
+        }
+
         const legacyResult = await runLegacy(tradeController.createTrade, req, {
-          body: trades[index]
+          body: value
         });
 
         if (legacyResult.statusCode >= 400) {
@@ -286,12 +328,9 @@ const tradeV1Controller = {
 
   async bulkUpdateTrades(req, res, next) {
     try {
-      const rawTrades = Array.isArray(req.body?.trades) ? req.body.trades : [];
-      const trades = rawTrades.slice(0, 500); // Cap bulk operations
-
-      if (trades.length === 0) {
-        return sendV1Error(res, 400, 'BAD_REQUEST', 'A non-empty trades array is required');
-      }
+      const trades = Array.isArray(req.body?.trades) ? req.body.trades : [];
+      const invalid = rejectInvalidBulkArray(res, trades, 'trades');
+      if (invalid) return invalid;
 
       const results = [];
       let updated = 0;
@@ -305,9 +344,16 @@ const tradeV1Controller = {
         }
 
         const { id, ...updates } = trade;
+        // Same validation/normalization as PUT /trades/:id.
+        const { value, fields } = validatePayload(schemas.updateTrade, updates);
+        if (fields) {
+          results.push({ index, tradeId: id, status: 'failed', error: formatValidationError(fields), details: fields });
+          continue;
+        }
+
         const legacyResult = await runLegacy(tradeController.updateTrade, req, {
           params: { id },
-          body: updates
+          body: value
         });
 
         if (legacyResult.statusCode >= 400) {
@@ -349,12 +395,12 @@ const tradeV1Controller = {
 
   async bulkDeleteTrades(req, res, next) {
     try {
-      const rawTradeIds = Array.isArray(req.body?.tradeIds) ? req.body.tradeIds : [];
-      const tradeIds = rawTradeIds.slice(0, 500); // Cap bulk operations
-
-      if (tradeIds.length === 0) {
-        return sendV1Error(res, 400, 'BAD_REQUEST', 'A non-empty tradeIds array is required');
-      }
+      // `ids` is accepted as an alias: the /api-docs route annotations
+      // documented it before being corrected to `tradeIds`.
+      const rawIds = req.body?.tradeIds ?? req.body?.ids;
+      const tradeIds = Array.isArray(rawIds) ? rawIds : [];
+      const invalid = rejectInvalidBulkArray(res, tradeIds, 'tradeIds');
+      if (invalid) return invalid;
 
       const results = [];
       let deleted = 0;
@@ -403,7 +449,11 @@ const tradeV1Controller = {
     try {
       const [overviewResult, summaryRow] = await Promise.all([
         runLegacy(analyticsController.getOverview, req),
-        queryQuickSummary(req.user.id, req.user.timezone || 'UTC')
+        queryQuickSummary(
+          req.user.id,
+          req.user.timezone || 'UTC',
+          parseTradeFilters(req.query, tradeFilterProfiles.tradeList)
+        )
       ]);
 
       if (overviewResult.statusCode >= 400) {
@@ -443,31 +493,20 @@ const tradeV1Controller = {
   async getRecentTrades(req, res, next) {
     try {
       const { limit } = parseLimitOffset(req.query, 10);
-      const filters = {
-        limit,
-        offset: 0,
-        symbol: req.query.symbol,
-        startDate: req.query.startDate,
-        endDate: req.query.endDate
-      };
+      // Same filter parsing as the trade list so accounts, side, status, etc.
+      // behave identically on both endpoints. findByUser already orders by
+      // entry_time DESC.
+      const baseFilters = parseTradeFilters(req.query, tradeFilterProfiles.tradeList);
 
       const [trades, total] = await Promise.all([
-        TradeQueries.findByUser(req.user.id, filters),
-        Trade.getCountWithFilters(req.user.id, {
-          symbol: req.query.symbol,
-          startDate: req.query.startDate,
-          endDate: req.query.endDate
-        })
+        TradeQueries.findByUser(req.user.id, { ...baseFilters, limit, offset: 0 }),
+        Trade.getCountWithFilters(req.user.id, baseFilters)
       ]);
-
-      const sortedTrades = [...trades].sort(
-        (a, b) => new Date(b.entry_time || b.entryTime || 0) - new Date(a.entry_time || a.entryTime || 0)
-      );
 
       return sendV1Paginated(
         res,
-        sortedTrades,
-        buildPagination(limit, 0, total, sortedTrades.length)
+        trades,
+        buildPagination(limit, 0, total, trades.length)
       );
     } catch (error) {
       next(error);

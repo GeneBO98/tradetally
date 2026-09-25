@@ -34,6 +34,26 @@ const errorHandler = (err, req, res, next) => {
   }
 
   if (isV1Request(req)) {
+    // Body-parser / multer style errors carry their own 4xx status
+    // (malformed JSON, payload too large, ...). They are client errors, not
+    // server faults, so surface them as-is instead of a generic 500.
+    const clientStatus = err.status || err.statusCode;
+    if (Number.isInteger(clientStatus) && clientStatus >= 400 && clientStatus < 500) {
+      const code = err.type === 'entity.parse.failed'
+        ? 'INVALID_JSON'
+        : clientStatus === 413 ? 'PAYLOAD_TOO_LARGE' : 'BAD_REQUEST';
+      return sendV1Error(res, clientStatus, code, err.expose === false ? 'Bad request' : err.message);
+    }
+
+    if (err.name === 'MulterError') {
+      return sendV1Error(res, err.code === 'LIMIT_FILE_SIZE' ? 413 : 400, err.code || 'BAD_REQUEST', err.message);
+    }
+
+    if (err.code === '22P02') {
+      // Postgres invalid_text_representation, e.g. a malformed UUID path param.
+      return sendV1Error(res, 400, 'BAD_REQUEST', 'Invalid identifier or value format');
+    }
+
     if (err.name === 'ValidationError') {
       return sendV1Error(res, 400, 'VALIDATION_ERROR', err.message);
     }

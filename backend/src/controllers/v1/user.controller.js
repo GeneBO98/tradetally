@@ -31,7 +31,7 @@ const userV1Controller = {
           isVerified: user.is_verified,
           timezone: user.timezone,
           createdAt: user.created_at,
-          lastLoginAt: user.updated_at
+          lastLoginAt: user.last_login_at || null
         },
         settings,
         mobile: {

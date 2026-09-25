@@ -61,6 +61,11 @@ const { validate, schemas } = require('../../middleware/validation');
  *         schema:
  *           type: string
  *         description: Comma-separated account identifiers
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: 1-based page number (used when offset is omitted)
  *     responses:
  *       200:
  *         description: Paginated trade list with metadata
@@ -138,8 +143,9 @@ router.post(
  *   post:
  *     summary: Bulk create trades (V1)
  *     description: >
- *       Creates multiple trades in a single request. Returns per-item results
- *       with partial failure support. Supports idempotency via header.
+ *       Creates up to 500 trades in a single request. Each item is validated
+ *       like POST /api/v1/trades. Returns per-item results with partial
+ *       failure support. Supports idempotency via header.
  *       Duplicate items return status duplicate and the existing trade; they count
  *       toward duplicates, not created or failed, even when batches are rearranged.
  *     tags: [V1 Trades]
@@ -171,7 +177,7 @@ router.post(
  *         description: Insufficient scope
  *   put:
  *     summary: Bulk update trades (V1)
- *     description: Updates multiple trades in a single request. Each item must include the trade ID.
+ *     description: Updates up to 500 trades in a single request. Each item must include the trade ID and is validated like PUT /api/v1/trades/{id}.
  *     tags: [V1 Trades]
  *     security:
  *       - bearerAuth: []
@@ -200,7 +206,7 @@ router.post(
  *         description: Insufficient scope
  *   delete:
  *     summary: Bulk delete trades (V1)
- *     description: Deletes multiple trades by ID in a single request.
+ *     description: Deletes multiple trades by ID in a single request (max 500).
  *     tags: [V1 Trades]
  *     security:
  *       - bearerAuth: []
@@ -211,9 +217,9 @@ router.post(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [ids]
+ *             required: [tradeIds]
  *             properties:
- *               ids:
+ *               tradeIds:
  *                 type: array
  *                 items:
  *                   type: string
@@ -258,14 +264,27 @@ router.get('/export', authenticate, tradeController.exportTrades);
  *             schema:
  *               type: object
  *               properties:
- *                 totalTrades:
- *                   type: integer
- *                 openTrades:
- *                   type: integer
- *                 totalPnl:
- *                   type: number
- *                 winRate:
- *                   type: number
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalTrades:
+ *                       type: integer
+ *                     openTrades:
+ *                       type: integer
+ *                     todayPnL:
+ *                       type: number
+ *                     weekPnL:
+ *                       type: number
+ *                     monthPnL:
+ *                       type: number
+ *                     winRate:
+ *                       type: number
+ *                     avgWin:
+ *                       type: number
+ *                     avgLoss:
+ *                       type: number
+ *                     currency:
+ *                       type: string
  *       403:
  *         description: Insufficient scope
  */
@@ -327,7 +346,7 @@ router.delete('/:id/journal/:entryId', authenticate, tradeController.deleteJourn
  *             schema:
  *               type: object
  *               properties:
- *                 data:
+ *                 trade:
  *                   $ref: '#/components/schemas/Trade'
  *       404:
  *         description: Trade not found
