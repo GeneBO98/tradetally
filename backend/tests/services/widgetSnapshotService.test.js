@@ -108,7 +108,7 @@ describe('widgetSnapshotService', () => {
     expect(NewsService.requestBackgroundRefresh).not.toHaveBeenCalled();
   });
 
-  test('ignores an old after-hours cache row and uses the dashboard quote source', async () => {
+  test('ignores an old cache row during regular hours and uses the dashboard quote source', async () => {
     const fixture = contracts.widget_quote_freshness;
     Trade.findOpenPositionsByUser.mockResolvedValue([{
       id: 'trade-1',
@@ -121,12 +121,12 @@ describe('widgetSnapshotService', () => {
     }]);
     db.query.mockImplementation(query => {
       if (query.includes('price_monitoring')) {
-        expect(query).toContain("last_updated > NOW() - INTERVAL '2 minutes'");
-        // The stale row would have produced a loss if the freshness filter
-        // were omitted, while the dashboard's current quote shows a gain.
-        return Promise.resolve({ rows: query.includes("last_updated > NOW() - INTERVAL '2 minutes'")
-          ? []
-          : [{ symbol: fixture.symbol, current_price: fixture.provider_price, price_change: fixture.stale_price_change }] });
+        return Promise.resolve({ rows: [{
+          symbol: fixture.symbol,
+          current_price: fixture.provider_price,
+          price_change: fixture.stale_price_change,
+          last_updated: '2026-09-25T12:00:00.000Z'
+        }] });
       }
       if (query.includes('analytics_cache')) return Promise.resolve({ rows: [] });
       throw new Error(`Unexpected query: ${query}`);
@@ -135,7 +135,10 @@ describe('widgetSnapshotService', () => {
       [fixture.symbol]: { c: fixture.provider_price, d: fixture.provider_day_change }
     });
 
-    const snapshot = await service.getSnapshot({ id: 'user-1', timezone: 'America/Chicago' });
+    const snapshot = await service.getSnapshot(
+      { id: 'user-1', timezone: 'America/Chicago' },
+      new Date('2026-09-25T16:00:00.000Z')
+    );
 
     expect(finnhub.getBatchQuotes).toHaveBeenCalledWith([fixture.symbol], expect.objectContaining({
       source: 'open_positions',
@@ -143,6 +146,51 @@ describe('widgetSnapshotService', () => {
     }));
     expect(snapshot.todayPnL).toBe(fixture.expected_today_pnl);
     expect(snapshot.openUnrealizedPnL).toBe(fixture.expected_open_pnl);
+  });
+
+  test('freezes the last complete total after the market closes', async () => {
+    let storedClose = null;
+    let dayChange = -32;
+    AnalyticsCache.get.mockImplementation((_userId, key) => Promise.resolve(
+      key.startsWith('widget_today_pnl_') ? storedClose : null
+    ));
+    AnalyticsCache.set.mockImplementation((_userId, key, value) => {
+      if (key.startsWith('widget_today_pnl_')) storedClose = value;
+      return Promise.resolve();
+    });
+    db.query.mockImplementation(query => {
+      if (query.includes('price_monitoring')) {
+        return Promise.resolve({ rows: [{
+          symbol: 'AAPL',
+          current_price: '123',
+          price_change: String(dayChange),
+          last_updated: '2026-09-25T20:01:00.000Z'
+        }] });
+      }
+      if (query.includes('analytics_cache')) return Promise.resolve({ rows: [] });
+      throw new Error(`Unexpected query: ${query}`);
+    });
+    const saturday = new Date('2026-09-26T15:00:00.000Z');
+
+    const first = await service.getSnapshot({ id: 'user-1', timezone: 'America/Chicago' }, saturday);
+    dayChange = 23;
+    const second = await service.getSnapshot({ id: 'user-1', timezone: 'America/Chicago' }, saturday);
+
+    expect(first.todayPnL).toBe(-64);
+    expect(second.todayPnL).toBe(first.todayPnL);
+    expect(AnalyticsCache.set).toHaveBeenCalledTimes(1);
+    expect(finnhub.getBatchQuotes).not.toHaveBeenCalled();
+  });
+
+  test('maps weekend refreshes to Friday and identifies regular market hours', () => {
+    expect(service.equityMarketState(new Date('2026-09-25T16:00:00.000Z'))).toEqual({
+      isOpen: true,
+      sessionDate: '2026-09-25'
+    });
+    expect(service.equityMarketState(new Date('2026-09-26T15:00:00.000Z'))).toEqual({
+      isOpen: false,
+      sessionDate: '2026-09-25'
+    });
   });
 
   test('warms and persists the canonical weekly analytics cache on a first-read miss', async () => {
