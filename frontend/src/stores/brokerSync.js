@@ -12,6 +12,8 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
   // Pro-tier access status for broker sync (set from the connections response).
   // { isPro, billingEnabled, canCreate, canSync, inGracePeriod, graceEndsAt }
   const access = ref(null)
+  // OAuth integrations configured on this server, e.g. { tradovate: { configured: true } }
+  const providers = ref({})
 
   // Getters
   const hasConnections = computed(() => connections.value.length > 0)
@@ -115,6 +117,17 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     } finally {
       loading.value = false
     }
+  }
+
+  async function fetchProviders() {
+    try {
+      const response = await api.get('/broker-sync/providers')
+      providers.value = response.data?.providers || {}
+    } catch (err) {
+      console.warn('[BROKER-SYNC] Failed to load broker providers:', err)
+      providers.value = {}
+    }
+    return providers.value
   }
 
   async function initBrokerOAuth(broker, options = {}) {
@@ -329,6 +342,8 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     addTrading212Connection,
     initSchwabOAuth,
     initBrokerOAuth,
+    fetchProviders,
+    providers,
     updateConnection,
     fetchConnectionAccounts,
     deleteConnection,

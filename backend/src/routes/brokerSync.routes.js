@@ -26,6 +26,8 @@ router.use((req, res, next) => {
 });
 
 // Get all broker connections for current user
+router.get('/providers', brokerSyncController.getProviders);
+
 router.get('/connections', brokerSyncController.getConnections);
 
 // Get all sync logs for current user

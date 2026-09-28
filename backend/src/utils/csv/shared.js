@@ -191,12 +191,18 @@ function extractTimezoneSuffix(value) {
 }
 
 
+// Spreadsheet round-trips sometimes drop the space between an ISO date and
+// its time ("2026-09-1603:49:58").
+function separateGluedDateTime(value) {
+  return value.replace(/^(\d{4}-\d{2}-\d{2})(\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/, '$1 $2');
+}
+
 function parseDate(dateStr, options = {}) {
   if (!dateStr || dateStr.toString().trim() === '') return null;
 
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
   const cleanDateStr = dateStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
-  const normalizedDateStr = extractTimezoneSuffix(cleanDateStr).body.replace(
+  const normalizedDateStr = extractTimezoneSuffix(separateGluedDateTime(cleanDateStr)).body.replace(
     /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
     '$1 $2'
   );
@@ -430,7 +436,7 @@ function parseDateTime(dateTimeStr, options = {}) {
 
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
   const cleanDateTimeStr = dateTimeStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
-  const normalizedDateTimeStr = cleanDateTimeStr.replace(
+  const normalizedDateTimeStr = separateGluedDateTime(cleanDateTimeStr).replace(
     /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
     '$1 $2'
   );
@@ -1079,14 +1085,40 @@ function parseInstrumentData(symbol) {
 function parseNumeric(value, defaultValue = 0) {
   if (value === null || value === undefined || value === '') return defaultValue;
 
-  let cleanValue = value.toString().trim().replace(/\$/g, '').trim();
+  let cleanValue = value.toString().trim();
   if (cleanValue === '') return defaultValue;
 
-  // European decimal comma (e.g. NinjaTrader 7200,75) — not a thousands separator
-  if (/^-?\d{1,3}(\.\d{3})*,\d{1,2}$/.test(cleanValue) || /^-?\d+,\d{1,2}$/.test(cleanValue)) {
-    cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
-  } else {
-    cleanValue = cleanValue.replace(/,/g, '');
+  // Strip currency symbols/codes, units and price prefixes (USD$3.20, €12,50,
+  // 205,51 EUR, @11.56, 0.1 Lots, 12.5%) while keeping scientific notation.
+  if (!/^[-+]?\d+(\.\d+)?e[-+]?\d+$/i.test(cleanValue)) {
+    cleanValue = cleanValue
+      .replace(/[^\d.,()\-+\s]/g, '')
+      .replace(/(\d)[ \u00a0\u202f](?=\d{3}(?!\d))/g, '$1')
+      .replace(/([-+(])\s+/g, '$1')
+      .trim();
+  }
+  if (cleanValue === '') return defaultValue;
+
+  const lastComma = cleanValue.lastIndexOf(',');
+  const lastDot = cleanValue.lastIndexOf('.');
+  if (lastComma !== -1 && lastDot !== -1) {
+    // Both separators present: whichever comes last is the decimal mark
+    // (1.496,29 vs 1,496.29).
+    cleanValue = lastComma > lastDot
+      ? cleanValue.replace(/\./g, '').replace(',', '.')
+      : cleanValue.replace(/,/g, '');
+  } else if (lastComma !== -1) {
+    const unsigned = cleanValue.replace(/^[-+(]+/, '');
+    const looksLikeThousands = /^[1-9]\d{0,2}(,\d{3})+\)?$/.test(unsigned);
+    const singleComma = cleanValue.indexOf(',') === lastComma;
+    // European decimal comma (NinjaTrader 7200,75, 0,1028) — US thousands
+    // grouping like 1,234 keeps its existing meaning.
+    cleanValue = !looksLikeThousands && singleComma
+      ? cleanValue.replace(',', '.')
+      : cleanValue.replace(/,/g, '');
+  } else if ((cleanValue.match(/\./g) || []).length > 1) {
+    // 1.234.567 — dots used as thousands separators
+    cleanValue = cleanValue.replace(/\./g, '');
   }
 
   // Handle accounting-style negative: (123.45) -> -123.45

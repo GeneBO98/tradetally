@@ -73,6 +73,39 @@ function buildGenericValidationReason(trade, record, context = {}) {
   return `Could not import this row: missing or invalid ${formatDiagnosticList(missingFields)}.`;
 }
 
+const NON_TRADE_FILE_SIGNATURES = [
+  {
+    kind: 'positions',
+    label: 'an open positions report',
+    test: (h) => h.some(x => /unrealized/.test(x)) ||
+      ((h.includes('last price') || h.includes('market value')) && !h.some(x => /(fill|exec|placing|closing) ?time|trade date/.test(x))) ||
+      (h.includes('position id') && h.some(x => /^profit/.test(x)) && !h.some(x => /(open|close|closing|entry|exit) ?time/.test(x)))
+  },
+  {
+    kind: 'balances',
+    label: 'an account balance or equity report',
+    test: (h) => (h.includes('balance before') && h.includes('balance after')) ||
+      h.includes('buying power') || (h.includes('cash balance') && h.includes('equity'))
+  },
+  {
+    kind: 'daily_summary',
+    label: 'a daily or account P&L summary',
+    test: (h) => h.some(x => /^total realized p(n)?l$/.test(x)) ||
+      (h.includes('time') && h.some(x => /^realized p(n)?l/.test(x)) && !h.includes('symbol'))
+  },
+  {
+    kind: 'log',
+    label: 'a platform activity log',
+    test: (h) => h.length <= 3 && h.includes('time') && h.includes('text')
+  }
+];
+
+function classifyNonTradeFile(headers = []) {
+  const normalized = headers.map(header => String(header || '').toLowerCase().trim()).filter(Boolean);
+  if (normalized.length === 0) return null;
+  return NON_TRADE_FILE_SIGNATURES.find(signature => signature.test(normalized)) || null;
+}
+
 function buildDiagnosticSummary(diagnostics, context = {}) {
   if (!diagnostics || diagnostics.totalRows === 0) {
     return null;
@@ -93,6 +126,20 @@ function buildDiagnosticSummary(diagnostics, context = {}) {
   const dateHeadersPresent = hasDateLikeHeader(headers);
   const timeHeadersPresent = hasTimeLikeHeader(headers);
   const importDateFromFilename = context.importDate || null;
+
+  const nonTradeFile = diagnostics.parsedRows === 0 ? classifyNonTradeFile(headers) : null;
+  if (nonTradeFile) {
+    diagnostics.nonTradeFile = nonTradeFile.kind;
+    return {
+      title: `This looks like ${nonTradeFile.label}, not trade history.`,
+      body: 'TradeTally needs a file listing individual fills, orders, or closed trades with a date, symbol, side, quantity, and price.',
+      steps: [
+        'In your broker or platform, export Order History, Trade History, Fills, or Account Activity/Transactions instead.',
+        'Filter the export to filled orders if the platform offers a status filter.',
+        'Check the import guide for your broker for the exact export steps.'
+      ]
+    };
+  }
 
   if (allRowsSkipped && recognizedBroker === 'generic' && timeHeadersPresent && !dateHeadersPresent) {
     return {
@@ -216,6 +263,7 @@ function attachManualReviewDiagnostics(result, diagnostics, manualReviewItems = 
 }
 
 module.exports = {
+  classifyNonTradeFile,
   formatDiagnosticList,
   hasDateLikeHeader,
   hasTimeLikeHeader,

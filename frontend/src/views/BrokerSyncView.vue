@@ -177,6 +177,29 @@
               </div>
             </div>
 
+            <!-- Tradovate Card: one connection per Tradovate login, so more can be added -->
+            <div
+              v-if="tradovateAvailable"
+              class="p-6 border-2 rounded-lg transition-colors"
+              :class="brokerConnecting.tradovate
+                ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
+                : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400 cursor-pointer'"
+              @click="!brokerConnecting.tradovate && handleBrokerOAuthConnect('tradovate')"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0 w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center">
+                  <div v-if="brokerConnecting.tradovate" class="animate-spin h-6 w-6 rounded-full border-2 border-indigo-200 border-t-indigo-600"></div>
+                  <span v-else class="text-indigo-600 dark:text-indigo-400 font-bold text-lg">TV</span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">Tradovate</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ brokerConnecting.tradovate ? 'Connecting...' : brokerConnection('tradovate') ? 'Connect another login' : 'Futures & prop firms via OAuth' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <!-- Alpaca Live Card -->
             <div
               class="p-6 border-2 rounded-lg transition-colors"
@@ -231,7 +254,7 @@
       <ProUpgradePrompt
         v-else-if="showUpgradeGate"
         variant="card"
-        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, Trading 212, TradeStation, or Alpaca to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
+        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, Trading 212, TradeStation, Tradovate, or Alpaca to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
       />
 
       <!-- Sync History -->
@@ -428,11 +451,14 @@ const reviewedSyncLogIds = ref(new Set())
 const schwabConnecting = ref(false)
 const brokerConnecting = ref({
   tradestation: false,
+  tradovate: false,
   alpacaLive: false,
   alpacaPaper: false
 })
 const SCHWAB_PENDING_STORAGE_KEY = 'broker_sync_schwab_pending'
 const BROKER_PENDING_STORAGE_KEY = 'broker_sync_pending'
+
+const tradovateAvailable = computed(() => Boolean(store.providers?.tradovate?.configured))
 
 const trading212Environments = computed(() =>
   store.trading212Connections.map(connection => connection.brokerEnvironment || 'live')
@@ -512,7 +538,7 @@ function openManualReviewFromSyncLog(log, force = false) {
 }
 
 async function consumeOAuthCallbackState(query) {
-  const supportedSuccess = ['schwab', 'tradestation', 'alpaca']
+  const supportedSuccess = ['schwab', 'tradestation', 'alpaca', 'tradovate']
   const hasCallbackState = supportedSuccess.includes(query.success) || Boolean(query.error)
 
   if (!hasCallbackState) {
@@ -554,6 +580,8 @@ async function consumeOAuthCallbackState(query) {
     scheduleSuccessMessage('TradeStation account connected successfully. Ready to sync trades.')
   } else if (query.success === 'alpaca') {
     scheduleSuccessMessage('Alpaca account connected successfully. Ready to sync trades.')
+  } else if (query.success === 'tradovate') {
+    scheduleSuccessMessage('Tradovate connected successfully. Ready to sync trades.')
   }
 
   if (query.error === 'pro_required') {
@@ -571,7 +599,8 @@ async function consumeOAuthCallbackState(query) {
 onMounted(async () => {
   await Promise.all([
     store.fetchConnections(),
-    store.fetchSyncLogs()
+    store.fetchSyncLogs(),
+    store.fetchProviders()
   ])
   await consumeOAuthCallbackState(route.query)
 })

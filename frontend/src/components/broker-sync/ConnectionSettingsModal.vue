@@ -444,6 +444,15 @@ const brokerStyles = computed(() => {
                 bgClass: "bg-blue-100 dark:bg-blue-900/30",
                 textClass: "text-blue-600 dark:text-blue-400",
             };
+        case "tradovate":
+            return {
+                name: props.connection.brokerEnvironment === "demo"
+                    ? "Tradovate Demo"
+                    : "Tradovate",
+                abbrev: "TV",
+                bgClass: "bg-indigo-100 dark:bg-indigo-900/30",
+                textClass: "text-indigo-600 dark:text-indigo-400",
+            };
         case "trading212":
             return {
                 name: props.connection.brokerEnvironment === "demo"

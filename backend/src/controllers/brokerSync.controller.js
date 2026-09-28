@@ -8,6 +8,7 @@ const ibkrService = require('../services/brokerSync/ibkrService');
 const schwabService = require('../services/brokerSync/schwabService');
 const tradestationService = require('../services/brokerSync/tradestationService');
 const alpacaService = require('../services/brokerSync/alpacaService');
+const tradovateService = require('../services/brokerSync/tradovateService');
 const trading212Service = require('../services/brokerSync/trading212Service');
 const brokerSyncService = require('../services/brokerSync');
 const TierService = require('../services/tierService');
@@ -23,7 +24,8 @@ const SCHWAB_REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const OAUTH_BROKER_SERVICES = {
   tradestation: tradestationService,
-  alpaca: alpacaService
+  alpaca: alpacaService,
+  tradovate: tradovateService
 };
 
 function redactAccountNumber(accountNumber) {
@@ -500,6 +502,21 @@ const brokerSyncController = {
         details: error.message || 'oauth_failed',
         status: errorCode
       });
+    }
+  },
+
+  /**
+   * Report which OAuth broker integrations are configured on this server so
+   * the UI only offers connections that can succeed.
+   */
+  async getProviders(req, res, next) {
+    try {
+      const providers = Object.fromEntries(
+        Object.entries(OAUTH_BROKER_SERVICES).map(([broker, service]) => [broker, { configured: service.isConfigured() }])
+      );
+      res.json({ success: true, providers });
+    } catch (error) {
+      next(error);
     }
   },
 

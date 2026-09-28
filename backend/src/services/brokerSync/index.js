@@ -12,6 +12,7 @@ const schwabService = require('./schwabService');
 const tradestationService = require('./tradestationService');
 const alpacaService = require('./alpacaService');
 const trading212Service = require('./trading212Service');
+const tradovateService = require('./tradovateService');
 const { getUserTimezone } = require('../../utils/timezone');
 
 class BrokerSyncService {
@@ -113,6 +114,14 @@ class BrokerSyncService {
 
         case 'trading212':
           result = await trading212Service.syncTrades(connection, {
+            startDate,
+            endDate,
+            syncLogId: syncLog.id
+          });
+          break;
+
+        case 'tradovate':
+          result = await tradovateService.syncTrades(connection, {
             startDate,
             endDate,
             syncLogId: syncLog.id
@@ -296,6 +305,12 @@ class BrokerSyncService {
         return {
           valid: alpacaService.isConfigured(),
           message: alpacaService.isConfigured() ? 'Alpaca OAuth is configured' : 'Alpaca OAuth is not configured'
+        };
+
+      case 'tradovate':
+        return {
+          valid: tradovateService.isConfigured(),
+          message: tradovateService.isConfigured() ? 'Tradovate OAuth is configured' : 'Tradovate OAuth is not configured'
         };
 
       case 'trading212':

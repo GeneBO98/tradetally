@@ -2,6 +2,7 @@ const Trade = require('../models/Trade');
 const TradeQueries = require('../services/tradeQueries');
 const User = require('../models/User');
 const { parseCSV, detectBrokerFormat, getCsvHeaderLine, getCsvSampleRows } = require('../utils/csvParser');
+const { normalizeCsvBuffer, stripNullCharacters } = require('../utils/csv/encoding');
 const { uuidv4 } = require('../utils/uuid');
 const db = require('../config/database');
 const logger = require('../utils/logger');
@@ -687,6 +688,12 @@ const tradeController = {
           if (!date) return '';
           return new Date(date).toISOString().split('T')[0]; // YYYY-MM-DD
         };
+        // Full UTC timestamps so a re-import keeps entry/exit times.
+        const formatDateTime = (date) => {
+          if (!date) return '';
+          const parsed = new Date(date);
+          return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+        };
 
         return [
           escapeCsv(trade.symbol),
@@ -694,8 +701,8 @@ const tradeController = {
           escapeCsv(trade.quantity),
           escapeCsv(trade.entry_price),
           escapeCsv(trade.exit_price),
-          formatDate(trade.entry_date),
-          formatDate(trade.exit_date),
+          formatDateTime(trade.entry_time) || formatDate(trade.trade_date),
+          formatDateTime(trade.exit_time),
           escapeCsv(trade.pnl),
           escapeCsv(trade.fees),
           escapeCsv(trade.commission),
@@ -1869,7 +1876,7 @@ const tradeController = {
       }
 
       const { broker = 'auto' } = req.body;
-      const fileBuffer = req.file.buffer;
+      const fileBuffer = normalizeCsvBuffer(req.file.buffer);
 
       console.log('Selected broker:', broker);
       console.log('File name:', req.file.originalname);
@@ -2000,7 +2007,9 @@ const tradeController = {
       ]);
 
       // Copy file buffer and metadata to prevent issues if request is cleaned up
-      const fileBuffer = Buffer.from(req.file.buffer);
+      // UTF-16 exports are converted to UTF-8 so detection, parsing and the
+      // diagnostics we store all see the same text.
+      const fileBuffer = normalizeCsvBuffer(Buffer.from(req.file.buffer));
       const fileName = req.file.originalname;
       const fileUserId = req.user.id;
 
@@ -2731,6 +2740,8 @@ const tradeController = {
               manual_review_count: parseDiagnostics.manual_review_count || manualReviewItems.length,
               manual_review_items: manualReviewItems,
               user_summary: parseDiagnostics.user_summary || null,
+              broker_fallback: parseDiagnostics.brokerFallback || null,
+              non_trade_file: parseDiagnostics.nonTradeFile || null,
               fee_status: parseDiagnostics.fee_status || null
             } : null
           };
@@ -2869,7 +2880,7 @@ const tradeController = {
                 fileName,
                 detectedBroker,
                 broker,
-                JSON.stringify({ error: error.message }),
+                JSON.stringify(stripNullCharacters({ error: error.message })),
                 sampleData?.substring(0, 10000) || null
               ]);
             } catch (recordErr) {
@@ -2882,7 +2893,7 @@ const tradeController = {
             UPDATE import_logs
             SET status = 'failed', error_details = $1, completed_at = CURRENT_TIMESTAMP
             WHERE id = $2
-          `, [{ error: error.message, stack: error.stack }, importId]);
+          `, [stripNullCharacters({ error: error.message, stack: error.stack }), importId]);
         }
       });
 
