@@ -131,6 +131,51 @@ class ChartService {
     throw error;
   }
 
+  static async getForexTradeChartData(userId, trade, resolution, billingEnabled) {
+    const providerErrors = [];
+    let transientProviderFailure = false;
+
+    if (finnhub.isConfigured() && typeof finnhub.getForexTradeChartData === 'function') {
+      try {
+        return await finnhub.getForexTradeChartData(
+          trade.symbol,
+          trade.entry_time || trade.trade_date,
+          trade.exit_time || null,
+          userId,
+          resolution
+        );
+      } catch (error) {
+        transientProviderFailure ||= error.isTransientProviderFailure === true;
+        providerErrors.push(`${finnhub.displayName}: ${error.message}`);
+        console.warn(`[CHART] ${finnhub.displayName} forex data unavailable for ${trade.symbol}: ${error.message}`);
+      }
+    }
+
+    if (!billingEnabled && yahooFinance.isEnabled() && typeof yahooFinance.getForexTradeChartData === 'function') {
+      try {
+        const chartData = await yahooFinance.getForexTradeChartData(
+          trade.symbol,
+          trade.entry_time || trade.trade_date,
+          trade.exit_time || null,
+          resolution
+        );
+        if (providerErrors.length) {
+          chartData.fallback = true;
+          chartData.fallback_reason = providerErrors.join('; ');
+        }
+        return chartData;
+      } catch (error) {
+        transientProviderFailure ||= error.isTransientProviderFailure === true;
+        providerErrors.push(`Yahoo Finance: ${error.message}`);
+      }
+    }
+
+    const detail = providerErrors.length ? ` ${providerErrors.join('; ')}` : '';
+    const error = new Error(`No forex chart data provider could serve ${trade.symbol}.${detail}`);
+    error.statusCode = transientProviderFailure || !providerErrors.length ? 503 : 404;
+    throw error;
+  }
+
   static alignCandlesToTradePrices(chartData, trade) {
     if (!chartData?.candles?.length || !trade) return chartData;
 
@@ -222,6 +267,7 @@ class ChartService {
       const isProUser = userTier === 'pro';
       const billingEnabled = await TierService.isBillingEnabled(hostHeader);
       const isFutures = String(trade?.instrument_type || '').toLowerCase() === 'future';
+      const isForex = String(trade?.instrument_type || '').toLowerCase() === 'forex';
 
       console.log(`Getting chart data for user ${userId}, tier: ${userTier || 'free'}, symbol: ${symbol}, billingEnabled: ${billingEnabled}`);
       console.log('Chart data input:', { entryDate, exitDate });
@@ -237,6 +283,11 @@ class ChartService {
       if (isFutures) {
         console.log(`[CHART] ${symbol} is a future, selecting the best configured futures provider`);
         return ChartService.getFuturesTradeChartData(userId, trade, resolution, billingEnabled);
+      }
+
+      if (isForex) {
+        console.log(`[CHART] ${symbol} is forex, selecting a forex-capable provider`);
+        return ChartService.getForexTradeChartData(userId, trade, resolution, billingEnabled);
       }
 
       // Hosted stock/option charts use the configured equity provider.

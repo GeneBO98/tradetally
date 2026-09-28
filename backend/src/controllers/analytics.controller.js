@@ -1,3 +1,4 @@
+const { instructionsForPrompt } = require('../utils/aiAnalysisInstructions');
 const db = require('../config/database');
 const crypto = require('crypto');
 const aiService = require('../utils/aiService');
@@ -2829,7 +2830,7 @@ const analyticsController = {
       console.log('[AI] Generating AI recommendations with sector analysis...');
       let recommendations;
       try {
-        recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData));
+        recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData) + instructionsForPrompt(userProfileSettings?.ai_analysis_instructions));
         if (!recommendations) {
           throw new Error('AI service returned undefined recommendations');
         }
@@ -3272,7 +3273,9 @@ const analyticsController = {
       const filterHashKey = createFilterHash(convertQueryToTradeFilters(req.query));
       const groupByPosition = await isPositionGroupingEnabled(req.user.id);
       const be = await analyticsBreakevenPredicate(req.user.id, groupByPosition);
-      const summaryCacheKey = `ai_insight_summary_${req.user.id}_${filterHashKey}_grp${groupByPosition ? 'pos' : 'leg'}_be${createFilterHash(be)}`;
+      const analysis_settings = await User.getSettings(req.user.id);
+      const ai_analysis_instructions = analysis_settings?.ai_analysis_instructions || '';
+      const summaryCacheKey = `ai_insight_summary_${req.user.id}_${filterHashKey}_grp${groupByPosition ? 'pos' : 'leg'}_be${createFilterHash(be)}_instructions${createFilterHash({ ai_analysis_instructions })}`;
 
       const cached = cache.get(summaryCacheKey);
       if (cached) {
@@ -3464,7 +3467,7 @@ const analyticsController = {
         try {
           const useAI = await analyticsController.shouldUseAIEnrichment(req.user.id);
           if (useAI) {
-            summaries = await analyticsController.enrichInsightsWithAI(req.user.id, summaries);
+            summaries = await analyticsController.enrichInsightsWithAI(req.user.id, summaries, ai_analysis_instructions);
           }
         } catch (aiErr) {
           console.warn('[AI] enrichment failed, returning deterministic insights:', aiErr.message);
@@ -3821,7 +3824,7 @@ const analyticsController = {
   // single batched prompt to keep cost/latency bounded regardless of how many
   // insights are in the list. Falls back to the original deterministic
   // body on any parsing/AI failure so the dashboard never goes blank.
-  async enrichInsightsWithAI(userId, insights) {
+  async enrichInsightsWithAI(userId, insights, ai_analysis_instructions = '') {
     if (!Array.isArray(insights) || insights.length === 0) return insights;
 
     // Pre-strip non-enrichable insights (e.g. system/empty-state). We still
@@ -3858,7 +3861,7 @@ Respond with the JSON array now.`;
 
     let raw;
     try {
-      raw = await aiService.generateResponse(userId, prompt);
+      raw = await aiService.generateResponse(userId, prompt + instructionsForPrompt(ai_analysis_instructions));
     } catch (err) {
       console.warn('[AI] enrichment call failed:', err.message);
       return insights;

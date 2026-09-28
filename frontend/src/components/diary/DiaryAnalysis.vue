@@ -49,6 +49,7 @@
             </label>
             <input
               v-model="startDate"
+              @change="selected_preset = ''"
               type="date"
               class="input"
               :max="endDate"
@@ -60,6 +61,7 @@
             </label>
             <input
               v-model="endDate"
+              @change="selected_preset = ''"
               type="date"
               class="input"
               :min="startDate"
@@ -168,8 +170,10 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
+import { formatLocalDate } from '@/utils/date'
 import { ref, computed } from 'vue'
-import { subDays, subWeeks, subMonths, startOfWeek, startOfMonth } from 'date-fns'
+import { subDays, subWeeks, startOfWeek } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
 import { useDiaryStore } from '@/stores/diary'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
@@ -190,7 +194,8 @@ const error = ref(null)
 const entriesAnalyzed = ref(0)
 
 // Date range
-const today = new Date().toISOString().split('T')[0]
+const today = resolveDatePreset('today').end_date
+const selected_preset = ref('')
 const startDate = ref('')
 const endDate = ref(today)
 
@@ -207,29 +212,28 @@ const datePresets = ref([
     end: () => new Date()
   },
   {
-    label: 'Last month',
-    start: () => subMonths(new Date(), 1),
-    end: () => new Date()
-  },
-  {
     label: 'This week',
     start: () => startOfWeek(new Date()),
     end: () => new Date()
   },
-  {
-    label: 'This month',
-    start: () => startOfMonth(new Date()),
-    end: () => new Date()
-  }
+  ...monthPresetOptions.map(option => ({ ...option }))
 ])
 
 // Methods
 const selectDatePreset = (preset) => {
-  startDate.value = preset.start().toISOString().split('T')[0]
-  endDate.value = preset.end().toISOString().split('T')[0]
+  selected_preset.value = preset.value || ''
+  if (selected_preset.value) {
+    const range = resolveDatePreset(selected_preset.value)
+    startDate.value = range.start_date
+    endDate.value = range.end_date
+  } else {
+    startDate.value = formatLocalDate(preset.start())
+    endDate.value = formatLocalDate(preset.end())
+  }
 }
 
 const startAnalysis = async () => {
+  if (selected_preset.value) selectDatePreset({ value: selected_preset.value })
   analyzing.value = true
   error.value = null
   

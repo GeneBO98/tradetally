@@ -2,6 +2,7 @@ const axios = require('axios');
 const cache = require('./cache');
 const { getFuturesPointValue, getFuturesTickSize } = require('./futuresUtils');
 const { version: APP_VERSION } = require('../../package.json');
+const { toYahooForexSymbol } = require('./forexSymbols');
 
 const USER_AGENT = `TradeTally/${APP_VERSION}`;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -297,6 +298,39 @@ class YahooFinanceClient {
       tick_size: asNumber(trade.tick_size) ?? getFuturesTickSize(root),
       point_value: asNumber(trade.point_value) ?? getFuturesPointValue(root),
       available_resolutions: this.availableResolutions(entryDate),
+      fallback: resolution !== requestedResolution,
+      fallback_reason: fallbackReason
+    };
+  }
+
+  async getForexTradeChartData(symbol, entryDate, exitDate = null, requestedResolution = '1') {
+    const yahooSymbol = toYahooForexSymbol(symbol);
+    let resolution = this.effectiveStockResolution(requestedResolution, entryDate, exitDate);
+    let fallbackReason = resolution !== requestedResolution
+      ? `${requestedResolution}-minute data is outside Yahoo Finance retention`
+      : null;
+    let candles;
+    try {
+      candles = await this.fetchCandles(yahooSymbol, entryDate, exitDate, resolution, {
+        spanHoldingPeriod: true,
+        expectedInstrumentType: 'CURRENCY'
+      });
+    } catch (error) {
+      if (resolution === 'D') throw error;
+      fallbackReason = error.message;
+      resolution = 'D';
+      candles = await this.fetchCandles(yahooSymbol, entryDate, exitDate, resolution, {
+        spanHoldingPeriod: true,
+        expectedInstrumentType: 'CURRENCY'
+      });
+    }
+    return {
+      type: resolution === 'D' ? 'daily' : 'intraday',
+      interval: RESOLUTIONS[resolution].interval,
+      candles,
+      source: 'yahoo',
+      chart_symbol: yahooSymbol,
+      available_resolutions: this.availableStockResolutions(entryDate, exitDate),
       fallback: resolution !== requestedResolution,
       fallback_reason: fallbackReason
     };

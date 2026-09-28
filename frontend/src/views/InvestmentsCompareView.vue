@@ -18,10 +18,10 @@
       </div>
       <div class="flex items-center gap-3">
         <label class="text-xs text-gray-500 dark:text-gray-400">Period</label>
-        <div class="w-28">
+        <div class="w-40">
           <BaseSelect
             v-model="period"
-            :options="['1M', '3M', '6M', 'YTD', '1Y', '3Y', '5Y', 'ALL']"
+            :options="[...monthPresetOptions, ...['1M', '3M', '6M', 'YTD', '1Y', '3Y', '5Y', 'ALL'].map(value => ({ value, label: value }))]"
           />
         </div>
         <span class="text-xs text-gray-500 dark:text-gray-400">vs {{ benchmark }}</span>
@@ -214,6 +214,7 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
@@ -582,6 +583,7 @@ async function loadAccount(account) {
         const params = {
             accounts: account,
             period: period.value,
+            ...(['this_month', 'last_month'].includes(period.value) ? resolveDatePreset(period.value) : {}),
             benchmark: benchmark.value,
         }
         const [overviewResult, performanceResult, rebalanceResult] = await Promise.allSettled([
@@ -625,6 +627,7 @@ watch([period, benchmark], () => {
         query: {
             ...route.query,
             period: period.value,
+            ...(['this_month', 'last_month'].includes(period.value) ? resolveDatePreset(period.value) : {}),
             benchmark: benchmark.value,
         },
     })

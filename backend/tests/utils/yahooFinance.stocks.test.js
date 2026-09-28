@@ -129,6 +129,18 @@ describe('Yahoo Finance equity charts', () => {
     expect(axios.get.mock.calls[0][0]).toContain(encodeURIComponent('^XSP'));
   });
 
+  test('requests broker-qualified forex trades using Yahoo currency notation', async () => {
+    const entry = new Date(Date.now() - 2 * DAY_MS);
+    axios.get.mockResolvedValue(equityResponse(Math.floor(entry.getTime() / 1000), 10, 300, 'CURRENCY'));
+
+    const result = await yahooFinance.getForexTradeChartData(
+      'BLACKBULL:EURUSD', entry.toISOString(), null, '5'
+    );
+
+    expect(axios.get.mock.calls[0][0]).toContain(encodeURIComponent('EURUSD=X'));
+    expect(result).toMatchObject({ source: 'yahoo', chart_symbol: 'EURUSD=X' });
+  });
+
   test('a daily equity window carries months of prior context', async () => {
     const entry = new Date(Date.now() - 10 * DAY_MS);
     axios.get.mockResolvedValue(equityResponse(Math.floor(entry.getTime() / 1000), 50, 86400));

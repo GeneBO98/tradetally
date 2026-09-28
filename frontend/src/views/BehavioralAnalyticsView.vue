@@ -1681,6 +1681,7 @@
 </template>
 
 <script setup>
+import { resolveMonthlyFilterParams } from '@/utils/datePresets'
 import { ref, onMounted, computed, nextTick, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import api from "@/services/api";
@@ -1813,11 +1814,12 @@ const getAccountFilterParam = () => {
 };
 
 const buildBehavioralQueryParams = () => {
+    const resolved_filters = resolveMonthlyFilterParams(filters.value);
     const queryParams = new URLSearchParams();
-    if (filters.value.startDate)
-        queryParams.append("startDate", filters.value.startDate);
-    if (filters.value.endDate)
-        queryParams.append("endDate", filters.value.endDate);
+    if (resolved_filters.startDate)
+        queryParams.append("startDate", resolved_filters.startDate);
+    if (resolved_filters.endDate)
+        queryParams.append("endDate", resolved_filters.endDate);
 
     const accounts = getAccountFilterParam();
     if (accounts) queryParams.append("accounts", accounts);
@@ -1826,10 +1828,11 @@ const buildBehavioralQueryParams = () => {
 };
 
 const buildSessionTimelineQueryParams = (sessionDate = "") => {
+    const resolved_filters = resolveMonthlyFilterParams(filters.value);
     const queryParams = new URLSearchParams();
     if (sessionDate) queryParams.append("session_date", sessionDate);
-    if (filters.value.startDate) queryParams.append("start_date", filters.value.startDate);
-    if (filters.value.endDate) queryParams.append("end_date", filters.value.endDate);
+    if (resolved_filters.startDate) queryParams.append("start_date", resolved_filters.startDate);
+    if (resolved_filters.endDate) queryParams.append("end_date", resolved_filters.endDate);
     const accounts = getAccountFilterParam();
     if (accounts) queryParams.append("accounts", accounts);
     return queryParams;

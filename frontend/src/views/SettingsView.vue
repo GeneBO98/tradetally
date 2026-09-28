@@ -1051,6 +1051,7 @@
 
             <!-- AI & Integrations Tab -->
             <template v-if="activeTab === 'ai'">
+                <AIAnalysisSettings />
                 <AiProviderSettings
                     :form="aiForm"
                     :loading="aiLoading"
@@ -1595,6 +1596,7 @@ import {
 } from "@heroicons/vue/24/outline";
 import LogsViewer from "@/components/admin/LogsViewer.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
+import AIAnalysisSettings from "@/components/settings/AIAnalysisSettings.vue";
 import AiProviderSettings from "@/components/settings/AiProviderSettings.vue";
 import CusipAiProviderSettings from "@/components/settings/CusipAiProviderSettings.vue";
 import AdminAiProviderSettings from "@/components/settings/AdminAiProviderSettings.vue";

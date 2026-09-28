@@ -6,6 +6,7 @@ const TierService = require('../services/tierService');
 const { FinnhubPriority, FinnhubRequestScheduler } = require('./finnhubScheduler');
 const { localToUTC } = require('./timezone');
 const { CRYPTO_SYMBOLS, CRYPTO_TO_COINGECKO } = require('./cryptoAssets');
+const { parseForexPair } = require('./forexSymbols');
 
 class UnsupportedMarketDataError extends Error {
   constructor(feature) {
@@ -506,6 +507,12 @@ class FmpClient {
       candles,
       source: 'fmp'
     };
+  }
+
+  async getForexTradeChartData(symbol, entryDate, exitDate = null, userId = null, requestedResolution = '1') {
+    const providerSymbol = parseForexPair(symbol).pair;
+    const chartData = await this.getTradeChartData(providerSymbol, entryDate, exitDate, userId, requestedResolution);
+    return { ...chartData, chart_symbol: providerSymbol };
   }
 
   /**

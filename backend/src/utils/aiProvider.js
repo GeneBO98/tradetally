@@ -27,6 +27,23 @@ class AIProvider {
    * @returns {Promise<string>} Generated text response
    */
   static async generateResponse(prompt, settings, options = {}) {
+    if (options.images?.length && !['gemini', 'openai', 'claude'].includes(settings.provider)) {
+      throw new Error('Screenshot analysis is unavailable for this provider');
+    }
+    try {
+      return await this.generateProviderResponse(prompt, settings, options);
+    } catch (error) {
+      if (options.images?.length && /image|vision|multimodal|media.?type|mime|content.?type|inline.?data/i.test(error.message)) {
+        const image_error = new Error('The configured AI model could not accept screenshots. Choose an image-capable Gemini, OpenAI, or Claude model in Settings. No application credits were charged.');
+        image_error.code = 'AI_IMAGE_INPUT_REJECTED';
+        image_error.status = 400;
+        throw image_error;
+      }
+      throw error;
+    }
+  }
+
+  static async generateProviderResponse(prompt, settings, options = {}) {
     const { provider, apiKey, apiUrl, modelName } = settings;
 
     console.log(`[AI_PROVIDER] Using provider: ${provider}, model: ${modelName}`);
@@ -85,7 +102,7 @@ class AIProvider {
 
     try {
       const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        contents: [{ role: 'user', parts: [{ text: prompt }, ...(options.images || []).flatMap((image, index) => [{ text: `Image ${index + 1}: ${image.file_name || 'Screenshot'}` }, { inlineData: { mimeType: image.mime_type, data: image.data } }])] }],
         generationConfig: {
           ...(options.maxTokens && { maxOutputTokens: options.maxTokens }),
           ...(options.temperature !== undefined && { temperature: options.temperature })
@@ -132,7 +149,9 @@ class AIProvider {
           // Anthropic requires a value even when other providers can delegate
           // the output ceiling to the model.
           max_tokens: resolveMaxTokens(options, 4096) || 8192,
-          messages: [{ role: 'user', content: prompt }]
+          messages: [{ role: 'user', content: options.images?.length
+            ? [...options.images.flatMap((image, index) => [{ type: 'text', text: `Image ${index + 1}: ${image.file_name || 'Screenshot'}` }, { type: 'image', source: { type: 'base64', media_type: image.mime_type, data: image.data } }]), { type: 'text', text: prompt }]
+            : prompt }]
         })
       });
 
@@ -223,7 +242,9 @@ class AIProvider {
           },
           {
             role: 'user',
-            content: prompt
+            content: options.images?.length
+              ? [{ type: 'text', text: prompt }, ...options.images.flatMap((image, index) => [{ type: 'text', text: `Image ${index + 1}: ${image.file_name || 'Screenshot'}` }, { type: 'image_url', image_url: { url: `data:${image.mime_type};base64,${image.data}`, detail: 'high' } }])]
+              : prompt
           }
         ],
         ...tokenParam,

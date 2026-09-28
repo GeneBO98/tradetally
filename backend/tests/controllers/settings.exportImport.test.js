@@ -73,6 +73,7 @@ const settingsRow = {
   email_notifications: true,
   account_equity: '25000.00',
   default_tags: ['momentum'],
+  ai_analysis_instructions: 'Yellow support; purple resistance.',
   analytics_chart_layout: { order: ['pnl', 'winRate'] },
   trading_strategies: ['scalping'],
   risk_tolerance: 'aggressive',
@@ -136,6 +137,7 @@ const SCHEMA = {
     { name: 'email_notifications', dataType: 'boolean', udtName: 'bool' },
     { name: 'account_equity', dataType: 'numeric', udtName: 'numeric' },
     { name: 'default_tags', dataType: 'ARRAY', udtName: '_text' },
+    { name: 'ai_analysis_instructions', dataType: 'text', udtName: 'text' },
     { name: 'analytics_chart_layout', dataType: 'jsonb', udtName: 'jsonb' },
     { name: 'trading_strategies', dataType: 'ARRAY', udtName: '_text' },
     { name: 'risk_tolerance', dataType: 'character varying', udtName: 'varchar' },
@@ -309,7 +311,8 @@ describe('settings controller v3.0 export/import', () => {
       emailNotifications: true,
       accountEquity: '25000.00',
       defaultTags: ['momentum'],
-      analyticsChartLayout: { order: ['pnl', 'winRate'] }
+      analyticsChartLayout: { order: ['pnl', 'winRate'] },
+      ai_analysis_instructions: 'Yellow support; purple resistance.'
     });
     expect(payload.tradingProfile).toEqual({
       tradingStrategies: ['scalping'],
@@ -336,6 +339,7 @@ describe('settings controller v3.0 export/import', () => {
     expect(res.status).not.toHaveBeenCalledWith(400);
     expect(res.status).not.toHaveBeenCalledWith(500);
 
+    expect(insertedColumnsMap(findInsert(client, 'user_settings')).ai_analysis_instructions).toBe('Yellow support; purple resistance.');
     const tradeInsert = findInsert(client, 'trades');
     expect(tradeInsert).toBeDefined();
     const inserted = insertedColumnsMap(tradeInsert);

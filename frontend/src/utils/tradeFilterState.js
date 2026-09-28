@@ -1,3 +1,4 @@
+import { resolveMonthlyFilterParams } from './datePresets'
 const MULTI_SELECT_FILTER_KEYS = Object.freeze([
   'strategies',
   'setups',
@@ -66,7 +67,11 @@ export function loadTradeFiltersFromStorage(storage = localStorage) {
       return {}
     }
 
-    return normalizeTradeFiltersForSharedState(JSON.parse(stored))
+    const parsed = normalizeTradeFiltersForSharedState(JSON.parse(stored))
+    const preset = storage.getItem('tradeFiltersPeriod')
+    if (['this_month', 'last_month'].includes(preset)) parsed.date_preset = preset
+    else delete parsed.date_preset
+    return { ...parsed, ...resolveMonthlyFilterParams(parsed) }
   } catch (error) {
     console.warn('[tradeFilterState] Failed to load trade filters:', error)
     return {}

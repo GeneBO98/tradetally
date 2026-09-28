@@ -183,6 +183,7 @@
 </template>
 
 <script setup>
+import { resolveMonthlyFilterParams } from '@/utils/datePresets'
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { FunnelIcon, ChevronDownIcon } from "@heroicons/vue/24/outline";
@@ -282,7 +283,7 @@ function updateUrlParams() {
 // filter always wins for the `accounts` param.
 function buildTradeParams(extra = {}) {
     const params = { ...extra };
-    const f = filters.value || {};
+    const f = resolveMonthlyFilterParams(filters.value || {});
     for (const [key, value] of Object.entries(f)) {
         if (value === null || value === undefined || value === "" || value === false) continue;
         if (Array.isArray(value)) {
@@ -343,7 +344,7 @@ async function loadMoreTrades() {
 
 function handleFilter(newFilters) {
     // TradeFilters only emits non-empty values, so their count is the badge.
-    activeFilterCount.value = Object.values(newFilters || {}).filter(
+    activeFilterCount.value = Object.entries(newFilters || {}).filter(([key]) => key !== 'date_preset').map(([, value]) => value).filter(
         (v) =>
             v !== "" &&
             v !== null &&

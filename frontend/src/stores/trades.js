@@ -1,3 +1,4 @@
+import { resolveMonthlyFilterParams } from '@/utils/datePresets'
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
@@ -191,7 +192,7 @@ export const useTradesStore = defineStore('trades', () => {
 
   function buildRequestParams(params = {}, options = {}) {
     const merged = {
-      ...filters.value,
+      ...resolveMonthlyFilterParams(filters.value),
       ...params
     }
 

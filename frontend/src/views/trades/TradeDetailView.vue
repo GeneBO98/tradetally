@@ -203,6 +203,12 @@
                   </button>
                 </div>
               </div>
+              <div v-if="analysis.ai_metadata?.image_context" class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                <p>Screenshots included: {{ analysis.ai_metadata.image_context.included_count }}. Skipped: {{ analysis.ai_metadata.image_context.skipped_count }}.</p>
+                <ul v-if="analysis.ai_metadata.image_context.skipped_images?.length" class="mt-1 list-disc pl-5">
+                  <li v-for="(image, index) in analysis.ai_metadata.image_context.skipped_images" :key="image.attachment_id || index">{{ image.file_name }}: {{ image.reason }}</li>
+                </ul>
+              </div>
               <div class="space-y-4">
                 <div
                   v-for="response in analysis.responses"
@@ -232,7 +238,6 @@
           empty-description="Start a focused AI review of this trade to diagnose what went wrong, evaluate the technical setup, and turn the available chart, image, news, sector, and execution data into specific next steps."
           start-label="Analyze This Trade"
           loading-text="Analyzing this trade..."
-          auto-start
           @session-created="loadStoredAIAnalyses"
         />
       </div>

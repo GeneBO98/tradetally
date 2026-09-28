@@ -1,3 +1,4 @@
+const { normalizeAnalysisInstructions } = require('../utils/aiAnalysisInstructions');
 const User = require('../models/User');
 const db = require('../config/database');
 const adminSettingsService = require('../services/adminSettings');
@@ -150,6 +151,24 @@ function clearTableColumnsCache() {
 }
 
 const settingsController = {
+  async getAIAnalysisSettings(req, res, next) {
+    try {
+      const settings = await User.getSettings(req.user.id);
+      res.json({ ai_analysis_instructions: settings?.ai_analysis_instructions || '' });
+    } catch (error) { next(error); }
+  },
+
+  async updateAIAnalysisSettings(req, res, next) {
+    try {
+      const ai_analysis_instructions = normalizeAnalysisInstructions(req.body?.ai_analysis_instructions);
+      if (!(await User.getSettings(req.user.id))) await User.createSettings(req.user.id);
+      await User.updateSettings(req.user.id, { ai_analysis_instructions });
+      res.json({ ai_analysis_instructions });
+    } catch (error) {
+      if (error.status === 400) return res.status(400).json({ error: error.message });
+      next(error);
+    }
+  },
   async getSettings(req, res, next) {
     try {
       let settings = await User.getSettings(req.user.id);
@@ -168,6 +187,10 @@ const settingsController = {
 
       // Convert snake_case to camelCase for frontend
       const camelCaseSettings = keysToCamelCase(safeSettings);
+      if (safeSettings?.ai_analysis_instructions !== undefined) {
+        delete camelCaseSettings.aiAnalysisInstructions;
+        camelCaseSettings.ai_analysis_instructions = safeSettings.ai_analysis_instructions;
+      }
 
       res.json({ settings: camelCaseSettings });
     } catch (error) {
@@ -214,6 +237,10 @@ const settingsController = {
 
       // Convert snake_case to camelCase for frontend
       const camelCaseSettings = keysToCamelCase(safeSettings);
+      if (safeSettings?.ai_analysis_instructions !== undefined) {
+        delete camelCaseSettings.aiAnalysisInstructions;
+        camelCaseSettings.ai_analysis_instructions = safeSettings.ai_analysis_instructions;
+      }
       res.json({ settings: camelCaseSettings });
     } catch (error) {
       next(error);
@@ -826,7 +853,7 @@ const settingsController = {
           for (const [key, value] of Object.entries(row)) {
             if (excludeSet.has(key)) continue;
             if (addOriginalId && key === 'id') continue;
-            const camelKey = toCamelCase(key);
+            const camelKey = key === 'ai_analysis_instructions' ? key : toCamelCase(key);
             converted[camelKey] = value;
           }
           return converted;
@@ -911,7 +938,7 @@ const settingsController = {
         const profileConverted = {};
         for (const [key, value] of Object.entries(settings)) {
           if (SETTINGS_EXCLUDE.includes(key)) continue;
-          const camelKey = toCamelCase(key);
+          const camelKey = key === 'ai_analysis_instructions' ? key : toCamelCase(key);
           if (TRADING_PROFILE_FIELDS.has(key)) {
             profileConverted[camelKey] = value;
           } else {
@@ -1437,7 +1464,12 @@ const settingsController = {
             [userId]
           );
 
-          const s = importData.settings || {};
+          const s = { ...(importData.settings || {}) };
+          const imported_instructions = s.ai_analysis_instructions ?? s.aiAnalysisInstructions;
+          if (imported_instructions !== undefined) {
+            s.ai_analysis_instructions = normalizeAnalysisInstructions(imported_instructions);
+            delete s.aiAnalysisInstructions;
+          }
           const tp = importData.tradingProfile || {};
 
           if (isV3) {
@@ -1609,6 +1641,12 @@ const settingsController = {
               }
             }
           }
+        }
+
+        // Legacy backups can also carry the new preference using snake_case.
+        if (!isV3 && importData.settings?.ai_analysis_instructions !== undefined) {
+          await client.query('UPDATE user_settings SET ai_analysis_instructions = $1 WHERE user_id = $2',
+            [normalizeAnalysisInstructions(importData.settings.ai_analysis_instructions), userId]);
         }
 
         // ============================================
@@ -2069,7 +2107,7 @@ const settingsController = {
     } catch (error) {
       console.error('[IMPORT] Import error:', error);
       console.error('[IMPORT] Stack trace:', error.stack);
-      res.status(500).json({ error: 'Import failed', message: error.message });
+      res.status(error.status || 500).json({ error: 'Import failed', message: error.message });
     }
   },
 

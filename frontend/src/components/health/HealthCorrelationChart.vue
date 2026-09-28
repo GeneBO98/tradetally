@@ -20,6 +20,7 @@
             v-model="selectedPeriod"
             @change="loadCorrelationData"
             :options="[
+              ...monthPresetOptions,
               { value: '7', label: 'Last 7 Days' },
               { value: '30', label: 'Last 30 Days' },
               { value: '90', label: 'Last 90 Days' },
@@ -38,7 +39,8 @@
         </div>
       </div>
 
-      <div v-if="loading" class="flex justify-center py-12">
+      <p v-if="loading && !initialLoading" class="text-xs text-primary-600 mb-2" role="status">Updating...</p>
+      <div v-if="initialLoading" class="flex justify-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
 
@@ -120,6 +122,8 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
@@ -129,7 +133,11 @@ const props = defineProps({
   userId: String
 })
 
+const { selectedAccount } = useGlobalAccountFilter()
+watch(selectedAccount, () => loadCorrelationData())
+
 const loading = ref(false)
+const initialLoading = ref(true)
 const selectedMetric = ref('heart_rate')
 const selectedPeriod = ref('30')
 const removeOutliers = ref(false)
@@ -166,18 +174,13 @@ async function loadCorrelationData() {
   loading.value = true
   try {
     // Get trades with health data for the selected period
-    const endDate = new Date()
-    const params = {
-      endDate: endDate.toISOString().split('T')[0],
-      limit: 1000
-    }
-
-    // Only add startDate if not "All Time"
-    if (selectedPeriod.value !== 'all') {
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - parseInt(selectedPeriod.value))
-      params.startDate = startDate.toISOString().split('T')[0]
-    }
+    const preset = ['this_month', 'last_month', 'all'].includes(selectedPeriod.value)
+      ? selectedPeriod.value : `${selectedPeriod.value}d`
+    const range = resolveDatePreset(preset)
+    const params = { limit: 1000 }
+    if (range.start_date) params.startDate = range.start_date
+    params.endDate = range.end_date || resolveDatePreset('today').end_date
+    if (selectedAccount.value) params.accounts = selectedAccount.value
 
     const response = await api.get('/trades', {
       params: params
@@ -212,6 +215,7 @@ async function loadCorrelationData() {
     console.error('Error loading correlation data:', error)
   } finally {
     loading.value = false
+    initialLoading.value = false
 
     // Calculate statistics and generate insights after data is loaded
     calculateStatistics()

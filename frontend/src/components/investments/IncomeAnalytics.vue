@@ -1,11 +1,12 @@
 <template>
   <div>
+    <p v-if="loading && !initialLoading" class="text-xs text-primary-600 mb-2" role="status">Updating...</p>
     <!-- Range selector -->
     <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
       <p class="text-sm text-gray-500 dark:text-gray-400">
         Dividend, interest, and fee activity from your Plaid-linked investment accounts
       </p>
-      <div class="flex items-center gap-1">
+      <div class="flex flex-wrap items-center gap-1">
         <button
           v-for="option in rangeOptions"
           :key="option.id"
@@ -20,7 +21,7 @@
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-12">
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
     </div>
 
@@ -123,6 +124,7 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import { format } from 'date-fns'
@@ -134,6 +136,7 @@ const { formatCurrency: formatCurrencyBase, currencyCode } = useCurrencyFormatte
 const investmentsStore = useInvestmentsStore()
 
 const rangeOptions = [
+  ...monthPresetOptions.map(option => ({ id: option.value, label: option.label })),
   { id: 'ytd', label: 'YTD' },
   { id: '1y', label: '1Y' },
   { id: 'all', label: 'All' }
@@ -142,10 +145,15 @@ const rangeOptions = [
 const selectedRange = ref('1y')
 const income = ref(null)
 const loading = ref(false)
+const initialLoading = ref(true)
 const chartCanvas = ref(null)
 let chart = null
 
 function rangeParams() {
+  if (['this_month', 'last_month'].includes(selectedRange.value)) {
+    const range = resolveDatePreset(selectedRange.value)
+    return { startDate: range.start_date, endDate: range.end_date }
+  }
   const today = new Date()
   if (selectedRange.value === 'ytd') {
     return { startDate: `${today.getFullYear()}-01-01` }
@@ -167,6 +175,7 @@ async function loadIncome() {
     income.value = null
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

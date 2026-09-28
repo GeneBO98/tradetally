@@ -131,13 +131,18 @@
 
         <!-- Date Range Filter -->
         <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Period</label>
+          <BaseSelect v-model="selected_date_preset" :options="[{ value: 'custom', label: 'Custom Range' }, ...monthPresetOptions]" @change="applyFilters" />
+        </div>
+        <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Start Date
           </label>
           <input
             type="date"
             v-model="filters.startDate"
-            @change="applyFilters"
+            @input="selected_date_preset = 'custom'"
+            @change="selected_date_preset = 'custom'; applyFilters()"
             class="input text-sm"
           />
         </div>
@@ -149,7 +154,8 @@
           <input
             type="date"
             v-model="filters.endDate"
-            @change="applyFilters"
+            @input="selected_date_preset = 'custom'"
+            @change="selected_date_preset = 'custom'; applyFilters()"
             class="input text-sm"
           />
         </div>
@@ -600,6 +606,7 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -766,7 +773,10 @@ const truncateHtml = (html, maxLength) => {
   return truncateHtmlUtil(html, maxLength)
 }
 
+const selected_date_preset = ref(localStorage.getItem('diaryDatePreset') || 'custom')
+
 const applyFilters = async () => {
+  localStorage.setItem('diaryDatePreset', selected_date_preset.value)
   // Save filters to localStorage
   localStorage.setItem('diaryFilters', JSON.stringify(filters.value))
   uiPreferencesStore.notifyChanged('diaryFilters', filters.value)
@@ -775,6 +785,8 @@ const applyFilters = async () => {
 }
 
 const clearFilters = async () => {
+  selected_date_preset.value = 'custom'
+  localStorage.removeItem('diaryDatePreset')
   filters.value = {
     entryType: '',
     marketBias: '',
@@ -872,6 +884,7 @@ const goToEntry = (entry) => {
 const showDayEntries = (date) => {
   // Switch to list view and filter by the selected date
   const dateString = format(date, 'yyyy-MM-dd')
+  selected_date_preset.value = 'custom'
   filters.value.startDate = dateString
   filters.value.endDate = dateString
   currentView.value = 'list'
@@ -924,6 +937,14 @@ const getEntryTooltip = (entry) => {
 }
 
 const loadEntries = async () => {
+  if (selected_date_preset.value !== 'custom') {
+    const range = resolveDatePreset(selected_date_preset.value)
+    if (filters.value.startDate !== range.start_date || filters.value.endDate !== range.end_date) {
+      filters.value.startDate = range.start_date
+      filters.value.endDate = range.end_date
+    }
+    diaryStore.updateFilters(filters.value)
+  }
   try {
     await diaryStore.fetchEntries({ page: 1 })
   } catch (error) {

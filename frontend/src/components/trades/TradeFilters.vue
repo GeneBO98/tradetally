@@ -789,6 +789,7 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ChevronRightIcon } from '@heroicons/vue/24/outline'
@@ -829,61 +830,15 @@ const showAdvanced = ref(false)
 
 // Load saved period from localStorage on initialization
 const savedPeriodInit = localStorage.getItem('tradeFiltersPeriod')
-const selectedPeriod = ref(savedPeriodInit || 'all')
+const selectedPeriod = ref(urlHasFilterParams() ? (route.query.startDate || route.query.endDate ? 'custom' : 'all') : (savedPeriodInit || 'all'))
 console.log('[TradeFilters] Initialized selectedPeriod from localStorage:', selectedPeriod.value)
 
 // Apply a period preset (7d, 30d, etc.)
 function applyPeriodPreset() {
-  const now = new Date()
-  // Use formatLocalDate to avoid timezone issues (e.g., 8PM CST showing as next day)
-  const today = formatLocalDate(now)
-
-  switch (selectedPeriod.value) {
-    case 'today':
-      filters.value.startDate = today
-      filters.value.endDate = today
-      break
-    case '7d': {
-      const start = new Date(now)
-      start.setDate(start.getDate() - 7)
-      filters.value.startDate = formatLocalDate(start)
-      filters.value.endDate = today
-      break
-    }
-    case '30d': {
-      const start = new Date(now)
-      start.setDate(start.getDate() - 30)
-      filters.value.startDate = formatLocalDate(start)
-      filters.value.endDate = today
-      break
-    }
-    case '90d': {
-      const start = new Date(now)
-      start.setDate(start.getDate() - 90)
-      filters.value.startDate = formatLocalDate(start)
-      filters.value.endDate = today
-      break
-    }
-    case 'ytd': {
-      const start = new Date(now.getFullYear(), 0, 1)
-      filters.value.startDate = formatLocalDate(start)
-      filters.value.endDate = today
-      break
-    }
-    case '1y': {
-      const start = new Date(now)
-      start.setFullYear(start.getFullYear() - 1)
-      filters.value.startDate = formatLocalDate(start)
-      filters.value.endDate = today
-      break
-    }
-    case 'all':
-      filters.value.startDate = ''
-      filters.value.endDate = ''
-      break
-    case 'custom':
-      // Keep existing dates - they're already loaded from localStorage in loadInitialFilters()
-      break
+  if (selectedPeriod.value !== 'custom') {
+    const range = resolveDatePreset(selectedPeriod.value)
+    filters.value.startDate = range.start_date
+    filters.value.endDate = range.end_date
   }
 
   // Save selected period to localStorage
@@ -958,6 +913,7 @@ const qualityGradeOptions = [
 // Time period options
 const timePeriodOptions = [
   { value: 'today', label: 'Today' },
+  ...monthPresetOptions,
   { value: 'custom', label: 'Custom Range' },
   { value: '7d', label: 'Last 7 Days' },
   { value: '30d', label: 'Last 30 Days' },
@@ -1446,6 +1402,7 @@ const activeAdvancedCount = computed(() => {
 })
 
 function applyFilters() {
+  if (selectedPeriod.value !== 'custom') applyPeriodPreset()
   console.log('[TradeFilters] applyFilters called')
   filters.value.accounts = selectedAccount.value || ''
   console.log('[TradeFilters] Current filters.value:', JSON.stringify(filters.value))
@@ -1453,6 +1410,7 @@ function applyFilters() {
 
   // Clean up the filters before sending
   const cleanFilters = {}
+  if (['this_month', 'last_month'].includes(selectedPeriod.value)) cleanFilters.date_preset = selectedPeriod.value
 
   // Basic filters
   if (filters.value.symbol) cleanFilters.symbol = filters.value.symbol
@@ -1534,7 +1492,7 @@ function applyFilters() {
     // Create a clean object with only non-empty values to save
     const filtersToSave = {}
     Object.keys(filters.value).forEach(key => {
-      if (key === 'accounts') return
+      if (key === 'accounts' || key === 'date_preset') return
       if (key === 'importId') return
       const value = filters.value[key]
       // Only save non-empty values
@@ -1549,6 +1507,8 @@ function applyFilters() {
         }
       }
     })
+
+    if (cleanFilters.date_preset) filtersToSave.date_preset = cleanFilters.date_preset
 
     console.log('[TradeFilters] Saving to localStorage - startDate:', filtersToSave.startDate, 'endDate:', filtersToSave.endDate)
     console.log('[TradeFilters] Full filtersToSave:', JSON.stringify(filtersToSave))
@@ -1850,8 +1810,8 @@ onMounted(() => {
     }
   }
 
-  // If period is 'today', always recalculate dates to today (prevents stale dates from localStorage)
-  if (selectedPeriod.value === 'today') {
+  // Restore relative presets using current local calendar dates.
+  if (selectedPeriod.value !== 'custom') {
     applyPeriodPreset()
   }
 

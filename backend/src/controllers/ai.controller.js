@@ -35,6 +35,7 @@ const aiController = {
         ...result
       });
     } catch (error) {
+      if (error.code === 'AI_IMAGE_INPUT_REJECTED') return res.status(400).json({ error: error.code, message: error.message });
       console.error('[AI_CONTROLLER] Error creating session:', error.message);
 
       // Handle specific error types
@@ -118,6 +119,7 @@ const aiController = {
         ...result
       });
     } catch (error) {
+      if (error.code === 'AI_IMAGE_INPUT_REJECTED') return res.status(400).json({ error: error.code, message: error.message });
       console.error('[AI_CONTROLLER] Error processing follow-up:', error.message);
 
       if (error.message.includes('not found')) {

@@ -181,6 +181,25 @@ describe('FMP market data client', () => {
     );
   });
 
+  test('strips broker prefixes before requesting an FMP forex chart', async () => {
+    const fmp = require('../../src/utils/fmpClient');
+    const axios = require('axios');
+
+    const chartData = await fmp.getForexTradeChartData(
+      'BLACKBULL:EURUSD',
+      '2025-01-02T15:30:00.000Z',
+      '2025-01-02T16:00:00.000Z',
+      null,
+      '15'
+    );
+
+    expect(chartData).toMatchObject({ source: 'fmp', chart_symbol: 'EURUSD' });
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.stringContaining('/historical-chart/15min'),
+      expect.objectContaining({ params: expect.objectContaining({ symbol: 'EURUSD' }) })
+    );
+  });
+
   test('uses the configured FMP commodities chart before futures fallbacks', async () => {
     const fmp = require('../../src/utils/fmpClient');
     const axios = require('axios');

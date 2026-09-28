@@ -21,10 +21,18 @@
         <div class="card">
           <div class="card-body">
             <div class="flex flex-wrap items-end gap-4">
+              <div class="min-w-[160px]">
+                <label class="label" for="cashflow-period">Period</label>
+                <select id="cashflow-period" v-model="selected_date_preset" class="input" @change="applyDateFilter">
+                  <option value="custom">Custom Range</option>
+                  <option v-for="option in monthPresetOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+              </div>
               <div class="flex-1 min-w-[140px]">
                 <label class="label">Start Date</label>
                 <input
                   v-model="startDate"
+                  @change="selected_date_preset = 'custom'"
                   type="date"
                   class="input w-full"
                 />
@@ -33,6 +41,7 @@
                 <label class="label">End Date</label>
                 <input
                   v-model="endDate"
+                  @change="selected_date_preset = 'custom'"
                   type="date"
                   class="input w-full"
                 />
@@ -474,6 +483,7 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useAccountsStore } from '@/stores/accounts'
 import { useTradesStore } from '@/stores/trades'
@@ -503,6 +513,7 @@ const editingAccount = ref(null)
 const submitting = ref(false)
 
 // Date filter state
+const selected_date_preset = ref('custom')
 const startDate = ref('')
 const endDate = ref('')
 
@@ -686,12 +697,18 @@ function applyDateFilter() {
 }
 
 function resetDateFilter() {
+  selected_date_preset.value = 'custom'
   startDate.value = ''
   endDate.value = ''
   loadCashflow()
 }
 
 async function loadCashflow() {
+  if (selected_date_preset.value !== 'custom') {
+    const range = resolveDatePreset(selected_date_preset.value)
+    startDate.value = range.start_date
+    endDate.value = range.end_date
+  }
   if (!selectedAccountId.value) {
     await plaidStore.fetchReviewQueue('')
     return

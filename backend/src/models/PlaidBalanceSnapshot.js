@@ -1,3 +1,4 @@
+const { parseReportDateRange } = require('../utils/reportDateRange');
 const db = require('../config/database');
 
 class PlaidBalanceSnapshot {
@@ -59,8 +60,12 @@ class PlaidBalanceSnapshot {
    * Per-day balance totals across the user's active Plaid accounts, plus the
    * list of accounts contributing to the series.
    */
-  static async getHistory(userId, { days = 90, plaidAccountRowId = null } = {}) {
-    const params = [userId, days];
+  static async getHistory(userId, { days = 90, plaidAccountRowId = null, start_date, end_date } = {}) {
+    const explicit_range = parseReportDateRange({ start_date, end_date });
+    const params = explicit_range ? [userId, start_date, end_date] : [userId, days];
+    const date_condition = explicit_range
+      ? 's.snapshot_date >= $2::date AND s.snapshot_date <= $3::date'
+      : "s.snapshot_date >= CURRENT_DATE - ($2 || ' days')::interval";
     let accountFilter = '';
     if (plaidAccountRowId) {
       params.push(plaidAccountRowId);
@@ -77,7 +82,7 @@ class PlaidBalanceSnapshot {
       JOIN plaid_accounts pa ON pa.id = s.plaid_account_row_id
       WHERE s.user_id = $1
         AND pa.is_active = true
-        AND s.snapshot_date >= CURRENT_DATE - ($2 || ' days')::interval
+        AND ${date_condition}
         ${accountFilter}
       GROUP BY s.snapshot_date
       ORDER BY s.snapshot_date ASC
@@ -90,8 +95,10 @@ class PlaidBalanceSnapshot {
       JOIN plaid_connections pc ON pc.id = pa.connection_id
       WHERE s.user_id = $1
         AND pa.is_active = true
+        AND ${date_condition}
+        ${accountFilter}
       ORDER BY pa.account_name ASC
-    `, [userId]);
+    `, params);
 
     return {
       series: seriesResult.rows.map(row => ({

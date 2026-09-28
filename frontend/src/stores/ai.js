@@ -1,3 +1,4 @@
+import { resolveMonthlyFilterParams } from '@/utils/datePresets'
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
@@ -112,7 +113,7 @@ export const useAIStore = defineStore('ai', () => {
 
     try {
       console.log('[AI_STORE] Creating new session with filters:', filters, 'options:', options)
-      const response = await api.post('/ai/sessions', { filters, ...options, request_id })
+      const response = await api.post('/ai/sessions', { filters: resolveMonthlyFilterParams(filters), ...options, request_id })
 
       currentSession.value = {
         id: response.data.session_id,
@@ -252,6 +253,7 @@ export const useAIStore = defineStore('ai', () => {
 
       // Update session state
       currentSession.value.followup_count = response.data.followup_count
+      if (response.data.image_context) currentSession.value.image_context = response.data.image_context
 
       // Update credits
       if (response.data.credits_remaining !== undefined && response.data.credits_remaining !== null) {

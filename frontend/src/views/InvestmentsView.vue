@@ -400,7 +400,7 @@
                                             : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 hover:text-primary-600',
                                     ]"
                                 >
-                                    {{ period }}
+                                    {{ monthPresetOptions.find(option => option.value === period)?.label || period }}
                                 </button>
                                 <button
                                     @click="refreshPortfolioData"
@@ -1546,6 +1546,7 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, nextTick, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useInvestmentsStore } from "@/stores/investments";
@@ -1594,7 +1595,7 @@ const searchSymbol = ref("");
 const showAddHoldingModal = ref(false);
 const showFavoritesOnly = ref(false);
 const holdingToDelete = ref(null);
-const portfolioPeriods = ["1M", "3M", "6M", "1Y", "5Y", "10Y", "YTD"];
+const portfolioPeriods = ["this_month", "last_month", "1M", "3M", "6M", "1Y", "5Y", "10Y", "YTD"];
 const portfolioPeriod = ref("6M");
 // True from first render until the initial data load finishes. Separate from
 // portfolioLoading because the loading flag is only set inside store actions,
@@ -1866,6 +1867,7 @@ function buildPortfolioParams() {
     const params = {
         benchmark: benchmarkSymbol.value.trim().toUpperCase() || "SPY",
         period: portfolioPeriod.value,
+        ...(['this_month', 'last_month'].includes(portfolioPeriod.value) ? resolveDatePreset(portfolioPeriod.value) : {}),
     };
 
     if (selectedAccount.value) {
@@ -2065,6 +2067,7 @@ async function loadAccountComparison() {
                 const params = {
                     benchmark: benchmarkSymbol.value.trim().toUpperCase() || "SPY",
                     period: portfolioPeriod.value,
+        ...(['this_month', 'last_month'].includes(portfolioPeriod.value) ? resolveDatePreset(portfolioPeriod.value) : {}),
                     accounts: account.value,
                 };
                 const [overviewResult, rebalanceResult] = await Promise.allSettled([
@@ -2438,6 +2441,7 @@ function openFullCompare() {
         query: {
             accounts: Array.from(selectedComparisonAccounts.value).join(","),
             period: portfolioPeriod.value,
+        ...(['this_month', 'last_month'].includes(portfolioPeriod.value) ? resolveDatePreset(portfolioPeriod.value) : {}),
             benchmark: (benchmarkSymbol.value || "SPY").trim().toUpperCase(),
         },
     });

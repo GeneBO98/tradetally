@@ -5,6 +5,7 @@ jest.mock('../../src/config/database', () => ({
 
 jest.mock('../../src/models/User', () => ({
   getSettings: jest.fn(),
+  createSettings: jest.fn(),
   updateSettings: jest.fn()
 }));
 
@@ -368,4 +369,27 @@ describe('AI provider settings', () => {
     expect(User.updateSettings).not.toHaveBeenCalled();
   });
 
+});
+
+
+describe('personal AI analysis settings', () => {
+  beforeEach(() => { jest.clearAllMocks(); User.getSettings.mockResolvedValue({ ai_analysis_instructions: 'Original' }); });
+  test('returns only the authenticated user preference in snake_case', async () => {
+    const res = createResponse();
+    await settingsController.getAIAnalysisSettings({ user: { id: 'owner' } }, res, jest.fn());
+    expect(User.getSettings).toHaveBeenCalledWith('owner');
+    expect(res.json).toHaveBeenCalledWith({ ai_analysis_instructions: 'Original' });
+  });
+  test.each(['Yellow support; purple resistance.', ''])('saves and clears personal instructions: %s', async value => {
+    const res = createResponse();
+    await settingsController.updateAIAnalysisSettings({ user: { id: 'owner' }, body: { ai_analysis_instructions: value } }, res, jest.fn());
+    expect(User.updateSettings).toHaveBeenCalledWith('owner', { ai_analysis_instructions: value });
+    expect(res.json).toHaveBeenCalledWith({ ai_analysis_instructions: value });
+  });
+  test.each([null, 123, {}, 'x'.repeat(6001)])('rejects invalid instructions before persistence', async value => {
+    const res = createResponse();
+    await settingsController.updateAIAnalysisSettings({ user: { id: 'owner' }, body: { ai_analysis_instructions: value } }, res, jest.fn());
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(User.updateSettings).not.toHaveBeenCalled();
+  });
 });

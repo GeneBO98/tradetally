@@ -1626,6 +1626,7 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, onMounted, nextTick, watch, computed, onUnmounted, defineAsyncComponent } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
@@ -1894,6 +1895,7 @@ function hydrateSharedTradeFilters() {
 const showTimeRangeDropdown = ref(false)
 
 const timeRangeOptions = [
+  ...monthPresetOptions,
   { value: 'all', label: 'All Time' },
   { value: '7d', label: 'Last 7 Days' },
   { value: '30d', label: 'Last 30 Days' },
@@ -2497,34 +2499,8 @@ function getDateRange(range) {
     }
   }
 
-  const now = new Date()
-  const start = new Date()
-
-  switch (range) {
-    case '7d':
-      start.setDate(now.getDate() - 7)
-      break
-    case '30d':
-      start.setDate(now.getDate() - 30)
-      break
-    case '90d':
-      start.setDate(now.getDate() - 90)
-      break
-    case '1y':
-      start.setFullYear(now.getFullYear() - 1)
-      break
-    case 'ytd':
-      start.setMonth(0, 1)
-      break
-    default:
-      return { startDate: undefined, endDate: undefined }
-  }
-
-  // Use formatLocalDate to avoid timezone issues (e.g., 8PM CST showing as next day)
-  return {
-    startDate: formatLocalDate(start),
-    endDate: formatLocalDate(now)
-  }
+  const { start_date, end_date } = resolveDatePreset(range)
+  return { startDate: start_date || undefined, endDate: end_date || undefined }
 }
 
 function getAnalyticsCacheKey() {

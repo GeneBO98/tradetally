@@ -1,3 +1,4 @@
+const { parseReportDateRange } = require('../utils/reportDateRange');
 const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
@@ -476,7 +477,10 @@ class PortfolioService {
 
   static async getPerformance(userId, options = {}) {
     const accounts = normalizeAccounts(options.accounts);
+    const explicit_range = parseReportDateRange(options);
+    const resolved_range = explicit_range || getPeriodRange(options.period);
     const key = `performance:${userId}:${JSON.stringify({
+      resolved_range,
       accounts,
       benchmark: options.benchmark ? normalizeSymbol(options.benchmark) : 'default',
       period: String(options.period || DEFAULT_PERIOD).toUpperCase()
@@ -488,7 +492,10 @@ class PortfolioService {
     const preferences = await this.getPreferences(userId);
     const benchmark = normalizeSymbol(options.benchmark || preferences.defaultBenchmarkSymbol);
     const accounts = normalizeAccounts(options.accounts);
-    const { period, startDate, endDate } = getPeriodRange(options.period);
+    const explicit_range = parseReportDateRange(options);
+    const { period, startDate, endDate } = explicit_range
+      ? { period: options.period || 'custom', startDate: explicit_range.start_date, endDate: explicit_range.end_date }
+      : getPeriodRange(options.period);
     const components = await this._getPositionComponents(userId, accounts);
     const symbols = [...new Set(components.map(component => component.symbol))];
 
@@ -497,9 +504,10 @@ class PortfolioService {
       this._getPriceSeriesMap(symbols, startDate, endDate, userId)
     ]);
 
-    const canonicalDates = benchmarkCandles.length > 0
+    const canonicalDates = (benchmarkCandles.length > 0
       ? benchmarkCandles.map(candle => this._toDateString(candle.time))
-      : this._buildDateUnion(priceSeriesMap);
+      : this._buildDateUnion(priceSeriesMap))
+      .filter(date => date >= startDate && date <= endDate);
 
     const priceIndexMap = new Map();
     for (const [symbol, candles] of priceSeriesMap.entries()) {

@@ -710,6 +710,7 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, resolveMonthlyFilterParams } from '@/utils/datePresets'
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -2129,7 +2130,7 @@ function buildFilterParams(additionalParams = {}) {
   // This ensures ALL filters are included, even empty ones (which will be filtered out by the API)
   const params = {
     ...additionalParams,
-    ...filters.value
+    ...resolveMonthlyFilterParams(filters.value)
   }
 
   // Add global account filter if set
@@ -2237,7 +2238,7 @@ async function handleFilter(newFilters) {
   console.log('[AnalyticsView] handleFilter received:', newFilters)
 
   // TradeFilters only emits non-empty values, so their count is the badge.
-  activeFilterCount.value = Object.values(newFilters || {}).filter(
+  activeFilterCount.value = Object.entries(newFilters || {}).filter(([key]) => key !== 'date_preset').map(([, value]) => value).filter(
     v => v !== '' && v !== null && v !== undefined && v !== false && !(Array.isArray(v) && v.length === 0)
   ).length
   
@@ -2271,6 +2272,7 @@ async function handleFilter(newFilters) {
   }
   
   // Now apply only the filters that TradeFilters sent (the active ones)
+  filters.value.date_preset = newFilters.date_preset || ''
   Object.keys(newFilters).forEach(key => {
     if (key in filters.value) {
       filters.value[key] = newFilters[key]
@@ -2305,6 +2307,7 @@ async function handleFilter(newFilters) {
   }
   
   // Convert newFilters back to localFilters format (arrays for multi-select)
+  localFilters.value.date_preset = newFilters.date_preset || ''
   if (newFilters.symbol) localFilters.value.symbol = newFilters.symbol
   if (newFilters.startDate) localFilters.value.startDate = newFilters.startDate
   if (newFilters.endDate) localFilters.value.endDate = newFilters.endDate
@@ -2359,10 +2362,17 @@ async function handleFilter(newFilters) {
 }
 
 async function applyFilters(newFilters = null) {
+  const saved_period = localFilters.value.date_preset
+  if (['this_month', 'last_month'].includes(saved_period)) {
+    const range = resolveDatePreset(saved_period)
+    localFilters.value.startDate = range.start_date
+    localFilters.value.endDate = range.end_date
+  }
   // Convert localFilters to API format
   filters.value = {
     // Basic filters
     symbol: localFilters.value.symbol,
+    date_preset: localFilters.value.date_preset || '',
     startDate: localFilters.value.startDate,
     endDate: localFilters.value.endDate,
     strategies: (localFilters.value.strategies || []).join(','),
@@ -2796,54 +2806,13 @@ async function loadData() {
 
       // If a period preset is saved (not custom), recalculate dates dynamically
       // This ensures relative periods like "30d" are always relative to today
+      localFilters.value.date_preset = ['this_month', 'last_month'].includes(savedPeriod) ? savedPeriod : ''
       if (savedPeriod && savedPeriod !== 'custom' && savedPeriod !== 'all') {
-        const now = new Date()
-        // Use local date formatting to avoid timezone issues (e.g., 8PM CST showing as next day)
-        const formatLocalDate = (date) => {
-          const year = date.getFullYear()
-          const month = String(date.getMonth() + 1).padStart(2, '0')
-          const day = String(date.getDate()).padStart(2, '0')
-          return `${year}-${month}-${day}`
-        }
-        const today = formatLocalDate(now)
-        let startDate = ''
-
-        switch (savedPeriod) {
-          case '7d': {
-            const start = new Date(now)
-            start.setDate(start.getDate() - 7)
-            startDate = formatLocalDate(start)
-            break
-          }
-          case '30d': {
-            const start = new Date(now)
-            start.setDate(start.getDate() - 30)
-            startDate = formatLocalDate(start)
-            break
-          }
-          case '90d': {
-            const start = new Date(now)
-            start.setDate(start.getDate() - 90)
-            startDate = formatLocalDate(start)
-            break
-          }
-          case 'ytd': {
-            const start = new Date(now.getFullYear(), 0, 1)
-            startDate = formatLocalDate(start)
-            break
-          }
-          case '1y': {
-            const start = new Date(now)
-            start.setFullYear(start.getFullYear() - 1)
-            startDate = formatLocalDate(start)
-            break
-          }
-        }
-
-        localFilters.value.startDate = startDate
-        localFilters.value.endDate = today
-        filters.value.startDate = startDate
-        filters.value.endDate = today
+        const { start_date, end_date } = resolveDatePreset(savedPeriod)
+        localFilters.value.startDate = start_date
+        localFilters.value.endDate = end_date
+        filters.value.startDate = start_date
+        filters.value.endDate = end_date
       } else if (savedPeriod === 'all') {
         // All time - no date filters
         localFilters.value.startDate = ''
