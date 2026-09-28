@@ -73,7 +73,7 @@ const getScanStatus = asyncHandler(async (req, res) => {
  */
 const triggerScan = asyncHandler(async (req, res) => {
   try {
-    const { russell2000Only = true } = req.body;
+    const { russell2000Only = true } = req.body || {};
     console.log(`[SCANNER] Admin ${req.user.id} triggered manual scan (Russell 2000 only: ${russell2000Only})`);
 
     // Start the scan asynchronously
