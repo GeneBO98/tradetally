@@ -321,7 +321,11 @@
                 />
                 <span>Select All</span>
               </label>
-              <button @click="fetchLogs" class="btn-secondary text-sm">
+              <button
+                v-if="authStore.user?.role === 'admin' || authStore.user?.role === 'owner'"
+                @click="fetchLogs()"
+                class="btn-secondary text-sm"
+              >
                 View Logs
               </button>
             </div>
