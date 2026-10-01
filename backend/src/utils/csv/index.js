@@ -6,6 +6,7 @@ const { buildGenericValidationReason, wrapResultWithDiagnostics, attachManualRev
 const { applyTradeGrouping } = require('./grouping');
 const { parseFirstradeTransactions } = require('./parsers/firstrade');
 const { parseGenericTransactions } = require('./parsers/generic');
+const { hasDeltaOrderHistoryHeaders, parseDeltaOrderHistory } = require('./parsers/delta');
 const { parseIBKRTransactions } = require('./parsers/ibkr');
 const { parseLightspeedTransactions } = require('./parsers/lightspeed');
 const { parseMetaTrader5History } = require('./parsers/metatrader');
@@ -20,7 +21,7 @@ const { hasTradingViewOrderHistoryHeaders, parseTradingViewTransactions, parseTr
 const { hasTradingViewHistoryHeaders, parseTradingViewHistory } = require('./parsers/tradingviewHistory');
 const { parseTradovatePerformanceReport, parseTradovateTransactions } = require('./parsers/tradovate');
 const { parseWebullTransactions } = require('./parsers/webull');
-const { normalizeSupportedBrokerRows } = require('./parsers/normalizedBrokerRows');
+const { normalizeSupportedBrokerRows, hasEditedOptionTransactionHeaders, normalizeEditedOptionTransactionRecord } = require('./parsers/normalizedBrokerRows');
 const { parseDate, extractDateFromFilename, parseDateTime, parseSide, normalizePositionQuantity, normalizeRecord, parseInstrumentData, parseNumeric, isValidTrade, cleanString, parseInteger } = require('./shared');
 const { decodeIBKRFlexReport } = require('../ibkrFlexReport');
 
@@ -229,6 +230,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     const firstHeaderLine = csvString.split('\n').find(line => line.trim().length > 0) || '';
     const firstHeaders = firstHeaderLine.split(',').map(header => header.replace(/^"|"$/g, '').trim());
+    if (broker === 'generic' && hasDeltaOrderHistoryHeaders(firstHeaders)) {
+      // This schema is self-describing even when a saved generic mapping
+      // treats per-order P&L as a complete trade or disables its header row.
+      const result = await parseDeltaOrderHistory(csvString, { ...context, diagnostics });
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
+    }
     if (['projectx', 'tradingview'].includes(broker) && hasProjectXOrderHistoryHeaders(firstHeaders)) {
       if (broker === 'tradingview') {
         const warning = 'Selected broker was TradingView, but the CSV headers match ProjectX order history. TradeTally used the ProjectX parser for this import.';
@@ -890,6 +897,20 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     } else if (context.selectedAccountId) {
       // User manually selected an account during import
       console.log(`[ACCOUNT] Using manually selected account: ${context.selectedAccountId}`);
+    }
+
+    if (broker === 'generic' && !context.customMapping && hasEditedOptionTransactionHeaders(Object.keys(records[0] || {}))) {
+      const normalizedRecords = [];
+      records.forEach((record, index) => {
+        const normalized = normalizeEditedOptionTransactionRecord(record);
+        if (normalized) normalizedRecords.push(normalized);
+        else {
+          diagnostics.skippedRows++;
+          diagnostics.expected_skipped_rows++;
+          diagnostics.skippedReasons.push({ row: index + 1, reason: 'Non-trade account activity row' });
+        }
+      });
+      records = normalizedRecords;
     }
 
     if (['etrade', 'fidelity', 'projectx_orders'].includes(broker)) {

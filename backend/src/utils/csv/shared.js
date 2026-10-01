@@ -191,12 +191,18 @@ function extractTimezoneSuffix(value) {
 }
 
 
+// Spreadsheet round-trips sometimes drop the space between an ISO date and
+// its time ("2026-09-1603:49:58").
+function separateGluedDateTime(value) {
+  return value.replace(/^(\d{4}-\d{2}-\d{2})(\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/, '$1 $2');
+}
+
 function parseDate(dateStr, options = {}) {
   if (!dateStr || dateStr.toString().trim() === '') return null;
 
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
   const cleanDateStr = dateStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
-  const normalizedDateStr = extractTimezoneSuffix(cleanDateStr).body.replace(
+  const normalizedDateStr = extractTimezoneSuffix(separateGluedDateTime(cleanDateStr)).body.replace(
     /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
     '$1 $2'
   );
@@ -430,7 +436,7 @@ function parseDateTime(dateTimeStr, options = {}) {
 
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
   const cleanDateTimeStr = dateTimeStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
-  const normalizedDateTimeStr = cleanDateTimeStr.replace(
+  const normalizedDateTimeStr = separateGluedDateTime(cleanDateTimeStr).replace(
     /^([A-Za-z]+ \d{1,2}, \d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i,
     '$1 $2'
   );
@@ -964,7 +970,7 @@ function parseInstrumentData(symbol) {
     // TradingView futures: NYMEX_MINI:QG1!, CME:ESH2026. The lookahead requires the
     // contract part to contain a digit or end with "!" so plain exchange-prefixed
     // stock tickers (e.g. NASDAQ:HUBC, NASDAQ:LASE) are NOT misclassified as futures.
-    /^([A-Z_]+):(?=[A-Z0-9]*\d|[A-Z0-9]+!)([A-Z0-9]+)!?$/,
+    /^((?:CME|CBOT|NYMEX|COMEX)(?:_MINI|_MICRO)?|EUREX|ICEUS|ICEEUR|SGX|OSE|TOCOM):(?=[A-Z0-9]*\d|[A-Z0-9]+!)([A-Z0-9]+)!?$/,
     /^\/([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{2})$/,   // Slash notation: /ESM24
     /^F\.[A-Z]{2,}\.([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{1,2})$/  // AvaTrade: F.US.MESM26
   ];

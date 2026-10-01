@@ -745,7 +745,7 @@ function detectBrokerFormat(fileBuffer) {
         headers.includes('side') &&
         headers.includes('order id') &&
         (headers.includes('fill price') || headers.includes('avg fill price')) &&
-        (headers.includes('leverage') || headers.includes('placing time') || headers.includes('closing time') || headers.includes('update time'))) {
+        (headers.includes('leverage') || headers.includes('placing time') || headers.includes('closing time') || headers.includes('update time') || headers.includes('status time'))) {
       console.log('[AUTO-DETECT] Detected: TradingView (futures trading format)');
       return 'tradingview';
     }

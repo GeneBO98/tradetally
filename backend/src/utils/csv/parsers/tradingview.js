@@ -3,6 +3,8 @@ const { isExecutionDuplicate } = require('../dedup');
 const { extractAccountFromRecord } = require('../detect');
 const { parseDate, parseDateTime, getExecutionTimeBounds, normalizePositionQuantity, cleanString, parseNumeric, parseInteger } = require('../shared');
 
+const FUTURES_EXCHANGE_PATTERN = /^(?:(?:CME|CBOT|NYMEX|COMEX)(?:_MINI|_MICRO)?|EUREX|ICEUS|ICEEUR|SGX|OSE|TOCOM)$/;
+
 
 function getTradingViewFuturesInstrumentData(symbol) {
   if (!symbol) {
@@ -21,7 +23,13 @@ function getTradingViewFuturesInstrumentData(symbol) {
   const exchangeMatch = normalizedSymbol.match(/^([^:]+):(.+)$/);
   const contractSymbol = exchangeMatch ? exchangeMatch[2] : normalizedSymbol;
 
-  const standardMatch = contractSymbol.match(/^([A-Z][A-Z0-9]*?)([FGHJKMNQUVXZ])(\d{1,4})$/);
+  // Index CFDs such as BLACKBULL:NAS100 and BLACKBULL:SPX500 contain
+  // digits too. Their broker prefix does not identify an exchange future.
+  if (exchangeMatch && !FUTURES_EXCHANGE_PATTERN.test(exchangeMatch[1])) {
+    return { instrumentType: 'stock', contractSize: null, underlyingAsset: null, contractMonth: null, contractYear: null, tickSize: null, pointValue: null };
+  }
+
+  const standardMatch = contractSymbol.replace(/^F\.[A-Z]{2,}\./, '').match(/^([A-Z][A-Z0-9]*?)([FGHJKMNQUVXZ])(\d{1,4})$/);
   if (standardMatch) {
     const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };
     let year = parseInt(standardMatch[3], 10);
@@ -73,7 +81,7 @@ function hasTradingViewOrderHistoryHeaders(headers = []) {
     normalizedHeaders.includes('status') &&
     normalizedHeaders.includes('order id') &&
     normalizedHeaders.includes('quantity') &&
-    normalizedHeaders.includes('closing time') &&
+    (normalizedHeaders.includes('closing time') || normalizedHeaders.includes('status time')) &&
     (normalizedHeaders.includes('fill price') || normalizedHeaders.includes('avg fill price'));
 }
 
@@ -118,8 +126,9 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       const statusRaw = getField(record, 'Status') || '';
       const status = statusRaw.toLowerCase();
       const quantity = Math.abs(parseNumeric(
-        getField(record, 'Filled Qty') ||
-        getField(record, 'Qty') ||
+        getField(record, 'Fill Quantity') ??
+        getField(record, 'Filled Qty') ??
+        getField(record, 'Qty') ??
         getField(record, 'Quantity')
       ));
       const fillPrice = parseNumeric(
@@ -129,7 +138,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       );
       const commission = parseNumeric(getField(record, 'Commission'));
       const placingTime = getField(record, 'Placing Time') || '';
-      const closingTime = getField(record, 'Closing Time') || getField(record, 'Update Time') || getField(record, 'Time') || placingTime;
+      const closingTime = getField(record, 'Closing Time') || getField(record, 'Status Time') || getField(record, 'Update Time') || getField(record, 'Time') || placingTime;
       const orderId = getField(record, 'Order ID') || '';
       const orderType = getField(record, 'Type') || '';
       const leverage = getField(record, 'Leverage') || '';
@@ -201,6 +210,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         leverage,
         description: `${orderType} order ${leverage ? `with ${leverage}` : ''}`,
         raw: record,
+        sourceRow: rowIndex,
         accountIdentifier
       });
 
@@ -234,11 +244,10 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
     console.log(`\n=== Processing ${symbolTransactions.length} TradingView transactions for ${symbol} ===`);
 
     // Detect futures from TradingView exchange prefix (e.g., CME_MINI:MNQH2026, CME:ESH2026, NYMEX:CLH2026)
-    const futuresExchanges = ['CME_MINI', 'CME', 'NYMEX', 'COMEX', 'CBOT', 'CME_MICRO'];
     const exchangeMatch = symbol.match(/^([^:]+):(.+)$/);
     const exchange = exchangeMatch ? exchangeMatch[1] : null;
-    const rawContract = exchangeMatch ? exchangeMatch[2] : symbol;
-    const isFutures = exchange && futuresExchanges.includes(exchange.toUpperCase());
+    const rawContract = (exchangeMatch ? exchangeMatch[2] : symbol).replace(/^F\.[A-Z]{2,}\./i, '');
+    const isFutures = (exchange && FUTURES_EXCHANGE_PATTERN.test(exchange.toUpperCase())) || /^F\.[A-Z]{2,}\./i.test(symbol);
 
     let contractMultiplier = 1;
     const instrumentData = {
@@ -371,6 +380,12 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
           }
         } else {
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          if (diagnostics) {
+            diagnostics.duplicateExecutions = (diagnostics.duplicateExecutions || 0) + 1;
+            diagnostics.skippedRows++;
+            diagnostics.expected_skipped_rows = (diagnostics.expected_skipped_rows || 0) + 1;
+            diagnostics.skippedReasons.push({ row: transaction.sourceRow, reason: 'TradingView execution already imported' });
+          }
           // Skip position and value updates for duplicate transactions
           console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
           continue;
