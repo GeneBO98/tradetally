@@ -84,6 +84,26 @@ function normalizeEtradeRecord(record) {
   };
 }
 
+// This edited account-history layout was captured in September import
+// diagnostics. Keep its ambiguous headers and US dates scoped to this format.
+function hasEditedOptionTransactionHeaders(headers = []) {
+  return ['Date', 'Ticker Action', 'Companu', 'Description', 'Quantity', 'Price', 'Comm', 'Total Amt']
+    .every(header => headers.includes(header));
+}
+
+function normalizeEditedOptionTransactionRecord(record) {
+  const action = cleanString(record['Ticker Action']);
+  if (!/^(buy|sell)(?: to (open|close))?$/i.test(action)) return null;
+
+  const rawSymbol = cleanString(record.Companu);
+  const option = rawSymbol.match(/^([A-Z0-9.]+)\s+(\d{2})\/(\d{2})\/(\d{4})\s+(\d+(?:\.\d+)?)\s+([CP])$/i);
+  const symbol = option
+    ? buildOccOptionSymbol(option[1], `${option[4].slice(-2)}${option[2]}${option[3]}`, option[6], option[5])
+    : rawSymbol;
+  const date = cleanString(record.Date).replace(/^(\d{2})-(\d{2})-(\d{2})$/, '20$3-$1-$2');
+  return { ...record, Symbol: symbol, Action: action, 'Trade Date': date, Commission: record.Comm };
+}
+
 function normalizeFidelityRecord(record) {
   const action = cleanString(record.Action || record.action);
   const actionLower = action.toLowerCase();
@@ -193,6 +213,8 @@ function normalizeSupportedBrokerRows(records, broker) {
 
 module.exports = {
   buildOccOptionSymbol,
+  hasEditedOptionTransactionHeaders,
+  normalizeEditedOptionTransactionRecord,
   normalizeEtradeRecord,
   normalizeFidelityRecord,
   normalizeFidelityRunDate,

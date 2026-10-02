@@ -225,24 +225,17 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
   for (const [symbol, symbolTransactions] of Object.entries(symbolGroups)) {
     console.log(`\nProcessing ${symbol}: ${symbolTransactions.length} transactions`);
 
-    // Determine the contract multiplier for this symbol so futures P&L is valued
-    // per point (e.g. ES = $50/pt) instead of dollar-for-dollar. Without this a
-    // 1-point ES move would be recorded as $1 rather than $50. parseInstrumentData
-    // recognizes broker display formats like "ES JUN26" (NinjaTrader) and "ESM26".
+    // Apply contract values to gross P&L while prices stay quoted per unit.
+    // Futures use their point value and options normally represent 100 shares.
     const symbolInstrumentData = parseInstrumentData(symbol);
     const contractMultiplier = symbolInstrumentData.instrumentType === 'future'
       ? (symbolInstrumentData.pointValue || 1)
-      : 1;
-    // Fields to stamp onto completed futures trades so the Trade model, charts,
-    // and analytics treat them as futures (not stocks).
-    const futuresTradeFields = symbolInstrumentData.instrumentType === 'future'
-      ? {
-          instrumentType: 'future',
-          underlyingAsset: symbolInstrumentData.underlyingAsset,
-          contractMonth: symbolInstrumentData.contractMonth,
-          contractYear: symbolInstrumentData.contractYear,
-          pointValue: symbolInstrumentData.pointValue
-        }
+      : symbolInstrumentData.instrumentType === 'option'
+        ? (symbolInstrumentData.contractSize || 100)
+        : 1;
+    // Set instrument metadata before grouping can recalculate P&L.
+    const instrumentTradeFields = ['future', 'option'].includes(symbolInstrumentData.instrumentType)
+      ? symbolInstrumentData
       : null;
 
     // Initialize position tracking
@@ -459,8 +452,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           console.log(`  [CHECK] Completed ${currentTrade.side} trade: P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
 
-        if (futuresTradeFields) {
-          Object.assign(currentTrade, futuresTradeFields);
+        if (instrumentTradeFields) {
+          Object.assign(currentTrade, instrumentTradeFields);
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -501,8 +494,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         console.log(`  [CHECK] Created open ${currentTrade.side} position: ${netQuantity} shares`);
       }
 
-      if (futuresTradeFields) {
-        Object.assign(currentTrade, futuresTradeFields);
+      if (instrumentTradeFields) {
+        Object.assign(currentTrade, instrumentTradeFields);
       }
 
       currentTrade.executionData = currentTrade.executions;
