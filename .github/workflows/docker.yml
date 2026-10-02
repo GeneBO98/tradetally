@@ -78,7 +78,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '20.19.5'
+          node-version-file: '.nvmrc'
           cache: 'pnpm'
           cache-dependency-path: 'pnpm-lock.yaml'
 
@@ -87,6 +87,8 @@ jobs:
 
       - name: Run backend tests
         run: pnpm --dir backend test
+        env:
+          FEE_PROFILE_TEST_DATABASE_URL: postgres://tradetally:testpass@localhost:5432/tradetally_test
 
       - name: Run backend integration tests (real Postgres)
         run: pnpm --dir backend test:integration

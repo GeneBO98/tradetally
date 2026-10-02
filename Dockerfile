@@ -1,4 +1,6 @@
-FROM node:20.19.5-alpine3.21 AS frontend-builder
+ARG NODE_VERSION=24.21.0
+
+FROM node:${NODE_VERSION}-alpine3.23 AS frontend-builder
 # Avoid illegal-instruction failures when this stage runs under QEMU for arm64.
 ENV QEMU_CPU=max
 # Update packages to fix vulnerabilities
@@ -28,7 +30,7 @@ ENV VITE_PROMOTEKIT_ID=${VITE_PROMOTEKIT_ID}
 
 RUN pnpm --dir frontend run build
 
-FROM node:20.19.5-alpine3.21 AS backend-builder
+FROM node:${NODE_VERSION}-alpine3.23 AS backend-builder
 # Avoid illegal-instruction failures when this stage runs under QEMU for arm64.
 ENV QEMU_CPU=max
 # Update packages to fix vulnerabilities
@@ -63,7 +65,7 @@ RUN pnpm install --filter tradetally-backend --prod --frozen-lockfile
 COPY backend/ ./backend
 RUN pnpm deploy --filter tradetally-backend --prod --legacy /prod/backend
 
-FROM node:20.19.5-alpine3.21
+FROM node:${NODE_VERSION}-alpine3.23
 # Avoid illegal-instruction failures when this stage runs under QEMU for arm64.
 ENV QEMU_CPU=max
 # Update packages to fix vulnerabilities

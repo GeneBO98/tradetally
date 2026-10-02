@@ -5,7 +5,7 @@ This guide will help you migrate TradeTally from Docker containers to running na
 ## Prerequisites
 
 - Ubuntu/Debian-based Linux system (or adjust commands for your OS)
-- Node.js 20+ installed
+- Node.js 24.21.0 or newer installed (Node.js 24 LTS recommended)
 - PostgreSQL 15+ installed
 - Nginx installed
 - PM2 or systemd for process management
@@ -58,17 +58,19 @@ sudo systemctl start postgresql
 sudo systemctl enable postgresql
 ```
 
-### 2.2 Install Node.js 20
+### 2.2 Install Node.js 24 LTS
 
 ```bash
 # Using NodeSource repository
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install nodejs
 
 # Verify installation
-node --version  # Should show v20.x.x
+node --version  # Should show v24.21.0 or a newer Node.js 24 release
 npm --version
 ```
+
+Upgrade existing Node.js 20/22 installations before installing TradeTally dependencies. The repository's `.nvmrc` pins the version used by CI and Docker. If you use PM2, restart the backend under the upgraded Node.js runtime and regenerate its startup service with `pm2 startup` so it does not retain the old Node.js path.
 
 ### 2.3 Install pnpm and PM2
 

@@ -84,7 +84,9 @@ For detailed installation and setup instructions, visit the [documentation site]
 
 ### Local Development
 
-TradeTally uses pnpm for dependency management. Install pnpm, then install dependencies from the repository root:
+TradeTally requires Node.js 24.21.0 or newer and uses pnpm for dependency management. Docker and CI use Node.js 24.21.0. If you use nvm, run `nvm install` and `nvm use` from the repository root to select the version pinned in `.nvmrc`.
+
+Install pnpm, then install dependencies from the repository root:
 
 ```bash
 npm install -g pnpm@10.34.5
