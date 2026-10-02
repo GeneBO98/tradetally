@@ -88,3 +88,24 @@ docker rm -fv tradetally-node24-pg
 ```
 
 Local JSON results, build logs, server logs, and the temporary smoke-test scripts are retained in the ignored `.tmp/node24-validation/` directory. Disposable containers, databases, and test networks were removed after verification.
+
+## v2.12.0 release verification
+
+Before publishing v2.12.0, the latest public `main` import fixes were merged into
+`develop`. The TradingView conflict resolution preserves forex identification,
+index CFD classification, and `F.US.` futures handling. Both application
+manifests were updated to 2.12.0.
+
+The combined release source was reinstalled with the frozen lockfile and tested
+on macOS arm64 with Node.js 24.21.0 and a fresh disposable PostgreSQL 16 database:
+
+- Backend: **1,904 tests passed** in 249 suites, including both optional
+  PostgreSQL fee-profile tests and the newly merged import regressions.
+- Frontend: **295 tests passed** in 50 files.
+- PostgreSQL integration: **28 tests passed** in 10 suites.
+- Production frontend build: passed with version 2.12.0.
+
+All **2,227 tests** passed with no skipped tests. Release verification logs and
+JSON results are retained in the ignored `.tmp/v212-validation/` directory.
+The earlier Linux architecture matrix above validates the runtime upgrade; this
+additional run validates the combined release source.
