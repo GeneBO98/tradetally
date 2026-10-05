@@ -118,6 +118,7 @@ class NotificationService {
           challenge: {
             id: challenge.id,
             name: challenge.name,
+            description: challenge.description,
             reward_points: challenge.reward_points
           },
           timestamp: new Date().toISOString()

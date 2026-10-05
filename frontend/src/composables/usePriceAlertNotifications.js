@@ -266,6 +266,24 @@ export function usePriceAlertNotifications() {
       case 'xp_update':
         queueCelebrationItem({ type: 'xp_update', payload: data.data })
         break
+
+      case 'challenge_completed': {
+        // Celebrate a finished challenge like an achievement unlock
+        const challenge = data.data?.challenge || {}
+        queueCelebrationItem({
+          type: 'achievement',
+          payload: {
+            achievement: {
+              id: `challenge-${challenge.id}`,
+              name: challenge.name,
+              description: challenge.description || 'Challenge complete',
+              points: challenge.reward_points || 0,
+              kind: 'challenge'
+            }
+          }
+        })
+        break
+      }
     }
   }
   

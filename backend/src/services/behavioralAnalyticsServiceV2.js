@@ -69,14 +69,18 @@ class BehavioralAnalyticsServiceV2 {
   }
 
   // Analyze historical trades and properly aggregate revenge trading events
-  static async analyzeHistoricalTradesV2(userId, dateFilter = {}) {
+  // options.keepAlerts: background runs (revenge_analysis job) must not wipe
+  // the user's real-time behavioral alerts the way a manual re-run does.
+  static async analyzeHistoricalTradesV2(userId, dateFilter = {}, options = {}) {
     const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
     if (!hasAccess) {
       throw new Error('Historical analysis requires Pro tier');
     }
 
+    const analysisStartedAt = new Date();
+
     // Clear existing data
-    await this.clearHistoricalData(userId, dateFilter);
+    await this.clearHistoricalData(userId, dateFilter, { keepAlerts: options.keepAlerts === true });
 
     // Get all completed positions for the user, ordered by entry time. In
     // whole-trade mode, option strategy legs are already collapsed here.
@@ -319,6 +323,19 @@ class BehavioralAnalyticsServiceV2 {
           }
         }
       }
+    }
+
+    // A run over the full history (no date/account filter) is what the
+    // no-revenge achievements trust as coverage
+    const isFullHistory = !dateFilter.startDate && !dateFilter.endDate
+      && !(dateFilter.accounts && dateFilter.accounts.length > 0);
+    if (isFullHistory) {
+      await db.query(`
+        INSERT INTO user_gamification_stats (user_id, revenge_analysis_at)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id)
+        DO UPDATE SET revenge_analysis_at = EXCLUDED.revenge_analysis_at
+      `, [userId, analysisStartedAt]);
     }
 
     return {
@@ -868,7 +885,7 @@ class BehavioralAnalyticsServiceV2 {
   }
 
   // Clear existing historical data
-  static async clearHistoricalData(userId, dateFilter = {}) {
+  static async clearHistoricalData(userId, dateFilter = {}, { keepAlerts = false } = {}) {
     const eventParams = [userId];
     const patternParams = [userId];
     const alertParams = [userId];
@@ -944,7 +961,9 @@ class BehavioralAnalyticsServiceV2 {
          ${patternConditions.join(' ')}`,
       patternParams
     );
-    await db.query(`DELETE FROM behavioral_alerts WHERE user_id = $1 ${alertConditions.join(' ')}`, alertParams);
+    if (!keepAlerts) {
+      await db.query(`DELETE FROM behavioral_alerts WHERE user_id = $1 ${alertConditions.join(' ')}`, alertParams);
+    }
     await AnalyticsCache.delete(userId);
   }
 }

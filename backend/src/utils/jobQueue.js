@@ -20,7 +20,7 @@ class JobQueue {
 
   /**
    * Add a job to the queue
-   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, mae_recalc, leaderboard_update, verification_email, password_reset_email, account_lockout_email, support_request_email)
+   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, mae_recalc, leaderboard_update, revenge_analysis, verification_email, password_reset_email, account_lockout_email, support_request_email)
    * @param {object} data - Job data
    * @param {number} priority - Priority (1=highest, 5=lowest)
    * @param {string} userId - User ID for the job
@@ -364,6 +364,9 @@ class JobQueue {
           break;
         case 'leaderboard_update':
           result = await this.processLeaderboardUpdate(data);
+          break;
+        case 'revenge_analysis':
+          result = await this.processRevengeAnalysis(data);
           break;
         case 'verification_email':
           result = await this.processVerificationEmail(data);
@@ -918,6 +921,24 @@ class JobQueue {
    * achievementService when achievements are awarded, instead of running the
    * full rebuild inline on the award path.
    */
+  // Full-history revenge analysis queued by AchievementService after trade
+  // changes, followed by an achievement check so no-revenge badges are
+  // judged on fresh detection. Keeps the user's real-time behavioral alerts.
+  async processRevengeAnalysis(data) {
+    const BehavioralAnalyticsServiceV2 = require('../services/behavioralAnalyticsServiceV2');
+    const AchievementService = require('../services/achievementService');
+    const { userId } = data;
+
+    const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId, {}, { keepAlerts: true });
+    const awarded = await AchievementService.checkAndAwardAchievements(userId, { skipRevengeAnalysis: true });
+
+    return {
+      tradesAnalyzed: analysis.tradesAnalyzed,
+      revengeEventsCreated: analysis.revengeEventsCreated,
+      achievementsAwarded: awarded.length
+    };
+  }
+
   async processLeaderboardUpdate() {
     const LeaderboardService = require('../services/leaderboardService');
 

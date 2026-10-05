@@ -41,10 +41,8 @@ class GamificationScheduler {
     try {
       console.log('[STATS] Updating challenge progress...');
       
+      // Also rotates in this week's and this month's challenges
       await ChallengeService.checkAndUpdateChallenges();
-      
-      // Create new weekly challenges if needed
-      await this.createWeeklyChallenges();
       
     } catch (error) {
       console.error('Error updating challenge progress:', error);
@@ -157,42 +155,6 @@ class GamificationScheduler {
     }
   }
   
-  // Create new weekly challenges
-  static async createWeeklyChallenges() {
-    try {
-      // Check if we need new weekly challenges
-      const hasActiveChallenges = await db.query(`
-        SELECT COUNT(*) as count
-        FROM challenges
-        WHERE key LIKE '%_week_%'
-          AND end_date >= CURRENT_DATE
-          AND start_date <= CURRENT_DATE
-      `);
-      
-      if (parseInt(hasActiveChallenges.rows[0].count) < 2) {
-        // Create new weekly challenges
-        const weeklyChallenge = {
-          key: `revenge_free_week_${Date.now()}`,
-          name: 'Weekly Revenge Trading Challenge',
-          description: 'Go a full week without revenge trading incidents',
-          category: 'behavioral',
-          startDate: new Date(),
-          endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          criteria: { type: 'trades_without_revenge', days: 7 },
-          rewardPoints: 100,
-          isCommunity: false,
-          targetValue: 7
-        };
-        
-        await ChallengeService.createChallenge(weeklyChallenge);
-        console.log('[CONFIG] Created new weekly challenge');
-      }
-      
-    } catch (error) {
-      console.error('Error creating weekly challenges:', error);
-    }
-  }
-  
   // Run maintenance tasks
   static async runMaintenance() {
     try {
@@ -227,22 +189,35 @@ class GamificationScheduler {
     }
   }
   
-  // Update user levels based on experience points
+  // Re-derive stored levels from XP with AchievementService.calculateLevelFromXP
+  // (levels 2, 3, 4, 5 at 100, 200, 350, 550 XP). Only rows that disagree are written.
   static async updateUserLevels() {
     try {
-      await db.query(`
-        UPDATE user_gamification_stats
-        SET 
-          level = FLOOR(experience_points / 1000) + 1,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE level != FLOOR(experience_points / 1000) + 1
-      `);
-      
+      const result = await db.query(
+        'SELECT user_id, experience_points, level FROM user_gamification_stats'
+      );
+      const userIds = [];
+      const levels = [];
+      for (const row of result.rows) {
+        const level = AchievementService.calculateLevelFromXP(row.experience_points || 0).level;
+        if (level !== row.level) {
+          userIds.push(row.user_id);
+          levels.push(level);
+        }
+      }
+      if (userIds.length > 0) {
+        await db.query(`
+          UPDATE user_gamification_stats s
+          SET level = v.level, updated_at = CURRENT_TIMESTAMP
+          FROM unnest($1::uuid[], $2::int[]) AS v(user_id, level)
+          WHERE s.user_id = v.user_id
+        `, [userIds, levels]);
+      }
     } catch (error) {
       console.error('Error updating user levels:', error);
     }
   }
-  
+
   // Cleanup old notifications
   static async cleanupOldNotifications() {
     try {

@@ -7,6 +7,11 @@ const logger = require('../utils/logger');
 // computed in a single pass over the user's trades. Date/hour/window values
 // are derived in SQL so they match the semantics of the old per-criterion
 // queries exactly (DB session timezone, CURRENT_TIMESTAMP, ILIKE on NULL).
+// Times follow the analytics convention: a trade's local time is
+// entry_time AT TIME ZONE the user's timezone (most users store wall-clock
+// times with timezone UTC). Imports without a time land at exactly 00:00 UTC;
+// those trades are flagged so hour-based criteria skip them and their dates
+// stay on the calendar day they were logged.
 const TRADES_SNAPSHOT_QUERY = `
   SELECT
     -- Achievement criteria compare against dollar thresholds, so amounts are
@@ -16,35 +21,36 @@ const TRADES_SNAPSHOT_QUERY = `
     ${fxUsd('entry_price', 't')}::float8 AS entry_price,
     ${fxUsd('exit_price', 't')}::float8 AS exit_price,
     t.quantity::float8 AS quantity,
+    t.instrument_type,
+    t.contract_size::float8 AS contract_size,
     t.symbol,
+    COALESCE(t.account_identifier, '') AS account_identifier,
+    UPPER(COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol)) AS symbol_key,
+    COALESCE(sc.gics_sector, sc.finnhub_industry) AS sector,
+    t.r_value::float8 AS r_value,
+    COALESCE(t.has_news, false) AS has_news,
     t.entry_time,
     (t.exit_time IS NOT NULL) AS is_closed,
     (t.stop_loss IS NOT NULL) AS has_stop_loss,
     (t.take_profit IS NOT NULL) AS has_take_profit,
-    DATE(t.entry_time)::text AS entry_date,
-    EXTRACT(HOUR FROM t.entry_time)::int AS entry_hour,
-    EXTRACT(MINUTE FROM t.entry_time)::int AS entry_minute,
-    EXTRACT(DOW FROM t.entry_time)::int AS entry_dow,
+    tm.entry_has_time,
+    tm.exit_has_time,
+    (CASE WHEN tm.entry_has_time THEN tm.entry_local ELSE tm.entry_utc END)::date::text AS entry_date,
+    (CASE WHEN tm.exit_has_time THEN tm.exit_local ELSE tm.exit_utc END)::date::text AS exit_date,
+    EXTRACT(HOUR FROM tm.entry_local)::int AS entry_hour,
+    EXTRACT(DOW FROM (CASE WHEN tm.entry_has_time THEN tm.entry_local ELSE tm.entry_utc END))::int AS entry_dow,
+    -- Minutes after midnight Eastern, for market-open checks. Users on the
+    -- UTC default store Eastern wall-clock times, so read those as-is.
+    (EXTRACT(HOUR FROM tm.entry_et) * 60 + EXTRACT(MINUTE FROM tm.entry_et))::int AS entry_et_minutes,
     EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - t.entry_time))::float8 AS entry_age_seconds,
     EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - t.exit_time))::float8 AS exit_age_seconds,
     EXTRACT(EPOCH FROM (t.exit_time - t.entry_time))::float8 / 60 AS duration_minutes,
     EXTRACT(EPOCH FROM t.exit_time)::float8 AS exit_epoch,
     EXTRACT(EPOCH FROM t.entry_time)::float8 AS entry_epoch,
-    (t.exit_time >= date_trunc('week', CURRENT_TIMESTAMP)) AS exit_in_current_week,
     LENGTH(BTRIM(COALESCE(t.notes, ''))) AS notes_length,
     LENGTH(BTRIM(COALESCE(t.setup, ''))) AS setup_length,
-    COALESCE(t.notes ILIKE '%stop%', false) AS notes_mention_stop,
-    COALESCE(t.notes ILIKE '%profit%' OR t.notes ILIKE '%target%', false) AS notes_mention_profit,
-    COALESCE(
-      LOWER(t.notes) LIKE '%trend%' OR LOWER(t.notes) LIKE '%moving average%'
-      OR LOWER(t.notes) LIKE '%ma%' OR LOWER(t.notes) LIKE '%crossover%',
-      false
-    ) AS notes_mention_trend,
-    COALESCE(
-      LOWER(t.notes) LIKE '%news%' OR LOWER(t.notes) LIKE '%earnings%'
-      OR LOWER(t.notes) LIKE '%catalyst%' OR LOWER(t.notes) LIKE '%announcement%',
-      false
-    ) AS notes_mention_news,
+    COALESCE(t.notes ~* '\\m((up|down)?trend(s|ing|ed|lines?)?|moving averages?|ma|ema|sma|crossovers?)\\M', false) AS notes_mention_trend,
+    COALESCE(t.notes ~* '\\m(news|earnings|catalyst|announcement|fda|guidance)', false) AS notes_mention_news,
     COALESCE((
       SELECT MAX(LENGTH(BTRIM(COALESCE(r.review_notes, ''))))
       FROM trade_playbook_reviews r
@@ -58,6 +64,20 @@ const TRADES_SNAPSHOT_QUERY = `
         END
     END)::float8 AS price_move_fraction
   FROM trades t
+  JOIN users u ON u.id = t.user_id
+  CROSS JOIN LATERAL (
+    SELECT
+      t.entry_time AT TIME ZONE 'UTC' AS entry_utc,
+      t.exit_time AT TIME ZONE 'UTC' AS exit_utc,
+      t.entry_time AT TIME ZONE COALESCE(NULLIF(u.timezone, ''), 'UTC') AS entry_local,
+      t.exit_time AT TIME ZONE COALESCE(NULLIF(u.timezone, ''), 'UTC') AS exit_local,
+      t.entry_time AT TIME ZONE (CASE WHEN COALESCE(NULLIF(u.timezone, ''), 'UTC') = 'UTC'
+                                      THEN 'UTC' ELSE 'America/New_York' END) AS entry_et,
+      (t.entry_time AT TIME ZONE 'UTC')::time <> '00:00:00' AS entry_has_time,
+      (t.exit_time AT TIME ZONE 'UTC')::time <> '00:00:00' AS exit_has_time
+  ) tm
+  LEFT JOIN symbol_categories sc
+    ON sc.symbol = UPPER(COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol))
   WHERE t.user_id = $1
   ORDER BY t.exit_time DESC NULLS LAST, t.entry_time DESC
 `;
@@ -78,8 +98,14 @@ const REVIEWS_SNAPSHOT_QUERY = `
 
 const MISC_SNAPSHOT_QUERY = `
   SELECT
-    (SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MAX(created_at)))::float8
-       FROM revenge_trading_events WHERE user_id = $1) AS latest_revenge_age_seconds,
+    (SELECT (CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(timezone, ''), 'UTC'))::date::text
+       FROM users WHERE id = $1) AS today_local,
+    (SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - revenge_analysis_at))::float8
+       FROM user_gamification_stats WHERE user_id = $1) AS revenge_analysis_age_seconds,
+    (SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MAX(e.created_at)))::float8
+       FROM revenge_trading_events e
+       JOIN user_gamification_stats s ON s.user_id = e.user_id
+      WHERE e.user_id = $1 AND e.created_at <= s.revenge_analysis_at) AS latest_analyzed_revenge_age_seconds,
     (SELECT COUNT(*)::int FROM playbooks WHERE user_id = $1 AND is_active = true) AS active_playbook_count,
     (SELECT COUNT(DISTINCT pattern_type)::int FROM behavioral_patterns WHERE user_id = $1) AS patterns_identified,
     (SELECT COUNT(*)::int FROM user_challenges WHERE user_id = $1 AND status = 'completed') AS challenges_completed,
@@ -94,7 +120,15 @@ const DAY_SECONDS = 86400;
 class AchievementService {
 
   // Check and award achievements for a user based on their current stats
-  static async checkAndAwardAchievements(userId) {
+  // options.skipRevengeAnalysis: set by the revenge_analysis job itself so
+  // its follow-up check doesn't enqueue another analysis.
+  static async checkAndAwardAchievements(userId, options = {}) {
+    if (!options.skipRevengeAnalysis) {
+      AchievementService.enqueueRevengeAnalysis(userId).catch(error => {
+        console.warn(`Failed to enqueue revenge analysis for user ${userId}:`, error.message);
+      });
+    }
+
     try {
       // Get all achievements the user hasn't earned yet
       const unearned = await this.getUnearnedAchievements(userId);
@@ -113,7 +147,7 @@ class AchievementService {
       for (const achievement of unearned) {
         const earned = await this.checkAchievementCriteria(userId, achievement, snapshot);
         if (earned) {
-          const awarded = await this.awardAchievement(userId, achievement.id, earned.metadata);
+          const awarded = await this.awardAchievement(userId, achievement.id, earned.metadata, achievement.points);
           if (awarded) {
             newAchievements.push(achievement);
             console.log(`Successfully awarded ${achievement.name} to user ${userId}`);
@@ -177,11 +211,59 @@ class AchievementService {
         }
       }
 
+      // Trade changes can move challenge progress too. Lazy require:
+      // challengeService depends on this module.
+      try {
+        const ChallengeService = require('./challengeService');
+        await ChallengeService.updateUserChallenges(userId);
+      } catch (e) {
+        console.warn(`Failed to update challenges for user ${userId}:`, e.message);
+      }
+
       return newAchievements;
     } catch (error) {
       console.error('Error checking achievements:', error);
       throw error;
     }
+  }
+
+  // Queue a background revenge analysis so the no-revenge achievements are
+  // judged on real detection. Skipped when the user lacks behavioral
+  // analytics access, a job is already pending, or no trade has changed
+  // since the last full analysis.
+  static async enqueueRevengeAnalysis(userId) {
+    const TierService = require('./tierService');
+    const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
+    if (!hasAccess) return null;
+
+    const result = await db.query(`
+      INSERT INTO job_queue (type, data, priority, user_id, status, created_at)
+      SELECT 'revenge_analysis', jsonb_build_object('userId', $1::uuid::text), 5, $1::uuid, 'pending', CURRENT_TIMESTAMP
+      WHERE NOT EXISTS (
+        SELECT 1 FROM job_queue
+        WHERE type = 'revenge_analysis' AND user_id = $1::uuid AND status IN ('pending', 'processing')
+      )
+      AND EXISTS (
+        SELECT 1 FROM trades t
+        LEFT JOIN user_gamification_stats s ON s.user_id = t.user_id
+        WHERE t.user_id = $1::uuid
+          AND (s.revenge_analysis_at IS NULL
+               OR GREATEST(t.created_at, t.updated_at) > s.revenge_analysis_at)
+      )
+      RETURNING id
+    `, [userId]);
+
+    if (result.rows.length > 0) {
+      try {
+        const jobQueue = require('../utils/jobQueue');
+        jobQueue.startProcessing();
+        jobQueue.resetBackoff();
+      } catch (e) {
+        console.warn('Failed to nudge job queue after revenge analysis enqueue:', e.message);
+      }
+    }
+
+    return result.rows[0]?.id || null;
   }
 
   // Enqueue a debounced global leaderboard rebuild. Only one pending or
@@ -255,8 +337,8 @@ class AchievementService {
       closedTrades: trades.filter(t => t.is_closed),
       reviews: reviewsResult.rows,
       misc: miscResult.rows[0] || {},
-      // Same "today" the old checks computed in JS (UTC date string)
-      todayStr: new Date().toISOString().split('T')[0]
+      // The user's calendar day, matching entry_date/exit_date
+      todayStr: (miscResult.rows[0] || {}).today_local || new Date().toISOString().split('T')[0]
     };
   }
 
@@ -402,7 +484,8 @@ class AchievementService {
         return AchievementService.evaluateDailySectorDiversity(snapshot, criteria.min_sectors);
 
       case 'weekly_portfolio_gain':
-        return AchievementService.evaluateWeeklyPortfolioGain(snapshot, criteria.min_percentage);
+        // Needs account balances, which aren't in the per-trade snapshot
+        return await AchievementService.checkWeeklyPortfolioGain(userId, snapshot, criteria.min_percentage);
 
       default:
         console.log(`Unknown achievement criteria type: ${criteria.type}`);
@@ -415,7 +498,9 @@ class AchievementService {
   }
 
   // Award achievement to user
-  static async awardAchievement(userId, achievementId, metadata = {}) {
+  // pointsAwarded is recorded on the row so later point rebalances don't
+  // change what an existing earner was given (see migration 263).
+  static async awardAchievement(userId, achievementId, metadata = {}, pointsAwarded = null) {
     // Check if user already has this achievement
     const existing = await db.query(
       'SELECT id FROM user_achievements WHERE user_id = $1 AND achievement_id = $2',
@@ -428,13 +513,13 @@ class AchievementService {
     }
 
     const query = `
-      INSERT INTO user_achievements (user_id, achievement_id, metadata, earned_at)
-      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+      INSERT INTO user_achievements (user_id, achievement_id, metadata, earned_at, points_awarded)
+      VALUES ($1, $2, $3, CURRENT_TIMESTAMP, COALESCE($4::int, (SELECT points FROM achievements WHERE id = $2)))
       ON CONFLICT (user_id, achievement_id) DO NOTHING
       RETURNING *
     `;
 
-    const result = await db.query(query, [userId, achievementId, JSON.stringify(metadata)]);
+    const result = await db.query(query, [userId, achievementId, JSON.stringify(metadata), pointsAwarded]);
     console.log(`Awarded achievement ${achievementId} to user ${userId}`);
     return result.rows[0];
   }
@@ -472,76 +557,39 @@ class AchievementService {
   // Each evaluator replicates the exact semantics of the SQL it replaced
   // (thresholds, NULL handling, ordering, window boundaries).
 
-  // No revenge trades for X days (and trading activity during the window)
+  // No revenge trades for X days, judged only on a window that a full
+  // revenge analysis has actually covered: the N days ending at the last
+  // analysis run. The user must have been trading for at least N days
+  // before that point, traded during the window, and had no revenge events
+  // in it. Without an analysis run there is nothing to verify, so no award.
   static evaluateNoRevengeTrades(snapshot, days) {
+    const analysisAge = snapshot.misc.revenge_analysis_age_seconds;
+    if (analysisAge === null || analysisAge === undefined) return false;
+
     const windowSeconds = days * DAY_SECONDS;
-    const latestRevengeAge = snapshot.misc.latest_revenge_age_seconds;
-    // Old SQL: COUNT of revenge events in window === 0
-    const revengeFree = latestRevengeAge === null || latestRevengeAge === undefined
-      || latestRevengeAge > windowSeconds;
+    const windowStartAge = analysisAge + windowSeconds;
 
-    if (revengeFree) {
-      const tradesDuringPeriod = snapshot.trades.filter(
-        t => t.entry_age_seconds !== null && t.entry_age_seconds <= windowSeconds
-      ).length;
+    // Most recent event at or before the analysis run, so a later real-time
+    // event can't hide one inside the window
+    const latestRevengeAge = snapshot.misc.latest_analyzed_revenge_age_seconds;
+    const revengeInWindow = latestRevengeAge !== null && latestRevengeAge !== undefined
+      && latestRevengeAge <= windowStartAge;
+    if (revengeInWindow) return false;
 
-      if (tradesDuringPeriod > 0) {
-        return {
-          earned: true,
-          metadata: {
-            days_clean: days,
-            trades_during_period: tradesDuringPeriod
-          }
-        };
-      }
-    }
+    const entryAges = snapshot.trades
+      .map(t => t.entry_age_seconds)
+      .filter(age => age !== null && age !== undefined);
+    const tradesDuringPeriod = entryAges.filter(
+      age => age >= analysisAge && age <= windowStartAge
+    ).length;
+    const tradingLongEnough = entryAges.some(age => age >= windowStartAge);
 
-    return false;
-  }
-
-  // Discipline score maintenance (per-day share of >=1.5% winners)
-  static evaluateDisciplineScore(snapshot, threshold, days) {
-    const windowSeconds = days * DAY_SECONDS;
-    const windowTrades = snapshot.trades.filter(
-      t => t.is_closed && t.entry_age_seconds !== null && t.entry_age_seconds <= windowSeconds
-    );
-
-    const byDay = new Map();
-    for (const t of windowTrades) {
-      let day = byDay.get(t.entry_date);
-      if (!day) {
-        day = { total: 0, qualifying: 0 };
-        byDay.set(t.entry_date, day);
-      }
-      day.total++;
-      if (t.pnl !== null && t.pnl > 0 && t.exit_price !== null
-          && t.price_move_fraction !== null && t.price_move_fraction >= 0.015) {
-        day.qualifying++;
-      }
-    }
-
-    // Old SQL filtered days by score >= threshold before AVG/COUNT
-    const qualifyingScores = [];
-    for (const day of byDay.values()) {
-      const score = (day.qualifying / day.total) * 100;
-      if (score >= threshold) {
-        qualifyingScores.push(score);
-      }
-    }
-
-    if (qualifyingScores.length === 0) {
-      return false; // AVG over empty set was NULL -> comparison false
-    }
-
-    const avgDiscipline = qualifyingScores.reduce((sum, s) => sum + s, 0) / qualifyingScores.length;
-    const daysTraded = qualifyingScores.length;
-
-    if (avgDiscipline >= threshold && daysTraded >= days * 0.7) {
+    if (tradesDuringPeriod > 0 && tradingLongEnough) {
       return {
         earned: true,
         metadata: {
-          average_discipline: avgDiscipline,
-          days_maintained: daysTraded
+          days_clean: days,
+          trades_during_period: tradesDuringPeriod
         }
       };
     }
@@ -549,18 +597,74 @@ class AchievementService {
     return false;
   }
 
-  // Risk adherence: last N closed trades all within |pnl| <= 1000
-  static evaluateRiskAdherence(snapshot, requiredTrades) {
-    const recent = snapshot.closedTrades.slice(0, requiredTrades);
-    const total = recent.length;
-    const withinRisk = recent.filter(t => t.pnl !== null && Math.abs(t.pnl) <= 1000).length;
+  // A closed trade stayed within plan: it had a stop loss and didn't lose
+  // more than 1R. R is net of commissions, so allow 10% for fees/slippage.
+  // With a stop but no stored R (stop moved past entry), only a non-losing
+  // trade can be confirmed as within plan.
+  static isWithinRisk(t) {
+    if (!t.has_stop_loss) return false;
+    if (t.r_value !== null && t.r_value !== undefined) return t.r_value >= -1.1;
+    return t.pnl !== null && t.pnl >= 0;
+  }
 
-    if (total >= requiredTrades && withinRisk === total) {
+  // Discipline score: share of closed trades within plan (isWithinRisk) over
+  // any rolling `days` window that has at least 20 closed trades
+  static evaluateDisciplineScore(snapshot, threshold, days) {
+    const MIN_TRADES = 20;
+    const windowSeconds = days * DAY_SECONDS;
+    const trades = snapshot.closedTrades
+      .filter(t => t.exit_epoch !== null && t.exit_epoch !== undefined)
+      .sort((a, b) => a.exit_epoch - b.exit_epoch);
+
+    let best = null;
+    let start = 0;
+    let withinCount = 0;
+    for (let end = 0; end < trades.length; end++) {
+      if (AchievementService.isWithinRisk(trades[end])) withinCount++;
+      while (trades[end].exit_epoch - trades[start].exit_epoch > windowSeconds) {
+        if (AchievementService.isWithinRisk(trades[start])) withinCount--;
+        start++;
+      }
+      const total = end - start + 1;
+      if (total >= MIN_TRADES) {
+        const score = (withinCount / total) * 100;
+        if (best === null || score > best.score) best = { score, total };
+      }
+    }
+
+    if (best && best.score >= threshold) {
       return {
         earned: true,
         metadata: {
-          trades_checked: total,
-          all_within_risk: true
+          discipline_score: best.score,
+          trades_in_window: best.total,
+          window_days: days
+        }
+      };
+    }
+
+    return false;
+  }
+
+  // N closed trades in a row (by exit time) that each stayed within plan
+  static evaluateRiskAdherence(snapshot, requiredTrades) {
+    const trades = snapshot.closedTrades
+      .filter(t => t.exit_epoch !== null && t.exit_epoch !== undefined)
+      .sort((a, b) => a.exit_epoch - b.exit_epoch);
+
+    let run = 0;
+    let longest = 0;
+    for (const t of trades) {
+      run = AchievementService.isWithinRisk(t) ? run + 1 : 0;
+      if (run > longest) longest = run;
+    }
+
+    if (longest >= requiredTrades) {
+      return {
+        earned: true,
+        metadata: {
+          trades_in_a_row: longest,
+          required_trades: requiredTrades
         }
       };
     }
@@ -600,27 +704,28 @@ class AchievementService {
     return false;
   }
 
-  // Cooling period usage after losses (last 30 days)
+  // Cooling period: of the losses closed in the last 30 days, the share
+  // followed by at least 30 minutes before the next trade of any kind (no
+  // later trade counts as cooled). Losses without a recorded exit time skip.
   static evaluateCoolingPeriodUsage(snapshot, percentage) {
-    // Old SQL: losing closed trades in the last 30 days, LEAD(entry_time)
-    // ordered by exit_time (i.e. the NEXT losing trade's entry time)
-    const lossTrades = snapshot.trades
-      .filter(t => t.is_closed && t.pnl !== null && t.pnl < 0
-        && t.exit_age_seconds !== null && t.exit_age_seconds <= 30 * DAY_SECONDS)
-      .sort((a, b) => a.exit_epoch - b.exit_epoch);
+    const losses = snapshot.trades.filter(
+      t => t.is_closed && t.pnl !== null && t.pnl < 0 && t.exit_has_time
+        && t.exit_age_seconds !== null && t.exit_age_seconds <= 30 * DAY_SECONDS
+    );
+    const entries = snapshot.trades
+      .filter(t => t.entry_has_time && t.entry_epoch !== null)
+      .map(t => t.entry_epoch)
+      .sort((a, b) => a - b);
 
-    const totalLosses = lossTrades.length;
     let withCooling = 0;
-    for (let i = 0; i < lossTrades.length - 1; i++) {
-      const next = lossTrades[i + 1];
-      if (next.entry_epoch !== null && lossTrades[i].exit_epoch !== null) {
-        const gapMinutes = (next.entry_epoch - lossTrades[i].exit_epoch) / 60;
-        if (gapMinutes >= 30) {
-          withCooling++;
-        }
+    for (const loss of losses) {
+      const nextEntry = entries.find(e => e > loss.exit_epoch);
+      if (nextEntry === undefined || (nextEntry - loss.exit_epoch) / 60 >= 30) {
+        withCooling++;
       }
     }
 
+    const totalLosses = losses.length;
     const usagePercentage = totalLosses > 0 ? (withCooling / totalLosses) * 100 : 0;
 
     if (usagePercentage >= percentage && totalLosses >= 10) {
@@ -695,17 +800,26 @@ class AchievementService {
     return false;
   }
 
+  // N completed reviews inside any rolling window of `days` days
   static evaluateReviewHabit(snapshot, requiredReviews, days) {
     const windowSeconds = days * DAY_SECONDS;
-    const completedReviews = snapshot.reviews.filter(
-      r => r.reviewed_age_seconds !== null && r.reviewed_age_seconds <= windowSeconds
-    ).length;
+    const ages = snapshot.reviews
+      .map(r => r.reviewed_age_seconds)
+      .filter(age => age !== null && age !== undefined)
+      .sort((a, b) => a - b);
 
-    if (completedReviews >= requiredReviews) {
+    let best = 0;
+    let start = 0;
+    for (let end = 0; end < ages.length; end++) {
+      while (ages[end] - ages[start] > windowSeconds) start++;
+      best = Math.max(best, end - start + 1);
+    }
+
+    if (best >= requiredReviews) {
       return {
         earned: true,
         metadata: {
-          completed_reviews: completedReviews,
+          completed_reviews: best,
           required_reviews: requiredReviews,
           window_days: days
         }
@@ -752,24 +866,34 @@ class AchievementService {
     return false;
   }
 
-  // Weekly P&L (current DB week, i.e. date_trunc('week', CURRENT_TIMESTAMP))
+  // Any week (Monday start, by exit date) net positive with at least 5 closed trades
   static evaluateWeeklyPnL(snapshot, mustBePositive) {
-    const weekTrades = snapshot.closedTrades.filter(t => t.exit_in_current_week);
-    const tradeCount = weekTrades.length;
-    const pnlValues = weekTrades.filter(t => t.pnl !== null);
-    // SUM over zero non-null values was NULL -> parseFloat(NULL) > 0 false
-    const weeklyPnl = pnlValues.length > 0
-      ? pnlValues.reduce((sum, t) => sum + t.pnl, 0)
-      : null;
+    const byWeek = new Map();
+    for (const t of snapshot.closedTrades) {
+      if (!t.exit_date) continue;
+      const d = new Date(`${t.exit_date}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+      const key = d.toISOString().slice(0, 10);
+      const week = byWeek.get(key) || { pnl: 0, hasPnl: false, count: 0 };
+      week.count++;
+      if (t.pnl !== null) {
+        week.pnl += t.pnl;
+        week.hasPnl = true;
+      }
+      byWeek.set(key, week);
+    }
 
-    if (mustBePositive && weeklyPnl !== null && weeklyPnl > 0 && tradeCount >= 5) {
-      return {
-        earned: true,
-        metadata: {
-          weekly_pnl: weeklyPnl,
-          trade_count: tradeCount
-        }
-      };
+    for (const [weekStart, week] of byWeek.entries()) {
+      if (mustBePositive && week.hasPnl && week.pnl > 0 && week.count >= 5) {
+        return {
+          earned: true,
+          metadata: {
+            weekly_pnl: week.pnl,
+            trade_count: week.count,
+            week_start: weekStart
+          }
+        };
+      }
     }
 
     return false;
@@ -872,12 +996,10 @@ class AchievementService {
     }
   }
 
-  // Risk/reward: last N closed trades with sufficient percentage move
+  // N closed trades that each returned at least targetRatio R
   static evaluateRiskReward(snapshot, targetRatio, requiredTrades) {
-    const recent = snapshot.closedTrades.slice(0, requiredTrades);
-    const goodRRTrades = recent.filter(
-      t => t.pnl !== null && t.pnl > 0 && t.exit_price !== null
-        && t.price_move_fraction !== null && t.price_move_fraction >= targetRatio * 0.01
+    const goodRRTrades = snapshot.closedTrades.filter(
+      t => t.r_value !== null && t.r_value >= targetRatio
     ).length;
 
     if (goodRRTrades >= requiredTrades) {
@@ -1101,6 +1223,7 @@ class AchievementService {
         END as earned,
         ua.earned_at,
         ua.progress,
+        COALESCE(ua.points_awarded, a.points) AS points,
         COALESCE(stats.earned_count, 0) AS earned_by_count,
         CASE
           WHEN totals.engaged_users > 0 THEN
@@ -1235,17 +1358,15 @@ class AchievementService {
     return false;
   }
 
-  // First stop loss - closed losing trades whose notes mention "stop"
+  // Any trade with a stop loss set
   static evaluateFirstStopLoss(snapshot) {
-    const managedLossCount = snapshot.closedTrades.filter(
-      t => t.pnl !== null && t.pnl < 0 && t.notes_mention_stop
-    ).length;
+    const withStop = snapshot.trades.filter(t => t.has_stop_loss).length;
 
-    if (managedLossCount >= 1) {
+    if (withStop >= 1) {
       return {
         earned: true,
         metadata: {
-          first_stop_loss_date: new Date().toISOString()
+          trades_with_stop_loss: withStop
         }
       };
     }
@@ -1253,17 +1374,15 @@ class AchievementService {
     return false;
   }
 
-  // First take profit - closed winners whose notes mention profit/target
+  // Any trade with a take profit set
   static evaluateFirstTakeProfit(snapshot) {
-    const takeProfitCount = snapshot.closedTrades.filter(
-      t => t.pnl !== null && t.pnl > 0 && t.notes_mention_profit
-    ).length;
+    const withTarget = snapshot.trades.filter(t => t.has_take_profit).length;
 
-    if (takeProfitCount >= 1) {
+    if (withTarget >= 1) {
       return {
         earned: true,
         metadata: {
-          first_take_profit_date: new Date().toISOString()
+          trades_with_take_profit: withTarget
         }
       };
     }
@@ -1288,9 +1407,10 @@ class AchievementService {
     return false;
   }
 
+  // Entry before the given hour, local time; trades with no recorded time skip
   static evaluateEarlyTrade(snapshot, beforeHour) {
     const earlyCount = snapshot.trades.filter(
-      t => t.entry_hour !== null && t.entry_hour < beforeHour
+      t => t.entry_has_time && t.entry_hour !== null && t.entry_hour < beforeHour
     ).length;
 
     if (earlyCount >= 1) {
@@ -1306,9 +1426,10 @@ class AchievementService {
     return false;
   }
 
+  // Entry at or after the given hour, local time; trades with no recorded time skip
   static evaluateLateTrade(snapshot, afterHour) {
     const lateCount = snapshot.trades.filter(
-      t => t.entry_hour !== null && t.entry_hour >= afterHour
+      t => t.entry_has_time && t.entry_hour !== null && t.entry_hour >= afterHour
     ).length;
 
     if (lateCount >= 1) {
@@ -1324,30 +1445,42 @@ class AchievementService {
     return false;
   }
 
-  // Trading streak - replicates the legacy SQL literally: ROW_NUMBER over
-  // distinct trade dates DESC, grouped by trade_date - (rn - 1) days.
-  // NOTE (pre-existing bug, preserved bit-for-bit): with DESC ordering that
-  // group key never merges consecutive days, so max_streak is always 1 for
-  // any user with at least one trade and the achievement cannot fire for
-  // criteria.days > 1. The correct islands logic lives in
-  // updateTradingStreak (longest_streak_days); fix both together if this
-  // criterion is ever meant to work.
-  static evaluateTradingStreak(snapshot, requiredDays) {
-    const uniqueDatesDesc = [...new Set(
-      snapshot.trades.map(t => t.entry_date).filter(Boolean)
-    )].sort().reverse();
+  // Longest run of consecutive trading days. Markets are closed on weekends,
+  // so a gap made up only of Saturdays/Sundays (Fri -> Mon) does not break a
+  // streak. Market holidays are not skipped.
+  static longestTradingStreak(dateStrs) {
+    const days = [...new Set(dateStrs.filter(Boolean))]
+      .map(d => Date.parse(`${d}T00:00:00Z`) / (DAY_SECONDS * 1000))
+      .filter(d => Number.isFinite(d))
+      .sort((x, y) => x - y);
 
-    const groups = new Map();
-    uniqueDatesDesc.forEach((dateStr, idx) => {
-      // group_date = trade_date - (rn - 1) days, rn over dates DESC
-      const groupKey = Date.parse(`${dateStr}T00:00:00Z`) - idx * DAY_SECONDS * 1000;
-      groups.set(groupKey, (groups.get(groupKey) || 0) + 1);
-    });
-
-    let maxStreak = 0;
-    for (const length of groups.values()) {
-      if (length > maxStreak) maxStreak = length;
+    let longest = 0;
+    let current = 0;
+    for (let i = 0; i < days.length; i++) {
+      if (i > 0 && AchievementService.onlyWeekendBetween(days[i - 1], days[i])) {
+        current += 1;
+      } else {
+        current = 1;
+      }
+      if (current > longest) longest = current;
     }
+    return longest;
+  }
+
+  // True when every calendar day strictly between two day numbers (days since
+  // epoch, UTC) is a weekend day. Adjacent days trivially qualify.
+  static onlyWeekendBetween(prevDay, nextDay) {
+    for (let d = prevDay + 1; d < nextDay; d++) {
+      const weekday = new Date(d * DAY_SECONDS * 1000).getUTCDay();
+      if (weekday !== 0 && weekday !== 6) return false;
+    }
+    return true;
+  }
+
+  static evaluateTradingStreak(snapshot, requiredDays) {
+    const maxStreak = AchievementService.longestTradingStreak(
+      snapshot.trades.map(t => t.entry_date)
+    );
 
     if (maxStreak >= requiredDays) {
       return {
@@ -1362,9 +1495,10 @@ class AchievementService {
     return false;
   }
 
+  // Distinct symbols, counting option contracts by their underlying
   static evaluateDifferentSymbols(snapshot, requiredCount) {
     const symbolCount = new Set(
-      snapshot.trades.map(t => t.symbol).filter(s => s !== null && s !== undefined)
+      snapshot.trades.map(t => t.symbol_key).filter(Boolean)
     ).size;
 
     if (symbolCount >= requiredCount) {
@@ -1396,11 +1530,13 @@ class AchievementService {
     return false;
   }
 
-  // Quick flip: profitable closed trade within X minutes
+  // Quick flip: profitable closed trade held more than 0 and at most X minutes.
+  // Both times must be recorded, or a date-only trade reads as a 0 minute hold.
   static evaluateQuickFlip(snapshot, maxMinutes) {
     const quickFlips = snapshot.closedTrades.filter(
       t => t.pnl !== null && t.pnl > 0
-        && t.duration_minutes !== null && t.duration_minutes <= maxMinutes
+        && t.entry_has_time && t.exit_has_time
+        && t.duration_minutes !== null && t.duration_minutes > 0 && t.duration_minutes <= maxMinutes
     ).length;
 
     if (quickFlips >= 1) {
@@ -1415,61 +1551,44 @@ class AchievementService {
     return false;
   }
 
-  // Green day: positive P&L on today's closed trades
+  // Green day: any calendar day (by exit date) with positive net closed P&L
   static evaluateGreenDay(snapshot) {
-    const today = snapshot.todayStr;
-    const todayClosed = snapshot.closedTrades.filter(
-      t => t.entry_date === today && t.pnl !== null
-    );
-    const dailyPnl = todayClosed.reduce((sum, t) => sum + t.pnl, 0);
+    const byDay = new Map();
+    for (const t of snapshot.closedTrades) {
+      if (!t.exit_date || t.pnl === null) continue;
+      byDay.set(t.exit_date, (byDay.get(t.exit_date) || 0) + t.pnl);
+    }
 
-    if (dailyPnl > 0) {
-      return {
-        earned: true,
-        metadata: {
-          daily_pnl: dailyPnl,
-          trade_date: today
-        }
-      };
+    for (const [date, dailyPnl] of byDay.entries()) {
+      if (dailyPnl > 0) {
+        return {
+          earned: true,
+          metadata: {
+            daily_pnl: dailyPnl,
+            trade_date: date
+          }
+        };
+      }
     }
 
     return false;
   }
 
-  // Profitable streak: consecutive profitable days counted back from the
-  // most recent trading day (last 30 trading days considered). Replicates
-  // the old SQL exactly, including its quirk that a window with no
-  // unprofitable day yields a streak of 0.
+  // Longest run of consecutive profitable trading days (days with closed
+  // trades, by exit date; days without closed trades don't break the run)
   static evaluateProfitableStreak(snapshot, requiredDays) {
     const byDay = new Map();
     for (const t of snapshot.closedTrades) {
-      if (!t.entry_date) continue;
-      const day = byDay.get(t.entry_date) || { sum: 0, hasPnl: false };
-      if (t.pnl !== null) {
-        day.sum += t.pnl;
-        day.hasPnl = true;
-      }
-      byDay.set(t.entry_date, day);
+      if (!t.exit_date || t.pnl === null) continue;
+      byDay.set(t.exit_date, (byDay.get(t.exit_date) || 0) + t.pnl);
     }
 
-    const days = [...byDay.entries()]
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // date DESC
-      .slice(0, 30)
-      .map(([date, day]) => ({
-        date,
-        isProfitable: day.hasPnl && day.sum > 0 // NULL daily pnl is not profitable
-      }));
-
-    // rn of first unprofitable day (1-based); none -> 0 (old COALESCE quirk)
-    let firstUnprofitableRn = 0;
-    for (let i = 0; i < days.length; i++) {
-      if (!days[i].isProfitable) {
-        firstUnprofitableRn = i + 1;
-        break;
-      }
+    let maxStreak = 0;
+    let current = 0;
+    for (const date of [...byDay.keys()].sort()) {
+      current = byDay.get(date) > 0 ? current + 1 : 0;
+      if (current > maxStreak) maxStreak = current;
     }
-
-    const maxStreak = Math.max(firstUnprofitableRn - 1, 0);
 
     if (maxStreak >= requiredDays) {
       return {
@@ -1484,12 +1603,12 @@ class AchievementService {
     return false;
   }
 
-  // Early market trade: within X minutes of the 9:30 open
+  // Entry within X minutes of the 9:30 Eastern open
   static evaluateEarlyMarketTrade(snapshot, minutesFromOpen) {
+    const open = 9 * 60 + 30;
     const earlyTrades = snapshot.trades.filter(
-      t => t.entry_hour === 9
-        && t.entry_minute !== null
-        && t.entry_minute >= 30 && t.entry_minute <= 30 + minutesFromOpen
+      t => t.entry_has_time && t.entry_et_minutes !== null
+        && t.entry_et_minutes >= open && t.entry_et_minutes <= open + minutesFromOpen
     ).length;
 
     if (earlyTrades >= 1) {
@@ -1504,10 +1623,10 @@ class AchievementService {
     return false;
   }
 
+  // A closed trade that returned at least minRatio R (stored net R-multiple)
   static evaluateRiskRewardRatio(snapshot, minRatio) {
     const goodRRTrades = snapshot.closedTrades.filter(
-      t => t.pnl !== null && t.pnl > 0 && t.exit_price !== null
-        && t.price_move_fraction !== null && t.price_move_fraction >= minRatio * 0.01
+      t => t.r_value !== null && t.r_value >= minRatio
     ).length;
 
     if (goodRRTrades >= 1) {
@@ -1522,9 +1641,9 @@ class AchievementService {
     return false;
   }
 
-  // Trend following profit (notes mention trend/MA/crossover)
+  // Profitable closed trade whose notes describe a trend setup
   static evaluateTrendFollowingProfit(snapshot) {
-    const trendTrades = snapshot.trades.filter(
+    const trendTrades = snapshot.closedTrades.filter(
       t => t.pnl !== null && t.pnl > 0 && t.notes_mention_trend
     ).length;
 
@@ -1540,10 +1659,11 @@ class AchievementService {
     return false;
   }
 
-  // News-based profit (notes mention news/earnings/catalyst/announcement)
+  // Profitable closed trade on a symbol with news that day (news enrichment)
+  // or whose notes name the catalyst
   static evaluateNewsBasedProfit(snapshot) {
-    const newsTrades = snapshot.trades.filter(
-      t => t.pnl !== null && t.pnl > 0 && t.notes_mention_news
+    const newsTrades = snapshot.closedTrades.filter(
+      t => t.pnl !== null && t.pnl > 0 && (t.has_news || t.notes_mention_news)
     ).length;
 
     if (newsTrades >= 1) {
@@ -1558,11 +1678,13 @@ class AchievementService {
     return false;
   }
 
-  // Daily volume: any single day whose total |quantity| meets the target
+  // Shares traded in a single day. Stocks only: option and futures contracts
+  // and crypto units aren't shares.
   static evaluateDailyVolume(snapshot, targetShares) {
     const byDay = new Map();
     for (const t of snapshot.trades) {
       if (!t.entry_date || t.quantity === null) continue;
+      if (t.instrument_type && t.instrument_type !== 'stock') continue;
       byDay.set(t.entry_date, (byDay.get(t.entry_date) || 0) + Math.abs(t.quantity));
     }
 
@@ -1604,10 +1726,24 @@ class AchievementService {
     return false;
   }
 
+  // Dollars actually put into a position, for the High Roller tiers.
+  // Options count the premium paid (contracts x multiplier) on bought
+  // contracts only: never underlying notional, and premium received on a
+  // short option isn't a large position. Futures are excluded because
+  // price x contracts is index points, not dollars.
+  static capitalDeployed(t) {
+    if (t.entry_price === null || t.quantity === null) return 0;
+    if (t.instrument_type === 'future') return 0;
+    if (t.instrument_type === 'option') {
+      if (t.side !== 'long') return 0;
+      return Math.abs(t.entry_price * t.quantity * (t.contract_size || 100));
+    }
+    return Math.abs(t.entry_price * t.quantity);
+  }
+
   static evaluatePositionSize(snapshot, minSize) {
     const largePositions = snapshot.trades.filter(
-      t => t.entry_price !== null && t.quantity !== null
-        && Math.abs(t.entry_price * t.quantity) >= minSize
+      t => AchievementService.capitalDeployed(t) >= minSize
     ).length;
 
     if (largePositions >= 1) {
@@ -1622,55 +1758,108 @@ class AchievementService {
     return false;
   }
 
-  // Daily sector diversity (simplified - first two symbol characters)
+  // Any single day with trades in N different sectors (symbol_categories)
   static evaluateDailySectorDiversity(snapshot, minSectors) {
-    const today = snapshot.todayStr;
-    const sectorCount = new Set(
-      snapshot.trades
-        .filter(t => t.entry_date === today && t.symbol !== null && t.symbol !== undefined)
-        .map(t => String(t.symbol).substring(0, 2))
-    ).size;
+    const byDay = new Map();
+    for (const t of snapshot.trades) {
+      if (!t.entry_date || !t.sector) continue;
+      if (!byDay.has(t.entry_date)) byDay.set(t.entry_date, new Set());
+      byDay.get(t.entry_date).add(t.sector);
+    }
 
-    if (sectorCount >= minSectors) {
-      return {
-        earned: true,
-        metadata: {
-          sectors_traded: sectorCount,
-          min_sectors: minSectors,
-          trade_date: today
-        }
-      };
+    for (const [date, sectors] of byDay.entries()) {
+      if (sectors.size >= minSectors) {
+        return {
+          earned: true,
+          metadata: {
+            sectors_traded: sectors.size,
+            min_sectors: minSectors,
+            trade_date: date
+          }
+        };
+      }
     }
 
     return false;
   }
 
-  // Weekly portfolio gain against the simplified $10k starting balance
-  static evaluateWeeklyPortfolioGain(snapshot, minPercentage) {
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of current week
-
-    const weekTrades = snapshot.closedTrades.filter(
-      t => t.pnl !== null && t.entry_time !== null && new Date(t.entry_time) >= weekStart
+  // Weekly gain on real account balances (Account & Cashflow). For each
+  // Monday-start week, equity at the week's start is each account's starting
+  // balance plus deposits minus withdrawals plus realized P&L since its
+  // balance date; the week's realized P&L must be at least minPercentage of
+  // it. Accounts without a starting balance can't be measured and are skipped.
+  static async checkWeeklyPortfolioGain(userId, snapshot, minPercentage) {
+    const accountsResult = await db.query(`
+      SELECT id, COALESCE(account_identifier, '') AS account_identifier,
+             initial_balance::float8 AS initial_balance,
+             initial_balance_date::text AS initial_balance_date
+      FROM user_accounts
+      WHERE user_id = $1
+        AND initial_balance > 0
+        AND initial_balance_date IS NOT NULL
+        AND COALESCE(is_archived, false) = false
+    `, [userId]);
+    return AchievementService.evaluateWeeklyPortfolioGain(
+      snapshot,
+      minPercentage,
+      accountsResult.rows,
+      accountsResult.rows.length > 0
+        ? (await db.query(`
+            SELECT account_id, transaction_type, amount::float8 AS amount, transaction_date::text AS transaction_date
+            FROM account_transactions
+            WHERE user_id = $1 AND account_id = ANY($2::uuid[])
+          `, [userId, accountsResult.rows.map(a => a.id)])).rows
+        : []
     );
+  }
 
-    // Old SQL only returned a row when SUM(pnl) was non-NULL
-    if (weekTrades.length === 0) {
-      return false;
-    }
+  static evaluateWeeklyPortfolioGain(snapshot, minPercentage, accounts = [], transactions = []) {
+    if (accounts.length === 0) return false;
 
-    const weeklyPnl = weekTrades.reduce((sum, t) => sum + t.pnl, 0);
-    const percentageGain = (weeklyPnl / 10000) * 100;
+    const weekStartOf = (dateStr) => {
+      const d = new Date(`${dateStr}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+      return d.toISOString().slice(0, 10);
+    };
 
-    if (percentageGain >= minPercentage) {
-      return {
-        earned: true,
-        metadata: {
-          weekly_gain_percentage: percentageGain,
-          min_percentage: minPercentage,
-          weekly_pnl: weeklyPnl
+    const byIdentifier = new Map(accounts.map(a => [a.account_identifier, a]));
+    const trades = snapshot.closedTrades.filter(
+      t => t.exit_date && t.pnl !== null && byIdentifier.has(t.account_identifier || '')
+    );
+    const weeks = [...new Set(trades.map(t => weekStartOf(t.exit_date)))].sort();
+
+    for (const weekStart of weeks) {
+      let equity = 0;
+      let weekPnl = 0;
+      for (const account of accounts) {
+        if (account.initial_balance_date > weekStart) continue;
+        equity += account.initial_balance;
+        for (const tx of transactions) {
+          if (tx.account_id !== account.id) continue;
+          if (tx.transaction_date < account.initial_balance_date || tx.transaction_date >= weekStart) continue;
+          equity += tx.transaction_type === 'withdrawal' ? -tx.amount : tx.amount;
         }
-      };
+        for (const t of trades) {
+          if ((t.account_identifier || '') !== account.account_identifier) continue;
+          if (t.exit_date < account.initial_balance_date) continue;
+          if (t.exit_date < weekStart) equity += t.pnl;
+          else if (weekStartOf(t.exit_date) === weekStart) weekPnl += t.pnl;
+        }
+      }
+
+      if (equity <= 0) continue;
+      const percentageGain = (weekPnl / equity) * 100;
+      if (percentageGain >= minPercentage) {
+        return {
+          earned: true,
+          metadata: {
+            weekly_gain_percentage: percentageGain,
+            min_percentage: minPercentage,
+            weekly_pnl: weekPnl,
+            week_start: weekStart
+          }
+        };
+      }
     }
 
     return false;
@@ -1678,10 +1867,11 @@ class AchievementService {
 
   // Level progression system
   // Level 1: 0-99 XP (needs 100 to reach level 2)
-  // Level 2: 100-249 XP (needs 150 more to reach level 3)
-  // Level 3: 250-449 XP (needs 200 more to reach level 4)
-  // Level 4: 450-699 XP (needs 250 more to reach level 5)
-  // Each level requires 50 more XP than the previous level increment
+  // Level 2: 100-199 XP (needs 100 more to reach level 3)
+  // Level 3: 200-349 XP (needs 150 more to reach level 4)
+  // Level 4: 350-549 XP (needs 200 more to reach level 5)
+  // From level 3 on, each step needs 50 more XP than the previous one
+  // (level L starts at 25L^2 - 25L + 50 XP for L >= 2; see migration 265)
   static calculateLevelFromXP(xp) {
     if (xp < 100) {
       return {
@@ -1699,7 +1889,7 @@ class AchievementService {
       level++;
       currentLevelMinXP = nextLevelMinXP;
 
-      // Calculate XP needed for next level: starts at 100, then 150, 200, 250, etc.
+      // XP from this level to the next: 100 (level 2 to 3), then 150, 200, 250, etc.
       const xpForNextLevel = 100 + (level - 2) * 50;
       nextLevelMinXP = currentLevelMinXP + xpForNextLevel;
     }

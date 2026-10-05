@@ -446,7 +446,10 @@ const heroRarity = computed(() => {
   return rarityFor(sortedAchievements.value[0]?.points || 0)
 })
 
-const heroHeaderLabel = computed(() => RARITY_LABELS[heroRarity.value] || 'Achievement unlocked')
+const heroHeaderLabel = computed(() => {
+  if (sortedAchievements.value[0]?.kind === 'challenge') return 'Challenge complete'
+  return RARITY_LABELS[heroRarity.value] || 'Achievement unlocked'
+})
 
 const totalRemaining = computed(
   () => remainingCount.value + pendingCelebrationNotifications.value.length
