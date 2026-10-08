@@ -60,6 +60,7 @@ class NewsNotificationService {
         type: 'news_alert',
         data: { ...notification.data, notification_id: notification.id }
       });
+      await NotificationService.sendMobileNotification(notification.user_id, 'news_alert', notification.data, notification.id);
     }
     return result.rows.length;
   }

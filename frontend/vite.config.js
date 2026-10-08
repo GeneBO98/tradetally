@@ -56,6 +56,9 @@ function associatedDomainsDevelopment() {
 
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_')
+  // Local APIs go through Vite so the browser can read the CSRF cookie
+  // even when the frontend uses 127.0.0.1 and the backend uses localhost.
+  const local_api = command === 'serve' && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/.test(env.VITE_API_URL || '')
   const exposeDevServer = env.VITE_DEV_SERVER_EXPOSE === 'true'
   const devHost = exposeDevServer ? true : (env.VITE_DEV_HOST || '127.0.0.1')
   const configuredAllowedHosts = env.VITE_DEV_ALLOWED_HOSTS
@@ -72,7 +75,8 @@ export default defineConfig(({ command, mode }) => {
 
   return {
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version)
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    ...(local_api ? { 'import.meta.env.VITE_API_URL': JSON.stringify('/api') } : {})
   },
   build: {
     rollupOptions: {

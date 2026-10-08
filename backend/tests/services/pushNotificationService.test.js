@@ -41,6 +41,7 @@ jest.spyOn(fs, 'existsSync').mockImplementation(filePath => (
 
 const db = require('../../src/config/database');
 const pushNotificationService = require('../../src/services/pushNotificationService');
+const NotificationPreferenceService = require('../../src/services/notificationPreferenceService');
 
 describe('pushNotificationService', () => {
   const developmentProvider = () => mockProviders.find(entry => entry.config.production === false).provider;
@@ -48,6 +49,7 @@ describe('pushNotificationService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    NotificationPreferenceService.isNotificationEnabled.mockResolvedValue(true);
   });
 
   afterAll(() => {
@@ -174,5 +176,34 @@ describe('pushNotificationService', () => {
     }));
     expect(db.query.mock.calls[0][0]).not.toContain('np.push_notifications');
     expect(result.success).toBe(true);
+  });
+
+  test.each([
+    ['achievement_earned', { achievement: { id: 'award-1', name: 'Consistent Trader', description: 'Keep it up' } }, 'Achievement Unlocked', 'Consistent Trader: Keep it up'],
+    ['level_up', { newLevel: 5 }, 'Level Up', 'You reached level 5.'],
+    ['news_alert', { symbol: 'AAPL', headline: 'Company update', url: 'https://example.com/story' }, 'News: AAPL', 'Company update'],
+    ['earnings_announcement', { symbol: 'AAPL', company: 'Apple', date: '2026-10-30' }, 'Earnings: AAPL', 'Apple earnings announcement on 2026-10-30.']
+  ])('sends visible %s alerts with routing metadata', async (type, data, title, body) => {
+    db.query.mockResolvedValueOnce({ rows: [{ device_token: 'production-token', environment: 'production' }] });
+    productionProvider().send.mockResolvedValue({ sent: [{}], failed: [] });
+    const result = await pushNotificationService.sendInboxNotification('user-1', type, data, 'notice-1');
+    const [notification] = productionProvider().send.mock.calls[0];
+    expect(notification.alert).toEqual({ title, body });
+    expect(notification).toEqual(expect.objectContaining({ pushType: 'alert', priority: 10, sound: 'default' }));
+    expect(notification.payload).toEqual(expect.objectContaining({
+      type, notification_id: 'notice-1', achievement_id: data.achievement?.id, url: data.url
+    }));
+    expect(db.query.mock.calls[0][0]).toContain('np.push_notifications');
+    expect(result.success).toBe(true);
+  });
+
+  test('respects news preferences and leaves price alerts on their dedicated path', async () => {
+    NotificationPreferenceService.isNotificationEnabled.mockResolvedValue(false);
+    expect(await pushNotificationService.sendInboxNotification('user-1', 'news_alert', { headline: 'News' }, 'notice'))
+      .toEqual({ success: false, reason: 'preference_disabled' });
+    expect(await pushNotificationService.sendInboxNotification('user-1', 'price_alert', {}, 'notice'))
+      .toEqual({ success: false, reason: 'unsupported_type' });
+    expect(db.query).not.toHaveBeenCalled();
+    expect(productionProvider().send).not.toHaveBeenCalled();
   });
 });

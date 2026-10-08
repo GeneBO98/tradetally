@@ -1,5 +1,5 @@
 jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
-jest.mock('../../src/services/notificationService', () => ({ sendSSENotification: jest.fn() }));
+jest.mock('../../src/services/notificationService', () => ({ sendSSENotification: jest.fn(), sendMobileNotification: jest.fn() }));
 
 const db = require('../../src/config/database');
 const NotificationService = require('../../src/services/notificationService');
@@ -41,10 +41,13 @@ describe('news article notifications', () => {
     expect(NotificationService.sendSSENotification).toHaveBeenCalledWith('user', {
       type: 'news_alert', data: { ...data, notification_id: 'notice' }
     });
+    expect(NotificationService.sendMobileNotification).toHaveBeenCalledTimes(1);
+    expect(NotificationService.sendMobileNotification).toHaveBeenCalledWith('user', 'news_alert', data, 'notice');
   });
 
   test('does not broadcast already delivered or ineligible articles', async () => {
     expect(await NewsNotificationService.publishForSymbol('AAPL', [article()])).toBe(0);
     expect(NotificationService.sendSSENotification).not.toHaveBeenCalled();
+    expect(NotificationService.sendMobileNotification).not.toHaveBeenCalled();
   });
 });

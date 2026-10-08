@@ -108,6 +108,8 @@ class PushNotificationService {
             notification.expiry = Math.floor(Date.now() / 1000) + 60 * 60;
             notification.collapseId = 'widget-refresh';
           } else {
+            notification.pushType = 'alert';
+            notification.priority = 10;
             notification.alert = {
               title: notificationData.title,
               body: notificationData.body
@@ -123,6 +125,10 @@ class PushNotificationService {
             current_price: notificationData.current_price ?? notificationData.currentPrice,
             target_price: notificationData.target_price ?? notificationData.targetPrice,
             reason: notificationData.reason,
+            notification_id: notificationData.notification_id,
+            achievement_id: notificationData.achievement_id,
+            trade_id: notificationData.trade_id,
+            url: notificationData.url,
             timestamp: new Date().toISOString()
           };
           
@@ -194,6 +200,56 @@ class PushNotificationService {
     } catch (error) {
       logger.logError('Error marking device token inactive:', error);
     }
+  }
+
+  // Price alerts keep their existing per-alert push opt-in and delivery log.
+  // Only newly persisted inbox events call this path; fetching history does not.
+  async sendInboxNotification(user_id, type, data, notification_id) {
+    const titles = {
+      achievement_earned: 'Achievement Unlocked',
+      level_up: 'Level Up',
+      challenge_joined: 'Challenge Joined',
+      challenge_completed: 'Challenge Completed',
+      leaderboard_ranking: 'Leaderboard Update',
+      news_alert: data.symbol ? `News: ${data.symbol}` : 'News Alert',
+      earnings_announcement: data.symbol ? `Earnings: ${data.symbol}` : 'Earnings Announcement',
+      behavioral_alert: 'Trading Pattern Alert',
+      trade_reminder: 'Trade Reminder',
+      portfolio_alert: 'Portfolio Alert',
+      broker_reauth_required: 'Broker Reconnection Required',
+      broker_reauth_expiring: 'Broker Reconnection Reminder',
+      web_mention_alert: 'Web Mention Alert'
+    };
+    if (!titles[type]) return { success: false, reason: 'unsupported_type' };
+    if (!this.isEnabled) return { success: false, reason: 'disabled' };
+
+    const preferences = {
+      news_alert: 'notify_news_open_positions',
+      earnings_announcement: 'notify_earnings_announcements',
+      behavioral_alert: 'notify_trade_reminders',
+      trade_reminder: 'notify_trade_reminders'
+    };
+    if (preferences[type] && !await NotificationPreferenceService.isNotificationEnabled(user_id, preferences[type])) {
+      return { success: false, reason: 'preference_disabled' };
+    }
+
+    let body = data.message || data.headline || data.description;
+    if (type === 'achievement_earned') body = `${data.achievement?.name || 'New achievement'}${data.achievement?.description ? `: ${data.achievement.description}` : ''}`;
+    else if (type === 'level_up') body = `You reached level ${data.new_level ?? data.newLevel}.`;
+    else if (type === 'challenge_joined' || type === 'challenge_completed') body = data.challenge?.name;
+    else if (type === 'leaderboard_ranking') body = `You are now ranked #${data.rank} on ${data.leaderboard}.`;
+    else if (type === 'earnings_announcement') body = body || `${data.company || data.symbol} earnings announcement${data.date ? ` on ${data.date}` : ''}.`;
+    else if (type.startsWith('broker_reauth_')) body = body || `Reconnect ${data.broker_display_name || data.broker || 'your broker'} to keep trades syncing.`;
+
+    return this.sendPushNotification(user_id, {
+      title: titles[type],
+      body: String(body || titles[type]).slice(0, 500),
+      type, symbol: data.symbol,
+      notification_id,
+      achievement_id: data.achievement?.id,
+      trade_id: data.trade_id ?? data.tradeId,
+      url: data.url
+    });
   }
 
   async sendPriceAlert(userId, alertData) {

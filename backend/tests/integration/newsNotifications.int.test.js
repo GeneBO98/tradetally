@@ -1,4 +1,4 @@
-jest.mock('../../src/services/notificationService', () => ({ sendSSENotification: jest.fn() }));
+jest.mock('../../src/services/notificationService', () => ({ sendSSENotification: jest.fn(), sendMobileNotification: jest.fn() }));
 
 const { randomUUID } = require('crypto');
 const db = require('../../src/config/database');
