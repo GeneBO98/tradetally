@@ -1212,6 +1212,8 @@ class Trade {
         t.strike_price,
         t.trade_date,
         t.entry_time,
+        t.stop_loss,
+        t.take_profit,
         -- Positions can be held in a currency other than the account's. Note
         -- original_currency names the SOURCE currency, not the currency the
         -- monetary columns are stored in: an import that converts leaves the

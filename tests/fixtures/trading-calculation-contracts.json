@@ -1360,5 +1360,94 @@
       },
       "expected": 0
     }
+  ],
+  "position_plan_bar_cases": [
+    {
+      "id": "long_between_stop_and_target",
+      "position": {
+        "side": "long",
+        "avgPrice": 88.76,
+        "currentPrice": 139.75,
+        "totalQuantity": 100,
+        "stop_loss": 120,
+        "take_profit": 165
+      },
+      "expected": {
+        "current_pct": 43.888888888888886,
+        "at_stop_amount": -1975,
+        "at_target_amount": 2525
+      }
+    },
+    {
+      "id": "short_runs_stop_above_target_below",
+      "position": {
+        "side": "short",
+        "avgPrice": 412,
+        "currentPrice": 389.5,
+        "totalQuantity": 30,
+        "stop_loss": 430,
+        "take_profit": 360
+      },
+      "expected": {
+        "current_pct": 57.857142857142854,
+        "at_stop_amount": -1215,
+        "at_target_amount": 885
+      }
+    },
+    {
+      "id": "future_uses_point_value",
+      "position": {
+        "side": "long",
+        "instrumentType": "future",
+        "pointValue": 50,
+        "avgPrice": 5000,
+        "currentPrice": 5010,
+        "totalQuantity": 2,
+        "stop_loss": 4990,
+        "take_profit": 5040
+      },
+      "expected": {
+        "current_pct": 40,
+        "at_stop_amount": -2000,
+        "at_target_amount": 3000
+      }
+    },
+    {
+      "id": "stop_on_wrong_side_is_unplottable",
+      "position": {
+        "side": "long",
+        "avgPrice": 10,
+        "currentPrice": 11,
+        "totalQuantity": 1,
+        "stop_loss": 12,
+        "take_profit": 9
+      },
+      "expected": null
+    },
+    {
+      "id": "missing_target_is_unplottable",
+      "position": {
+        "side": "long",
+        "avgPrice": 10,
+        "currentPrice": 11,
+        "totalQuantity": 1,
+        "stop_loss": 9,
+        "take_profit": null
+      },
+      "expected": null
+    },
+    {
+      "id": "option_is_unplottable",
+      "position": {
+        "side": "long",
+        "instrumentType": "option",
+        "avgPrice": 2,
+        "currentPrice": 3,
+        "totalQuantity": 1,
+        "stop_loss": 1,
+        "take_profit": 5
+      },
+      "expected": null
+    }
   ]
 }

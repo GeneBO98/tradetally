@@ -347,6 +347,26 @@ router.get('/open-positions-quotes', authenticate, tradeController.getOpenPositi
 
 /**
  * @swagger
+ * /api/trades/open-positions-ranges:
+ *   get:
+ *     summary: Get 52-week high/low for open position symbols
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: symbols
+ *         schema:
+ *           type: string
+ *         description: Comma-separated symbols (max 50)
+ *     responses:
+ *       200:
+ *         description: Map of symbol to { week_52_high, week_52_low } or null
+ */
+router.get('/open-positions-ranges', authenticate, tradeController.getOpenPositionRanges);
+
+/**
+ * @swagger
  * /api/trades/public:
  *   get:
  *     summary: Get public trades

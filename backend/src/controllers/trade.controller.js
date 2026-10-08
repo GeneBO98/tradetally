@@ -211,6 +211,7 @@ function getPositiveIntEnv(name, fallback) {
 
 const OPEN_POSITIONS_ALPACA_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_ALPACA_TIMEOUT_MS', 3000);
 const OPEN_POSITIONS_FINNHUB_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_FINNHUB_TIMEOUT_MS', 3000);
+const OPEN_POSITIONS_RANGE_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_RANGE_TIMEOUT_MS', 5000);
 const TRADE_LIST_PRICE_FRESH_MS = getPositiveIntEnv('TRADE_LIST_PRICE_FRESH_MS', 2 * 60 * 1000);
 
 const { resolvePostExitWindow } = require('../utils/postExitWindow');
@@ -3386,6 +3387,58 @@ const tradeController = {
     } catch (error) {
       console.log('[PERF] getOpenPositionsWithQuotes total time before error:', Date.now() - requestStartedAt, 'ms');
       console.error('Failed to get open positions:', error);
+      next(error);
+    }
+  },
+
+  // 52-week high/low per symbol for the open positions range view. Kept off
+  // the polled quotes endpoint: the values move once a day (getBasicFinancials
+  // caches them for 24h) and only users who open the range view pay for them.
+  async getOpenPositionRanges(req, res, next) {
+    try {
+      const symbols = [...new Set(
+        ensureString(req.query.symbols || '')
+          .split(',')
+          .map(symbol => symbol.trim().toUpperCase())
+          .filter(symbol => /^[A-Z0-9.\-]{1,20}$/.test(symbol))
+      )].slice(0, 50);
+
+      const ranges = {};
+      if (symbols.length === 0 || !finnhub.isConfigured()) {
+        return res.json({ ranges });
+      }
+
+      const finite = (value) => {
+        const number = Number(value);
+        return Number.isFinite(number) && number > 0 ? number : null;
+      };
+
+      await Promise.all(symbols.map(async (symbol) => {
+        try {
+          const data = await withTimeout(
+            finnhub.getBasicFinancials(symbol, {
+              source: 'open_positions_ranges',
+              priority: 0,
+              background: false,
+              userId: req.user.id,
+              maxQueueWaitMs: OPEN_POSITIONS_RANGE_TIMEOUT_MS
+            }),
+            OPEN_POSITIONS_RANGE_TIMEOUT_MS,
+            'Open positions 52-week range fetch'
+          );
+          const week_52_high = finite(data?.metric?.['52WeekHigh']);
+          const week_52_low = finite(data?.metric?.['52WeekLow']);
+          ranges[symbol] = week_52_high && week_52_low && week_52_high > week_52_low
+            ? { week_52_high, week_52_low }
+            : null;
+        } catch (rangeError) {
+          console.warn(`[RANGES] No 52-week range for ${symbol}: ${rangeError.message}`);
+          ranges[symbol] = null;
+        }
+      }));
+
+      res.json({ ranges });
+    } catch (error) {
       next(error);
     }
   },

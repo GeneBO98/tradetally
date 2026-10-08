@@ -384,3 +384,37 @@ describe('heal-merge respects currency', () => {
     expect(Object.values(positions)[0].totalQuantity).toBe(3);
   });
 });
+
+describe('groupTradesIntoPositions stop and target', () => {
+  function stockLeg(overrides = {}) {
+    return {
+      id: overrides.id || 'stock-1',
+      symbol: 'NOW',
+      instrument_type: 'stock',
+      side: 'long',
+      quantity: 10,
+      entry_price: 100,
+      executions: [],
+      ...overrides
+    };
+  }
+
+  test('uses the newest trade that has a stop or target', () => {
+    // Trades arrive newest first from findOpenPositionsByUser.
+    const positions = groupTradesIntoPositions([
+      stockLeg({ id: 'newest', stop_loss: null, take_profit: '130.0000' }),
+      stockLeg({ id: 'middle', stop_loss: '95.5000', take_profit: '120.0000' }),
+      stockLeg({ id: 'oldest', stop_loss: '90.0000', take_profit: '110.0000' })
+    ]);
+
+    const position = Object.values(positions)[0];
+    expect(position.stop_loss).toBe(95.5);
+    expect(position.take_profit).toBe(130);
+  });
+
+  test('leaves both null when no trade has them', () => {
+    const position = Object.values(groupTradesIntoPositions([stockLeg()]))[0];
+    expect(position.stop_loss).toBeNull();
+    expect(position.take_profit).toBeNull();
+  });
+});

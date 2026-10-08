@@ -151,6 +151,16 @@ function calculateTotalSharesTraded(trade) {
   return trade.quantity || 0;
 }
 
+function firstPriceLevel(trades, field) {
+  for (const trade of trades) {
+    const value = trade[field];
+    if (value === null || value === undefined || value === '') continue;
+    const level = Number(value);
+    if (Number.isFinite(level) && level > 0) return level;
+  }
+  return null;
+}
+
 // Group open trades into positions. Returns a map of position key -> position
 // with side/avgPrice resolved, zero-net positions removed, and position_key
 // stamped on every surviving position.
@@ -295,6 +305,11 @@ function groupTradesIntoPositions(openTrades) {
 
     // avgPrice is per-share/per-contract, so divide by (quantity * multiplier)
     position.avgPrice = position.totalCost / (absQuantity * avgPriceMultiplier);
+
+    // Trades arrive newest first, so the first stop/target found is the
+    // trader's current plan for the position.
+    position.stop_loss = firstPriceLevel(position.trades, 'stop_loss');
+    position.take_profit = firstPriceLevel(position.trades, 'take_profit');
   });
 
   keysToDelete.forEach(key => delete positionMap[key]);
