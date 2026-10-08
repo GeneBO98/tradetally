@@ -690,6 +690,14 @@
                 </div>
               </div>
 
+              <div class="table-card-row mb-3" title="Price change since previous close × current holdings">
+                <span class="table-card-label">Daily P&amp;L</span>
+                <span v-if="daily_position_pnl(position) !== null" class="table-card-value" :class="daily_position_pnl(position) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                  {{ formatSignedPositionCurrency(daily_position_pnl(position), position) }}
+                </span>
+                <span v-else class="text-xs text-gray-400">-</span>
+              </div>
+
               <!-- Individual Trades (only show when position has multiple trades) -->
               <div v-if="position.trades.length > 1" class="pt-3 border-t border-gray-200 dark:border-gray-700">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">
@@ -732,6 +740,13 @@
               </div>
             </div>
 
+            <div class="table-card-row px-4">
+              <span class="table-card-label">Total Daily P&amp;L<span v-if="daily_pnl_partial && total_daily_pnl !== null"> (partial)</span></span>
+              <span v-if="total_daily_pnl !== null" class="table-card-value" :class="total_daily_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                {{ formatSignedCurrency(total_daily_pnl, { currency: accountCurrency }) }}
+              </span>
+              <span v-else class="text-xs text-gray-400">-</span>
+            </div>
             <!-- Total Summary Card -->
             <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border-2 border-gray-300 dark:border-gray-600">
               <div class="flex justify-between items-center">
@@ -781,6 +796,9 @@
                   </th>
                   <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Unrealized P&L
+                  </th>
+                  <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" title="Price change since previous close × current holdings">
+                    Daily P&amp;L
                   </th>
                   <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Individual Trades
@@ -909,6 +927,12 @@
                         <span v-else class="text-xs text-gray-400">-</span>
                       </template>
                     </td>
+                    <td class="px-3 py-2 text-sm font-bold text-right tabular-nums">
+                      <span v-if="daily_position_pnl(position) !== null" :class="daily_position_pnl(position) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                        {{ formatSignedPositionCurrency(daily_position_pnl(position), position) }}
+                      </span>
+                      <span v-else class="text-xs text-gray-400">-</span>
+                    </td>
                     <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-right">
                       {{ position.trades.length }} {{ position.trades.length === 1 ? 'trade' : 'trades' }}
                     </td>
@@ -960,6 +984,7 @@
                     <td class="px-3 py-2 text-sm text-gray-400 text-right">
                       <span class="text-xs">-</span>
                     </td>
+                    <td class="px-3 py-2 text-sm text-gray-400 text-right">-</td>
                     <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-right">
                       {{ formatDate(trade.trade_date) }}
                     </td>
@@ -1010,6 +1035,13 @@
                       </div>
                     </div>
                     <span v-else class="text-xs text-gray-400">-</span>
+                  </td>
+                  <td class="px-3 py-3 text-sm font-bold text-right tabular-nums">
+                    <span v-if="total_daily_pnl !== null" :class="total_daily_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      {{ formatSignedCurrency(total_daily_pnl, { currency: accountCurrency }) }}
+                    </span>
+                    <span v-else class="text-xs text-gray-400">-</span>
+                    <div v-if="daily_pnl_partial && total_daily_pnl !== null" class="text-xs font-normal text-gray-500 dark:text-gray-400">Partial</div>
                   </td>
                   <td colspan="2" class="px-3 py-3"></td>
                 </tr>
@@ -1685,6 +1717,7 @@ import {
   needsCurrencyNote,
   sumInAccountCurrency as sumPositionsInAccountCurrency
 } from '@/utils/positionTotals'
+import { daily_position_pnl } from '@/utils/dailyPositionPnl'
 import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
@@ -2383,6 +2416,9 @@ const totalsArePartial = computed(
 function sumInAccountCurrency(pick) {
   return sumPositionsInAccountCurrency(openTrades.value, pick, accountCurrency.value)
 }
+
+const total_daily_pnl = computed(() => sumInAccountCurrency(daily_position_pnl))
+const daily_pnl_partial = computed(() => openTrades.value.some(position => daily_position_pnl(position) === null) || totalsArePartial.value)
 
 const totalOpenCostAccount = computed(() => sumInAccountCurrency(position => position.totalCost || 0))
 

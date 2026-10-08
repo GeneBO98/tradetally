@@ -1289,5 +1289,76 @@
     "provider_day_change": 23,
     "expected_today_pnl": 46,
     "expected_open_pnl": 46
-  }
+  },
+  "daily_position_pnl_cases": [
+    {
+      "id": "long",
+      "position": {
+        "day_change": 1.88,
+        "total_quantity": 23
+      },
+      "expected": 43.24
+    },
+    {
+      "id": "short",
+      "position": {
+        "day_change": -3,
+        "total_quantity": 7,
+        "side": "short"
+      },
+      "expected": 21
+    },
+    {
+      "id": "future",
+      "position": {
+        "day_change": 2,
+        "total_quantity": 3,
+        "instrument_type": "future",
+        "point_value": 50
+      },
+      "expected": 300
+    },
+    {
+      "id": "option",
+      "position": {
+        "day_change": 0.2,
+        "total_quantity": 2,
+        "instrument_type": "option",
+        "contract_size": 100
+      },
+      "expected": 40
+    },
+    {
+      "id": "missing",
+      "position": {
+        "total_quantity": 3
+      },
+      "expected": null
+    },
+    {
+      "id": "manual",
+      "position": {
+        "requires_manual_price": true,
+        "day_change": 1,
+        "total_quantity": 3
+      },
+      "expected": null
+    },
+    {
+      "id": "flat",
+      "position": {
+        "dayChange": 0,
+        "totalQuantity": 3
+      },
+      "expected": 0
+    },
+    {
+      "id": "hedged",
+      "position": {
+        "day_change": 2,
+        "total_quantity": 0
+      },
+      "expected": 0
+    }
+  ]
 }
