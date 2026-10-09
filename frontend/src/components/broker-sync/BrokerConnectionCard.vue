@@ -181,6 +181,13 @@ const brokerStyles = computed(() => {
         bgClass: 'bg-cyan-100 dark:bg-cyan-900/30',
         textClass: 'text-cyan-600 dark:text-cyan-400'
       }
+    case 'webull':
+      return {
+        name: 'Webull',
+        abbrev: 'WB',
+        bgClass: 'bg-primary-100 dark:bg-primary-900/30',
+        textClass: 'text-primary-600 dark:text-primary-400'
+      }
     case 'trading212':
       return {
         name: props.connection.brokerEnvironment === 'demo' ? 'Trading 212 Demo' : 'Trading 212 Live',

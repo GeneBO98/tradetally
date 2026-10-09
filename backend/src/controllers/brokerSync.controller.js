@@ -8,6 +8,7 @@ const ibkrService = require('../services/brokerSync/ibkrService');
 const schwabService = require('../services/brokerSync/schwabService');
 const tradestationService = require('../services/brokerSync/tradestationService');
 const alpacaService = require('../services/brokerSync/alpacaService');
+const webullService = require('../services/brokerSync/webullService');
 const trading212Service = require('../services/brokerSync/trading212Service');
 const brokerSyncService = require('../services/brokerSync');
 const TierService = require('../services/tierService');
@@ -24,7 +25,8 @@ const SCHWAB_REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const OAUTH_BROKER_SERVICES = {
   tradestation: tradestationService,
-  alpaca: alpacaService
+  alpaca: alpacaService,
+  webull: webullService
 };
 
 function redactAccountNumber(accountNumber) {
