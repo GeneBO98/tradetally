@@ -359,10 +359,10 @@ Your response:`;
         ...tokenParam
       };
       
-      // Only add temperature for models that support it.
-      // Reasoning models (o-series, all gpt-5 variants) reject any non-default temperature.
+      // New OpenAI models may reject custom temperature regardless of their
+      // name. Let OpenAI use its default for every OpenAI request.
       const isReasoningModel = /^(o\d|gpt-5|deepseek-reasoner)/i.test(model);
-      if (!isReasoningModel) {
+      if (provider !== 'openai' && !isReasoningModel) {
         requestParams.temperature = 0.1;
       }
       

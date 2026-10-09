@@ -79,3 +79,24 @@ describe('jobQueue enrichment selectors', () => {
     );
   });
 });
+
+
+describe('disabled background workers', () => {
+  it('keeps newly enqueued jobs pending without starting a poller', async () => {
+    const previous_disabled = process.env.DISABLE_BACKGROUND_JOBS;
+    process.env.DISABLE_BACKGROUND_JOBS = 'true';
+    db.query.mockReset();
+    db.query.mockResolvedValueOnce({ rows: [{ id: 'pending-job' }] });
+    try {
+      await expect(jobQueue.addJob('news_backfill', { userId: 'user-1' }))
+        .resolves.toBe('pending-job');
+      expect(jobQueue.isProcessing).toBe(false);
+      const parallel_queue = require('../../src/utils/parallelJobQueue');
+      parallel_queue.startParallelProcessing();
+      expect(parallel_queue.isRunning).toBe(false);
+    } finally {
+      if (previous_disabled === undefined) delete process.env.DISABLE_BACKGROUND_JOBS;
+      else process.env.DISABLE_BACKGROUND_JOBS = previous_disabled;
+    }
+  });
+});

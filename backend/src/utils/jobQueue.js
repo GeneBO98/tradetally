@@ -239,6 +239,7 @@ class JobQueue {
    * Start processing jobs (self-scheduling poll loop with idle backoff)
    */
   startProcessing() {
+    if (process.env.DISABLE_BACKGROUND_JOBS === 'true') return;
     if (this.isProcessing) {
       return;
     }

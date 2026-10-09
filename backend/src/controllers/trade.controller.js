@@ -18,6 +18,7 @@ const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
 const { parseTradeFilters, tradeFilterProfiles } = require('../utils/tradeFilters');
 const upload = require('../middleware/upload');
+const { normalizeCsvBuffer, stripNullCharacters } = require('../utils/csv/encoding');
 const currencyConverter = require('../utils/currencyConverter');
 const path = require('path');
 const fs = require('fs').promises;
@@ -704,6 +705,12 @@ const tradeController = {
           if (!date) return '';
           return new Date(date).toISOString().split('T')[0]; // YYYY-MM-DD
         };
+        // Full UTC timestamps so a re-import keeps entry/exit times.
+        const formatDateTime = (date) => {
+          if (!date) return '';
+          const parsed = new Date(date);
+          return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+        };
 
         return [
           escapeCsv(trade.symbol),
@@ -711,8 +718,8 @@ const tradeController = {
           escapeCsv(trade.quantity),
           escapeCsv(trade.entry_price),
           escapeCsv(trade.exit_price),
-          formatDate(trade.entry_date),
-          formatDate(trade.exit_date),
+          formatDateTime(trade.entry_time) || formatDate(trade.trade_date),
+          formatDateTime(trade.exit_time),
           escapeCsv(trade.pnl),
           escapeCsv(trade.fees),
           escapeCsv(trade.commission),
@@ -1944,7 +1951,7 @@ const tradeController = {
       }
 
       const { broker = 'auto' } = req.body;
-      const fileBuffer = req.file.buffer;
+      const fileBuffer = normalizeCsvBuffer(req.file.buffer);
 
       console.log('Selected broker:', broker);
       console.log('File name:', req.file.originalname);
@@ -2021,13 +2028,19 @@ const tradeController = {
         account_mode: accountModeInput = null,
         strategy: importStrategy = null,
         strategy_mode: strategyMode = 'auto',
-        include_notes: includeNotes = 'true'
+        include_notes: includeNotes = 'true',
+        source_timezone: source_timezone_input = null,
+        sourceTimezone: legacy_source_timezone = null
       } = req.body;
       const defaultImportStrategy = importStrategy && String(importStrategy).trim()
         ? String(importStrategy).trim()
         : null;
       const leaveImportedStrategyBlank = strategyMode === 'blank';
       const includeImportedNotes = String(includeNotes).toLowerCase() === 'true';
+      const requestedSourceTimezone = source_timezone_input ?? legacy_source_timezone;
+      const sourceTimezone = requestedSourceTimezone && String(requestedSourceTimezone).trim()
+        ? String(requestedSourceTimezone).trim()
+        : null;
       const accountMode = resolveAccountMode(accountModeInput, accountId);
       let selectedImportAccountIdentifier = null;
 
@@ -2055,6 +2068,14 @@ const tradeController = {
         }
       }
 
+      if (sourceTimezone) {
+        try {
+          new Intl.DateTimeFormat('en-US', { timeZone: sourceTimezone }).format();
+        } catch (_) {
+          return res.status(400).json({ error: 'Invalid source timezone' });
+        }
+      }
+
       console.log('Selected broker:', broker);
       console.log('Mapping ID:', mappingId);
       console.log('Account ID:', accountId);
@@ -2075,7 +2096,9 @@ const tradeController = {
       ]);
 
       // Copy file buffer and metadata to prevent issues if request is cleaned up
-      const fileBuffer = Buffer.from(req.file.buffer);
+      // UTF-16 exports are converted to UTF-8 so detection, parsing and the
+      // diagnostics we store all see the same text.
+      const fileBuffer = normalizeCsvBuffer(Buffer.from(req.file.buffer));
       const fileName = req.file.originalname;
       const fileUserId = req.user.id;
 
@@ -2290,6 +2313,7 @@ const tradeController = {
             fileName,
             importId,
             userTimezone,
+            sourceTimezone,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
               timeGapMinutes: userSettings.trade_grouping_time_gap_minutes ?? 60
@@ -2969,7 +2993,7 @@ const tradeController = {
                 fileName,
                 detectedBroker,
                 broker,
-                JSON.stringify({ error: error.message }),
+                JSON.stringify(stripNullCharacters({ error: error.message })),
                 sampleData?.substring(0, 10000) || null
               ]);
             } catch (recordErr) {
@@ -2982,7 +3006,7 @@ const tradeController = {
             UPDATE import_logs
             SET status = 'failed', error_details = $1, completed_at = CURRENT_TIMESTAMP
             WHERE id = $2
-          `, [{ error: error.message, stack: error.stack }, importId]);
+          `, [stripNullCharacters({ error: error.message, stack: error.stack }), importId]);
 
           publishInBackground('import.completed', {
             importId,

@@ -23,13 +23,15 @@
           <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/20">
             <CheckIcon class="h-6 w-6 text-green-600 dark:text-green-400" />
           </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Email Verified!</h3>
+          <h3 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">
+            Email Verified!
+          </h3>
           <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
             Your email has been successfully verified. You can now sign in to your account.
           </p>
           <div class="mt-6">
-            <router-link to="/login" class="btn-primary w-full">
-              Continue to Sign In
+            <router-link :to="continueRoute" class="btn-primary w-full">
+              {{ continueLabel }}
             </router-link>
           </div>
         </div>
@@ -94,14 +96,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { CheckIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import { useNotification } from '@/composables/useNotification'
+import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
 
 const route = useRoute()
 const { showSuccess, showError } = useNotification()
+const authStore = useAuthStore()
 
 const loading = ref(true)
 const verified = ref(false)
@@ -110,9 +114,18 @@ const showResendForm = ref(false)
 const resendEmail = ref('')
 const resendLoading = ref(false)
 
+const continueRoute = computed(() => {
+  return authStore.isAuthenticated ? { name: 'dashboard' } : { name: 'login' }
+})
+
+const continueLabel = computed(() => {
+  if (authStore.isAuthenticated) return 'Continue to dashboard'
+  return 'Continue to Sign In'
+})
+
 async function verifyEmail() {
   const token = route.params.token
-  
+
   if (!token) {
     error.value = 'Invalid verification link'
     loading.value = false
@@ -122,6 +135,16 @@ async function verifyEmail() {
   try {
     const response = await api.get(`/auth/verify-email/${token}`)
     verified.value = true
+    if (authStore.isAuthenticated) {
+      try {
+        await authStore.fetchUser({
+          redirectOnUnauthorized: false,
+          skipAuthRedirect: true
+        })
+      } catch (refreshErr) {
+        console.warn('[AUTH] Failed to refresh user after email verification:', refreshErr?.message)
+      }
+    }
     showSuccess('Success', response.data.message)
   } catch (err) {
     error.value = err.response?.data?.error || 'Verification failed'

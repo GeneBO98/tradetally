@@ -218,7 +218,7 @@ const brokerSyncController = {
       });
 
       // Update status to active after validation
-      await BrokerConnection.updateStatus(connection.id, 'active', 'Connection validated successfully');
+      await BrokerConnection.updateStatus(connection.id, 'active', validation.message);
 
       // Calculate next sync time if auto-sync enabled
       if (autoSyncEnabled && syncFrequency !== 'manual') {
@@ -237,7 +237,8 @@ const brokerSyncController = {
       res.status(201).json({
         success: true,
         data: updatedConnection,
-        message: 'IBKR connection added successfully'
+        message: 'IBKR connection added successfully',
+        warnings: validation.warnings || []
       });
     } catch (error) {
       logger.logError('Error adding IBKR connection:', error);
@@ -992,7 +993,8 @@ const brokerSyncController = {
 
       res.json({
         success: testResult.valid,
-        message: testResult.message
+        message: testResult.message,
+        warnings: testResult.warnings || []
       });
     } catch (error) {
       logger.logError('Error testing connection:', error);

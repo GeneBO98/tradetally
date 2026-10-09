@@ -524,7 +524,7 @@ class SchwabService {
   /**
    * Match opening and closing transactions into complete trades using FIFO
    * Works across days - open Monday, close Tuesday = one complete trade
-   * Then groups multiple executions of the same symbol on the same day
+   * Then groups fills from the same exit order without merging separate sales
    */
   matchTransactions(transactions) {
     const rawTrades = [];
@@ -761,15 +761,14 @@ class SchwabService {
   }
 
   /**
-   * Group multiple executions of the same symbol on the same day into single trades
+   * Group fills from the same exit order into one closed trade
    * Uses weighted average prices for entries and exits
    */
   groupTrades(rawTrades) {
     const groupedMap = new Map();
 
     for (const trade of rawTrades) {
-      // Create group key: symbol + trade date + side + account + round-trip
-      // roundTripId ensures separate round-trips (position went flat then re-opened) are not merged
+      // Keep accounts and round trips separate even when the symbol and date match.
       const instrumentKey = trade.instrumentType === 'option'
         ? [
             trade.matchingSymbol || trade.symbol,
@@ -778,7 +777,14 @@ class SchwabService {
             trade.strikePrice ?? ''
           ].join('|')
         : (trade.matchingSymbol || trade.symbol);
-      const key = `${instrumentKey}|${trade.tradeDate}|${trade.side}|${trade.accountIdentifier || 'default'}|${trade.roundTripId || 0}`;
+      // A partial sale is its own closed trade. Keep fills from the same sell
+      // order together, but do not merge separate sell orders or a remaining
+      // open lot into the first closed trade.
+      const exitExecution = trade.executionData?.find(execution => execution.type === 'exit');
+      const exitGroup = trade.exitPrice === null
+        ? 'open'
+        : `exit:${exitExecution?.orderId || exitExecution?.datetime || trade.exitTime}`;
+      const key = `${instrumentKey}|${trade.tradeDate}|${trade.side}|${trade.accountIdentifier || 'default'}|${trade.roundTripId || 0}|${exitGroup}`;
 
       if (!groupedMap.has(key)) {
         groupedMap.set(key, {
@@ -1254,6 +1260,8 @@ class SchwabService {
       }
     }
 
+    await this.removeFullyClosedOpenSnapshots(userId, connectionId, trades);
+
     await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'Schwab broker sync');
     console.log(`[SCHWAB] Invalidating analytics cache for user ${userId}`);
     await AnalyticsCache.invalidate(userId);
@@ -1267,6 +1275,66 @@ class SchwabService {
     }
 
     return { imported, skipped, failed, duplicates };
+  }
+
+  /** Remove an earlier open snapshot after this sync proves its broker lot fully closed. */
+  async removeFullyClosedOpenSnapshots(userId, connectionId, trades) {
+    const closedQuantities = new Map();
+    const stillOpen = new Set();
+    const keyFor = (trade, execution) =>
+      `${trade.symbol}|${trade.accountIdentifier || ''}|${execution.orderId}`;
+
+    for (const trade of trades) {
+      for (const execution of trade.executionData || []) {
+        if (execution.type !== 'entry' || !execution.orderId) continue;
+        const key = keyFor(trade, execution);
+        if (trade.exitPrice == null) {
+          stillOpen.add(key);
+        } else {
+          closedQuantities.set(key, (closedQuantities.get(key) || 0) + Number(execution.quantity));
+        }
+      }
+    }
+
+    if (closedQuantities.size === 0) return;
+
+    const openRows = await db.query(`
+      SELECT id, symbol, account_identifier, quantity, executions, notes
+      FROM trades
+      WHERE user_id = $1 AND broker_connection_id = $2
+        AND exit_time IS NULL AND exit_price IS NULL
+    `, [userId, connectionId]);
+
+    for (const row of openRows.rows) {
+      const entries = (Array.isArray(row.executions) ? row.executions : [])
+        .filter(execution => execution.type === 'entry' && execution.orderId);
+      if (entries.length === 0 || row.notes) continue;
+
+      const fullyClosed = entries.every(execution => {
+        const key = `${row.symbol}|${row.account_identifier || ''}|${execution.orderId}`;
+        return !stillOpen.has(key) &&
+          (closedQuantities.get(key) || 0) >= Number(execution.quantity) - 0.0001;
+      });
+      if (!fullyClosed) continue;
+
+      // A failed closed-trade insert must never erase the open snapshot.
+      const closed = await db.query(`
+        SELECT COALESCE(SUM(quantity), 0) AS quantity
+        FROM trades
+        WHERE user_id = $1 AND broker_connection_id = $2
+          AND symbol = $3 AND account_identifier IS NOT DISTINCT FROM $4
+          AND exit_time IS NOT NULL AND executions @> $5::jsonb
+      `, [userId, connectionId, row.symbol, row.account_identifier,
+        JSON.stringify([{ type: 'entry', orderId: entries[0].orderId }])]);
+      if (Number(closed.rows[0]?.quantity || 0) < Number(row.quantity) - 0.0001) continue;
+
+      await db.query(`
+        DELETE FROM trades
+        WHERE id = $1 AND user_id = $2 AND broker_connection_id = $3
+          AND exit_time IS NULL AND exit_price IS NULL
+      `, [row.id, userId, connectionId]);
+      console.log(`[SCHWAB] Removed fully closed open snapshot ${row.id} (${row.symbol})`);
+    }
   }
 
   /**
@@ -1381,6 +1449,15 @@ class SchwabService {
         if (hasExitMatch) {
           console.log(`[SCHWAB] Duplicate found by exit order ID + datetime: ${symbol}`);
           return true;
+        }
+
+        // Distinct broker exit IDs identify distinct sell orders even when
+        // quantity, price, and P&L happen to match on the same day.
+        const existingHasExitId = existingExecs.some(exec =>
+          exec.orderId && exec.datetime && exec.type === 'exit'
+        );
+        if (newExitExecKeys.size > 0 && existingHasExitId) {
+          continue;
         }
       }
 

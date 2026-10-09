@@ -489,9 +489,10 @@ class BackupService {
       // Serialize a value for INSERT based on its column data type
       const serializeValue = (value, colType) => {
         if (value == null) return null;
-        if (colType === 'jsonb') {
-          // JSONB columns: always JSON.stringify (handles both objects AND arrays)
-          return typeof value === 'string' ? value : JSON.stringify(value);
+        if (colType === 'jsonb' || colType === 'json') {
+          // Snapshots contain decoded JSON values, including scalar strings.
+          // Passing a string directly makes PostgreSQL parse it as JSON text.
+          return JSON.stringify(value);
         }
         if (Array.isArray(value)) {
           // PostgreSQL array columns (text[], integer[], etc.): pass through for pg driver

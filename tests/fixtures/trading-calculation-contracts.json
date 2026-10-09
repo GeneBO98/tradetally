@@ -1,4 +1,11 @@
 {
+  "ibkr_backfill_retry": {
+    "floor": "2024-01-01",
+    "window_end": "2025-12-31",
+    "retry_count": 1,
+    "reference_code": "REF-RETRY",
+    "sync_type": "ibkr_timeout_retry"
+  },
   "backup_restore_cases": [
     {
       "id": "closed_option_opening_only",

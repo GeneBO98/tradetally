@@ -29,7 +29,9 @@ jest.mock('../../src/models/PlaidConnection', () => ({
 
 jest.mock('../../src/services/plaid/plaidClient', () => ({
   isConfigured: jest.fn(() => true),
-  syncTransactions: jest.fn()
+  createLinkToken: jest.fn(),
+  syncTransactions: jest.fn(),
+  env: 'sandbox'
 }));
 
 jest.mock('../../src/config/database', () => ({
@@ -47,6 +49,35 @@ const plaidClient = require('../../src/services/plaid/plaidClient');
 const db = require('../../src/config/database');
 const AnalyticsCache = require('../../src/services/analyticsCache');
 const plaidFundingService = require('../../src/services/plaid/plaidFundingService');
+
+
+describe('plaidFundingService createLinkToken', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('explains INVALID_PRODUCT for investment link tokens', async () => {
+    const error = new Error('Plaid request failed: INVALID_PRODUCT - invalid product');
+    error.status = 400;
+    error.plaid = {
+      errorType: 'INVALID_REQUEST',
+      errorCode: 'INVALID_PRODUCT',
+      requestId: 'request-1'
+    };
+    plaidClient.createLinkToken.mockRejectedValue(error);
+
+    await expect(
+      plaidFundingService.createLinkToken({ id: 'user-1', email: 'user@example.com' }, 'investment')
+    ).rejects.toMatchObject({
+      message: 'Plaid rejected the investments product. Enable investments for your sandbox environment in the Plaid dashboard, or use a Plaid client_id/secret that has access to it.',
+      status: 400,
+      plaid: {
+        errorCode: 'INVALID_PRODUCT',
+        requestId: 'request-1'
+      }
+    });
+  });
+});
 
 describe('plaidFundingService approveTransaction', () => {
   beforeEach(() => {

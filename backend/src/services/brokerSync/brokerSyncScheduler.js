@@ -121,7 +121,15 @@ class BrokerSyncScheduler {
     console.log(`[BROKER-SCHEDULER] Syncing ${connection.brokerType} connection ${connection.id}...`);
 
     try {
-      const result = await brokerSyncService.syncConnection(connection.id, {
+      const retry = connection.brokerType === 'ibkr'
+        ? connection.ibkrBackfillRetry
+        : null;
+      const result = await brokerSyncService.syncConnection(connection.id, retry ? {
+        syncType: 'ibkr_timeout_retry',
+        startDate: retry.floor,
+        endDate: retry.window_end,
+        referenceCode: retry.reference_code
+      } : {
         syncType: 'scheduled'
       });
 

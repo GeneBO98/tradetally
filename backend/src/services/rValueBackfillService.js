@@ -7,6 +7,15 @@ const FIRST_ID = '00000000-0000-0000-0000-000000000000';
 
 async function runBatch(userId, afterId = null) {
   const result = await db.withTransaction(async client => {
+    // First batch only: dollar-based defaults could store a nonpositive long
+    // stop when configured risk exceeded the position value. That price cannot
+    // define R. Clearing it here, not in a migration, keeps the fix per-user
+    // behind the beta flag.
+    const cleared = afterId ? { rowCount: 0 } : await client.query(`
+      UPDATE trades SET stop_loss = NULL, r_value = NULL, updated_at = NOW()
+      WHERE user_id = $1 AND stop_loss <= 0
+    `, [userId]);
+
     const { rows } = await client.query(`
       SELECT id, symbol, side, entry_price, exit_price, stop_loss, quantity,
              commission, fees, instrument_type, contract_size, point_value,
@@ -39,11 +48,12 @@ async function runBatch(userId, afterId = null) {
     }
     return {
       updated,
+      cleared_stops: cleared.rowCount || 0,
       next_after: rows.length === BATCH_SIZE ? rows[rows.length - 1].id : null
     };
   });
 
-  if (result.updated) await AnalyticsCache.invalidate(userId);
+  if (result.updated || result.cleared_stops) await AnalyticsCache.invalidate(userId);
   return result;
 }
 

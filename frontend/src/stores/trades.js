@@ -553,7 +553,7 @@ export const useTradesStore = defineStore('trades', () => {
     }
   }
 
-  async function importTrades(file, broker, mappingId = null, accountId = null, strategy = null, importOptions = {}) {
+  async function importTrades(file, broker, mappingId = null, accountId = null, strategy = null, importOptions = {}, source_timezone = null) {
     loading.value = true
     error.value = null
 
@@ -562,6 +562,7 @@ export const useTradesStore = defineStore('trades', () => {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('broker', broker)
+      if (source_timezone) formData.append('source_timezone', source_timezone)
       if (mappingId) {
         formData.append('mappingId', mappingId)
       }

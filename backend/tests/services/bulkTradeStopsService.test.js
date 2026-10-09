@@ -55,6 +55,20 @@ describe('bulk stop editing', () => {
     expect(db.query).toHaveBeenCalledTimes(2);
   });
 
+  it('skips a dollar default that would put a long stop at or below zero', async () => {
+    const unaffordable = require('../../../tests/fixtures/trading-calculation-contracts.json')
+      .r_value.unaffordable_dollar_stop_example;
+    db.query.mockResolvedValueOnce({ rows: [{ id, ...unaffordable.trade, stop_loss: null }] })
+      .mockResolvedValueOnce({ rows: [{
+        default_stop_loss_type: 'dollar',
+        default_stop_loss_dollars: unaffordable.default_stop_loss_dollars
+      }] });
+
+    const result = await BulkTradeStops.preview('user-1', [id], [], true);
+
+    expect(result).toEqual({ updated_trade_count: 0, changes: [] });
+  });
+
   it('rejects malformed stop entries before querying trades', async () => {
     await expect(BulkTradeStops.preview('user-1', [id], [{ trade_id: 123, stop_loss: 95 }], false))
       .rejects.toMatchObject({ statusCode: 400 });
