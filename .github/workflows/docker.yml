@@ -40,7 +40,10 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        # Official image via the public ECR mirror: anonymous Docker Hub pulls
+        # from shared runners hit its rate limit, and secrets for an
+        # authenticated pull are unavailable to fork pull requests.
+        image: public.ecr.aws/docker/library/postgres:16-alpine
         env:
           POSTGRES_USER: tradetally
           POSTGRES_PASSWORD: testpass
