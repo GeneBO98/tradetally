@@ -2,6 +2,7 @@ const db = require('../config/database');
 const logger = require('./logger');
 const { PARALLEL_JOB_TYPES } = require('./jobQueueConfig');
 const { publishEnrichmentCompletedForRows } = require('../events/enrichmentEvents');
+const { scheduleEnrichmentStatusPush } = require('../services/enrichmentStatusPush');
 
 class ParallelJobQueue {
   constructor() {
@@ -330,6 +331,7 @@ class ParallelJobQueue {
         
         logger.info(`Updated trade ${data.tradeId} enrichment status to completed`, 'import');
         publishEnrichmentCompletedForRows(completed.rows, 'jobs_finished', 'parallelJobQueue');
+        if (completed.rows.length > 0) scheduleEnrichmentStatusPush(completed.rows[0].user_id);
       }
       
       // For CUSIP resolution jobs, mark all affected trades as completed
@@ -346,6 +348,7 @@ class ParallelJobQueue {
         
         logger.info(`Updated CUSIP trades for user ${data.userId} to completed`, 'import');
         publishEnrichmentCompletedForRows(completed.rows, 'cusip_resolved', 'parallelJobQueue');
+        if (completed.rows.length > 0) scheduleEnrichmentStatusPush(completed.rows[0].user_id);
       }
       
     } catch (error) {

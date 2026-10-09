@@ -3,6 +3,7 @@ const logger = require('./logger');
 const marketData = require('./finnhub');
 const { PARALLEL_JOB_TYPES } = require('./jobQueueConfig');
 const { publishEnrichmentCompleted } = require('../events/enrichmentEvents');
+const { scheduleEnrichmentStatusPush } = require('../services/enrichmentStatusPush');
 
 class JobQueue {
   constructor() {
@@ -572,36 +573,10 @@ class JobQueue {
         const updateResult = await db.query(updateQuery, [tradeId]);
         
         if (updateResult.rowCount > 0) {
+          const userId = tradeExists.rows[0].user_id;
           logger.logImport(`Trade ${tradeId} enrichment completed - all background jobs finished`);
-          publishEnrichmentCompleted(tradeExists.rows[0].user_id, [tradeId], 'jobs_finished', 'jobQueue');
-          
-          // Send real-time enrichment update notification
-          try {
-            const updatedTrade = updateResult.rows[0];
-            if (updatedTrade && updatedTrade.user_id) {
-              const notificationsController = require('../controllers/notifications.controller');
-              
-              // Get current enrichment status for this user
-              const enrichmentStatusQuery = `
-                SELECT enrichment_status, COUNT(*) as count
-                FROM trades 
-                WHERE user_id = $1
-                GROUP BY enrichment_status
-                ORDER BY enrichment_status
-              `;
-              const statusResult = await db.query(enrichmentStatusQuery, [updatedTrade.user_id]);
-              
-              await notificationsController.sendEnrichmentUpdateToUser(updatedTrade.user_id, {
-                tradeId: tradeId,
-                tradeEnrichment: statusResult.rows.map(row => ({
-                  enrichment_status: row.enrichment_status,
-                  count: row.count
-                }))
-              });
-            }
-          } catch (notificationError) {
-            logger.logError(`Failed to send enrichment notification for trade ${tradeId}: ${notificationError.message}`);
-          }
+          publishEnrichmentCompleted(userId, [tradeId], 'jobs_finished', 'jobQueue');
+          scheduleEnrichmentStatusPush(userId);
         }
       }
     } catch (error) {
