@@ -33,6 +33,8 @@ const Account = require('../models/Account');
 const { verifyJwtToken, TOKEN_PURPOSES, isTokenSessionValid } = require('../middleware/auth');
 const { escapeCsv } = require('../utils/csvEscape');
 const { buildExistingTradeIndex, classifyImportTrade } = require('../utils/importDuplicateDetection');
+const { publishInBackground } = require('../events/domainEvents');
+const { publishEnrichmentCompleted } = require('../events/enrichmentEvents');
 const {
   detectImportAccounts,
   resolveAccountMode,
@@ -501,6 +503,18 @@ async function fetchCurrentPriceForSymbol(symbol, userId) {
   }
 }
 
+// Webhook events for trades changed through these handlers. The v1 API wraps
+// some of them and publishes its own events (with bulk/index detail), so it
+// sets skipTradeEvents on the requests it delegates to avoid sending twice.
+function publishTradeEvent(eventType, req, payload) {
+  if (req.skipTradeEvents) return;
+  publishInBackground(eventType, payload, {
+    source: 'app.trades',
+    userId: req.user.id,
+    requestId: req.requestId || req.headers?.['x-request-id'] || null
+  });
+}
+
 const tradeController = {
   async getUserTrades(req, res, next) {
     const requestStartTime = Date.now();
@@ -834,6 +848,7 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.status(201).json({ trade });
+      publishTradeEvent('trade.created', req, { tradeId: trade.id, trade });
 
       // Fire-and-forget: fetch company metadata for new symbols created outside CSV import.
       ensureSymbolMetadata(trade.symbol).catch(() => {});
@@ -878,6 +893,7 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.status(201).json({ trade });
+      publishTradeEvent('trade.created', req, { tradeId: trade.id, trade });
     } catch (error) {
       next(error);
     }
@@ -899,6 +915,7 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.status(200).json({ trade });
+      publishTradeEvent('trade.updated', req, { tradeId, trade });
     } catch (error) {
       if (error.status) {
         return res.status(error.status).json({ error: error.message });
@@ -1109,6 +1126,7 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.json({ trade });
+      publishTradeEvent('trade.updated', req, { tradeId: trade.id, trade });
 
       // Fire-and-forget: auto-calculate MAE/MFE if not manually provided (Pro only).
       // Skip per-field when the user supplied the value manually (e.g., futures, where free APIs have no candle data).
@@ -1154,6 +1172,7 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.json({ message: 'Trade deleted successfully' });
+      publishTradeEvent('trade.deleted', req, { tradeId: req.params.id });
     } catch (error) {
       next(error);
     }
@@ -1361,6 +1380,14 @@ const tradeController = {
         });
       }
 
+      for (const newTradeId of newTradeIds) {
+        publishTradeEvent('trade.created', req, { tradeId: newTradeId, splitFromTradeId: req.params.id });
+      }
+      publishTradeEvent(isPartialSplit ? 'trade.updated' : 'trade.deleted', req, {
+        tradeId: req.params.id,
+        splitIntoTradeIds: newTradeIds
+      });
+
       res.json({
         message: isPartialSplit
           ? `Split ${newTradeIds.length} entry fill(s) into new trades, original trade updated`
@@ -1444,6 +1471,9 @@ const tradeController = {
           });
 
           deletedCount = deletedRows.length;
+          for (const row of deletedRows) {
+            publishTradeEvent('trade.deleted', req, { tradeId: row.id, bulk: true });
+          }
 
           // Any trade that vanished between the ownership check and the delete
           if (deletedRows.length < idsToDelete.length) {
@@ -1555,6 +1585,10 @@ const tradeController = {
 
         // Invalidate analytics cache once for this trade mutation
         await AnalyticsCache.invalidate(req.user.id);
+
+        for (const tradeId of idsToUpdate) {
+          publishTradeEvent('trade.updated', req, { tradeId, bulk: true, changedFields: ['tags'] });
+        }
       }
 
       res.json({
@@ -1576,6 +1610,13 @@ const tradeController = {
         req.body?.updates
       );
       res.json(result);
+
+      // The service rejects the whole batch unless every id is owned, so all were updated
+      const { ids, updates } = BulkTradeMetadataService.normalizeRequest(req.body?.trade_ids, req.body?.updates);
+      const changedFields = Object.keys(updates);
+      for (const tradeId of ids) {
+        publishTradeEvent('trade.updated', req, { tradeId, bulk: true, changedFields });
+      }
     } catch (error) {
       next(error);
     }
@@ -1583,12 +1624,20 @@ const tradeController = {
 
   async bulkUpdateStops(req, res, next) {
     try {
-      res.json(await BulkTradeStopsService.update(
+      const result = await BulkTradeStopsService.update(
         req.user.id,
         req.body?.trade_ids,
         req.body?.stops,
         req.body?.apply_default_to_missing
-      ));
+      );
+      res.json(result);
+      for (const change of result.changes) {
+        publishTradeEvent('trade.updated', req, {
+          tradeId: change.trade_id,
+          bulk: true,
+          changedFields: ['stop_loss', 'r_value']
+        });
+      }
     } catch (error) { next(error); }
   },
 
@@ -2821,6 +2870,16 @@ const tradeController = {
             WHERE id = $3
           `, [imported, failed, importId, errorDetails]);
 
+          publishInBackground('import.completed', {
+            importId,
+            status: 'completed',
+            broker,
+            fileName,
+            imported,
+            failed,
+            duplicates
+          }, { source: 'app.import', userId: fileUserId });
+
           if (imported > 0) {
             await OptionStrategyGroupingService.rebuildUserGroupsSafe(fileUserId, 'CSV import');
           }
@@ -2924,6 +2983,14 @@ const tradeController = {
             SET status = 'failed', error_details = $1, completed_at = CURRENT_TIMESTAMP
             WHERE id = $2
           `, [{ error: error.message, stack: error.stack }, importId]);
+
+          publishInBackground('import.completed', {
+            importId,
+            status: 'failed',
+            broker,
+            fileName,
+            error: error.message
+          }, { source: 'app.import', userId: fileUserId });
         }
       });
 
@@ -5007,6 +5074,7 @@ const tradeController = {
       `;
 
       const result = await db.query(updateQuery, [userId]);
+      publishEnrichmentCompleted(userId, result.rows.map(row => row.id), 'force_completed', 'app.enrichment');
 
       // Clear any pending jobs from the job queue for this user
       const clearJobsQuery = `

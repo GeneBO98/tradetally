@@ -37,7 +37,16 @@ async function publish(eventType, payload = {}, metadata = {}) {
   return event;
 }
 
+// Fire-and-forget publish for request handlers and jobs: listeners (webhook
+// delivery included) must never delay or fail the work that raised the event.
+function publishInBackground(eventType, payload = {}, metadata = {}) {
+  publish(eventType, payload, metadata).catch((error) => {
+    console.error(`[WEBHOOK-EVENT] Failed to publish ${eventType}:`, error.message);
+  });
+}
+
 module.exports = {
   publish,
+  publishInBackground,
   subscribe
 };

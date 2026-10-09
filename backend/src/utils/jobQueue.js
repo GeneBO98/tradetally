@@ -2,6 +2,7 @@ const db = require('../config/database');
 const logger = require('./logger');
 const marketData = require('./finnhub');
 const { PARALLEL_JOB_TYPES } = require('./jobQueueConfig');
+const { publishEnrichmentCompleted } = require('../events/enrichmentEvents');
 
 class JobQueue {
   constructor() {
@@ -536,7 +537,7 @@ class JobQueue {
   async checkAndUpdateTradeEnrichmentStatus(tradeId) {
     try {
       // First check if the trade still exists
-      const tradeExistsQuery = `SELECT id FROM trades WHERE id = $1`;
+      const tradeExistsQuery = `SELECT id, user_id FROM trades WHERE id = $1`;
       const tradeExists = await db.query(tradeExistsQuery, [tradeId]);
       
       if (tradeExists.rows.length === 0) {
@@ -572,6 +573,7 @@ class JobQueue {
         
         if (updateResult.rowCount > 0) {
           logger.logImport(`Trade ${tradeId} enrichment completed - all background jobs finished`);
+          publishEnrichmentCompleted(tradeExists.rows[0].user_id, [tradeId], 'jobs_finished', 'jobQueue');
           
           // Send real-time enrichment update notification
           try {

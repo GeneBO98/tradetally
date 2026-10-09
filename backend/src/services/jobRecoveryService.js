@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const jobQueue = require('../utils/jobQueue');
 const logger = require('../utils/logger');
+const { publishEnrichmentCompletedForRows } = require('../events/enrichmentEvents');
 
 /**
  * Service to automatically recover from stuck enrichment jobs
@@ -250,11 +251,12 @@ class JobRecoveryService {
           strategy IS NOT NULL 
           AND strategy != 'day_trading'
         )
-        RETURNING id
+        RETURNING id, user_id
       `);
 
       if (completedTrades.rows.length > 0) {
         logger.logImport(`Marked ${completedTrades.rows.length} trades as enrichment completed`);
+        publishEnrichmentCompletedForRows(completedTrades.rows, 'recovered', 'jobRecoveryService');
       }
 
       return completedTrades.rows.length;

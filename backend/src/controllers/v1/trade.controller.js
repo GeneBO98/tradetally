@@ -44,7 +44,9 @@ function cloneRequest(req, overrides = {}) {
     body: overrides.body !== undefined ? overrides.body : req.body,
     user: overrides.user || req.user,
     file: overrides.file !== undefined ? overrides.file : req.file,
-    files: overrides.files !== undefined ? overrides.files : req.files
+    files: overrides.files !== undefined ? overrides.files : req.files,
+    // This controller publishes its own trade events; the delegated handler must not repeat them
+    skipTradeEvents: true
   };
 }
 

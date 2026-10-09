@@ -14,6 +14,7 @@ const alpacaService = require('./alpacaService');
 const webullService = require('./webullService');
 const trading212Service = require('./trading212Service');
 const { getUserTimezone } = require('../../utils/timezone');
+const { publishInBackground } = require('../../events/domainEvents');
 
 class BrokerSyncService {
   /**
@@ -189,6 +190,19 @@ class BrokerSyncService {
         console.warn('[BROKER-SYNC] Sync completed with no retrievable IBKR statement; preserving the previous successful-sync cursor');
       }
 
+      publishInBackground('broker_sync.completed', {
+        connectionId,
+        brokerType: connection.brokerType,
+        syncLogId: syncLog.id,
+        syncType,
+        status: 'completed',
+        imported: result.imported + expiredClosed,
+        skipped: result.skipped || 0,
+        failed: result.failed || 0,
+        duplicates: result.duplicates || 0,
+        warnings: result.warnings || []
+      }, { source: 'brokerSync', userId: connection.userId });
+
       return {
         success: true,
         syncLogId: syncLog.id,
@@ -232,6 +246,15 @@ class BrokerSyncService {
           console.error(`[BROKER-SYNC] Failed to schedule retry: ${retryErr.message}`);
         }
       }
+
+      publishInBackground('broker_sync.completed', {
+        connectionId,
+        brokerType: connection.brokerType,
+        syncLogId: syncLog.id,
+        syncType,
+        status: 'failed',
+        error: error.message
+      }, { source: 'brokerSync', userId: connection.userId });
 
       return {
         success: false,

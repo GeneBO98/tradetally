@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const fetch = require('node-fetch');
 const WebhookSubscription = require('../models/WebhookSubscription');
+const logger = require('../utils/logger');
 const { fetchWithValidatedRedirects, ensureValidatedOutboundUrl, OutboundUrlValidationError } = require('../utils/urlSecurity');
 
 const ALLOWED_EVENT_TYPES = Object.freeze([
@@ -131,6 +132,10 @@ function createWebhookSecret() {
     return `whsec_${crypto.randomUUID().replace(/-/g, '')}`;
   }
   return `whsec_${crypto.randomBytes(24).toString('hex')}`;
+}
+
+function getEventUserId(event = {}) {
+  return event.metadata?.userId || event.payload?.userId || event.payload?.user_id || null;
 }
 
 function buildDefaultPayload(event) {
@@ -381,7 +386,14 @@ class WebhookService {
   }
 
   async handleDomainEvent(event) {
-    const subscriptions = await WebhookSubscription.listActiveByEventType(event.type);
+    const userId = getEventUserId(event);
+    if (!userId) {
+      // Without an owner the event cannot be routed safely; never broadcast it.
+      logger.logWarn(`[WEBHOOK] Dropping ${event.type} event ${event.id}: no user id`);
+      return { delivered: 0, failed: 0, skipped: 0 };
+    }
+
+    const subscriptions = await WebhookSubscription.listActiveByEventTypeForUser(event.type, userId);
     if (subscriptions.length === 0) {
       return { delivered: 0, failed: 0, skipped: 0 };
     }

@@ -221,7 +221,9 @@ class WebhookSubscription {
     return result.rows.length > 0;
   }
 
-  static async listActiveByEventType(eventType) {
+  // Scoped to one user: an event must only reach the webhooks of the user it
+  // belongs to.
+  static async listActiveByEventTypeForUser(eventType, userId) {
     const result = await db.query(
       `
         SELECT id, user_id, url, secret, provider_type, description, event_types, custom_headers,
@@ -229,13 +231,14 @@ class WebhookSubscription {
                created_at, updated_at
         FROM webhook_subscriptions
         WHERE is_active = true
+          AND user_id = $2
           AND (
             event_types @> $1::jsonb
             OR event_types @> '["*"]'::jsonb
             OR event_types @> '["all"]'::jsonb
           )
       `,
-      [JSON.stringify([eventType])]
+      [JSON.stringify([eventType]), userId]
     );
 
     return result.rows.map((row) => hydrateWebhookRow(row));

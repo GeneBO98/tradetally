@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const logger = require('./logger');
 const { PARALLEL_JOB_TYPES } = require('./jobQueueConfig');
+const { publishEnrichmentCompletedForRows } = require('../events/enrichmentEvents');
 
 class ParallelJobQueue {
   constructor() {
@@ -318,28 +319,33 @@ class ParallelJobQueue {
       
       // For strategy classification jobs, mark the trade as enrichment completed
       if (job.type === 'strategy_classification' && data.tradeId) {
-        await db.query(`
+        const completed = await db.query(`
           UPDATE trades 
           SET enrichment_status = 'completed',
               enrichment_completed_at = CURRENT_TIMESTAMP
           WHERE id = $1
+          AND enrichment_status IS DISTINCT FROM 'completed'
+          RETURNING id, user_id
         `, [data.tradeId]);
         
         logger.info(`Updated trade ${data.tradeId} enrichment status to completed`, 'import');
+        publishEnrichmentCompletedForRows(completed.rows, 'jobs_finished', 'parallelJobQueue');
       }
       
       // For CUSIP resolution jobs, mark all affected trades as completed
       if (job.type === 'cusip_resolution' && data.userId) {
-        await db.query(`
+        const completed = await db.query(`
           UPDATE trades 
           SET enrichment_status = 'completed',
               enrichment_completed_at = CURRENT_TIMESTAMP
           WHERE user_id = $1 
           AND enrichment_status != 'completed'
           AND symbol ~ '^[A-Z0-9]{8}[0-9]$'
+          RETURNING id, user_id
         `, [data.userId]);
         
         logger.info(`Updated CUSIP trades for user ${data.userId} to completed`, 'import');
+        publishEnrichmentCompletedForRows(completed.rows, 'cusip_resolved', 'parallelJobQueue');
       }
       
     } catch (error) {

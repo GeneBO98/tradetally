@@ -150,7 +150,7 @@ class ActivityTrackingService {
     const category = categoryMap[event.type];
     if (!category) return;
 
-    const userId = event.payload?.userId || event.payload?.user_id || null;
+    const userId = event.metadata?.userId || event.payload?.userId || event.payload?.user_id || null;
     this.trackEvent(userId, event.type, category, event.payload, {});
   }
 }
