@@ -7,9 +7,7 @@ const { create_signed_headers } = require('./webullSignature');
 const PROD_BASE = 'https://us-oauth-open-api.webull.com';
 const UAT_BASE = 'https://oauth-open-api.sandbox.webull.com';
 
-// Order history supports a maximum look-back of 2 years.
-const MAX_LOOKBACK_DAYS = 730;
-const ORDER_PAGE_SIZE = 100;
+const EARLIEST_ORDER_TIME = '2018-05-21T00:00:00.000Z';
 const MAX_ORDER_PAGES = 200;
 // Order history / account endpoints are limited to 2 requests per 2 seconds.
 const REQUEST_SPACING_MS = Number(process.env.WEBULL_REQUEST_SPACING_MS ?? 1100);
@@ -22,18 +20,14 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function toDateParam(value, fallback) {
+function to_time_param(value, fallback, end_of_day = false) {
   if (!value) return fallback;
-  const str = String(value);
-  if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? fallback : date.toISOString().slice(0, 10);
-}
-
-function clampToLookback(dateStr) {
-  const floor = new Date(Date.now() - MAX_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-  const floorStr = floor.toISOString().slice(0, 10);
-  return !dateStr || dateStr < floorStr ? floorStr : dateStr;
+  const text = String(value);
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(text)
+    ? `${text}T${end_of_day ? '23:59:59.999' : '00:00:00.000'}Z`
+    : value);
+  if (Number.isNaN(date.getTime())) throw new Error('Invalid Webull sync date');
+  return date.toISOString();
 }
 
 class WebullService extends OAuthBrokerBase {
@@ -68,11 +62,14 @@ class WebullService extends OAuthBrokerBase {
   }
 
   async request_token(body_params, fallback_refresh_token = null) {
+    // Connect token requests use form encoding. The decoded form fields
+    // participate in signing as parameters, rather than a JSON body digest.
     const body = new URLSearchParams(body_params).toString();
     try {
       const response = await axios.post(this.config.tokenUrl, body, {
         headers: {
-          ...this.signed_headers(this.config.tokenUrl, {}, body),
+          ...this.signed_headers(this.config.tokenUrl, body_params),
+          'x-version': 'v2',
           'Content-Type': 'application/x-www-form-urlencoded',
           Accept: 'application/json'
         },
@@ -80,8 +77,8 @@ class WebullService extends OAuthBrokerBase {
       });
       return this.normalizeTokenResponse(response.data, fallback_refresh_token);
     } catch (error) {
-      const error_code = error.response?.data?.error_code;
-      if (typeof error_code === 'string' && /^[A-Z0-9_]+$/.test(error_code)) {
+      const error_code = String(error.response?.data?.error_code ?? error.response?.data?.code ?? '');
+      if (/^[A-Za-z0-9_.-]{1,100}$/.test(error_code)) {
         error.message = `Webull token request rejected: ${error_code}`;
       }
       throw error;
@@ -90,7 +87,7 @@ class WebullService extends OAuthBrokerBase {
 
   async exchangeCodeForTokens(code) {
     return this.request_token({
-      grant_type: 'authorization_code', code, redirect_uri: this.config.redirectUri,
+      grant_type: 'authorization_code', code,
       client_id: this.config.clientId, client_secret: this.config.clientSecret
     });
   }
@@ -135,7 +132,7 @@ class WebullService extends OAuthBrokerBase {
   }
 
   async getAccounts(accessToken) {
-    const url = `${this.config.apiBase}/account/list`;
+    const url = new URL('/trading/accounts/list', this.config.apiBase).toString();
     const response = await axios.get(url, {
       headers: { ...this.signed_headers(url), Authorization: `Bearer ${accessToken}` },
       timeout: 15000
@@ -147,8 +144,9 @@ class WebullService extends OAuthBrokerBase {
 
   async fetchExecutions(accessToken, connection, { startDate, endDate } = {}) {
     const accounts = await this.getAccounts(accessToken);
-    const start = clampToLookback(toDateParam(startDate, null));
-    const end = toDateParam(endDate, null);
+    const start = [to_time_param(startDate, EARLIEST_ORDER_TIME), EARLIEST_ORDER_TIME].sort().pop();
+    const end = to_time_param(endDate, new Date().toISOString(), true);
+    if (start > end) throw new Error('Webull sync start date must be before the end date');
 
     const executions = [];
     for (const account of accounts) {
@@ -156,17 +154,17 @@ class WebullService extends OAuthBrokerBase {
       if (!accountId) continue;
 
       let cursor = null;
+      const seen_cursors = new Set();
       for (let page = 0; page < MAX_ORDER_PAGES; page++) {
         await sleep(REQUEST_SPACING_MS);
         const params = {
           account_id: accountId,
-          start_date: start,
-          page_size: ORDER_PAGE_SIZE
+          start_time: start,
+          end_time: end
         };
-        if (end) params.end_date = end;
-        if (cursor) params.last_client_order_id = cursor;
+        if (cursor) params.pagination_key = cursor;
 
-        const url = `${this.config.apiBase}/trade/order/history`;
+        const url = new URL('/trading/orders/historical-orders/list', this.config.apiBase).toString();
         const response = await axios.get(url, {
           headers: { ...this.signed_headers(url, params), Authorization: `Bearer ${accessToken}` },
           params,
@@ -176,7 +174,6 @@ class WebullService extends OAuthBrokerBase {
         const wrappers = Array.isArray(response.data)
           ? response.data
           : response.data?.data || [];
-        if (!wrappers.length) break;
 
         for (const wrapper of wrappers) {
           const orders = wrapper.orders || [wrapper];
@@ -189,8 +186,11 @@ class WebullService extends OAuthBrokerBase {
           }
         }
 
-        const nextCursor = wrappers[wrappers.length - 1]?.client_order_id || null;
-        if (!nextCursor || nextCursor === cursor || wrappers.length < ORDER_PAGE_SIZE) break;
+        const nextCursor = response.data?.pagination_key || null;
+        if (!nextCursor) break;
+        if (seen_cursors.has(nextCursor)) throw new Error('Webull order history returned a repeated pagination key');
+        if (page === MAX_ORDER_PAGES - 1) throw new Error('Webull order history exceeds the page limit. Use a smaller date range');
+        seen_cursors.add(nextCursor);
         cursor = nextCursor;
       }
     }

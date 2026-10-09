@@ -60,8 +60,20 @@ describe('Webull token requests', () => {
       await expect(service.exchangeCodeForTokens('test-code')).resolves.toMatchObject({ accessToken: 'access' });
       const [url, body, options] = axios.post.mock.calls[0];
       expect(url).toBe('https://oauth-open-api.sandbox.webull.com/oauth2/tokens/create');
-      expect(new URLSearchParams(body).get('code')).toBe('test-code');
-      expect(options.headers).toMatchObject({ 'x-app-key': 'test-app-key', 'x-signature-algorithm': 'HMAC-SHA1' });
+      const form = Object.fromEntries(new URLSearchParams(body));
+      expect(form).toEqual({
+        grant_type: 'authorization_code', code: 'test-code', client_id: 'test-client',
+        client_secret: 'test-client-secret'
+      });
+      expect(options.headers).toMatchObject({
+        'Content-Type': 'application/x-www-form-urlencoded', 'x-version': 'v2',
+        'x-app-key': 'test-app-key', 'x-signature-algorithm': 'HMAC-SHA1'
+      });
+      const { create_signed_headers } = require('../../src/services/brokerSync/webullSignature');
+      expect(options.headers['x-signature']).toBe(create_signed_headers({
+        url, params: form, app_key: 'test-app-key', app_secret: 'test-app-secret',
+        timestamp: options.headers['x-timestamp'], nonce: options.headers['x-signature-nonce']
+      })['x-signature']);
       expect(options.headers['x-signature']).toBeTruthy();
       expect(options.headers).not.toHaveProperty('x-app-secret');
     } finally {
@@ -74,7 +86,9 @@ describe('Webull token requests', () => {
     axios.post.mockResolvedValueOnce({ data: { access_token: 'new-access', expires_in: '1800' } });
     await expect(webullService.refreshAccessToken('existing-refresh')).resolves.toMatchObject({ refreshToken: 'existing-refresh' });
     const [, body, options] = axios.post.mock.calls[0];
-    expect(new URLSearchParams(body).get('grant_type')).toBe('refresh_token');
+    expect(Object.fromEntries(new URLSearchParams(body))).toMatchObject({ grant_type: 'refresh_token', refresh_token: 'existing-refresh' });
+    expect(options.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+    expect(options.headers['x-version']).toBe('v2');
     expect(options.headers['x-signature']).toBeTruthy();
   });
 
@@ -84,6 +98,15 @@ describe('Webull token requests', () => {
     } });
     await expect(webullService.exchangeCodeForTokens('test-code')).rejects.toMatchObject({
       message: 'Webull token request rejected: UNAUTHORIZED'
+    });
+  });
+
+  test('reports dotted Connect error codes returned for invalid authorization codes', async () => {
+    axios.post.mockRejectedValueOnce({ message: 'Request failed with status code 417', response: {
+      status: 417, data: { error_code: 'token.auth.code.error' }
+    } });
+    await expect(webullService.exchangeCodeForTokens('test-code')).rejects.toMatchObject({
+      message: 'Webull token request rejected: token.auth.code.error'
     });
   });
 });
@@ -127,6 +150,31 @@ describe('Webull fetchExecutions (order history flattening + pagination)', () =>
     jest.clearAllMocks();
   });
 
+  const history_contracts = require('../../../tests/fixtures/trading-calculation-contracts.json').webull_history_cases;
+  test.each(history_contracts)('$id preserves the round trip across short cursor pages', async contract => {
+    axios.get.mockResolvedValueOnce({ data: contract.accounts });
+    contract.pages.forEach(page => axios.get.mockResolvedValueOnce({ data: page }));
+    const executions = await webullService.fetchExecutions('test-token', {}, {
+      startDate: contract.start_date, endDate: contract.end_date
+    });
+    const trades = webullService.mapExecutionsToTrades(executions);
+    expect(trades.map(trade => ({
+      symbol: trade.symbol, side: trade.side, quantity: trade.quantity,
+      entry_price: trade.entryPrice, exit_price: trade.exitPrice, pnl: trade.pnl,
+      commission: trade.commission, fees: trade.fees, account_identifier: trade.accountIdentifier
+    }))).toEqual(contract.expected_trades);
+    expect(axios.get.mock.calls[2][1].params.pagination_key).toBe('fixture-next-page');
+  });
+
+  test('rejects repeated cursors instead of importing an incomplete history', async () => {
+    axios.get.mockResolvedValueOnce({ data: [{ account_id: 'fixture-account' }] })
+      .mockResolvedValueOnce({ data: { data: [], pagination_key: 'repeat' } })
+      .mockResolvedValueOnce({ data: { data: [], pagination_key: 'repeat' } });
+    await expect(webullService.fetchExecutions('test-token', {}, { startDate: '2026-03-01' }))
+      .rejects.toThrow('repeated pagination key');
+    expect(axios.get).toHaveBeenCalledTimes(3);
+  });
+
   test('flattens combo wrappers, tags orders with account info, and passes the date window', async () => {
     const order = {
       client_order_id: 'CO-1',
@@ -162,20 +210,19 @@ describe('Webull fetchExecutions (order history flattening + pagination)', () =>
     });
 
     const accountCall = axios.get.mock.calls[0];
-    expect(accountCall[0]).toContain('/oauth-openapi/account/list');
+    expect(accountCall[0]).toContain('/trading/accounts/list');
     expect(accountCall[1].headers.Authorization).toBe('Bearer token-1');
 
     const historyCall = axios.get.mock.calls[1];
-    expect(historyCall[0]).toContain('/oauth-openapi/trade/order/history');
+    expect(historyCall[0]).toContain('/trading/orders/historical-orders/list');
     expect(historyCall[1].params).toEqual({
       account_id: 'ACC-1',
-      start_date: '2026-03-01',
-      end_date: '2026-03-07',
-      page_size: 100
+      start_time: '2026-03-01T00:00:00.000Z',
+      end_time: '2026-03-07T23:59:59.999Z'
     });
   });
 
-  test('clamps the start date to the 2-year look-back window Webull supports', async () => {
+  test('supports full history back to the documented brokerage start date', async () => {
     axios.get
       .mockResolvedValueOnce({ data: [{ account_id: 'ACC-1', account_number: '5567892936' }] })
       .mockResolvedValueOnce({ data: [] });
@@ -183,11 +230,10 @@ describe('Webull fetchExecutions (order history flattening + pagination)', () =>
     await webullService.fetchExecutions('token-1', {}, { startDate: '2015-01-01' });
 
     const historyCall = axios.get.mock.calls[1];
-    const twoYearFloor = new Date(Date.now() - 730 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    expect(historyCall[1].params.start_date).toBe(twoYearFloor);
+    expect(historyCall[1].params.start_time).toBe('2018-05-21T00:00:00.000Z');
   });
 
-  test('paginates with last_client_order_id until a short page is returned', async () => {
+  test('paginates using the response pagination key', async () => {
     const fullPage = Array.from({ length: 100 }, (_, i) => ({
       client_order_id: `CO-${i}`,
       orders: [{
@@ -217,15 +263,15 @@ describe('Webull fetchExecutions (order history flattening + pagination)', () =>
 
     axios.get
       .mockResolvedValueOnce({ data: [{ account_id: 'ACC-1', account_number: '5567892936' }] })
-      .mockResolvedValueOnce({ data: fullPage })
-      .mockResolvedValueOnce({ data: lastPage });
+      .mockResolvedValueOnce({ data: { data: fullPage, pagination_key: 'next-page' } })
+      .mockResolvedValueOnce({ data: { data: lastPage } });
 
     const executions = await webullService.fetchExecutions('token-1', {}, { startDate: '2026-03-01' });
 
     expect(executions).toHaveLength(101);
     expect(axios.get).toHaveBeenCalledTimes(3);
     const secondHistoryCall = axios.get.mock.calls[2];
-    expect(secondHistoryCall[1].params.last_client_order_id).toBe('CO-99');
+    expect(secondHistoryCall[1].params.pagination_key).toBe('next-page');
   });
 });
 
