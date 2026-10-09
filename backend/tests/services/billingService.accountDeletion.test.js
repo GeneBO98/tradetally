@@ -9,7 +9,6 @@ jest.mock('../../src/models/User', () => ({
   findById: jest.fn()
 }));
 jest.mock('../../src/services/emailService', () => ({}));
-jest.mock('../../src/services/invoiceNinjaSyncService', () => ({}));
 
 const User = require('../../src/models/User');
 const BillingService = require('../../src/services/billingService');

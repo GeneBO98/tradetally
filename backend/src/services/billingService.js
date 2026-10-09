@@ -4,7 +4,6 @@ const tierCache = require('./tierCache');
 const settingsCache = require('./settingsCache');
 const User = require('../models/User');
 const EmailService = require('./emailService');
-const invoiceNinjaSyncService = require('./invoiceNinjaSyncService');
 
 // Conditionally load Stripe only if billing is enabled
 let stripe = null;
@@ -32,7 +31,7 @@ class BillingService {
   // Initialize Stripe with conditional loading
   static async initialize() {
     const billingEnabled = await TierService.isBillingEnabled();
-    
+
     if (!billingEnabled) {
       console.log('Billing is disabled - Stripe not initialized');
       return false;
@@ -41,28 +40,28 @@ class BillingService {
     try {
       // Get Stripe secret key from environment or admin settings
       let secretKey = process.env.STRIPE_SECRET_KEY;
-      
+
       // Fall back to database if not in environment
       if (!secretKey) {
         const secretKeyQuery = `SELECT setting_value FROM admin_settings WHERE setting_key = 'stripe_secret_key'`;
         const result = await db.query(secretKeyQuery);
-        
+
         if (result.rows[0] && result.rows[0].setting_value) {
           secretKey = result.rows[0].setting_value;
         }
       }
-      
+
       if (!secretKey) {
         console.warn('Stripe secret key not configured - billing unavailable');
         return false;
       }
-      
+
       // Dynamically import Stripe
       const Stripe = (await import('stripe')).default;
       stripe = new Stripe(secretKey, {
         apiVersion: '2023-10-16',
       });
-      
+
       console.log('Stripe initialized successfully');
       return true;
     } catch (error) {
@@ -243,14 +242,14 @@ class BillingService {
       // If customer portal configuration is missing, create a default one
       if (error.message.includes('No configuration provided')) {
         console.log('Creating default customer portal configuration...');
-        
+
         try {
           // Create a default customer portal configuration
           await stripe.billingPortal.configurations.create({
             features: {
               invoice_history: { enabled: true },
               payment_method_update: { enabled: true },
-              subscription_cancel: { 
+              subscription_cancel: {
                 enabled: true,
                 mode: 'at_period_end'
               },
@@ -264,9 +263,9 @@ class BillingService {
               terms_of_service_url: process.env.FRONTEND_URL + '/terms'
             }
           });
-          
+
           console.log('Default customer portal configuration created successfully');
-          
+
           // Now try creating the portal session again
           const portalSession = await stripe.billingPortal.sessions.create({
             customer: customerId,
@@ -448,7 +447,7 @@ class BillingService {
   // Get subscription details
   static async getSubscriptionDetails(userId) {
     const subscription = await User.getSubscription(userId);
-    
+
     if (!subscription || !subscription.stripe_subscription_id) {
       return null;
     }
@@ -603,9 +602,9 @@ class BillingService {
 
     console.log('Updating subscription:', subscription.id, 'customer:', subscription.customer, 'status:', subscription.status);
     const customerId = subscription.customer;
-    
+
     let userId;
-    
+
     // First try to get user ID from subscription metadata
     if (subscription.metadata && subscription.metadata.user_id) {
       userId = subscription.metadata.user_id;
@@ -616,7 +615,7 @@ class BillingService {
         SELECT user_id FROM subscriptions WHERE stripe_customer_id = $1
       `;
       const userResult = await db.query(userQuery, [customerId]);
-      
+
       if (!userResult.rows[0]) {
         // Try one more approach - fetch the customer from Stripe
         try {
@@ -659,7 +658,7 @@ class BillingService {
       canceled_at: toDateOrNull(subscription.canceled_at)
     };
     console.log('Subscription data:', subscriptionData);
-    
+
     await this.createOrUpdateSubscription(userId, subscriptionData);
     console.log('Subscription updated in database');
 
@@ -723,30 +722,7 @@ class BillingService {
 
   // Handle successful payment
   static async handlePaymentSucceeded(invoice) {
-    console.log('Payment succeeded for invoice:', invoice.id);
-    const userId = await this.resolveUserIdForInvoice(invoice);
-
-    if (!userId) {
-      console.warn('[BILLING] Unable to resolve user for paid invoice:', invoice.id);
-      return;
-    }
-
-    const initialized = invoiceNinjaSyncService.initialize();
-    if (!initialized) {
-      console.log('[BILLING] Invoice Ninja revenue sync skipped - integration not configured');
-      return;
-    }
-
-    try {
-      const result = await invoiceNinjaSyncService.syncStripeInvoiceRevenue(userId, invoice);
-      if (result?.skipped) {
-        console.log('[BILLING] Invoice Ninja revenue sync skipped:', invoice.id, result.reason);
-      } else if (result?.invoice?.id) {
-        console.log('[BILLING] Invoice Ninja revenue synced:', invoice.id, '->', result.invoice.id);
-      }
-    } catch (error) {
-      console.error('[BILLING] Invoice Ninja revenue sync failed for Stripe invoice:', invoice.id, error.message);
-    }
+    console.log("[BILLING] Payment succeeded for invoice:", invoice.id);
   }
 
   // Handle failed payment
@@ -755,44 +731,7 @@ class BillingService {
     // Could add logic for handling failed payments, notifications, etc.
   }
 
-  static async backfillInvoiceNinjaRevenue(userId) {
-    const billingAvailable = await this.isBillingAvailable();
-    if (!billingAvailable) {
-      throw new Error('Billing not available');
-    }
 
-    const subscription = await User.getSubscription(userId);
-    if (!subscription?.stripe_subscription_id && !subscription?.stripe_customer_id) {
-      return {
-        skipped: true,
-        reason: 'subscription_not_configured',
-      };
-    }
-
-    const initialized = invoiceNinjaSyncService.initialize();
-    if (!initialized) {
-      return {
-        skipped: true,
-        reason: 'invoice_ninja_not_configured',
-      };
-    }
-
-    const invoiceListParams = subscription.stripe_subscription_id
-      ? { subscription: subscription.stripe_subscription_id, limit: 20 }
-      : { customer: subscription.stripe_customer_id, limit: 20 };
-
-    const invoices = await stripe.invoices.list(invoiceListParams);
-    const paidInvoice = invoices.data.find((invoice) => invoice.paid && Number(invoice.amount_paid || 0) > 0);
-
-    if (!paidInvoice) {
-      return {
-        skipped: true,
-        reason: 'no_paid_invoice_found',
-      };
-    }
-
-    return invoiceNinjaSyncService.syncStripeInvoiceRevenue(userId, paidInvoice);
-  }
 
   static async resolveUserIdForInvoice(invoice) {
     const stripeSubscriptionId = invoice?.subscription || null;
@@ -975,15 +914,15 @@ class BillingService {
   static async getPricingPlans() {
     const billingEnabled = await TierService.isBillingEnabled();
     const billingAvailable = await this.isBillingAvailable();
-    
+
     console.log('getPricingPlans debug:', { billingEnabled, billingAvailable });
-    
+
     // If billing is disabled, return empty array
     if (!billingEnabled) {
       console.log('Billing disabled, returning empty plans');
       return [];
     }
-    
+
     // If billing is enabled but Stripe not available, return default plans
     if (!billingAvailable) {
       console.log('Billing enabled but Stripe unavailable, returning default plans');
@@ -1004,7 +943,7 @@ class BillingService {
       }
 
       const plans = [];
-      
+
       const monthlyFeatures = [
         'Everything in Free',
         'Behavioral analytics',

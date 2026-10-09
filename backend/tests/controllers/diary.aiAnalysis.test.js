@@ -111,6 +111,21 @@ describe('diary AI analysis timeout recovery', () => {
     );
   });
 
+  test('keeps provider configuration details out of diary analysis errors', async () => {
+    Diary.findByDateRange.mockResolvedValue([{ entry_date: '2026-07-15', content: 'Trade notes' }]);
+    aiService.generateResponse.mockRejectedValue(new Error('AI provider gemini is not properly configured'));
+    const res = createResponse();
+    await diaryController.analyzeEntries({
+      user: { id: 'user-1' }, query: { startDate: '2026-07-01', endDate: '2026-07-31' }
+    }, res);
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      code: 'AI_UNAVAILABLE',
+      message: 'AI analysis is temporarily unavailable. Please try again shortly.'
+    }));
+    expect(JSON.stringify(res.json.mock.calls)).not.toMatch(/gemini|configured/i);
+  });
+
   test('returns a saved result to the polling client', async () => {
     const req = {
       user: { id: 'user-1' },

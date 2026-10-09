@@ -1,4 +1,5 @@
 const { instructionsForPrompt } = require('../utils/aiAnalysisInstructions');
+const { sendAIUnavailable } = require('../utils/aiErrorResponse');
 const db = require('../config/database');
 const crypto = require('crypto');
 const aiService = require('../utils/aiService');
@@ -2593,35 +2594,9 @@ const analyticsController = {
 
       const userSettings = await aiService.getUserSettings(req.user.id);
 
-      if (!userSettings.provider) {
-        console.log('[ERROR] AI provider not configured');
-        return res.status(400).json({
-          error: 'AI recommendations are not available. AI provider not configured in settings.'
-        });
-      }
-
-      // Check if API key is required for this provider
-      const providersRequiringApiKey = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'perplexity'];
-      if (providersRequiringApiKey.includes(userSettings.provider) && !userSettings.apiKey) {
-        console.log(`[ERROR] API key required for ${userSettings.provider} provider`);
-        return res.status(400).json({
-          error: `AI recommendations are not available. API key required for ${userSettings.provider} provider.`
-        });
-      }
-
-      // Check if API URL is required for this provider
-      const providersRequiringApiUrl = ['ollama', 'lmstudio', 'local', 'custom'];
-      if (providersRequiringApiUrl.includes(userSettings.provider) && !userSettings.apiUrl) {
-        console.log(`[ERROR] API URL required for ${userSettings.provider} provider`);
-        return res.status(400).json({
-          error: `AI recommendations are not available. API URL required for ${userSettings.provider} provider.`
-        });
-      }
-
-      if (userSettings.provider === 'custom' && !userSettings.model) {
-        return res.status(400).json({
-          error: 'AI recommendations are not available. Model required for custom provider.'
-        });
+      if (!aiService.isProviderConfigured(userSettings)) {
+        console.error('[AI] Recommendations provider configuration is incomplete');
+        return sendAIUnavailable(res);
       }
 
       console.log(`[OK] AI provider configured: ${userSettings.provider}`);
@@ -2836,9 +2811,7 @@ const analyticsController = {
         }
       } catch (aiError) {
         console.error('[ERROR] AI service error:', aiError.message);
-        return res.status(500).json({
-          error: 'Failed to generate AI recommendations: ' + aiError.message
-        });
+        return sendAIUnavailable(res);
       }
       console.log('[SUCCESS] AI recommendations generated successfully');
       console.log('[DEBUG] Recommendations type:', typeof recommendations);
@@ -2859,7 +2832,7 @@ const analyticsController = {
 
     } catch (error) {
       console.error('Error generating recommendations:', error);
-      next(error);
+      return sendAIUnavailable(res);
     }
   },
 

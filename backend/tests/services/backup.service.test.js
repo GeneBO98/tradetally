@@ -56,6 +56,7 @@ describe('backup service hardening', () => {
   });
 
   test.each(contracts.backup_restore_cases)('restores calculation contract: $id', async ({ trade, expected }) => {
+    db.query.mockResolvedValue({ rows: [{ timezone: 'UTC' }] });
     const row = { id: 'trade-1', user_id: 'user-1', ...trade };
     const client = createRestoreClient({ trades: Object.keys(row) }, ['user-1']);
     const result = await backupService.restoreFromBackup({ tables: { trades: [row] } });
@@ -65,7 +66,7 @@ describe('backup service hardening', () => {
     const columns = sql.match(/\(([^)]+)\) VALUES/)[1].split(', ').map(column => column.replaceAll('"', ''));
     const restored = Object.fromEntries(columns.map((column, index) => [column, values[index]]));
     expect(restored).toMatchObject(expected);
-    expect(db.query).not.toHaveBeenCalledWith('SELECT timezone FROM users WHERE id = $1', expect.anything());
+    expect(client.query).toHaveBeenCalledWith('SELECT timezone FROM users WHERE id = $1', ['user-1']);
   });
 
   test.each(['camel', 'snake'])('restores %s-case trade parents before their trades', async format => {

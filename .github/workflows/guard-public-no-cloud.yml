@@ -24,3 +24,5 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Fail if any cloud-only path is present
         run: bash scripts/check-public-clean.sh HEAD
+      - name: Verify boundary guard rejects cloud paths and providers
+        run: bash tests/repository-boundaries.test.sh

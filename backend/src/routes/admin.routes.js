@@ -3,7 +3,6 @@ const router = express.Router();
 const { requireAdmin } = require('../middleware/auth');
 const stockSplitService = require('../services/stockSplitService');
 const StockSplit = require('../models/StockSplit');
-const TrialFeedbackService = require('../services/trialFeedbackService');
 const logger = require('../utils/logger');
 
 // Check for stock splits manually
@@ -206,18 +205,5 @@ router.get('/logs/recent', requireAdmin, async (req, res, next) => {
   }
 });
 
-router.get('/trial-feedback/summary', requireAdmin, async (req, res, next) => {
-  try {
-    const parsedLimit = Number.parseInt(req.query.limit, 10);
-    const limit = Number.isInteger(parsedLimit) ? parsedLimit : 100;
-    const summary = await TrialFeedbackService.getAdminSummary(limit);
-    res.json({
-      success: true,
-      data: summary
-    });
-  } catch (error) {
-    next(error);
-  }
-});
 
 module.exports = router;

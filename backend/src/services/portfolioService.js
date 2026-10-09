@@ -5,10 +5,17 @@ const alphaVantage = require('../utils/alphaVantage');
 const historicalPriceCache = require('../utils/historicalPriceCache');
 const HoldingsService = require('./holdingsService');
 const NotificationService = require('./notificationService');
+const { calculateTimeWeightedReturn } = require('./retirementCalculator');
 
 const UNSORTED_ACCOUNT = '__unsorted__';
 const DEFAULT_BENCHMARK = 'SPY';
 const DEFAULT_PERIOD = '6M';
+// How close (in calendar days) the earliest cached candle must be to the requested
+// start before we treat a price range as having full leading-edge coverage.
+const LEADING_COVERAGE_BUFFER_DAYS = 7;
+// How long a symbol stays on the "no daily candles" skip list before the nightly
+// backfill re-checks it (in case it later lists / becomes available).
+const PRICE_UNAVAILABLE_RECHECK_DAYS = 30;
 // A cached quote newer than this is considered "fresh". Older (or missing)
 // quotes are still shown to the user, but the position is flagged stale and a
 // background refresh is triggered so the UI can stream in the new price.
@@ -126,6 +133,12 @@ function getPeriodRange(period = DEFAULT_PERIOD) {
       break;
     case '1Y':
       start.setFullYear(start.getFullYear() - 1);
+      break;
+    case 'ALL':
+    case 'MAX':
+      // No fixed lookback — reach far enough back that the series naturally starts
+      // at the first date a holding is both owned and priced (i.e. inception).
+      start.setFullYear(start.getFullYear() - 25);
       break;
     case 'YTD':
       start.setMonth(0, 1);
@@ -344,8 +357,127 @@ class PortfolioService {
       totalReturn: round(totals.totalReturn),
       totalReturnPercent: round(totals.totalReturnPercent),
       targetCoveragePercent: round(totals.targetCoveragePercent),
+      priceStalePositionCount: positions.filter(position => position.priceStale).length,
       allocation
     };
+  }
+
+  static async getRetirementAccountBreakdown(userId) {
+    const result = await db.query(
+      `WITH trade_executions AS (
+         SELECT
+           t.account_identifier,
+           t.symbol,
+           t.broker,
+           COALESCE(
+             (
+               SELECT SUM(
+                 CASE
+                   WHEN exec->>'entryPrice' IS NOT NULL
+                     OR exec->>'exitPrice' IS NOT NULL
+                     OR exec->>'entryTime' IS NOT NULL
+                   THEN
+                     CASE
+                       WHEN exec->>'exitPrice' IS NULL THEN
+                         CASE
+                           WHEN t.side = 'long' THEN (exec->>'quantity')::numeric
+                           ELSE -(exec->>'quantity')::numeric
+                         END
+                       ELSE 0
+                     END
+                   WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('buy', 'long')
+                     THEN (exec->>'quantity')::numeric
+                   WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('sell', 'short')
+                     THEN -(exec->>'quantity')::numeric
+                   ELSE 0
+                 END
+               )
+               FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS exec
+               WHERE exec->>'quantity' IS NOT NULL
+             ),
+             t.quantity
+           ) AS net_position
+         FROM trades t
+         WHERE t.user_id = $1
+           AND t.exit_price IS NULL
+           AND t.side = 'long'
+       ),
+       eligible_trade_positions AS (
+         SELECT
+           COALESCE(NULLIF(account_identifier, ''), '${UNSORTED_ACCOUNT}') AS account_identifier,
+           symbol,
+           STRING_AGG(DISTINCT broker, ', ') AS brokers
+         FROM trade_executions
+         GROUP BY account_identifier, symbol
+         HAVING COALESCE(SUM(net_position), 0) > 0
+       ),
+       source_rows AS (
+         SELECT
+           COALESCE(NULLIF(l.account_identifier, ''), '${UNSORTED_ACCOUNT}') AS account_identifier,
+           CASE
+             WHEN l.source = 'plaid' THEN 'plaid_holdings'
+             ELSE 'manual_holdings'
+           END AS source,
+           COUNT(l.id)::integer AS record_count,
+           NULL::text AS brokers
+         FROM investment_lots l
+         JOIN investment_holdings h
+           ON h.id = l.holding_id
+          AND h.user_id = l.user_id
+         WHERE l.user_id = $1
+           AND l.shares > 0
+         GROUP BY
+           COALESCE(NULLIF(l.account_identifier, ''), '${UNSORTED_ACCOUNT}'),
+           CASE WHEN l.source = 'plaid' THEN 'plaid_holdings' ELSE 'manual_holdings' END
+
+         UNION ALL
+
+         SELECT
+           account_identifier,
+           'open_long_positions' AS source,
+           COUNT(*)::integer AS record_count,
+           STRING_AGG(DISTINCT brokers, ', ') AS brokers
+         FROM eligible_trade_positions
+         GROUP BY account_identifier
+       ),
+       account_sources AS (
+         SELECT
+           account_identifier,
+           ARRAY_AGG(DISTINCT source ORDER BY source) AS sources,
+           SUM(record_count)::integer AS source_record_count,
+           STRING_AGG(DISTINCT brokers, ', ') FILTER (WHERE brokers IS NOT NULL) AS trade_brokers
+         FROM source_rows
+         GROUP BY account_identifier
+       )
+       SELECT
+         sources.account_identifier,
+         managed.account_name,
+         COALESCE(managed.broker, sources.trade_brokers) AS broker,
+         sources.sources,
+         sources.source_record_count
+       FROM account_sources sources
+       LEFT JOIN LATERAL (
+         SELECT ua.account_name, ua.broker
+         FROM user_accounts ua
+         WHERE ua.user_id = $1
+           AND sources.account_identifier != '${UNSORTED_ACCOUNT}'
+           AND NULLIF(ua.account_identifier, '') = sources.account_identifier
+         ORDER BY ua.is_primary DESC, ua.created_at ASC
+         LIMIT 1
+       ) managed ON TRUE
+       ORDER BY
+         CASE WHEN sources.account_identifier = '${UNSORTED_ACCOUNT}' THEN 1 ELSE 0 END,
+         COALESCE(managed.account_name, sources.account_identifier)`,
+      [userId]
+    );
+
+    return result.rows.map(row => ({
+      account_identifier: row.account_identifier,
+      account_name: row.account_name || null,
+      broker: row.broker || null,
+      sources: row.sources || [],
+      source_record_count: Number(row.source_record_count) || 0
+    }));
   }
 
   static async getPositions(userId, options = {}) {
@@ -499,9 +631,14 @@ class PortfolioService {
     const components = await this._getPositionComponents(userId, accounts);
     const symbols = [...new Set(components.map(component => component.symbol))];
 
+    // The series can never begin before the first holding, so there's no point
+    // fetching price history earlier than that. This keeps deep windows (ALL/MAX)
+    // bounded to the actual holding period instead of pulling decades of candles.
+    const fetchStartDate = this._boundedFetchStart(startDate, components);
+
     const [benchmarkCandles, priceSeriesMap] = await Promise.all([
-      this._getDailySeries(benchmark, startDate, endDate, userId),
-      this._getPriceSeriesMap(symbols, startDate, endDate, userId)
+      this._getDailySeries(benchmark, fetchStartDate, endDate, userId),
+      this._getPriceSeriesMap(symbols, fetchStartDate, endDate, userId)
     ]);
 
     const canonicalDates = (benchmarkCandles.length > 0
@@ -517,12 +654,14 @@ class PortfolioService {
     const benchmarkIndex = this._buildSeriesIndex(benchmarkCandles);
 
     const series = [];
-    let firstPortfolioValue = null;
+    let portfolioIndexLevel = 100;
     let firstBenchmarkClose = null;
-    let previousPortfolioIndex = null;
     let previousBenchmarkIndex = null;
+    let previousValues = null;
+    let portfolioStarted = false;
 
     for (const date of canonicalDates) {
+      const currentValues = new Map();
       let portfolioValue = 0;
 
       for (const component of components) {
@@ -535,27 +674,53 @@ class PortfolioService {
           continue;
         }
 
-        portfolioValue += component.shares * candleValue * component.valueMultiplier;
+        const value = component.shares * candleValue * component.valueMultiplier;
+        currentValues.set(component, value);
+        portfolioValue += value;
       }
 
       const benchmarkClose = this._getIndexedClose(benchmarkIndex, date);
 
-      if (portfolioValue > 0 && firstPortfolioValue === null) {
-        firstPortfolioValue = portfolioValue;
-      }
-
-      if (benchmarkClose !== null && firstBenchmarkClose === null) {
+      // Start the series once we have at least one priced position and a benchmark
+      // close. The benchmark is anchored at this SAME observation so portfolio and
+      // benchmark indices both begin at 100 on the same date — otherwise a benchmark
+      // whose price history predates the first holding would be measured over a longer
+      // window than the portfolio, overstating its return.
+      if (!portfolioStarted) {
+        if (currentValues.size === 0 || benchmarkClose === null) {
+          continue;
+        }
+        portfolioStarted = true;
         firstBenchmarkClose = benchmarkClose;
       }
 
-      if (firstPortfolioValue === null || firstBenchmarkClose === null) {
-        continue;
+      // Time-weighted daily return: only positions held (and priced) on BOTH the
+      // previous and current observation contribute to the day's return. Newly
+      // added positions and newly available price feeds are folded into the base
+      // without being booked as a gain, so contributions/late price history are
+      // not mistaken for investment performance.
+      let portfolioDailyReturn = null;
+      if (previousValues !== null) {
+        let baseValue = 0;
+        let endValue = 0;
+        for (const [component, value] of currentValues.entries()) {
+          if (previousValues.has(component)) {
+            baseValue += previousValues.get(component);
+            endValue += value;
+          }
+        }
+        if (baseValue > 0) {
+          portfolioDailyReturn = (endValue - baseValue) / baseValue;
+          portfolioIndexLevel *= 1 + portfolioDailyReturn;
+        }
       }
 
-      const portfolioIndex = (portfolioValue / firstPortfolioValue) * 100;
-      const benchmarkIndexed = (benchmarkClose / firstBenchmarkClose) * 100;
-      const portfolioReturnPercent = ((portfolioIndex / 100) - 1) * 100;
-      const benchmarkReturnPercent = ((benchmarkIndexed / 100) - 1) * 100;
+      const portfolioIndex = portfolioIndexLevel;
+      const benchmarkIndexed = benchmarkClose !== null && firstBenchmarkClose !== null
+        ? (benchmarkClose / firstBenchmarkClose) * 100
+        : null;
+      const portfolioReturnPercent = portfolioIndex - 100;
+      const benchmarkReturnPercent = benchmarkIndexed !== null ? benchmarkIndexed - 100 : null;
 
       const entry = {
         date,
@@ -565,19 +730,21 @@ class PortfolioService {
         benchmarkIndex: roundNullable(benchmarkIndexed),
         portfolioReturnPercent: round(portfolioReturnPercent),
         benchmarkReturnPercent: roundNullable(benchmarkReturnPercent),
-        relativeReturnPercent: roundNullable(portfolioReturnPercent - benchmarkReturnPercent)
+        relativeReturnPercent: benchmarkReturnPercent !== null
+          ? roundNullable(portfolioReturnPercent - benchmarkReturnPercent)
+          : null
       };
 
-      if (previousPortfolioIndex !== null && previousPortfolioIndex > 0) {
-        entry.portfolioDailyReturn = (portfolioIndex - previousPortfolioIndex) / previousPortfolioIndex;
+      if (portfolioDailyReturn !== null && Number.isFinite(portfolioDailyReturn)) {
+        entry.portfolioDailyReturn = portfolioDailyReturn;
       }
 
-      if (previousBenchmarkIndex !== null && previousBenchmarkIndex > 0) {
+      if (previousBenchmarkIndex !== null && previousBenchmarkIndex > 0 && benchmarkIndexed !== null) {
         entry.benchmarkDailyReturn = (benchmarkIndexed - previousBenchmarkIndex) / previousBenchmarkIndex;
       }
 
-      previousPortfolioIndex = portfolioIndex;
       previousBenchmarkIndex = benchmarkIndexed;
+      previousValues = currentValues;
       series.push(entry);
     }
 
@@ -626,6 +793,145 @@ class PortfolioService {
       },
       series
     };
+  }
+
+  /**
+   * Build retirement-planning return assumptions from the user's currently
+   * tracked portfolio. Returns are time-weighted so newly added lots are
+   * treated as external cash flows instead of investment gains.
+   */
+  static async getHistoricalReturnScenarios(userId, options = {}) {
+    const accounts = normalizeAccounts(options.accounts);
+    const [positions, components] = await Promise.all([
+      this.getPositions(userId, { accounts }),
+      this._getPositionComponents(userId, accounts)
+    ]);
+    const totalPortfolioValue = positions.reduce(
+      (sum, position) => sum + Math.max(0, Number(position.currentValue) || 0),
+      0
+    );
+
+    if (totalPortfolioValue <= 0 || components.length === 0) {
+      return [];
+    }
+
+    const longestRange = getPeriodRange('10Y');
+    const symbols = [...new Set(components.map(component => component.symbol))];
+    const [priceSeriesMap, dividends] = await Promise.all([
+      this._getPriceSeriesMap(
+        symbols,
+        longestRange.startDate,
+        longestRange.endDate,
+        userId,
+        { allowFullHistory: true }
+      ),
+      this._getRecordedDividendsForRange(
+        userId,
+        accounts,
+        longestRange.startDate,
+        longestRange.endDate
+      )
+    ]);
+    const scenarios = [];
+
+    for (const periodYears of [1, 5, 10]) {
+      const range = getPeriodRange(`${periodYears}Y`);
+      const requestedDays = Math.max(
+        1,
+        (new Date(`${range.endDate}T00:00:00.000Z`) - new Date(`${range.startDate}T00:00:00.000Z`))
+          / 86_400_000
+      );
+      const expectedTradingDays = Math.max(1, Math.floor(requestedDays * (5 / 7)));
+      const qualifyingSymbols = new Set();
+      const seriesBySymbol = {};
+
+      for (const [symbol, candles] of priceSeriesMap.entries()) {
+        const normalized = (candles || [])
+          .map(candle => ({
+            date: this._normalizeDateValue(candle.time),
+            close: Number(candle.close)
+          }))
+          .filter(candle => (
+            candle.date >= range.startDate
+            && candle.date <= range.endDate
+            && Number.isFinite(candle.close)
+            && candle.close > 0
+          ))
+          .sort((left, right) => left.date.localeCompare(right.date));
+
+        if (normalized.length < 2) continue;
+        const symbolCoveredDays = (
+          new Date(`${normalized[normalized.length - 1].date}T00:00:00.000Z`)
+          - new Date(`${normalized[0].date}T00:00:00.000Z`)
+        ) / 86_400_000;
+        const symbolTimeCoverage = (symbolCoveredDays / requestedDays) * 100;
+        const symbolObservationCoverage = (normalized.length / expectedTradingDays) * 100;
+        if (Math.min(symbolTimeCoverage, symbolObservationCoverage) < 80) continue;
+
+        qualifyingSymbols.add(symbol);
+        seriesBySymbol[symbol] = normalized;
+      }
+
+      const coveredPortfolioValue = positions
+        .filter(position => qualifyingSymbols.has(position.symbol))
+        .reduce((sum, position) => sum + Math.max(0, Number(position.currentValue) || 0), 0);
+      const valueCoveragePercent = (coveredPortfolioValue / totalPortfolioValue) * 100;
+      if (valueCoveragePercent < 80) continue;
+
+      const coveredComponents = components
+        .filter(component => qualifyingSymbols.has(component.symbol))
+        .map(component => ({
+          symbol: component.symbol,
+          shares: component.shares,
+          value_multiplier: component.valueMultiplier,
+          effective_date: component.effectiveDate
+        }));
+      const coveredDividends = dividends.filter(dividend => (
+        qualifyingSymbols.has(dividend.symbol)
+        && dividend.payment_date >= range.startDate
+        && dividend.payment_date <= range.endDate
+      ));
+      const performance = calculateTimeWeightedReturn({
+        components: coveredComponents,
+        price_series_by_symbol: seriesBySymbol,
+        dividends: coveredDividends,
+        start_date: range.startDate,
+        end_date: range.endDate
+      });
+
+      if (!performance) continue;
+      const coveredDays = (
+        new Date(`${performance.data_end}T00:00:00.000Z`)
+        - new Date(`${performance.data_start}T00:00:00.000Z`)
+      ) / 86_400_000;
+      const timeCoveragePercent = Math.min(100, (coveredDays / requestedDays) * 100);
+      const observationCoveragePercent = Math.min(
+        100,
+        (performance.observation_count / expectedTradingDays) * 100
+      );
+      const effectiveTimeCoveragePercent = Math.min(
+        timeCoveragePercent,
+        observationCoveragePercent
+      );
+      if (effectiveTimeCoveragePercent < 80) continue;
+
+      scenarios.push({
+        key: `historical_${periodYears}y`,
+        label: `Historical ${periodYears}-year`,
+        source: 'historical',
+        period_years: periodYears,
+        annual_return_percent: performance.annual_return_percent,
+        total_return_percent: performance.total_return_percent,
+        data_start: performance.data_start,
+        data_end: performance.data_end,
+        observation_count: performance.observation_count,
+        time_coverage_percent: round(effectiveTimeCoveragePercent),
+        portfolio_value_coverage_percent: round(Math.min(100, valueCoveragePercent)),
+        includes_recorded_dividends: coveredDividends.length > 0
+      });
+    }
+
+    return scenarios;
   }
 
   static async getAlertSummary(userId, options = {}) {
@@ -1433,6 +1739,42 @@ class PortfolioService {
     });
   }
 
+  static async _getRecordedDividendsForRange(userId, accounts, startDate, endDate) {
+    const params = [userId, startDate, endDate];
+    let accountClause = '';
+
+    if (accounts.length > 0) {
+      const filter = buildAccountFilter('l.account_identifier', accounts, params, 4);
+      accountClause = `
+        AND EXISTS (
+          SELECT 1
+          FROM investment_lots l
+          WHERE l.holding_id = d.holding_id
+            AND l.user_id = d.user_id
+            ${filter.clause}
+        )`;
+    }
+
+    const result = await db.query(
+      `SELECT
+         d.symbol,
+         d.payment_date,
+         d.total_amount
+       FROM investment_dividends d
+       WHERE d.user_id = $1
+         AND d.payment_date BETWEEN $2 AND $3
+         ${accountClause}
+       ORDER BY d.payment_date ASC`,
+      params
+    );
+
+    return result.rows.map(row => ({
+      symbol: row.symbol,
+      payment_date: this._normalizeDateValue(row.payment_date),
+      total_amount: Number(row.total_amount) || 0
+    }));
+  }
+
   static async _getLotComponents(userId, accounts) {
     const params = [userId];
     const { clause } = buildAccountFilter('l.account_identifier', accounts, params, 2);
@@ -1512,10 +1854,10 @@ class PortfolioService {
     }));
   }
 
-  static async _getPriceSeriesMap(symbols, startDate, endDate, userId) {
+  static async _getPriceSeriesMap(symbols, startDate, endDate, userId, options = {}) {
     const entries = await Promise.all(
       symbols.map(async symbol => {
-        const candles = await this._getDailySeries(symbol, startDate, endDate, userId);
+        const candles = await this._getDailySeries(symbol, startDate, endDate, userId, options);
         return [symbol, candles];
       })
     );
@@ -1523,33 +1865,270 @@ class PortfolioService {
     return new Map(entries);
   }
 
-  static async _getDailySeries(symbol, startDate, endDate, userId) {
+  static async _getDailySeries(symbol, startDate, endDate, userId, options = {}) {
     const cachedCandles = await historicalPriceCache.getRange(symbol, startDate, endDate);
-    if (cachedCandles.length > 0 && await historicalPriceCache.hasRange(symbol, startDate, endDate)) {
+    if (await this._isRangeCovered(symbol, startDate, endDate, cachedCandles)) {
       return cachedCandles;
     }
 
-    if (alphaVantage.isConfigured()) {
-      try {
-        const candles = await alphaVantage.getDailyData(symbol, 'compact');
-        return candles.filter(candle => {
-          const date = this._toDateString(candle.time);
-          return date >= startDate && date <= endDate;
-        });
-      } catch (error) {
-        // Fall through to configured market data provider.
-      }
+    // Cache miss, or a leading-edge gap the count-based check alone would miss (the
+    // cache "looks" covered but is missing the front of the window). Backfill the
+    // full requested range from a ranged provider, persist it, then serve from the
+    // now-complete cache so the gap heals itself instead of needing a manual fix.
+    await this._backfillRange(symbol, startDate, endDate, userId, options);
+
+    const refreshed = await historicalPriceCache.getRange(symbol, startDate, endDate);
+    return refreshed.length > 0 ? refreshed : cachedCandles;
+  }
+
+  /**
+   * Decide whether the cached candles fully cover [startDate, endDate]. Requires the
+   * existing density check AND that the earliest cached candle sits near the start of
+   * the window — unless the provider has no history that far back (remembered per
+   * symbol so we don't refetch the same unavailable range on every request).
+   */
+  static async _isRangeCovered(symbol, startDate, endDate, cachedCandles) {
+    if (!cachedCandles || cachedCandles.length === 0) {
+      return false;
     }
+    if (!(await historicalPriceCache.hasRange(symbol, startDate, endDate))) {
+      return false;
+    }
+
+    const earliestCached = this._toDateString(cachedCandles[0].time);
+    const providerEarliest = this._getProviderEarliest(symbol);
+    const effectiveStart = providerEarliest && providerEarliest > startDate
+      ? providerEarliest
+      : startDate;
+
+    return earliestCached <= this._addCalendarDays(effectiveStart, LEADING_COVERAGE_BUFFER_DAYS);
+  }
+
+  /**
+   * Fetch [startDate, endDate] from a ranged provider (Finnhub first, Alpha Vantage as
+   * a fallback) and persist it. Tracks the provider's earliest available date so a
+   * symbol whose history starts after the requested range isn't refetched endlessly.
+   */
+  static async _backfillRange(symbol, startDate, endDate, userId, options = {}) {
+    const attemptKey = `${symbol.toUpperCase()}|${startDate}|${endDate}`;
+    if (!this._backfillAttempts) {
+      this._backfillAttempts = new Set();
+    }
+    if (this._backfillAttempts.has(attemptKey)) {
+      return;
+    }
+    this._backfillAttempts.add(attemptKey);
+
+    const { candles } = await this._fetchRangeFromProvider(
+      symbol,
+      startDate,
+      endDate,
+      userId,
+      options
+    );
+
+    if (candles.length > 0) {
+      await historicalPriceCache.insertCandles(symbol, candles, finnhub.providerName || 'finnhub');
+      const earliest = candles.map(candle => this._toDateString(candle.time)).sort()[0];
+      // Earliest delivered candle materially later than asked-for start => that's the
+      // provider's limit; remember it so wider windows don't refetch the missing front.
+      if (earliest > this._addCalendarDays(startDate, LEADING_COVERAGE_BUFFER_DAYS)) {
+        this._setProviderEarliest(symbol, earliest);
+      }
+    } else {
+      this._setProviderEarliest(symbol, startDate);
+    }
+  }
+
+  /**
+   * Fetch daily candles for [startDate, endDate] from a ranged provider (Finnhub
+   * first, Alpha Vantage 'compact' as a fallback). Returns { candles, unavailable }
+   * without persisting — callers decide whether/how to cache. `unavailable` is true
+   * only when a provider explicitly reported no data exists (not a transient/rate-limit
+   * error), so callers can mark dead symbols without suppressing real ones on a blip.
+   * userId may be null for jobs.
+   */
+  static async _fetchRangeFromProvider(symbol, startDate, endDate, userId, options = {}) {
+    const {
+      allowAlphaVantageFallback = true,
+      allowFullHistory = false
+    } = options;
+    const noDataPattern = /no candle data|no data available|not found|invalid (api call|symbol)|symbol not/i;
+    let candles = [];
+    let sawNoDataSignal = false;
 
     try {
       const from = Math.floor(new Date(`${startDate}T00:00:00.000Z`).getTime() / 1000);
       const to = Math.floor(new Date(`${endDate}T23:59:59.999Z`).getTime() / 1000);
-      const candles = await finnhub.getStockCandles(symbol, 'D', from, to, userId);
-      await historicalPriceCache.insertCandles(symbol, candles, finnhub.providerName || 'finnhub');
-      return candles;
+      candles = await finnhub.getStockCandles(symbol, 'D', from, to, userId);
     } catch (error) {
-      return [];
+      candles = [];
+      if (noDataPattern.test(error && error.message ? error.message : '')) {
+        sawNoDataSignal = true;
+      }
     }
+
+    if ((!candles || candles.length === 0) && allowAlphaVantageFallback && alphaVantage.isConfigured()) {
+      try {
+        const all = await alphaVantage.getDailyData(
+          symbol,
+          allowFullHistory ? 'full' : 'compact'
+        );
+        candles = all.filter(candle => {
+          const date = this._toDateString(candle.time);
+          return date >= startDate && date <= endDate;
+        });
+      } catch (error) {
+        candles = [];
+        if (noDataPattern.test(error && error.message ? error.message : '')) {
+          sawNoDataSignal = true;
+        }
+      }
+    }
+
+    candles = candles || [];
+    return { candles, unavailable: candles.length === 0 && sawNoDataSignal };
+  }
+
+  /**
+   * Lower-bound the price-fetch start at (earliest holding - buffer): the performance
+   * series can't begin before the first owned-and-priced date, so fetching earlier is
+   * wasted work. Returns the later of the requested start and that bound.
+   */
+  static _boundedFetchStart(startDate, components) {
+    if (!components || components.length === 0) {
+      return startDate;
+    }
+    const earliest = components.reduce((min, component) => {
+      const eff = this._normalizeDateValue(component.effectiveDate);
+      return eff && eff < min ? eff : min;
+    }, this._normalizeDateValue(components[0].effectiveDate));
+    if (!earliest) {
+      return startDate;
+    }
+    const bounded = this._addCalendarDays(earliest, -LEADING_COVERAGE_BUFFER_DAYS);
+    return bounded > startDate ? bounded : startDate;
+  }
+
+  /**
+   * Nightly pre-warm: ensure the price cache covers every currently-held symbol back
+   * to its earliest purchase, plus each configured benchmark back to the global
+   * earliest holding. Idempotent (insert ON CONFLICT DO NOTHING) — already-covered
+   * symbols are skipped — so it's cheap after the first run and keeps users off the
+   * slow on-demand backfill path. Returns a summary for logging.
+   */
+  static async refreshHeldSymbolHistory(referenceDate = null) {
+    const endDate = referenceDate || new Date().toISOString().split('T')[0];
+
+    // Only equities have daily candles. Options/futures/crypto/forex symbols would
+    // just fail every provider call (and burn rate limit), so exclude them.
+    const result = await db.query(
+      `SELECT symbol, MIN(eff) AS earliest
+         FROM (
+           SELECT h.symbol AS symbol, l.purchase_date AS eff
+             FROM investment_lots l
+             JOIN investment_holdings h ON h.id = l.holding_id
+           UNION ALL
+           SELECT t.symbol AS symbol, t.entry_time AS eff
+             FROM trades t
+            WHERE t.exit_price IS NULL AND t.side = 'long'
+              AND COALESCE(t.instrument_type, 'stock') = 'stock'
+         ) s
+        WHERE symbol IS NOT NULL AND eff IS NOT NULL
+        GROUP BY symbol`
+    );
+
+    const need = new Map();
+    // Equity tickers are short and alphanumeric (e.g. AAPL, BRK.B). Skip anything with
+    // spaces/slashes/colons or long option-contract strings — those are mislabeled
+    // options/forex/crypto with no daily stock candles, so fetching them just wastes
+    // provider calls every night.
+    const isLikelyEquityTicker = (key) => /^[A-Z0-9][A-Z0-9.\-]{0,7}$/.test(key);
+    const addNeed = (symbol, dateStr) => {
+      const key = normalizeSymbol(symbol);
+      if (!key || !dateStr || !isLikelyEquityTicker(key)) {
+        return;
+      }
+      const previous = need.get(key);
+      if (!previous || dateStr < previous) {
+        need.set(key, dateStr);
+      }
+    };
+
+    result.rows.forEach(row => addNeed(row.symbol, this._normalizeDateValue(row.earliest)));
+
+    // Benchmarks must reach back to the earliest holding so the series can be anchored.
+    const globalEarliest = [...need.values()].sort()[0] || null;
+    if (globalEarliest) {
+      const benchRows = await db.query(
+        `SELECT DISTINCT default_benchmark_symbol AS symbol
+           FROM portfolio_preferences
+          WHERE default_benchmark_symbol IS NOT NULL`
+      );
+      addNeed(DEFAULT_BENCHMARK, globalEarliest);
+      benchRows.rows.forEach(row => addNeed(row.symbol, globalEarliest));
+    }
+
+    // Symbols already confirmed to have no candles (within the re-check window) are
+    // skipped without touching any provider.
+    const unavailable = await historicalPriceCache.getUnavailableSymbols(PRICE_UNAVAILABLE_RECHECK_DAYS);
+
+    const summary = { symbols: need.size, backfilled: 0, cached: 0, skipped: 0, failed: 0 };
+    for (const [symbol, earliest] of need.entries()) {
+      try {
+        const startDate = this._addCalendarDays(earliest, -LEADING_COVERAGE_BUFFER_DAYS);
+        const existing = await historicalPriceCache.getRange(symbol, startDate, endDate);
+        const covered = existing.length > 0
+          && this._toDateString(existing[0].time) <= this._addCalendarDays(startDate, LEADING_COVERAGE_BUFFER_DAYS);
+        if (covered) {
+          summary.cached += 1;
+          continue;
+        }
+        if (unavailable.has(symbol)) {
+          summary.skipped += 1;
+          continue;
+        }
+        const { candles, unavailable: noData } = await this._fetchRangeFromProvider(symbol, startDate, endDate, null, {
+          allowAlphaVantageFallback: false
+        });
+        if (candles.length > 0) {
+          await historicalPriceCache.insertCandles(symbol, candles, finnhub.providerName || 'finnhub');
+          await historicalPriceCache.clearUnavailable(symbol);
+          summary.backfilled += 1;
+        } else {
+          if (noData) {
+            await historicalPriceCache.markUnavailable(symbol);
+          }
+          summary.failed += 1;
+        }
+      } catch (error) {
+        summary.failed += 1;
+        console.error(`[PRICE-HISTORY] Backfill failed for ${symbol}:`, error.message);
+      }
+    }
+
+    return summary;
+  }
+
+  static _getProviderEarliest(symbol) {
+    return this._providerEarliest ? (this._providerEarliest.get(symbol.toUpperCase()) || null) : null;
+  }
+
+  static _setProviderEarliest(symbol, dateStr) {
+    if (!this._providerEarliest) {
+      this._providerEarliest = new Map();
+    }
+    const key = symbol.toUpperCase();
+    const previous = this._providerEarliest.get(key);
+    if (!previous || dateStr < previous) {
+      this._providerEarliest.set(key, dateStr);
+    }
+  }
+
+  static _addCalendarDays(dateStr, days) {
+    const date = new Date(`${dateStr}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().split('T')[0];
   }
 
   static _buildDateUnion(priceSeriesMap) {

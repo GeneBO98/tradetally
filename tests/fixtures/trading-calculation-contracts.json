@@ -1092,6 +1092,22 @@
           "pnl": 98
         }
       ]
+    },
+    {
+      "id": "generic_negative_costs_with_decimal_comma",
+      "broker": "generic",
+      "csv": "Symbol;Side;Quantity;Price;Commission;Fees;Trade Date\nAAPL;Buy;2;100,50;-1,00;-0,25;2026-10-01 10:00:00\nAAPL;Sell;2;102,50;-1,00;-0,25;2026-10-01 11:00:00",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 2,
+          "entry_price": 100.5,
+          "exit_price": 102.5,
+          "commission": 2,
+          "fees": 0.5,
+          "pnl": 1.5
+        }
+      ]
     }
   ],
   "ibkr_option_grouping_cases": [
@@ -1448,6 +1464,90 @@
         "take_profit": 5
       },
       "expected": null
+    }
+  ],
+  "webull_history_cases": [
+    {
+      "id": "webull_cursor_round_trip",
+      "description": "A short history page with a continuation key must not omit the closing fill on the next page.",
+      "accounts": [
+        {
+          "account_id": "fixture-account",
+          "account_number": "12341234"
+        }
+      ],
+      "start_date": "2026-03-01",
+      "end_date": "2026-03-07",
+      "pages": [
+        {
+          "data": [
+            {
+              "client_order_id": "fixture-buy",
+              "orders": [
+                {
+                  "client_order_id": "fixture-buy",
+                  "order_id": "fixture-buy-id",
+                  "symbol": "AAPL",
+                  "side": "BUY",
+                  "status": "FILLED",
+                  "instrument_type": "EQUITY",
+                  "filled_quantity": "2",
+                  "filled_price": "100",
+                  "filled_time_at": "2026-03-06T14:00:00.000Z"
+                }
+              ]
+            }
+          ],
+          "pagination_key": "fixture-next-page"
+        },
+        {
+          "data": [
+            {
+              "client_order_id": "fixture-sell",
+              "orders": [
+                {
+                  "client_order_id": "fixture-sell",
+                  "order_id": "fixture-sell-id",
+                  "symbol": "AAPL",
+                  "side": "SELL",
+                  "status": "FILLED",
+                  "instrument_type": "EQUITY",
+                  "filled_quantity": "2",
+                  "filled_price": "106",
+                  "filled_time_at": "2026-03-06T15:00:00.000Z"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected_trades": [
+        {
+          "symbol": "AAPL",
+          "side": "long",
+          "quantity": 2,
+          "entry_price": 100,
+          "exit_price": 106,
+          "pnl": 12,
+          "commission": 0,
+          "fees": 0,
+          "account_identifier": "****1234"
+        }
+      ]
+    }
+  ],
+  "leaderboard_consistency_cases": [
+    {
+      "id": "repeatable_winners",
+      "trade_count": 50,
+      "pnl": 10,
+      "expected_score": 100
+    },
+    {
+      "id": "repeatable_losses",
+      "trade_count": 50,
+      "pnl": -10,
+      "expected_score": 0
     }
   ]
 }

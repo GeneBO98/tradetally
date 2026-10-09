@@ -6,6 +6,7 @@ const TradeQueries = require('./tradeQueries');
 const { isPositionGroupingEnabled, hasBrokerageOrder } = require('../utils/positionGrouping');
 const AICreditService = require('./aiCreditService');
 const AIProvider = require('../utils/aiProvider');
+const { userAISettings, coalesceSettingsBundle } = require('../utils/aiSettings');
 const TierService = require('./tierService');
 const { validateAiProviderUrl } = require('../utils/urlSecurity');
 const adminSettingsService = require('./adminSettings');
@@ -1471,10 +1472,7 @@ Please provide a helpful, specific response to the user's question. Reference th
    */
   static async getAISettings(userId, options = {}) {
     let ai_analysis_instructions = '';
-    let apiKey = options.apiKey;
-    let modelName = options.modelName;
-    let provider = options.provider;
-    let apiUrl = options.apiUrl;
+    let userSettings = {};
     let adminDefaults = {
       provider: '',
       apiKey: '',
@@ -1496,35 +1494,24 @@ Please provide a helpful, specific response to the user's question. Reference th
       // transparently decrypted via the model layer.
       const User = require('../models/User');
       const settings = await User.getSettings(userId);
-
-      if (settings) {
-        ai_analysis_instructions = settings.ai_analysis_instructions || '';
-        const userProvider = settings.ai_provider || '';
-        const fallbackProvider = adminDefaults.provider || '';
-        provider = provider || userProvider || fallbackProvider || 'gemini';
-
-        const sameProviderFallback = fallbackProvider && fallbackProvider === provider;
-        apiKey = apiKey || settings.ai_api_key || (sameProviderFallback ? adminDefaults.apiKey : '');
-        apiUrl = apiUrl || settings.ai_api_url || (sameProviderFallback ? adminDefaults.apiUrl : '');
-        modelName = modelName || settings.ai_model || (sameProviderFallback ? adminDefaults.model : '');
-      } else {
-        provider = provider || adminDefaults.provider || 'gemini';
-        apiKey = apiKey || adminDefaults.apiKey;
-        apiUrl = apiUrl || adminDefaults.apiUrl;
-        modelName = modelName || adminDefaults.model;
-      }
+      ai_analysis_instructions = settings?.ai_analysis_instructions || '';
+      userSettings = userAISettings(settings);
     } catch (error) {
       console.warn('[AI_SESSION] Could not load AI settings from database:', error.message);
       try {
         adminDefaults = await adminSettingsService.getDefaultAISettings();
-        provider = provider || adminDefaults.provider || 'gemini';
-        apiKey = apiKey || adminDefaults.apiKey;
-        apiUrl = apiUrl || adminDefaults.apiUrl;
-        modelName = modelName || adminDefaults.model;
       } catch (adminError) {
         console.warn('[AI_SESSION] Could not load admin AI settings:', adminError.message);
       }
     }
+
+    const defaults = coalesceSettingsBundle(userSettings, adminDefaults);
+    let { provider, apiKey, apiUrl, model: modelName } = coalesceSettingsBundle({
+      provider: options.provider || defaults.provider,
+      apiKey: options.apiKey,
+      apiUrl: options.apiUrl,
+      model: options.modelName
+    }, defaults);
 
     // Require provider to be configured
     if (!provider) {

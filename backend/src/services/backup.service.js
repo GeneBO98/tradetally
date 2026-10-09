@@ -875,6 +875,7 @@ class BackupService {
 
         console.log(`[RESTORE] Trades: ${results.trades.added} added, ${results.trades.skipped} skipped, ${results.trades.errors} errors`);
       }
+      this._restoredUserIds = restoredUserIds;
 
       // Restore diary entries with per-record fault tolerance
       const diaryEntriesData = getTableData('diaryEntries', 'diary_entries');

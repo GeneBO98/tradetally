@@ -54,6 +54,32 @@ const HEADER_LOCALE_MAP = {
   'hora de colocación': 'Placing Time',
   'número de orden': 'Order ID',
   'duración': 'Duration',
+  'símbolo': 'Symbol',
+  'simbolo': 'Symbol',
+  'tipo': 'Type',
+  'cant. pendiente': 'Remaining Qty',
+  'cantidad ejecutada': 'Filled Qty',
+  'precio medio de ejecución': 'Avg Fill Price',
+  'precio de ejecución': 'Fill Price',
+  'estado': 'Status',
+  'fecha ult. actualización': 'Closing Time',
+  'fecha últ. actualización': 'Closing Time',
+  'hora de cierre': 'Closing Time',
+  'id de orden': 'Order ID',
+  'vencimiento': 'Expiry',
+  'fecha de vencimiento': 'Expiry Time',
+  // Portuguese (TradingView PT-BR)
+  'quantidade': 'Qty',
+  'quantidade executada': 'Filled Qty',
+  'preço limite': 'Limit Price',
+  'preço stop': 'Stop Price',
+  'preço de execução': 'Fill Price',
+  'preço médio de execução': 'Avg Fill Price',
+  'comissão': 'Commission',
+  'hora de fechamento': 'Closing Time',
+  'id do pedido': 'Order ID',
+  'alavancagem': 'Leverage',
+  'margem': 'Margin',
 };
 
 // Cell-value translations – keyed by canonical column, then lowercase
@@ -76,6 +102,19 @@ const VALUE_LOCALE_MAP = {
     'cancelado': 'Cancelled',
     'rechazado': 'Rejected',
     'pendiente': 'Pending',
+    'ejecutada': 'Filled',
+    'ejecutadas': 'Filled',
+    'ejecutados': 'Filled',
+    'cancelada': 'Cancelled',
+    'canceladas': 'Cancelled',
+    'cancelados': 'Cancelled',
+    'rechazada': 'Rejected',
+    'rechazadas': 'Rejected',
+    // Portuguese
+    'executado': 'Filled',
+    'executada': 'Filled',
+    'executadas': 'Filled',
+    'rejeitado': 'Rejected',
   },
   'Side': {
     // German
@@ -101,8 +140,10 @@ const VALUE_LOCALE_MAP = {
     'take-profit': 'Take-Profit',
     // French
     'marché': 'Market',
-    // Spanish
+    // Spanish / Portuguese
     'mercado': 'Market',
+    'límite': 'Limit',
+    'limite': 'Limit',
   },
 };
 
@@ -817,11 +858,23 @@ function detectBrokerFormat(fileBuffer) {
 
     // Fidelity account history export. Action values contain phrases such as
     // "YOU BOUGHT" and "YOU SOLD", and Price/Commission/Fees use ($) suffixes.
-    if (headers.includes('run date') && headers.includes('account number') &&
-        headers.includes('action') && headers.includes('price ($)') &&
-        headers.includes('quantity')) {
+    // Newer single-account exports drop Account Number and use plain
+    // Price/Commission/Fees headers.
+    if (headers.includes('run date') && headers.includes('action') &&
+        headers.includes('symbol') && headers.includes('quantity') &&
+        (headers.includes('price ($)') ||
+          (headers.includes('price') && headers.includes('settlement date')))) {
       console.log('[AUTO-DETECT] Detected: Fidelity account history');
       return 'fidelity';
+    }
+
+    // Wealthsimple activities export (transaction_date or effective_date +
+    // activity_type/activity_sub_type + unit_price + net_cash_amount).
+    if (headers.includes('activity_type') && headers.includes('activity_sub_type') &&
+        headers.includes('unit_price') && headers.includes('net_cash_amount') &&
+        (headers.includes('transaction_date') || headers.includes('effective_date'))) {
+      console.log('[AUTO-DETECT] Detected: Wealthsimple activities');
+      return 'wealthsimple';
     }
 
     // ProjectX order-history export used by ProjectX-powered platforms. Filled

@@ -73,6 +73,7 @@ describe('BrokerSyncView sync outcomes', () => {
       trading212Connections: [],
       fetchConnections: vi.fn(),
       fetchSyncLogs: vi.fn(),
+      fetchProviders: vi.fn(),
       clearError: vi.fn()
     })
   })

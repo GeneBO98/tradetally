@@ -63,11 +63,6 @@ const router = createRouter({
       meta: { public: true }
     },
     {
-      path: '/trial-feedback',
-      name: 'trial-feedback',
-      component: () => import('@/views/auth/TrialFeedbackView.vue')
-    },
-    {
       path: '/dashboard',
       name: 'dashboard',
       component: () => import('@/views/DashboardView.vue'),
@@ -331,6 +326,12 @@ const router = createRouter({
       path: '/analysis',
       name: 'analysis',
       component: () => import('@/views/InvestmentsView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
+      path: '/analysis/retirement',
+      name: 'retirement-planner',
+      component: () => import('@/views/RetirementPlannerView.vue'),
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {

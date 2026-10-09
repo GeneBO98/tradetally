@@ -413,6 +413,13 @@ const baseNavigation = [
         badge: { type: 'pro', text: 'Pro' }
       },
       {
+        name: 'Retirement Planner',
+        to: '/analysis/retirement',
+        route: 'retirement-planner',
+        description: 'Project retirement savings across your tracked portfolios',
+        badge: { type: 'pro', text: 'Pro' }
+      },
+      {
         name: 'Watchlists',
         to: '/markets',
         route: 'markets',

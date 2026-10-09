@@ -1,3 +1,4 @@
+const { sendAIUnavailable } = require('../utils/aiErrorResponse');
 const Diary = require('../models/Diary');
 const { validate, schemas } = require('../middleware/validation');
 const upload = require('../middleware/upload');
@@ -777,12 +778,7 @@ const analyzeEntries = async (req, res) => {
       }
     }
 
-    if (error.message.includes('not properly configured')) {
-      return res.status(400).json({ 
-        error: 'AI provider not configured. Please check your AI settings in user preferences.' 
-      });
-    }
-    res.status(500).json({ error: 'Failed to analyze diary entries' });
+    return sendAIUnavailable(res);
   }
 };
 
