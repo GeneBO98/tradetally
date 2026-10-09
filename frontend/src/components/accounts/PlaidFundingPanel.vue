@@ -503,7 +503,7 @@ async function linkExistingAccount(plaidAccount) {
       trackingMode: trackingModes[plaidAccount.id]
     })
     showSuccess('Account linked', 'Plaid account linked. Holdings roll up to this account and matching transfers appear in the review queue.')
-    await refreshGlobalAccountFilter()
+    await refreshGlobalAccountFilter({ force: true })
     emit('refresh')
   } catch (error) {
     showError('Link failed', error.response?.data?.message || error.message || 'Unable to link Plaid account')
@@ -522,7 +522,7 @@ function confirmUnlink(plaidAccount) {
         await store.unlinkPlaidAccount(plaidAccount.id)
         selectedAccountIds[plaidAccount.id] = ''
         showSuccess('Plaid account unlinked', 'This account no longer feeds into a TradeTally account.')
-        await refreshGlobalAccountFilter()
+        await refreshGlobalAccountFilter({ force: true })
         emit('refresh')
       } catch (error) {
         showError('Unlink failed', error.response?.data?.message || error.message || 'Unable to unlink Plaid account')
@@ -550,7 +550,7 @@ async function createAndLinkAccount(plaidAccount) {
       }
     })
     showSuccess('Account created', 'Account created and linked. Trades, holdings, and Plaid transfers now roll up here — rename it anytime from your accounts list.')
-    await refreshGlobalAccountFilter()
+    await refreshGlobalAccountFilter({ force: true })
     emit('refresh')
   } catch (error) {
     showError('Create failed', error.response?.data?.message || error.message || 'Unable to create and link account')

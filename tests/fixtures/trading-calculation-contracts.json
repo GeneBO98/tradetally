@@ -1,4 +1,320 @@
 {
+  "backup_restore_cases": [
+    {
+      "id": "closed_option_opening_only",
+      "description": "Preserve a manually closed short option when only its opening fill was saved.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "action": "sell",
+            "quantity": 1,
+            "price": 3.5,
+            "datetime": "2026-08-05T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0
+      }
+    },
+    {
+      "id": "closed_option_partial_exit",
+      "description": "A partial exit cannot replace the saved result of a fully closed trade.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "action": "sell",
+            "quantity": 1,
+            "price": 3.5,
+            "datetime": "2026-08-05T14:00:00Z"
+          },
+          {
+            "action": "buy",
+            "quantity": 0.5,
+            "price": 1,
+            "datetime": "2026-08-29T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0
+      }
+    },
+    {
+      "id": "closed_option_incomplete_quantity",
+      "description": "A complete round trip for fewer contracts cannot replace the full position.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 2,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 700,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "quantity": 1,
+            "entry_price": 3.5,
+            "exit_price": 0,
+            "entry_time": "2026-08-05T14:00:00Z",
+            "exit_time": "2026-08-29T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 2,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 700,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0
+      }
+    },
+    {
+      "id": "closed_option_complete_zero_exit",
+      "description": "Complete executions still recalculate expired option P&L, including zero exit prices.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 999,
+        "pnl_percent": 999,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "quantity": 1,
+            "entry_price": 3.5,
+            "exit_price": 0,
+            "entry_time": "2026-08-05T14:00:00Z",
+            "exit_time": "2026-08-29T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0
+      }
+    },
+    {
+      "id": "open_option_partial_realized",
+      "description": "Keep calculating realized P&L on open trades with partial exits.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": null,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": null,
+        "trade_date": "2026-08-05",
+        "pnl": null,
+        "pnl_percent": null,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "action": "sell",
+            "quantity": 1,
+            "price": 3.5,
+            "datetime": "2026-08-05T14:00:00Z"
+          },
+          {
+            "action": "buy",
+            "quantity": 0.5,
+            "price": 1,
+            "datetime": "2026-08-27T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "pnl": 125,
+        "exit_time": null,
+        "exit_price": null,
+        "quantity": 1,
+        "commission": 0,
+        "fees": 0
+      }
+    },
+    {
+      "id": "closed_option_saved_costs",
+      "description": "Incomplete executions must also preserve manually adjusted costs and prices.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 4,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 394,
+        "pnl_percent": 98.5,
+        "commission": 5,
+        "fees": 1,
+        "executions": [
+          {
+            "action": "sell",
+            "quantity": 1,
+            "price": 3.5,
+            "datetime": "2026-08-05T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 4,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 394,
+        "pnl_percent": 98.5,
+        "commission": 5,
+        "fees": 1
+      }
+    },
+    {
+      "id": "closed_option_missing_exit_timestamp",
+      "description": "Preserve a saved close time when grouped executions omit their exit timestamp.",
+      "trade": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0,
+        "executions": [
+          {
+            "quantity": 1,
+            "entry_price": 3.5,
+            "exit_price": 0,
+            "entry_time": "2026-08-05T14:00:00Z"
+          }
+        ]
+      },
+      "expected": {
+        "symbol": "PLTR",
+        "side": "short",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 1,
+        "entry_price": 3.5,
+        "exit_price": 0,
+        "entry_time": "2026-08-05T14:00:00Z",
+        "exit_time": "2026-08-29T14:00:00Z",
+        "trade_date": "2026-08-05",
+        "pnl": 350,
+        "pnl_percent": 100,
+        "commission": 0,
+        "fees": 0
+      }
+    }
+  ],
   "pnl_engine_cases": [
     {
       "id": "stock_long_round_trip",
@@ -23,7 +339,8 @@
           "pnl_percent": 19.775,
           "is_fully_closed": true
         },
-        "realized_pnl": [null, 197.75]
+        "realized_pnl": [null, 197.75],
+        "gross_realized_pnl": [null, 200]
       }
     },
     {
@@ -49,7 +366,8 @@
           "pnl_percent": 9.89,
           "is_fully_closed": true
         },
-        "realized_pnl": [null, 98.9]
+        "realized_pnl": [null, 98.9],
+        "gross_realized_pnl": [null, 100]
       }
     },
     {
@@ -77,6 +395,33 @@
           "is_fully_closed": true
         },
         "realized_pnl": [null, 147.8]
+      }
+    },
+    {
+      "id": "short_option_expired_worthless",
+      "description": "A zero exit price remains a valid close for a short option that expired worthless.",
+      "input": {
+        "side": "short",
+        "instrumentType": "option",
+        "contractSize": 100,
+        "timezone": "UTC",
+        "executions": [
+          { "entryPrice": 0.1, "exitPrice": 0, "quantity": 1, "commission": 0.5, "fees": 0.02, "entryTime": "2026-02-13T15:30:00Z", "exitTime": "2026-02-20T21:00:00Z" }
+        ]
+      },
+      "expected": {
+        "aggregate": {
+          "entry_price": 0.1,
+          "exit_price": 0,
+          "quantity": 1,
+          "commission": 0.5,
+          "fees": 0.02,
+          "pnl": 9.48,
+          "pnl_percent": 94.8,
+          "is_fully_closed": true
+        },
+        "realized_pnl": [9.48],
+        "gross_realized_pnl": [10]
       }
     },
     {
@@ -130,7 +475,8 @@
           "pnl_percent": 15.78,
           "is_fully_closed": true
         },
-        "realized_pnl": [null, 39.12, 118.68]
+        "realized_pnl": [null, 39.12, 118.68],
+        "gross_realized_pnl": [null, 40, 120]
       }
     },
     {
@@ -186,6 +532,57 @@
           "is_fully_closed": true
         },
         "realized_pnl": [null, 189.53244]
+      }
+    }
+  ],
+  "chart_pnl_measurement_cases": [
+    {
+      "id": "chart_stock_long_measurement",
+      "input": {
+        "entry_price": 100,
+        "exit_price": 105,
+        "quantity": 25,
+        "side": "long",
+        "instrument_type": "stock"
+      },
+      "expected": {
+        "price_change": 5,
+        "position_basis": 2500,
+        "pnl_percent": 5,
+        "dollar_pnl": 125
+      }
+    },
+    {
+      "id": "chart_stock_short_measurement",
+      "input": {
+        "entry_price": 50,
+        "exit_price": 46,
+        "quantity": 10,
+        "side": "short",
+        "instrument_type": "stock"
+      },
+      "expected": {
+        "price_change": 4,
+        "position_basis": 500,
+        "pnl_percent": 8,
+        "dollar_pnl": 40
+      }
+    },
+    {
+      "id": "chart_future_point_value_measurement",
+      "input": {
+        "entry_price": 4500,
+        "exit_price": 4504,
+        "quantity": 3,
+        "side": "long",
+        "instrument_type": "future",
+        "point_value": 5
+      },
+      "expected": {
+        "price_change": 4,
+        "position_basis": 67500,
+        "pnl_percent": 0.0888888889,
+        "dollar_pnl": 60
       }
     }
   ],
@@ -246,7 +643,205 @@
       "win_rate_excluding_breakeven": 100
     }
   },
+  "dollar_breakeven_tolerance": {
+    "config": {
+      "mode": "dollars",
+      "default": 10,
+      "byUnderlying": {}
+    },
+    "cases": [
+      { "id": "small_gross_win", "gross_pnl": 8, "is_breakeven": true },
+      { "id": "boundary_gross_loss", "gross_pnl": -10, "is_breakeven": true },
+      { "id": "decisive_gross_win", "gross_pnl": 10.01, "is_breakeven": false }
+    ]
+  },
+  "csv_import_cases": [
+    {
+      "id": "etrade_detailed_activity_option_round_trip",
+      "csv": "Activity/Trade Date,Transaction Date,Settlement Date,Activity Type,Description,Symbol,Cusip,Quantity #,Price $,Amount $,Commission,Category,Note\n07/10/26,07/10/26,07/13/26,Bought To Open,PUT  MDB    07/17/26   312.500,MDB,--,5,2.18,-1091.81,1.81,--,--\n07/11/26,07/11/26,07/14/26,Sold To Close,PUT  MDB    07/17/26   312.500,MDB,--,-5,3.00,1498.19,1.81,--,--",
+      "expected": {
+        "detected_broker": "etrade",
+        "symbol": "MDB260717P00312500",
+        "broker": "etrade",
+        "side": "long",
+        "quantity": 5,
+        "entry_price": 2.18,
+        "exit_price": 3,
+        "trade_date": "2026-07-10",
+        "instrument_type": "option"
+      }
+    },
+    {
+      "id": "etrade_suffixed_headers_option_round_trip",
+      "csv": "Transaction Date,Transaction Type,Description,Symbol,Quantity #,Price $,Amount $,Commission\n07/10/26,Bought To Open,PUT  MDB    07/17/26   312.500,MDB,5,2.18,-1091.81,1.81\n07/11/26,Sold To Close,PUT  MDB    07/17/26   312.500,MDB,-5,3.00,1498.19,1.81",
+      "expected": {
+        "detected_broker": "etrade",
+        "symbol": "MDB260717P00312500",
+        "broker": "etrade",
+        "side": "long",
+        "quantity": 5,
+        "entry_price": 2.18,
+        "exit_price": 3,
+        "trade_date": "2026-07-10",
+        "instrument_type": "option"
+      }
+    },
+    {
+      "id": "fidelity_account_history_option_round_trip",
+      "csv": "Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Settlement Date\n07-06-2026,ROTH IRA,245259961,YOU BOUGHT OPENING TRANSACTION PUT (NVDA),-NVDA260710P195,PUT (NVDA) JUL 10 26 $195,Cash,1.96,2,1.30,0.03,, -393.25,07-07-2026\n07-07-2026,ROTH IRA,245259961,YOU SOLD CLOSING TRANSACTION PUT (NVDA),-NVDA260710P195,PUT (NVDA) JUL 10 26 $195,Cash,2.49,-2,1.30,0.05,,496.65,07-08-2026",
+      "expected": {
+        "detected_broker": "fidelity",
+        "symbol": "NVDA260710P00195000",
+        "broker": "fidelity",
+        "side": "long",
+        "quantity": 2,
+        "entry_price": 1.96,
+        "exit_price": 2.49,
+        "trade_date": "2026-07-06",
+        "instrument_type": "option"
+      }
+    },
+    {
+      "id": "papermoney_four_digit_year_round_trip",
+      "csv": "Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type\n6/16/2026 13:45,STOCK,BUY,10,TO OPEN,OBAI,,,STOCK,1.02,1.02,LMT\n6/16/2026 13:54,STOCK,SELL,-10,TO CLOSE,OBAI,,,STOCK,1.04,1.04,LMT",
+      "expected": {
+        "detected_broker": "papermoney",
+        "symbol": "OBAI",
+        "broker": "papermoney",
+        "side": "long",
+        "quantity": 10,
+        "entry_price": 1.02,
+        "exit_price": 1.04,
+        "trade_date": "2026-06-16",
+        "instrument_type": "stock"
+      }
+    },
+    {
+      "id": "webull_international_combined_symbol_round_trip",
+      "csv": "Symbol & Name,Trade Date,Settlement Date,Buy/Sell,Quantity,Traded Price,Gross Amount,Comm/Fee/Tax,VAT,Net Amount\nGLW CORNING INC,30/06/2026,01/07/2026,BUY,1,250.00,250.00,-0.27,-0.02,-250.29\nGLW CORNING INC,01/07/2026,02/07/2026,SELL,1,254.00,254.00,-0.27,-0.02,253.71",
+      "expected": {
+        "detected_broker": "webull",
+        "symbol": "GLW",
+        "broker": "webull",
+        "side": "long",
+        "quantity": 1,
+        "entry_price": 250,
+        "exit_price": 254,
+        "trade_date": "2026-06-30",
+        "instrument_type": "stock"
+      }
+    },
+    {
+      "id": "projectx_completed_order_rows",
+      "csv": "order_id,account_id,order_date,qty_sent,qty_done,price_done,last_time,stop_kind,stop_follow_tick,stop_trigger_tick,account_type,symbol,trading_symbol,account,id,formattedDate\nopen,1827502,Thu Jul 09 2026 16:30:30 GMT+0300,10,10,29684.25,Thu Jul 09 2026 16:30:30 GMT+0300,,,,APEX,CM.MNQU6,CM.MNQU6,APEX-574996-04,open,07/09/2026\nclose,1827502,Thu Jul 09 2026 16:35:30 GMT+0300,-10,-10,29699.25,Thu Jul 09 2026 16:35:30 GMT+0300,,,,APEX,CM.MNQU6,CM.MNQU6,APEX-574996-04,close,07/09/2026",
+      "expected": {
+        "detected_broker": "projectx_orders",
+        "symbol": "MNQU6",
+        "broker": "projectx",
+        "side": "long",
+        "quantity": 10,
+        "entry_price": 29684.25,
+        "exit_price": 29699.25,
+        "trade_date": "2026-07-09",
+        "instrument_type": "future"
+      }
+    },
+    {
+      "id": "projectx_order_history_bid_ask_round_trip",
+      "csv": "Id,AccountName,ContractName,Status,Type,Size,Side,CreatedAt,TradeDay,FilledAt,CancelledAt,TriggeredAt,StopPrice,LimitPrice,ExecutePrice,TriggeredPrice,PositionDisposition,CreationDisposition,RejectionReason,ExchangeOrderId,PlatformOrderId\n1,TSB17847,MESM6,Filled,Market,1,Bid,06/11/2026 07:45:21 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 07:45:21 -06:00,,,,7305.5,7300.5,,Opening,Trader,,EX-1,P-1\n2,TSB17847,MESM6,Filled,Market,1,Ask,06/11/2026 07:46:21 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 07:46:21 -06:00,,,,7303.75,7303.75,,Closing,ClosePosition,,EX-2,P-2\n3,TSB17847,MESM6,Rejected,Stop,1,Ask,06/11/2026 07:47:00 -06:00,06/11/2026 00:00:00 -05:00,,,,7300.5,,,,Undetermined,StopLoss,CME:Sell order stop price must be below last trade price,,P-3",
+      "expected": {
+        "detected_broker": "projectx_orders",
+        "symbol": "MESM6",
+        "broker": "projectx",
+        "side": "long",
+        "quantity": 1,
+        "entry_price": 7300.5,
+        "exit_price": 7303.75,
+        "trade_date": "2026-06-11",
+        "instrument_type": "future",
+        "pnl": 16.25,
+        "execution_count": 2,
+        "account_identifier": "TSB17847"
+      }
+    },
+    {
+      "id": "ibkr_same_order_partial_fills_round_trip",
+      "csv": "ClientAccountID,AssetClass,Symbol,Conid,DateTime,Quantity,TradePrice,IBCommission,Buy/Sell,LevelOfDetail,IBOrderID,IBExecID,TradeID\nU123,STK,AAPL,265598,20260714;093000,103,300,-1.000309,BUY,EXECUTION,ORDER-1,EXEC-1,TRADE-1\nU123,STK,AAPL,265598,20260714;093000,137,300,-0.200411,BUY,EXECUTION,ORDER-1,EXEC-2,TRADE-2\nU123,STK,AAPL,265598,20260714;103000,240,305,-1.25,SELL,EXECUTION,ORDER-2,EXEC-3,TRADE-3",
+      "expected": {
+        "detected_broker": "ibkr",
+        "symbol": "AAPL",
+        "broker": "ibkr",
+        "side": "long",
+        "quantity": 240,
+        "entry_price": 300,
+        "exit_price": 305,
+        "trade_date": "2026-07-14",
+        "instrument_type": "stock",
+        "commission": 2.45072,
+        "execution_count": 3
+      }
+    },
+    {
+      "id": "ninjatrader_trade_performance_accounting_costs",
+      "csv": "Trade number,Instrument,Account,Strategy,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Entry name,Exit name,Profit,Cum. net profit,Commission,Clearing Fee,Exchange Fee,IP Fee,NFA Fee,MAE,MFE,ETD,Bars,\n1,MES 09-26,SIM101,ATM Strategy,Short,1,7423.75,7436.00,7/28/2026 10:17:59 AM,7/28/2026 10:24:02 AM,Entry,Stop1,($62.90),($62.90),$1.00,$0.20,$0.30,$0.10,$0.05,$63.75,$13.75,$75.00,0,",
+      "expected": {
+        "detected_broker": "ninjatrader",
+        "symbol": "MES 09-26",
+        "broker": "ninjatrader",
+        "side": "short",
+        "quantity": 1,
+        "entry_price": 7423.75,
+        "exit_price": 7436,
+        "trade_date": "2026-07-28",
+        "instrument_type": "future",
+        "commission": 1,
+        "fees": 0.65,
+        "pnl": -62.9,
+        "account_identifier": "SIM101",
+        "mae": 63.75,
+        "mfe": 13.75
+      }
+    },
+    {
+      "id": "sierra_chart_activity_export_round_trip",
+      "csv": "ActivityType\tDateTime\tTransDateTime\tSymbol\tQuantity\tBuySell\tFillPrice\tFilledQuantity\tTradeAccount\tOpenClose\tPositionQuantity\tFillExecutionServiceID\tNote\nFills\t2026-09-08  14:02:58.329559\t2026-09-08  14:02:58.000000\tMESU6.CME\t1\tBuy\t768850.0000000\t1\tRTSL00000000000\tOpen\t1\t1030650\tTest setup\nFills\t2026-09-08  14:03:02.094209\t2026-09-08  14:03:02.000000\tMESU6.CME\t1\tSell\t768800.0000000\t1\tRTSL00000000000\tClose\t\t1031928\tTest setup",
+      "expected": {
+        "detected_broker": "sierrachart",
+        "symbol": "MESU6",
+        "broker": "sierrachart",
+        "side": "long",
+        "quantity": 1,
+        "entry_price": 7688.5,
+        "exit_price": 7688,
+        "trade_date": "2026-09-08",
+        "instrument_type": "future",
+        "pnl": -2.5,
+        "execution_count": 2,
+        "account_identifier": "RTSL00000000000"
+      }
+    }
+  ],
   "r_value": {
+    "unaffordable_dollar_stop_example": {
+      "trade": { "symbol": "BULL", "entry_price": 7.07, "quantity": 1, "side": "long", "instrument_type": "stock" },
+      "default_stop_loss_dollars": 100,
+      "expected_stop_loss": null
+    },
+    "bulk_stop_preview_example": {
+      "trade": {
+        "entry_price": 100,
+        "exit_price": 110,
+        "quantity": 10,
+        "commission": 2,
+        "fees": 1,
+        "side": "long",
+        "instrument_type": "stock"
+      },
+      "default_stop_loss_percent": 5,
+      "expected_stop_loss": 95,
+      "expected_risk_amount": 50,
+      "expected_r_value": 1.94
+    },
     "documented_weighted_target_example": {
       "trade": {
         "entry_price": 6902.75,
@@ -274,6 +869,585 @@
       },
       "expected_risk_amount": 10,
       "expected_r_value": 2
+    },
+    "dollar_default_explicit_stop_example": {
+      "default_stop_loss_dollars": 50,
+      "trade": {
+        "symbol": "MSTR",
+        "entry_price": 94.71,
+        "exit_price": 95.04,
+        "stop_loss": 93.37,
+        "take_profit": 97.39,
+        "quantity": 55,
+        "side": "long",
+        "pnl": 16.29,
+        "instrument_type": "stock"
+      },
+      "expected": {
+        "risk_per_share": 1.34,
+        "risk_amount": 73.7,
+        "actual_r": 0.22,
+        "dashboard_r": 0.22,
+        "target_r": 2,
+        "risk_basis": "current_stop"
+      }
     }
-  }
+  },
+  "recent_csv_failure_cases": [
+    {
+      "id": "webull_usd_prefix",
+      "csv": "Name,Symbol,Side,Status,Filled Qty,Total Qty,Order Type,Avg Price,Time-in-Force,Placed Time,Filled Time\nExample,AAPL,SELL,FILLED,1,1,MKT,USD$ 1630.06,DAY,2026/08/14 10:50:55 EDT,2026/08/14 10:50:56 EDT\nExample,AAPL,BUY,FILLED,1,1,MKT,USD$ 1628.88,DAY,2026/08/14 10:50:11 EDT,2026/08/14 10:50:11 EDT",
+      "broker": "auto",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 1,
+          "entry_price": 1628.88,
+          "exit_price": 1630.06,
+          "pnl": 1.18
+        }
+      ]
+    },
+    {
+      "id": "webull_statement_title",
+      "csv": "Monthly Statement 2026-08,\nSymbol & Name,Trade Date,Settlement Date,Buy/Sell,Quantity,Traded Price,Gross Amount,Comm/Fee/Tax,VAT,Net Amount\nNTAP NETAPP INC,31/7/2026,3/8/2026,BUY,10,177,1770,-1.77,-0.12,1771.89\nNTAP NETAPP INC,31/7/2026,3/8/2026,SELL,10,175.51,1755.1,-1.81,-0.12,1753.17",
+      "broker": "auto",
+      "expected": [
+        {
+          "symbol": "NTAP",
+          "entry_price": 177,
+          "exit_price": 175.51,
+          "quantity": 10,
+          "pnl": -18.72
+        }
+      ]
+    },
+    {
+      "id": "generic_timestamp_date",
+      "csv": "Symbol,Side,Qty,Price,Timestamp\nAAPL,Buy,100,6.54,2026-08-26 07:11:28\nAAPL,Sell,100,6.52,2026-08-26 07:11:48",
+      "broker": "auto",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 100,
+          "entry_price": 6.54,
+          "exit_price": 6.52,
+          "pnl": -2,
+          "trade_date": "2026-08-26"
+        }
+      ]
+    },
+    {
+      "id": "generic_closing_time_execution",
+      "csv": "Symbol,Side,Qty,Fill Price,Commission,Closing Time\nAAPL,buy,2,100,1,2026-09-04 16:40:00\nAAPL,sell,2,110,1,2026-09-04 16:43:00",
+      "broker": "auto",
+      "expected": [
+        {
+          "quantity": 2,
+          "entry_price": 100,
+          "exit_price": 110,
+          "pnl": 18,
+          "commission": 2
+        }
+      ]
+    },
+    {
+      "id": "ibkr_compact_named_timezone",
+      "csv": "ClientAccountID,Symbol,Buy/Sell,Quantity,Price,Commission,Date/Time,TradeDate,CurrencyPrimary,AssetClass\nTEST-ACCOUNT,AAPL,BUY,15,10.25,-0.4,20260902;095022 EDT,20260902,USD,STK\nTEST-ACCOUNT,AAPL,SELL,15,11.25,-0.4,20260902;095312 EDT,20260902,USD,STK",
+      "broker": "auto",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 15,
+          "entry_price": 10.25,
+          "exit_price": 11.25,
+          "pnl": 14.2
+        }
+      ]
+    },
+    {
+      "id": "schwab_selected_as_etrade",
+      "csv": "Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount\n08/07/2026,Buy,AAPL,APPLE,10,100,1,-1001\n08/07/2026,Sell,AAPL,APPLE,10,110,1,1099",
+      "broker": "etrade",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 10,
+          "entry_price": 100,
+          "exit_price": 110,
+          "pnl": 98
+        }
+      ]
+    },
+    {
+      "id": "tradingview_history_fractional_short",
+      "csv": "Symbol,Trade number,Type,Date and time,Order ID,Signal,Price,Size (qty),Size (value),Net PnL USD,Return %,Commission USD\nBINANCE:BTCUSDT,1,Exit short,\"Sep 3, 2026, 14:22\",exit-1,exit-1,81042.01,0.0616,4993.901528,1.71,0.03,0\nBINANCE:BTCUSDT,1,Entry short,\"Sep 3, 2026, 14:21\",entry-1,entry-1,81069.83,0.0616,4993.901528,1.71,0.03,0",
+      "broker": "auto",
+      "expected": [
+        {
+          "symbol": "BINANCE:BTCUSDT",
+          "quantity": 0.0616,
+          "side": "short",
+          "entry_price": 81069.83,
+          "exit_price": 81042.01,
+          "pnl": 1.71,
+          "commission": 0
+        }
+      ]
+    },
+    {
+      "id": "tradingview_history_repeated_costs",
+      "csv": "Symbol,Trade number,Type,Date and time,Order ID,Signal,Price,Size (qty),Size (value),Net PnL USD,Return %,Commission USD\nNASDAQ:AAPL,1,Exit long,\"Sep 3, 2026, 14:22\",exit-1,exit-1,110,2,200,18,9,2\nNASDAQ:AAPL,1,Entry long,\"Sep 3, 2026, 14:21\",entry-1,entry-1,100,2,200,18,9,2",
+      "broker": "tradingview",
+      "expected": [
+        {
+          "quantity": 2,
+          "side": "long",
+          "entry_price": 100,
+          "exit_price": 110,
+          "pnl": 18,
+          "commission": 2
+        }
+      ]
+    },
+    {
+      "id": "converted_completed_selected_thinkorswim",
+      "csv": "Symbol,Type,Side,EntryDateUTC,ExitDateUTC,EntryPrice,ExitPrice,Quantity,Units,PositionSize,Leverage,LotValue,TickSize,TickValue,Fees\nAAPL,stock,long,8/3/2026 12:21,8/3/2026 12:24,3.48,3.63,10,shares,,,,,,0",
+      "broker": "thinkorswim",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "entry_price": 3.48,
+          "exit_price": 3.63,
+          "quantity": 10,
+          "entry_time": "2026-08-03T12:21:00Z"
+        }
+      ]
+    },
+    {
+      "id": "generic_selected_webull",
+      "csv": "Date,Time,Symbol,Side,Quantity,Price\n14/8/2026,13:40:40,AAPL,Buy,8,236\n14/8/2026,13:41:11,AAPL,Sell,8,230.23",
+      "broker": "webull",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 8,
+          "pnl": -46.16
+        }
+      ]
+    },
+    {
+      "id": "generic_selected_tradovate",
+      "csv": "Date,Symbol ,Action,quantity ,price,commissions\n8/21/2026 8:55,AAPL, Sell,4,100,3\n8/21/2026 9:08,AAPL, Buy,4,99,3",
+      "broker": "tradovate",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 4,
+          "side": "short",
+          "entry_price": 100,
+          "exit_price": 99,
+          "pnl": -2
+        }
+      ]
+    },
+    {
+      "id": "tradovate_selected_tradingview",
+      "csv": "orderId,B/S,Contract,Product,Fill Time,avgPrice,filledQty,Commission,Status\n1,Buy,MNQU6,MNQ,08/21/2026 08:55:49,29503.5,2,1.5,Filled\n2,Sell,MNQU6,MNQ,08/21/2026 08:57:49,29504.5,2,1.5,Filled",
+      "broker": "tradingview",
+      "expected": [
+        {
+          "quantity": 2,
+          "entry_price": 29503.5,
+          "exit_price": 29504.5,
+          "pnl": 1,
+          "commission": 3
+        }
+      ]
+    },
+    {
+      "id": "tos_history_selected_thinkorswim",
+      "csv": "Account Trade History filtered by AAPL,\n,Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type\n,9/1/26 12:09:51,STOCK,BUY,+4,TO OPEN,AAPL,,,STOCK,100,100,LMT\n,9/1/26 12:11:51,STOCK,SELL,-4,TO CLOSE,AAPL,,,STOCK,110,110,LMT",
+      "broker": "thinkorswim",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "quantity": 4,
+          "entry_price": 100,
+          "exit_price": 110,
+          "pnl": 40
+        }
+      ]
+    },
+    {
+      "id": "schwab_lot_details_selected_etrade",
+      "broker": "etrade",
+      "csv": "Realized Gain/Loss - Lot Details for TEST as of Sep 7 2026,\nSymbol,Name,Closed Date,Opened Date,Quantity,Proceeds Per Share,Cost Per Share,Proceeds,Cost Basis (CB),Gain/Loss ($),Gain/Loss (%),Long Term Gain/Loss,Short Term Gain/Loss,Term\nAAPL,APPLE,08/14/2026,08/14/2026,10,$109.90,$100.10,$1099,$1001,$98,9.79,,$98,Short Term",
+      "expected": [
+        {
+          "symbol": "AAPL",
+          "entry_price": 100.1,
+          "exit_price": 109.9,
+          "quantity": 10,
+          "pnl": 98
+        }
+      ]
+    }
+  ],
+  "ibkr_option_grouping_cases": [
+    {
+      "id": "issue_405_four_iron_butterflies",
+      "description": "Issue 405 opening and closing fills with anonymized order, execution, and trade identifiers.",
+      "opening_csv": "AssetClass,Symbol,Description,Conid,UnderlyingSymbol,Strike,Expiry,Put/Call,TradeID,OrderID,ExecID,BrokerageOrderID,Date/Time,Buy/Sell,Quantity,Price,Proceeds,NetCash,Commission,Code,OrderType\nOPT,COF   260904C00220000,COF 04SEP26 220 C,904325613,COF,220,20260904,C,open-TradeID-1,open-OrderID-1,open-ExecID-1,open-combo-COF,20260903;125000,SELL,-1,1.29,129,128.7639926,-0.2360074,O,LMT\nOPT,COF   260904C00225000,COF 04SEP26 225 C,904325672,COF,225,20260904,C,open-TradeID-2,open-OrderID-2,open-ExecID-2,open-combo-COF,20260903;125000,BUY,1,0.15,-15,-15.23006,-0.23006,O,LMT\nOPT,COF   260904P00215000,COF 04SEP26 215 P,904327133,COF,215,20260904,P,open-TradeID-3,open-OrderID-3,open-ExecID-3,open-combo-COF,20260903;125000,BUY,1,0.35,-35,-35.23006,-0.23006,O,LMT\nOPT,COF   260904P00220000,COF 04SEP26 220 P,904327184,COF,220,20260904,P,open-TradeID-4,open-OrderID-4,open-ExecID-4,open-combo-COF,20260903;125000,SELL,-1,1.84,184,183.7628596,-0.2371404,O,LMT\nOPT,DLTR  260904C00131000,DLTR 04SEP26 131 C,904330467,DLTR,131,20260904,C,open-TradeID-5,open-OrderID-5,open-ExecID-5,open-combo-DLTR,20260903;121453,SELL,-1,1.47,147,146.3042118,-0.6957882,O,LMT\nOPT,DLTR  260904C00136000,DLTR 04SEP26 136 C,904330698,DLTR,136,20260904,C,open-TradeID-6,open-OrderID-6,open-ExecID-6,open-combo-DLTR,20260903;121453,BUY,1,0.63,-63,-63.68947,-0.68947,O,LMT\nOPT,DLTR  260904P00126000,DLTR 04SEP26 126 P,904331759,DLTR,126,20260904,P,open-TradeID-7,open-OrderID-7,open-ExecID-7,open-combo-DLTR,20260903;121453,BUY,1,0.29,-29,-29.68947,-0.68947,O,LMT\nOPT,DLTR  260904P00131000,DLTR 04SEP26 131 P,904331994,DLTR,131,20260904,P,open-TradeID-8,open-OrderID-8,open-ExecID-8,open-combo-DLTR,20260903;121453,SELL,-1,1.78,178,177.3035732,-0.6964268,O,LMT\nOPT,PM    260904C00190000,PM 04SEP26 190 C,904389192,PM,190,20260904,C,open-TradeID-9,open-OrderID-9,open-ExecID-9,open-combo-PM,20260903;120205,SELL,-1,0.64,64,63.7653316,-0.2346684,O,LMT\nOPT,PM    260904C00195000,PM 04SEP26 195 C,904389249,PM,195,20260904,C,open-TradeID-10,open-OrderID-10,open-ExecID-10,open-combo-PM,20260903;120205,BUY,1,0.08,-8,-8.23006,-0.23006,O,LMT\nOPT,PM    260904P00185000,PM 04SEP26 185 P,904390554,PM,185,20260904,P,open-TradeID-11,open-OrderID-11,open-ExecID-11,open-combo-PM,20260903;120205,BUY,1,0.27,-27,-27.23006,-0.23006,O,LMT\nOPT,PM    260904P00190000,PM 04SEP26 190 P,904390584,PM,190,20260904,P,open-TradeID-12,open-OrderID-12,open-ExecID-12,open-combo-PM,20260903;120205,SELL,-1,2.02,202,201.7624888,-0.2375112,O,LMT\nOPT,SCHW  260904C00110000,SCHW 04SEP26 110 C,904391565,SCHW,110,20260904,C,open-TradeID-13,open-OrderID-13,open-ExecID-13,open-combo-SCHW,20260903;121325,SELL,-1,0.79,79,78.3056126,-0.6943874,O,LMT\nOPT,SCHW  260904C00115000,SCHW 04SEP26 115 C,904796388,SCHW,115,20260904,C,open-TradeID-14,open-OrderID-14,open-ExecID-14,open-combo-SCHW,20260903;121325,BUY,1,0.07,-7,-7.68947,-0.68947,O,LMT\nOPT,SCHW  260904P00105000,SCHW 04SEP26 105 P,904392908,SCHW,105,20260904,P,open-TradeID-15,open-OrderID-15,open-ExecID-15,open-combo-SCHW,20260903;121325,BUY,1,0.05,-5,-5.68947,-0.68947,O,LMT\nOPT,SCHW  260904P00110000,SCHW 04SEP26 110 P,904393218,SCHW,110,20260904,P,open-TradeID-16,open-OrderID-16,open-ExecID-16,open-combo-SCHW,20260903;121325,SELL,-1,0.55,55,54.306107,-0.693893,O,LMT\n",
+      "closing_csv": "AssetClass,Symbol,Description,Conid,UnderlyingSymbol,Strike,Expiry,Put/Call,TradeID,OrderID,ExecID,BrokerageOrderID,Date/Time,Buy/Sell,Quantity,Price,Proceeds,NetCash,Commission,Code,OrderType\nOPT,COF   260904C00220000,COF 04SEP26 220 C,904325613,COF,220,20260904,C,close-TradeID-1,close-OrderID-1,close-ExecID-1,close-combo-COF,20260904;114817,BUY,1,0.74,-74,-75.0333,-1.0333,C,LMT\nOPT,COF   260904C00225000,COF 04SEP26 225 C,904325672,COF,225,20260904,C,close-TradeID-2,close-OrderID-2,close-ExecID-2,close-combo-COF,20260904;114817,SELL,-1,0.06,6,4.9632864,-1.0367136,C,LMT\nOPT,COF   260904P00215000,COF 04SEP26 215 P,904327133,COF,215,20260904,P,close-TradeID-3,close-OrderID-3,close-ExecID-3,close-combo-COF,20260904;114817,SELL,-1,0.11,11,9.9631834,-1.0368166,C,LMT\nOPT,COF   260904P00220000,COF 04SEP26 220 P,904327184,COF,220,20260904,P,close-TradeID-4,close-OrderID-4,close-ExecID-4,close-combo-COF,20260904;114817,BUY,1,0.7,-70,-71.0333,-1.0333,C,LMT\nOPT,DLTR  260904C00131000,DLTR 04SEP26 131 C,904330467,DLTR,131,20260904,C,close-TradeID-5,close-OrderID-5,close-ExecID-5,close-combo-DLTR,20260904;114346,BUY,1,0.44,-44,-44.5473,-0.5473,C,LMT\nOPT,DLTR  260904C00136000,DLTR 04SEP26 136 C,904330698,DLTR,136,20260904,C,close-TradeID-6,close-OrderID-6,close-ExecID-6,close-combo-DLTR,20260904;114346,SELL,-1,0.01,1,0.4493894,-0.5506106,C,LMT\nOPT,DLTR  260904P00126000,DLTR 04SEP26 126 P,904331759,DLTR,126,20260904,P,close-TradeID-7,close-OrderID-7,close-ExecID-7,close-combo-DLTR,20260904;114346,SELL,-1,0.25,25,24.448895,-0.551105,C,LMT\nOPT,DLTR  260904P00131000,DLTR 04SEP26 131 P,904331994,DLTR,131,20260904,P,close-TradeID-8,close-OrderID-8,close-ExecID-8,close-combo-DLTR,20260904;114346,BUY,1,0.97,-97,-97.5473,-0.5473,C,LMT\nOPT,PM    260904C00190000,PM 04SEP26 190 C,904389192,PM,190,20260904,C,close-TradeID-9,close-OrderID-9,close-ExecID-9,close-combo-PM,20260904;134306,BUY,1,0.04,-4,-4.23006,-0.23006,C,LMT\nOPT,PM    260904C00195000,PM 04SEP26 195 C,904389249,PM,195,20260904,C,close-TradeID-10,close-OrderID-10,close-ExecID-10,close-combo-PM,20260904;134306,SELL,-1,0.03,3,2.7665882,-0.2334118,C,LMT\nOPT,PM    260904P00185000,PM 04SEP26 185 P,904390554,PM,185,20260904,P,close-TradeID-11,close-OrderID-11,close-ExecID-11,close-combo-PM,20260904;134306,SELL,-1,2.41,241,240.7616854,-0.2383146,C,LMT\nOPT,PM    260904P00190000,PM 04SEP26 190 P,904390584,PM,190,20260904,P,close-TradeID-12,close-OrderID-12,close-ExecID-12,close-combo-PM,20260904;134306,BUY,1,7.44,-744,-744.23006,-0.23006,C,LMT\nOPT,SCHW  260904C00110000,SCHW 04SEP26 110 C,904391565,SCHW,110,20260904,C,close-TradeID-13,close-OrderID-13,close-ExecID-13,close-combo-SCHW,20260904;133156,BUY,1,0.01,-1,-1.5473,-0.5473,C,LMT\nOPT,SCHW  260904C00115000,SCHW 04SEP26 115 C,904796388,SCHW,115,20260904,C,close-TradeID-14,close-OrderID-14,close-ExecID-14,close-combo-SCHW,20260904;133156,SELL,-1,0.01,1,0.4493894,-0.5506106,C,LMT\nOPT,SCHW  260904P00105000,SCHW 04SEP26 105 P,904392908,SCHW,105,20260904,P,close-TradeID-15,close-OrderID-15,close-ExecID-15,close-combo-SCHW,20260904;133156,SELL,-1,0.04,4,3.4493276,-0.5506724,C,LMT\nOPT,SCHW  260904P00110000,SCHW 04SEP26 110 P,904393218,SCHW,110,20260904,P,close-TradeID-16,close-OrderID-16,close-ExecID-16,close-combo-SCHW,20260904;133156,BUY,1,0.87,-87,-87.5473,-0.5473,C,LMT\n",
+      "expected": [
+        {
+          "underlying_symbol": "COF",
+          "leg_count": 4,
+          "detected_strategy": "iron_butterfly",
+          "net_pnl": 130.926602
+        },
+        {
+          "underlying_symbol": "DLTR",
+          "leg_count": 4,
+          "detected_strategy": "iron_butterfly",
+          "net_pnl": 113.0325294
+        },
+        {
+          "underlying_symbol": "PM",
+          "leg_count": 4,
+          "detected_strategy": "iron_butterfly",
+          "net_pnl": -274.864146
+        },
+        {
+          "underlying_symbol": "SCHW",
+          "leg_count": 4,
+          "detected_strategy": "iron_butterfly",
+          "net_pnl": 34.0368966
+        }
+      ]
+    }
+  ],
+  "chart_currency_cases": [
+    {
+      "id": "jpy_quote_usd_trade",
+      "source_currency": "JPY",
+      "display_currency": "USD",
+      "rates": {
+        "JPY": 0.006666666666666667
+      },
+      "chart_data": {
+        "candles": [
+          {
+            "time": 1788264000,
+            "open": 15000,
+            "high": 15000,
+            "low": 15000,
+            "close": 15000,
+            "volume": 1000
+          }
+        ],
+        "trade": {
+          "id": "jpy_quote_usd_trade",
+          "symbol": "TEST",
+          "instrumentType": "stock",
+          "original_currency": "USD",
+          "currency": "USD",
+          "entryPrice": 100,
+          "entryTime": "2026-09-01T12:00:00Z",
+          "quantity": 1
+        }
+      },
+      "expected": {
+        "close": 100,
+        "volume": 1000,
+        "candles_currency": "USD",
+        "effective_currency": "USD",
+        "price_scale": 1,
+        "entry_price": 100
+      }
+    },
+    {
+      "id": "jpy_quote_genuine_split",
+      "source_currency": "JPY",
+      "display_currency": "USD",
+      "rates": {
+        "JPY": 0.006666666666666667
+      },
+      "chart_data": {
+        "candles": [
+          {
+            "time": 1788264000,
+            "open": 7500,
+            "high": 7500,
+            "low": 7500,
+            "close": 7500,
+            "volume": 1000
+          }
+        ],
+        "trade": {
+          "id": "jpy_quote_genuine_split",
+          "symbol": "TEST",
+          "instrumentType": "stock",
+          "original_currency": "USD",
+          "currency": "USD",
+          "entryPrice": 100,
+          "entryTime": "2026-09-01T12:00:00Z",
+          "quantity": 1
+        }
+      },
+      "expected": {
+        "close": 100,
+        "volume": 500,
+        "candles_currency": "USD",
+        "effective_currency": "USD",
+        "price_scale": 0.5,
+        "entry_price": 100
+      }
+    },
+    {
+      "id": "missing_candle_rate",
+      "source_currency": "JPY",
+      "display_currency": "EUR",
+      "rates": {
+        "USD": 0.8
+      },
+      "chart_data": {
+        "candles": [
+          {
+            "time": 1788264000,
+            "open": 15000,
+            "high": 15000,
+            "low": 15000,
+            "close": 15000,
+            "volume": 1000
+          }
+        ],
+        "trade": {
+          "id": "missing_candle_rate",
+          "symbol": "TEST",
+          "instrumentType": "stock",
+          "original_currency": "USD",
+          "currency": "USD",
+          "entryPrice": 100,
+          "entryTime": "2026-09-01T12:00:00Z",
+          "quantity": 1
+        }
+      },
+      "expected": {
+        "close": 15000,
+        "volume": 1000,
+        "candles_currency": "JPY",
+        "effective_currency": "EUR",
+        "price_scale": 1,
+        "entry_price": 80
+      }
+    },
+    {
+      "id": "usd_outage_native_eur",
+      "source_currency": "EUR",
+      "display_currency": "EUR",
+      "rates": {},
+      "chart_data": {
+        "candles": [
+          {
+            "time": 1788264000,
+            "open": 100,
+            "high": 100,
+            "low": 100,
+            "close": 100,
+            "volume": 1000
+          }
+        ],
+        "trade": {
+          "id": "usd_outage_native_eur",
+          "symbol": "TEST",
+          "instrumentType": "stock",
+          "original_currency": "EUR",
+          "currency": "EUR",
+          "entryPrice": 100,
+          "entryTime": "2026-09-01T12:00:00Z",
+          "quantity": 1
+        }
+      },
+      "expected": {
+        "close": 100,
+        "volume": 1000,
+        "candles_currency": "EUR",
+        "effective_currency": "EUR",
+        "price_scale": 1,
+        "entry_price": 100
+      }
+    }
+  ],
+  "widget_quote_freshness": {
+    "symbol": "AAPL",
+    "quantity": 2,
+    "entry_price": 100,
+    "stale_price_change": -32,
+    "provider_price": 123,
+    "provider_day_change": 23,
+    "expected_today_pnl": 46,
+    "expected_open_pnl": 46
+  },
+  "daily_position_pnl_cases": [
+    {
+      "id": "long",
+      "position": {
+        "day_change": 1.88,
+        "total_quantity": 23
+      },
+      "expected": 43.24
+    },
+    {
+      "id": "short",
+      "position": {
+        "day_change": -3,
+        "total_quantity": 7,
+        "side": "short"
+      },
+      "expected": 21
+    },
+    {
+      "id": "future",
+      "position": {
+        "day_change": 2,
+        "total_quantity": 3,
+        "instrument_type": "future",
+        "point_value": 50
+      },
+      "expected": 300
+    },
+    {
+      "id": "option",
+      "position": {
+        "day_change": 0.2,
+        "total_quantity": 2,
+        "instrument_type": "option",
+        "contract_size": 100
+      },
+      "expected": 40
+    },
+    {
+      "id": "missing",
+      "position": {
+        "total_quantity": 3
+      },
+      "expected": null
+    },
+    {
+      "id": "manual",
+      "position": {
+        "requires_manual_price": true,
+        "day_change": 1,
+        "total_quantity": 3
+      },
+      "expected": null
+    },
+    {
+      "id": "flat",
+      "position": {
+        "dayChange": 0,
+        "totalQuantity": 3
+      },
+      "expected": 0
+    },
+    {
+      "id": "hedged",
+      "position": {
+        "day_change": 2,
+        "total_quantity": 0
+      },
+      "expected": 0
+    }
+  ],
+  "position_plan_bar_cases": [
+    {
+      "id": "long_between_stop_and_target",
+      "position": {
+        "side": "long",
+        "avgPrice": 88.76,
+        "currentPrice": 139.75,
+        "totalQuantity": 100,
+        "stop_loss": 120,
+        "take_profit": 165
+      },
+      "expected": {
+        "current_pct": 43.888888888888886,
+        "at_stop_amount": -1975,
+        "at_target_amount": 2525
+      }
+    },
+    {
+      "id": "short_runs_stop_above_target_below",
+      "position": {
+        "side": "short",
+        "avgPrice": 412,
+        "currentPrice": 389.5,
+        "totalQuantity": 30,
+        "stop_loss": 430,
+        "take_profit": 360
+      },
+      "expected": {
+        "current_pct": 57.857142857142854,
+        "at_stop_amount": -1215,
+        "at_target_amount": 885
+      }
+    },
+    {
+      "id": "future_uses_point_value",
+      "position": {
+        "side": "long",
+        "instrumentType": "future",
+        "pointValue": 50,
+        "avgPrice": 5000,
+        "currentPrice": 5010,
+        "totalQuantity": 2,
+        "stop_loss": 4990,
+        "take_profit": 5040
+      },
+      "expected": {
+        "current_pct": 40,
+        "at_stop_amount": -2000,
+        "at_target_amount": 3000
+      }
+    },
+    {
+      "id": "stop_on_wrong_side_is_unplottable",
+      "position": {
+        "side": "long",
+        "avgPrice": 10,
+        "currentPrice": 11,
+        "totalQuantity": 1,
+        "stop_loss": 12,
+        "take_profit": 9
+      },
+      "expected": null
+    },
+    {
+      "id": "missing_target_is_unplottable",
+      "position": {
+        "side": "long",
+        "avgPrice": 10,
+        "currentPrice": 11,
+        "totalQuantity": 1,
+        "stop_loss": 9,
+        "take_profit": null
+      },
+      "expected": null
+    },
+    {
+      "id": "option_is_unplottable",
+      "position": {
+        "side": "long",
+        "instrumentType": "option",
+        "avgPrice": 2,
+        "currentPrice": 3,
+        "totalQuantity": 1,
+        "stop_loss": 1,
+        "take_profit": 5
+      },
+      "expected": null
+    }
+  ]
 }

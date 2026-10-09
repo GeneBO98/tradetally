@@ -1,15 +1,10 @@
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
 const EmailService = require('./emailService');
 const TierService = require('./tierService');
 const weeklyInsights = require('./weeklyDigest/insights');
 const aiRecap = require('./weeklyDigest/aiRecap');
-
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return '***';
-  const [localPart, domain] = email.split('@');
-  if (localPart.length <= 2) return `**@${domain}`;
-  return `${localPart.slice(0, 2)}***@${domain}`;
-}
+const maskEmail = require('../utils/maskEmail');
 
 /**
  * Sends weekly digest and inactive re-engagement emails.
@@ -319,7 +314,7 @@ class RetentionEmailScheduler {
               THEN (COUNT(*) FILTER (WHERE t.pnl > 0) * 100.0 / COUNT(*))
               ELSE 0
             END AS win_rate,
-            COALESCE(SUM(t.pnl), 0) AS total_pnl,
+            COALESCE(SUM(${fxUsd('pnl', 't')}), 0) AS total_pnl,
             (SELECT t2.symbol FROM trades t2 WHERE t2.user_id = u.id GROUP BY t2.symbol ORDER BY COUNT(*) DESC LIMIT 1) AS top_symbol,
             STRING_AGG(DISTINCT t.broker, ', ') AS brokers_used
           FROM trades t

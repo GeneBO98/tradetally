@@ -69,6 +69,7 @@
 
 <script setup>
 import { useNotification } from '@/composables/useNotification'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 defineProps({
   valuations: {
@@ -109,13 +110,10 @@ function formatDate(dateStr) {
   })
 }
 
+const { formatCurrency: formatCurrencyBase } = useCurrencyFormatter()
+
 function formatCurrency(value) {
   if (value === null || value === undefined) return 'N/A'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value)
+  return formatCurrencyBase(value)
 }
 </script>

@@ -840,6 +840,7 @@ import { ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useNotification } from "@/composables/useNotification";
 import { useInvestmentsStore } from "@/stores/investments";
+import { parseTradeDate } from "@/utils/date";
 import api from "@/services/api";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 import StockLogo from "@/components/common/StockLogo.vue";
@@ -1182,7 +1183,10 @@ const initialLoading = ref(true);
         };
 
         const formatEarningsDate = (dateString) => {
-            const date = new Date(dateString);
+            // Earnings dates are date-only (YYYY-MM-DD); parse in local time
+            // to avoid the UTC off-by-one shift.
+            const date = parseTradeDate(dateString);
+            if (!date) return "";
             const now = new Date();
             const today = new Date(
                 now.getFullYear(),

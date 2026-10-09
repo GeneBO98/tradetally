@@ -187,34 +187,96 @@
                             </div>
 
                             <div class="py-6">
-                                <label for="breakevenToleranceTicks" class="label"
-                                    >Default Breakeven Tolerance (ticks)</label
+                                <label class="label">Breakeven Tolerance</label>
+                                <div
+                                    class="mt-2 inline-flex rounded-lg border border-gray-300 bg-gray-100 p-1 dark:border-gray-600 dark:bg-gray-800"
+                                    role="group"
+                                    aria-label="Breakeven tolerance unit"
                                 >
-                                <input
-                                    id="breakevenToleranceTicks"
-                                    v-model.number="
-                                        analyticsForm.breakevenToleranceTicks
-                                    "
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    class="input"
-                                />
+                                    <button
+                                        v-for="option in breakevenToleranceModeOptions"
+                                        :key="option.value"
+                                        type="button"
+                                        class="rounded-md px-4 py-2 text-sm font-medium transition-colors"
+                                        :class="
+                                            analyticsForm.breakeven_tolerance_mode ===
+                                            option.value
+                                                ? 'bg-white text-primary-700 shadow-sm dark:bg-gray-700 dark:text-primary-300'
+                                                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                                        "
+                                        :aria-pressed="
+                                            analyticsForm.breakeven_tolerance_mode ===
+                                            option.value
+                                        "
+                                        @click="
+                                            analyticsForm.breakeven_tolerance_mode =
+                                                option.value
+                                        "
+                                    >
+                                        {{ option.label }}
+                                    </button>
+                                </div>
+
+                                <div class="mt-4">
+                                    <label
+                                        :for="breakevenToleranceInputId"
+                                        class="label"
+                                    >
+                                        {{ breakevenToleranceInputLabel }}
+                                    </label>
+                                    <div class="relative">
+                                        <span
+                                            v-if="
+                                                analyticsForm.breakeven_tolerance_mode ===
+                                                'dollars'
+                                            "
+                                            class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400"
+                                        >
+                                            $
+                                        </span>
+                                        <input
+                                            v-if="
+                                                analyticsForm.breakeven_tolerance_mode ===
+                                                'dollars'
+                                            "
+                                            id="breakevenToleranceDollars"
+                                            v-model.number="
+                                                analyticsForm.breakeven_tolerance_dollars
+                                            "
+                                            type="number"
+                                            min="0"
+                                            max="1000000"
+                                            step="0.01"
+                                            class="input pl-8"
+                                        />
+                                        <input
+                                            v-else
+                                            id="breakevenToleranceTicks"
+                                            v-model.number="
+                                                analyticsForm.breakevenToleranceTicks
+                                            "
+                                            type="number"
+                                            min="0"
+                                            max="1000"
+                                            step="1"
+                                            class="input"
+                                        />
+                                    </div>
+                                </div>
                                 <p
                                     class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
-                                    Trades whose gross P&L (price only, ignoring
-                                    commissions and fees) land within this many
-                                    ticks of zero are counted as breakeven rather
-                                    than wins or losses. This default applies to
-                                    every instrument; add per-instrument overrides
-                                    below. It only affects trades that have a tick
-                                    size and point value (e.g. futures). Leave at 0
-                                    to count only trades that exit exactly at entry.
+                                    {{ breakevenToleranceDescription }}
                                 </p>
 
                                 <!-- Per-instrument overrides -->
-                                <div class="mt-5 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700">
+                                <div
+                                    v-if="
+                                        analyticsForm.breakeven_tolerance_mode ===
+                                        'ticks'
+                                    "
+                                    class="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/60"
+                                >
                                     <p class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Per-Instrument Overrides</p>
                                     <p
                                         class="text-sm text-gray-500 dark:text-gray-400 mb-3"
@@ -274,12 +336,51 @@
                                 <p
                                     class="mt-2 text-sm text-gray-500 dark:text-gray-400"
                                 >
-                                    Changes the currency symbol displayed for
-                                    P&L, prices, and commissions. This is a
-                                    cosmetic setting only — values are not
-                                    converted using a foreign exchange rate.
-                                    Market data (watchlist prices, stock
-                                    quotes) remains in USD.
+                                    Converts trade amounts to your display currency when a rate is available.
+                                    Admin manual rates below apply to everyone on this server.
+                                </p>
+                            </div>
+
+                            <div v-if="['admin', 'owner'].includes(authStore.user?.role)" class="py-6">
+                                <h4 class="font-medium text-gray-900 dark:text-white">Manual exchange rates</h4>
+                                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                    Set how much one USD buys. These server-wide rates override provider rates for trade calculations, imports, charts, and analytics. Remove a rate to use the provider again.
+                                </p>
+                                <div class="mt-4 flex flex-wrap items-end gap-3">
+                                    <div class="w-44">
+                                        <label for="manualFxCurrency" class="label">Currency</label>
+                                        <BaseSelect v-model="manualFxCode" :options="manualFxOptions" />
+                                    </div>
+                                    <div class="w-44">
+                                        <label for="manualFxRate" class="label">Units per 1 USD</label>
+                                        <input id="manualFxRate" v-model="manualFxRate" class="input" type="number" min="0" step="any" placeholder="0.85" />
+                                    </div>
+                                    <button type="button" class="btn-primary" :disabled="manualFxSaving" @click="saveManualFxRate">Save rate</button>
+                                </div>
+                                <p v-if="manualFxLoading" class="mt-3 text-sm text-gray-500">Loading rates...</p>
+                                <p v-else-if="manualFxRates.length === 0" class="mt-3 text-sm text-gray-500">No manual rates configured.</p>
+                                <ul v-else class="mt-4 divide-y divide-gray-200 dark:divide-gray-700">
+                                    <li v-for="rate in manualFxRates" :key="rate.quote_code" class="flex items-center justify-between gap-4 py-2 text-sm">
+                                        <span>1 USD = {{ Number(rate.per_usd) }} {{ rate.quote_code }}</span>
+                                        <button type="button" class="text-primary-600 hover:text-primary-700 dark:text-primary-400" :disabled="manualFxSaving" @click="removeManualFxRate(rate.quote_code)">Remove</button>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <div class="py-6">
+                                <label for="tradeChartDefaultResolution" class="label">
+                                    Default Trade Chart Resolution
+                                </label>
+                                <BaseSelect
+                                    v-model="analyticsForm.trade_chart_default_resolution"
+                                    :options="tradeChartResolutionOptions"
+                                    :searchable="false"
+                                />
+                                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                    Sets the candle interval used when you open a
+                                    trade chart for the first time. A resolution
+                                    you already selected for that trade takes
+                                    precedence.
                                 </p>
                             </div>
 
@@ -454,13 +555,35 @@
                             </div>
 
                             <div class="py-6">
-                                <label for="defaultTakeProfit" class="label"
+                                <label for="defaultTakeProfitType" class="label"
+                                    >Default Take Profit Type</label
+                                >
+                                <BaseSelect
+                                    v-model="analyticsForm.defaultTakeProfitType"
+                                    :options="[
+                                        { value: 'percent', label: 'Percentage' },
+                                        { value: 'risk_reward', label: 'Risk / reward multiple' },
+                                        { value: 'dollar', label: 'Dollar amount' }
+                                    ]"
+                                />
+                                <div class="mt-2 text-sm text-gray-500 dark:text-gray-400 space-y-1">
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Percentage:</strong> Set the target a fixed percentage from entry.</p>
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Risk / reward multiple:</strong> Base the target on the distance between entry and stop loss.</p>
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Dollar amount:</strong> Target a fixed gross profit for the whole trade.</p>
+                                </div>
+                            </div>
+
+                            <div
+                                v-if="analyticsForm.defaultTakeProfitType === 'percent'"
+                                class="py-6"
+                            >
+                                <label for="defaultTakeProfitPercent" class="label"
                                     >Default Take Profit Percentage</label
                                 >
                                 <div class="mt-1 relative rounded-md shadow-sm">
                                     <input
                                         type="number"
-                                        id="defaultTakeProfit"
+                                        id="defaultTakeProfitPercent"
                                         v-model.number="
                                             analyticsForm.defaultTakeProfitPercent
                                         "
@@ -492,6 +615,65 @@
                                 <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
                                     Example: 6% take profit on a $100 long
                                     entry = $106 take profit price
+                                </p>
+                            </div>
+
+                            <div
+                                v-if="analyticsForm.defaultTakeProfitType === 'risk_reward'"
+                                class="py-6"
+                            >
+                                <label for="defaultTakeProfitRMultiple" class="label"
+                                    >Default Risk / Reward Multiple</label
+                                >
+                                <div class="mt-1 relative rounded-md shadow-sm">
+                                    <input
+                                        type="number"
+                                        id="defaultTakeProfitRMultiple"
+                                        v-model.number="analyticsForm.defaultTakeProfitRMultiple"
+                                        step="0.1"
+                                        min="0"
+                                        max="1000"
+                                        placeholder="0"
+                                        class="input pr-12"
+                                    />
+                                    <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                        <span class="text-gray-500 dark:text-gray-400">R</span>
+                                    </div>
+                                </div>
+                                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                    Calculates the target from the trade's stop loss. A valid stop loss is required; manually selected stops take precedence over the default stop.
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Example: $250 risk at 2R = a $500 gross profit target
+                                </p>
+                            </div>
+
+                            <div
+                                v-if="analyticsForm.defaultTakeProfitType === 'dollar'"
+                                class="py-6"
+                            >
+                                <label for="defaultTakeProfitDollars" class="label"
+                                    >Default Take Profit (Dollars per Trade)</label
+                                >
+                                <div class="mt-1 relative rounded-md shadow-sm">
+                                    <input
+                                        type="number"
+                                        id="defaultTakeProfitDollars"
+                                        v-model.number="analyticsForm.defaultTakeProfitDollars"
+                                        step="1"
+                                        min="0"
+                                        placeholder="0"
+                                        class="input pr-12"
+                                    />
+                                    <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                        <span class="text-gray-500 dark:text-gray-400">$</span>
+                                    </div>
+                                </div>
+                                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                    Sets a fixed gross profit target for the entire position. Quantity and stock, option, or futures multipliers are used to calculate the target price.
+                                </p>
+                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                    Example: $500 on 50 shares = a $10 move from entry
                                 </p>
                             </div>
 
@@ -869,808 +1051,29 @@
 
             <!-- AI & Integrations Tab -->
             <template v-if="activeTab === 'ai'">
-                <!-- AI Provider Settings -->
-                <div class="card">
-                    <div class="card-body">
-                        <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-6"
-                        >
-                            AI Provider Settings
-                        </h3>
-                        <p
-                            class="text-sm text-gray-600 dark:text-gray-400 mb-6"
-                        >
-                            Configure which AI provider to use for analytics
-                            recommendations and CUSIP lookups.
-                            <span
-                                v-if="authStore.user?.role === 'admin'"
-                                class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
-                            >
-                                Note: As an admin, you can also configure
-                                default settings for all users below.
-                            </span>
-                            <span
-                                v-else
-                                class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
-                            >
-                                Note: If you leave these settings empty,
-                                admin-configured defaults will be used.
-                            </span>
-                        </p>
-
-                        <form
-                            @submit.prevent="updateAISettings"
-                            class="space-y-6"
-                        >
-                            <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                                <div>
-                                    <label for="aiProvider" class="label"
-                                        >AI Provider</label
-                                    >
-                                    <BaseSelect
-                                        v-model="aiForm.provider"
-                                        :options="[
-                                            { value: 'gemini', label: 'Google Gemini' },
-                                            { value: 'claude', label: 'Anthropic Claude' },
-                                            { value: 'openai', label: 'OpenAI' },
-                                            { value: 'deepseek', label: 'DeepSeek' },
-                                            { value: 'kimi', label: 'Kimi' },
-                                            { value: 'ollama', label: 'Ollama' },
-                                            { value: 'lmstudio', label: 'LM Studio' },
-                                            { value: 'perplexity', label: 'Perplexity AI' },
-                                            { value: 'local', label: 'Local/Custom' }
-                                        ]"
-                                        placeholder="No provider"
-                                        @change="onProviderChange"
-                                    />
-                                    <p
-                                        class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                                    >
-                                        Choose your preferred AI provider for
-                                        analytics and CUSIP resolution.
-                                    </p>
-                                </div>
-
-                                <div>
-                                    <label for="aiModel" class="label"
-                                        >Model (Optional)</label
-                                    >
-                                    <input
-                                        id="aiModel"
-                                        v-model="aiForm.model"
-                                        type="text"
-                                        class="input"
-                                        :placeholder="getModelPlaceholder()"
-                                    />
-                                    <p
-                                        class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                                    >
-                                        Specific model to use. Leave blank for
-                                        default.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div
-                                v-if="
-                                    aiForm.provider === 'local' ||
-                                    aiForm.provider === 'ollama' ||
-                                    aiForm.provider === 'lmstudio'
-                                "
-                            >
-                                <label for="aiUrl" class="label">API URL</label>
-                                <input
-                                    id="aiUrl"
-                                    v-model="aiForm.url"
-                                    type="url"
-                                    class="input"
-                                    :placeholder="
-                                        aiForm.provider === 'ollama'
-                                            ? 'http://localhost:11434'
-                                            : aiForm.provider === 'lmstudio'
-                                              ? 'http://localhost:1234'
-                                              : 'http://localhost:8000'
-                                    "
-                                    required
-                                />
-                                <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                                >
-                                    {{
-                                        aiForm.provider === "ollama"
-                                            ? "Ollama server URL"
-                                            : "Custom AI API endpoint URL"
-                                    }}
-                                </p>
-                            </div>
-
-                            <div
-                                v-if="
-                                    aiForm.provider &&
-                                    aiForm.provider !== 'local'
-                                "
-                            >
-                                <label for="aiApiKey" class="label"
-                                    >API Key</label
-                                >
-                                <input
-                                    id="aiApiKey"
-                                    v-model="aiForm.apiKey"
-                                    type="password"
-                                    class="input"
-                                    :placeholder="getApiKeyPlaceholder()"
-                                    :required="
-                                        !!aiForm.provider &&
-                                        !['ollama', 'lmstudio'].includes(
-                                            aiForm.provider,
-                                        )
-                                    "
-                                />
-                                <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                                >
-                                    {{ getApiKeyHelp() }}
-                                </p>
-                            </div>
-
-                            <div class="flex justify-end">
-                                <button
-                                    type="submit"
-                                    :disabled="aiLoading"
-                                    class="btn-primary"
-                                >
-                                    <span
-                                        v-if="aiLoading"
-                                        class="flex items-center"
-                                    >
-                                        <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
-                                        ></div>
-                                        Saving...
-                                    </span>
-                                    <span v-else>Save AI Settings</span>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- CUSIP AI Provider Settings -->
-                <div class="card">
-                    <div class="card-body">
-                        <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-6"
-                        >
-                            CUSIP Resolution AI Provider
-                        </h3>
-                        <p
-                            class="text-sm text-gray-600 dark:text-gray-400 mb-6"
-                        >
-                            Optionally configure a separate AI provider
-                            specifically for CUSIP resolution. If not
-                            configured, the main AI provider above will be used.
-                        </p>
-
-                        <form
-                            @submit.prevent="updateCusipAISettings"
-                            class="space-y-6"
-                        >
-                            <div class="flex items-center mb-4">
-                                <input
-                                    id="useMainProviderForCusip"
-                                    v-model="cusipAiForm.useMainProvider"
-                                    type="checkbox"
-                                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                    @change="onCusipUseMainProviderChange"
-                                />
-                                <label
-                                    for="useMainProviderForCusip"
-                                    class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                >
-                                    Use main AI provider for CUSIP resolution
-                                </label>
-                            </div>
-
-                            <div
-                                v-if="!cusipAiForm.useMainProvider"
-                                class="space-y-6"
-                            >
-                                <div
-                                    class="grid grid-cols-1 gap-6 sm:grid-cols-2"
-                                >
-                                    <div>
-                                        <label
-                                            for="cusipAiProvider"
-                                            class="label"
-                                            >CUSIP AI Provider</label
-                                        >
-                                        <BaseSelect
-                                            v-model="cusipAiForm.provider"
-                                            :options="[
-                                                { value: 'gemini', label: 'Google Gemini' },
-                                                { value: 'claude', label: 'Anthropic Claude' },
-                                                { value: 'openai', label: 'OpenAI' },
-                                            { value: 'deepseek', label: 'DeepSeek' },
-                                            { value: 'kimi', label: 'Kimi' },
-                                                { value: 'ollama', label: 'Ollama' },
-                                                { value: 'lmstudio', label: 'LM Studio' },
-                                                { value: 'perplexity', label: 'Perplexity AI' },
-                                                { value: 'local', label: 'Local/Custom' }
-                                            ]"
-                                            placeholder="No provider"
-                                            @change="onCusipProviderChange"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label for="cusipAiModel" class="label"
-                                            >Model (Optional)</label
-                                        >
-                                        <input
-                                            id="cusipAiModel"
-                                            v-model="cusipAiForm.model"
-                                            type="text"
-                                            class="input"
-                                            :placeholder="
-                                                getCusipModelPlaceholder()
-                                            "
-                                        />
-                                    </div>
-                                </div>
-
-                                <div
-                                    v-if="
-                                        cusipAiForm.provider === 'local' ||
-                                        cusipAiForm.provider === 'ollama' ||
-                                        cusipAiForm.provider === 'lmstudio'
-                                    "
-                                >
-                                    <label for="cusipAiUrl" class="label"
-                                        >API URL</label
-                                    >
-                                    <input
-                                        id="cusipAiUrl"
-                                        v-model="cusipAiForm.url"
-                                        type="url"
-                                        class="input"
-                                        :placeholder="
-                                            cusipAiForm.provider === 'ollama'
-                                                ? 'http://localhost:11434'
-                                                : cusipAiForm.provider ===
-                                                    'lmstudio'
-                                                  ? 'http://localhost:1234'
-                                                  : 'http://localhost:8000'
-                                        "
-                                        required
-                                    />
-                                </div>
-
-                                <div
-                                    v-if="
-                                        cusipAiForm.provider &&
-                                        cusipAiForm.provider !== 'local'
-                                    "
-                                >
-                                    <label for="cusipAiApiKey" class="label"
-                                        >API Key</label
-                                    >
-                                    <input
-                                        id="cusipAiApiKey"
-                                        v-model="cusipAiForm.apiKey"
-                                        type="password"
-                                        class="input"
-                                        :placeholder="
-                                            getCusipApiKeyPlaceholder()
-                                        "
-                                        :required="
-                                            !!cusipAiForm.provider &&
-                                            !['ollama', 'lmstudio'].includes(
-                                                cusipAiForm.provider,
-                                            )
-                                        "
-                                    />
-                                </div>
-                            </div>
-
-                            <div class="flex justify-end">
-                                <button
-                                    type="submit"
-                                    :disabled="cusipAiLoading"
-                                    class="btn-primary"
-                                >
-                                    <span
-                                        v-if="cusipAiLoading"
-                                        class="flex items-center"
-                                    >
-                                        <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
-                                        ></div>
-                                        Saving...
-                                    </span>
-                                    <span v-else>Save CUSIP AI Settings</span>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Admin AI Provider Settings -->
-                <div v-if="authStore.user?.role === 'admin'" class="card">
-                    <div class="card-body">
-                        <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-6"
-                        >
-                            Admin AI Provider Settings
-                        </h3>
-                        <p
-                            class="text-sm text-gray-600 dark:text-gray-400 mb-6"
-                        >
-                            Configure default AI provider settings for all
-                            users. Users can override these settings for their
-                            own accounts.
-                        </p>
-
-                        <form
-                            @submit.prevent="updateAdminAISettings"
-                            class="space-y-6"
-                        >
-                            <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                                <div>
-                                    <label for="adminAiProvider" class="label"
-                                        >Default AI Provider</label
-                                    >
-                                    <BaseSelect
-                                        v-model="adminAiForm.provider"
-                                        :options="[
-                                            { value: 'gemini', label: 'Google Gemini' },
-                                            { value: 'claude', label: 'Anthropic Claude' },
-                                            { value: 'openai', label: 'OpenAI' },
-                                            { value: 'deepseek', label: 'DeepSeek' },
-                                            { value: 'kimi', label: 'Kimi' },
-                                            { value: 'ollama', label: 'Ollama' },
-                                            { value: 'lmstudio', label: 'LM Studio' },
-                                            { value: 'perplexity', label: 'Perplexity AI' },
-                                            { value: 'local', label: 'Local/Custom' }
-                                        ]"
-                                        placeholder="No provider"
-                                        @change="onAdminProviderChange"
-                                    />
-                                    <p
-                                        class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                                    >
-                                        Default AI provider for all users
-                                        (unless they override it).
-                                    </p>
-                                </div>
-
-                                <div>
-                                    <label for="adminAiModel" class="label"
-                                        >Default Model (Optional)</label
-                                    >
-                                    <input
-                                        id="adminAiModel"
-                                        v-model="adminAiForm.model"
-                                        type="text"
-                                        class="input"
-                                        :placeholder="
-                                            getAdminModelPlaceholder()
-                                        "
-                                    />
-                                    <p
-                                        class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                                    >
-                                        Default model to use. Leave blank for
-                                        provider default.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div
-                                v-if="
-                                    adminAiForm.provider === 'local' ||
-                                    adminAiForm.provider === 'ollama' ||
-                                    adminAiForm.provider === 'lmstudio'
-                                "
-                            >
-                                <label for="adminAiUrl" class="label"
-                                    >Default API URL</label
-                                >
-                                <input
-                                    id="adminAiUrl"
-                                    v-model="adminAiForm.url"
-                                    type="url"
-                                    class="input"
-                                    :placeholder="
-                                        adminAiForm.provider === 'ollama'
-                                            ? 'http://localhost:11434'
-                                            : adminAiForm.provider ===
-                                                'lmstudio'
-                                              ? 'http://localhost:1234'
-                                              : 'http://localhost:8000'
-                                    "
-                                    required
-                                />
-                                <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                                >
-                                    Default
-                                    {{
-                                        adminAiForm.provider === "ollama"
-                                            ? "Ollama server URL"
-                                            : "custom AI API endpoint URL"
-                                    }}
-                                    for all users.
-                                </p>
-                            </div>
-
-                            <div
-                                v-if="
-                                    adminAiForm.provider &&
-                                    adminAiForm.provider !== 'local'
-                                "
-                            >
-                                <label for="adminAiApiKey" class="label"
-                                    >Default API Key</label
-                                >
-                                <input
-                                    id="adminAiApiKey"
-                                    v-model="adminAiForm.apiKey"
-                                    type="password"
-                                    class="input"
-                                    :placeholder="getAdminApiKeyPlaceholder()"
-                                    :required="
-                                        !!adminAiForm.provider &&
-                                        !['ollama', 'lmstudio'].includes(
-                                            adminAiForm.provider,
-                                        )
-                                    "
-                                />
-                                <p
-                                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                                >
-                                    {{ getAdminApiKeyHelp() }}
-                                </p>
-                            </div>
-
-                            <div class="border-t border-gray-200 dark:border-gray-700 pt-6">
-                                <div
-                                    class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-                                >
-                                    <div>
-                                        <h4
-                                            class="text-base font-medium text-gray-900 dark:text-white"
-                                        >
-                                            Follow-up Question Checker
-                                        </h4>
-                                        <p
-                                            class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                                        >
-                                            Optional smaller model used to
-                                            approve trading-related follow-up
-                                            questions before the default model
-                                            runs.
-                                        </p>
-                                    </div>
-                                    <label
-                                        for="adminAiClassifierEnabled"
-                                        class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"
-                                    >
-                                        <input
-                                            id="adminAiClassifierEnabled"
-                                            v-model="
-                                                adminAiForm.classifierEnabled
-                                            "
-                                            type="checkbox"
-                                            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                        />
-                                        Enabled
-                                    </label>
-                                </div>
-
-                                <fieldset
-                                    class="mt-6 space-y-6"
-                                    :class="
-                                        !adminAiForm.classifierEnabled
-                                            ? 'opacity-60'
-                                            : ''
-                                    "
-                                    :disabled="!adminAiForm.classifierEnabled"
-                                >
-                                    <div
-                                        class="grid grid-cols-1 gap-6 sm:grid-cols-2"
-                                    >
-                                        <div>
-                                            <label
-                                                for="adminAiClassifierProvider"
-                                                class="label"
-                                            >
-                                                Checking Provider
-                                            </label>
-                                            <BaseSelect
-                                                v-model="adminAiForm.classifierProvider"
-                                                :options="[
-                                                    { value: 'gemini', label: 'Google Gemini' },
-                                                    { value: 'claude', label: 'Anthropic Claude' },
-                                                    { value: 'openai', label: 'OpenAI' },
-                                            { value: 'deepseek', label: 'DeepSeek' },
-                                            { value: 'kimi', label: 'Kimi' },
-                                                    { value: 'ollama', label: 'Ollama' },
-                                                    { value: 'lmstudio', label: 'LM Studio' },
-                                                    { value: 'perplexity', label: 'Perplexity AI' },
-                                                    { value: 'local', label: 'Local/Custom' }
-                                                ]"
-                                                placeholder="Use default provider"
-                                                @change="onAdminClassifierProviderChange"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label
-                                                for="adminAiClassifierModel"
-                                                class="label"
-                                            >
-                                                Checking Model
-                                            </label>
-                                            <input
-                                                id="adminAiClassifierModel"
-                                                v-model="
-                                                    adminAiForm.classifierModel
-                                                "
-                                                type="text"
-                                                class="input"
-                                                :placeholder="
-                                                    getAdminClassifierModelPlaceholder()
-                                                "
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div
-                                        v-if="
-                                            adminAiForm.classifierProvider ===
-                                                'local' ||
-                                            adminAiForm.classifierProvider ===
-                                                'ollama' ||
-                                            adminAiForm.classifierProvider ===
-                                                'lmstudio'
-                                        "
-                                    >
-                                        <label
-                                            for="adminAiClassifierUrl"
-                                            class="label"
-                                        >
-                                            Checking API URL
-                                        </label>
-                                        <input
-                                            id="adminAiClassifierUrl"
-                                            v-model="
-                                                adminAiForm.classifierUrl
-                                            "
-                                            type="url"
-                                            class="input"
-                                            :placeholder="
-                                                getAdminClassifierUrlPlaceholder()
-                                            "
-                                        />
-                                    </div>
-
-                                    <div
-                                        v-if="
-                                            adminAiForm.classifierProvider &&
-                                            adminAiForm.classifierProvider !==
-                                                'local'
-                                        "
-                                    >
-                                        <label
-                                            for="adminAiClassifierApiKey"
-                                            class="label"
-                                        >
-                                            Checking API Key
-                                        </label>
-                                        <input
-                                            id="adminAiClassifierApiKey"
-                                            v-model="
-                                                adminAiForm.classifierApiKey
-                                            "
-                                            type="password"
-                                            class="input"
-                                            :placeholder="
-                                                getAdminClassifierApiKeyPlaceholder()
-                                            "
-                                        />
-                                    </div>
-                                </fieldset>
-                            </div>
-
-                            <div class="flex justify-end">
-                                <button
-                                    type="submit"
-                                    :disabled="adminAiLoading"
-                                    class="btn-primary"
-                                >
-                                    <span
-                                        v-if="adminAiLoading"
-                                        class="flex items-center"
-                                    >
-                                        <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
-                                        ></div>
-                                        Saving...
-                                    </span>
-                                    <span v-else>Save Admin AI Settings</span>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Admin CUSIP AI Provider Settings -->
-                <div v-if="authStore.user?.role === 'admin'" class="card">
-                    <div class="card-body">
-                        <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-6"
-                        >
-                            Admin CUSIP AI Provider Settings
-                        </h3>
-                        <p
-                            class="text-sm text-gray-600 dark:text-gray-400 mb-6"
-                        >
-                            Configure default CUSIP resolution AI provider for
-                            all users. If not set, the main admin AI provider
-                            will be used.
-                        </p>
-
-                        <form
-                            @submit.prevent="updateAdminCusipAISettings"
-                            class="space-y-6"
-                        >
-                            <div class="flex items-center mb-4">
-                                <input
-                                    id="adminUseMainProviderForCusip"
-                                    v-model="adminCusipAiForm.useMainProvider"
-                                    type="checkbox"
-                                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                    @change="onAdminCusipUseMainProviderChange"
-                                />
-                                <label
-                                    for="adminUseMainProviderForCusip"
-                                    class="ml-2 text-sm text-gray-700 dark:text-gray-300"
-                                >
-                                    Use main admin AI provider for CUSIP
-                                    resolution
-                                </label>
-                            </div>
-
-                            <div
-                                v-if="!adminCusipAiForm.useMainProvider"
-                                class="space-y-6"
-                            >
-                                <div
-                                    class="grid grid-cols-1 gap-6 sm:grid-cols-2"
-                                >
-                                    <div>
-                                        <label
-                                            for="adminCusipAiProvider"
-                                            class="label"
-                                            >Default CUSIP AI Provider</label
-                                        >
-                                        <BaseSelect
-                                            v-model="adminCusipAiForm.provider"
-                                            :options="[
-                                                { value: 'gemini', label: 'Google Gemini' },
-                                                { value: 'claude', label: 'Anthropic Claude' },
-                                                { value: 'openai', label: 'OpenAI' },
-                                            { value: 'deepseek', label: 'DeepSeek' },
-                                            { value: 'kimi', label: 'Kimi' },
-                                                { value: 'ollama', label: 'Ollama' },
-                                                { value: 'lmstudio', label: 'LM Studio' },
-                                                { value: 'perplexity', label: 'Perplexity AI' },
-                                                { value: 'local', label: 'Local/Custom' }
-                                            ]"
-                                            placeholder="No provider"
-                                            @change="onAdminCusipProviderChange"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label
-                                            for="adminCusipAiModel"
-                                            class="label"
-                                            >Default Model (Optional)</label
-                                        >
-                                        <input
-                                            id="adminCusipAiModel"
-                                            v-model="adminCusipAiForm.model"
-                                            type="text"
-                                            class="input"
-                                            :placeholder="
-                                                getAdminCusipModelPlaceholder()
-                                            "
-                                        />
-                                    </div>
-                                </div>
-
-                                <div
-                                    v-if="
-                                        adminCusipAiForm.provider === 'local' ||
-                                        adminCusipAiForm.provider ===
-                                            'ollama' ||
-                                        adminCusipAiForm.provider === 'lmstudio'
-                                    "
-                                >
-                                    <label for="adminCusipAiUrl" class="label"
-                                        >Default API URL</label
-                                    >
-                                    <input
-                                        id="adminCusipAiUrl"
-                                        v-model="adminCusipAiForm.url"
-                                        type="url"
-                                        class="input"
-                                        :placeholder="
-                                            adminCusipAiForm.provider ===
-                                            'ollama'
-                                                ? 'http://localhost:11434'
-                                                : adminCusipAiForm.provider ===
-                                                    'lmstudio'
-                                                  ? 'http://localhost:1234'
-                                                  : 'http://localhost:8000'
-                                        "
-                                        required
-                                    />
-                                </div>
-
-                                <div
-                                    v-if="
-                                        adminCusipAiForm.provider &&
-                                        adminCusipAiForm.provider !== 'local'
-                                    "
-                                >
-                                    <label
-                                        for="adminCusipAiApiKey"
-                                        class="label"
-                                        >Default API Key</label
-                                    >
-                                    <input
-                                        id="adminCusipAiApiKey"
-                                        v-model="adminCusipAiForm.apiKey"
-                                        type="password"
-                                        class="input"
-                                        :placeholder="
-                                            getAdminCusipApiKeyPlaceholder()
-                                        "
-                                        :required="
-                                            !!adminCusipAiForm.provider &&
-                                            !['ollama', 'lmstudio'].includes(
-                                                adminCusipAiForm.provider,
-                                            )
-                                        "
-                                    />
-                                </div>
-                            </div>
-
-                            <div class="flex justify-end">
-                                <button
-                                    type="submit"
-                                    :disabled="adminCusipAiLoading"
-                                    class="btn-primary"
-                                >
-                                    <span
-                                        v-if="adminCusipAiLoading"
-                                        class="flex items-center"
-                                    >
-                                        <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
-                                        ></div>
-                                        Saving...
-                                    </span>
-                                    <span v-else
-                                        >Save Admin CUSIP AI Settings</span
-                                    >
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+                <AIAnalysisSettings />
+                <AiProviderSettings
+                    :form="aiForm"
+                    :loading="aiLoading"
+                    @submit="updateAISettings"
+                />
+                <CusipAiProviderSettings
+                    :form="cusipAiForm"
+                    :loading="cusipAiLoading"
+                    @submit="updateCusipAISettings"
+                />
+                <AdminAiProviderSettings
+                    v-if="authStore.user?.role === 'admin'"
+                    :form="adminAiForm"
+                    :loading="adminAiLoading"
+                    @submit="updateAdminAISettings"
+                />
+                <AdminCusipAiProviderSettings
+                    v-if="authStore.user?.role === 'admin'"
+                    :form="adminCusipAiForm"
+                    :loading="adminCusipAiLoading"
+                    @submit="updateAdminCusipAISettings"
+                />
             </template>
 
             <!-- Trading Tab -->
@@ -1712,6 +1115,8 @@
                         </router-link>
                     </div>
                 </div>
+
+                <TradeAllocationSettings class="mb-8" />
 
                 <!-- Quality Grading Weights -->
                 <div class="card">
@@ -2012,440 +1417,14 @@
                     </div>
                 </div>
 
-                <!-- Broker Commission Settings -->
-                <div class="card">
-                    <div class="card-body">
-                        <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-4"
-                        >
-                            Broker Commission & Fee Settings
-                        </h3>
-                        <p
-                            class="text-sm text-gray-600 dark:text-gray-400 mb-6"
-                        >
-                            Configure default commission and fee rates for
-                            brokers that don't include this data in their CSV
-                            exports (e.g., Tradovate). These rates will be
-                            automatically applied during import.
-                        </p>
-
-                        <!-- Existing Broker Settings -->
-                        <div
-                            v-if="brokerFeeSettings.length > 0"
-                            class="mb-6 space-y-3"
-                        >
-                            <div
-                                v-for="setting in brokerFeeSettings"
-                                :key="setting.id"
-                                class="flex items-start justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
-                            >
-                                <div class="flex-1">
-                                    <div class="flex items-center space-x-2">
-                                        <span
-                                            class="text-sm font-medium text-gray-900 dark:text-white capitalize"
-                                            >{{ setting.broker }}</span
-                                        >
-                                        <span
-                                            v-if="setting.instrument"
-                                            class="px-2 py-0.5 text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200 rounded"
-                                        >
-                                            {{ setting.instrument }}
-                                        </span>
-                                        <span
-                                            v-else
-                                            class="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 rounded"
-                                        >
-                                            All Instruments
-                                        </span>
-                                        <span
-                                            class="text-xs text-gray-500 dark:text-gray-400"
-                                        >
-                                            Total: ${{
-                                                calculateTotalFees(
-                                                    setting,
-                                                ).toFixed(6)
-                                            }}/contract/side
-                                        </span>
-                                    </div>
-                                    <div
-                                        class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-600 dark:text-gray-400"
-                                    >
-                                        <span
-                                            v-if="
-                                                setting.commissionPerContract >
-                                                0
-                                            "
-                                            >Commission: ${{
-                                                setting.commissionPerContract
-                                            }}/contract</span
-                                        >
-                                        <span
-                                            v-if="setting.commissionPerSide > 0"
-                                            >Per Side: ${{
-                                                setting.commissionPerSide
-                                            }}</span
-                                        >
-                                        <span
-                                            v-if="
-                                                setting.exchangeFeePerContract >
-                                                0
-                                            "
-                                            >Exchange: ${{
-                                                setting.exchangeFeePerContract
-                                            }}/contract</span
-                                        >
-                                        <span
-                                            v-if="setting.nfaFeePerContract > 0"
-                                            >NFA: ${{
-                                                setting.nfaFeePerContract
-                                            }}/contract</span
-                                        >
-                                        <span
-                                            v-if="
-                                                setting.clearingFeePerContract >
-                                                0
-                                            "
-                                            >Clearing: ${{
-                                                setting.clearingFeePerContract
-                                            }}/contract</span
-                                        >
-                                        <span
-                                            v-if="
-                                                setting.platformFeePerContract >
-                                                0
-                                            "
-                                            >Platform: ${{
-                                                setting.platformFeePerContract
-                                            }}/contract</span
-                                        >
-                                    </div>
-                                    <p
-                                        v-if="setting.notes"
-                                        class="mt-1 text-xs text-gray-500 dark:text-gray-400 italic"
-                                    >
-                                        {{ setting.notes }}
-                                    </p>
-                                </div>
-                                <div class="flex items-center space-x-2 ml-4">
-                                    <button
-                                        @click="editBrokerFee(setting)"
-                                        class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-                                        title="Edit"
-                                        aria-label="Edit broker fee"
-                                    >
-                                        <svg
-                                            class="h-5 w-5"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                                stroke-width="2"
-                                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                            />
-                                        </svg>
-                                    </button>
-                                    <button
-                                        @click="deleteBrokerFee(setting.id)"
-                                        class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                                        title="Delete"
-                                    >
-                                        <svg
-                                            class="h-5 w-5"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                                stroke-width="2"
-                                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                            />
-                                        </svg>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Add/Edit Broker Fee Form -->
-                        <div
-                            class="border-t border-gray-200 dark:border-gray-700 pt-6"
-                        >
-                            <h4
-                                class="text-sm font-medium text-gray-900 dark:text-white mb-4"
-                            >
-                                {{
-                                    editingBrokerFee
-                                        ? "Edit Broker Fees"
-                                        : "Add Broker Fees"
-                                }}
-                            </h4>
-
-                            <form
-                                @submit.prevent="saveBrokerFee"
-                                class="space-y-4"
-                            >
-                                <div
-                                    class="grid grid-cols-1 md:grid-cols-2 gap-4"
-                                >
-                                    <div>
-                                        <label for="brokerName" class="label"
-                                            >Broker</label
-                                        >
-                                        <BaseSelect
-                                            v-model="brokerFeeForm.broker"
-                                            :disabled="editingBrokerFee"
-                                            :options="[
-                                                { value: 'avatrade', label: 'AvaTrade' },
-                                                { value: 'tradovate', label: 'Tradovate' },
-                                                { value: 'ninjatrader', label: 'NinjaTrader' },
-                                                { value: 'thinkorswim', label: 'ThinkorSwim' },
-                                                { value: 'ibkr', label: 'Interactive Brokers' },
-                                                { value: 'schwab', label: 'Charles Schwab' },
-                                                { value: 'lightspeed', label: 'Lightspeed' },
-                                                { value: 'webull', label: 'Webull' },
-                                                { value: 'etrade', label: 'E*TRADE' },
-                                                { value: 'other', label: 'Other' }
-                                            ]"
-                                            placeholder="Select a broker"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label for="instrument" class="label"
-                                            >Instrument (optional)</label
-                                        >
-                                        <input
-                                            type="text"
-                                            id="instrument"
-                                            v-model="brokerFeeForm.instrument"
-                                            class="input uppercase"
-                                            :disabled="editingBrokerFee"
-                                            placeholder="e.g., MES, NQ, ES (leave blank for all)"
-                                        />
-                                        <p
-                                            class="mt-1 text-xs text-gray-500 dark:text-gray-400"
-                                        >
-                                            Leave blank to set default fees for
-                                            all instruments with this broker
-                                        </p>
-                                    </div>
-
-                                    <div>
-                                        <label
-                                            for="commissionPerContract"
-                                            class="label"
-                                            >Commission per Contract</label
-                                        >
-                                        <div class="relative">
-                                            <span
-                                                class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400"
-                                                >$</span
-                                            >
-                                            <input
-                                                type="number"
-                                                id="commissionPerContract"
-                                                v-model.number="
-                                                    brokerFeeForm.commissionPerContract
-                                                "
-                                                step="0.000001"
-                                                min="0"
-                                                class="input pl-7"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label for="exchangeFee" class="label"
-                                            >Exchange Fee per Contract</label
-                                        >
-                                        <div class="relative">
-                                            <span
-                                                class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400"
-                                                >$</span
-                                            >
-                                            <input
-                                                type="number"
-                                                id="exchangeFee"
-                                                v-model.number="
-                                                    brokerFeeForm.exchangeFeePerContract
-                                                "
-                                                step="0.000001"
-                                                min="0"
-                                                class="input pl-7"
-                                            />
-                                        </div>
-                                        <p
-                                            class="mt-1 text-xs text-gray-500 dark:text-gray-400"
-                                        >
-                                            CME, CBOT, etc.
-                                        </p>
-                                    </div>
-
-                                    <div>
-                                        <label for="nfaFee" class="label"
-                                            >NFA Fee per Contract</label
-                                        >
-                                        <div class="relative">
-                                            <span
-                                                class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400"
-                                                >$</span
-                                            >
-                                            <input
-                                                type="number"
-                                                id="nfaFee"
-                                                v-model.number="
-                                                    brokerFeeForm.nfaFeePerContract
-                                                "
-                                                step="0.000001"
-                                                min="0"
-                                                class="input pl-7"
-                                            />
-                                        </div>
-                                        <p
-                                            class="mt-1 text-xs text-gray-500 dark:text-gray-400"
-                                        >
-                                            Typically $0.02/contract
-                                        </p>
-                                    </div>
-
-                                    <div>
-                                        <label for="clearingFee" class="label"
-                                            >Clearing Fee per Contract</label
-                                        >
-                                        <div class="relative">
-                                            <span
-                                                class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400"
-                                                >$</span
-                                            >
-                                            <input
-                                                type="number"
-                                                id="clearingFee"
-                                                v-model.number="
-                                                    brokerFeeForm.clearingFeePerContract
-                                                "
-                                                step="0.000001"
-                                                min="0"
-                                                class="input pl-7"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label for="platformFee" class="label"
-                                            >Platform Fee per Contract</label
-                                        >
-                                        <div class="relative">
-                                            <span
-                                                class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400"
-                                                >$</span
-                                            >
-                                            <input
-                                                type="number"
-                                                id="platformFee"
-                                                v-model.number="
-                                                    brokerFeeForm.platformFeePerContract
-                                                "
-                                                step="0.000001"
-                                                min="0"
-                                                class="input pl-7"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label for="feeNotes" class="label"
-                                        >Notes (optional)</label
-                                    >
-                                    <input
-                                        type="text"
-                                        id="feeNotes"
-                                        v-model="brokerFeeForm.notes"
-                                        class="input"
-                                        placeholder="e.g., Micro E-mini rates, updated Jan 2025"
-                                    />
-                                </div>
-
-                                <!-- Total Preview -->
-                                <div
-                                    class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md"
-                                >
-                                    <div
-                                        class="flex justify-between items-center"
-                                    >
-                                        <span
-                                            class="text-sm text-blue-800 dark:text-blue-200"
-                                            >Total fees per contract per
-                                            side:</span
-                                        >
-                                        <span
-                                            class="text-lg font-bold text-blue-900 dark:text-blue-100"
-                                        >
-                                            ${{
-                                                calculateTotalFees(
-                                                    brokerFeeForm,
-                                                ).toFixed(6)
-                                            }}
-                                        </span>
-                                    </div>
-                                    <p
-                                        class="text-xs text-blue-700 dark:text-blue-300 mt-1"
-                                    >
-                                        For a round-trip trade, total fees = ${{
-                                            (
-                                                calculateTotalFees(
-                                                    brokerFeeForm,
-                                                ) * 2
-                                            ).toFixed(6)
-                                        }}
-                                        per contract
-                                    </p>
-                                </div>
-
-                                <div class="flex justify-end space-x-3">
-                                    <button
-                                        v-if="editingBrokerFee"
-                                        type="button"
-                                        @click="cancelEditBrokerFee"
-                                        class="btn-secondary"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        :disabled="
-                                            !brokerFeeForm.broker ||
-                                            brokerFeeLoading
-                                        "
-                                        class="btn-primary"
-                                    >
-                                        <span
-                                            v-if="brokerFeeLoading"
-                                            class="flex items-center"
-                                        >
-                                            <div
-                                                class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
-                                            ></div>
-                                            Saving...
-                                        </span>
-                                        <span v-else
-                                            >{{
-                                                editingBrokerFee
-                                                    ? "Update"
-                                                    : "Add"
-                                            }}
-                                            Broker Fees</span
-                                        >
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
+                <FeeProfileSettings
+                    :profiles="feeProfiles"
+                    :accounts="feeProfileAccounts"
+                    :loading="feeProfilesLoading"
+                    @save="saveFeeProfile"
+                    @delete="deleteFeeProfile"
+                    @assign="assignFeeProfile"
+                />
 
                 <!-- Trade Enrichment -->
                 <div class="card">
@@ -2571,219 +1550,16 @@
 
             <!-- Data Management Tab -->
             <template v-if="activeTab === 'data'">
-                <!-- Data Export & Import -->
-                <div class="card">
-                    <div class="card-body">
-                        <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-6"
-                        >
-                            Data Export & Import
-                        </h3>
-                        <p
-                            class="text-sm text-gray-600 dark:text-gray-400 mb-6"
-                        >
-                            Export all your trading data, settings, and trading
-                            profile as a JSON file. You can also import
-                            previously exported data.
-                        </p>
-
-                        <div class="space-y-6">
-                            <!-- Export Section -->
-                            <div class="flex items-start space-x-4">
-                                <div class="flex-1">
-                                    <h4
-                                        class="text-sm font-medium text-gray-900 dark:text-white mb-3"
-                                    >
-                                        Export Your Data
-                                    </h4>
-                                    <p
-                                        class="text-sm text-gray-600 dark:text-gray-400 mb-4"
-                                    >
-                                        Download a complete backup of your
-                                        TradeTally data including trades, diary
-                                        entries, playbook entries, settings,
-                                        tags, and equity history.
-                                    </p>
-                                </div>
-                                <button
-                                    @click="exportUserData"
-                                    :disabled="exportLoading"
-                                    class="btn-primary flex-shrink-0"
-                                >
-                                    <span
-                                        v-if="exportLoading"
-                                        class="flex items-center"
-                                    >
-                                        <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
-                                        ></div>
-                                        Preparing Export...
-                                    </span>
-                                    <span v-else class="flex items-center">
-                                        <svg
-                                            class="w-4 h-4 mr-2"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                                stroke-width="2"
-                                                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                                            ></path>
-                                        </svg>
-                                        Export All Data
-                                    </span>
-                                </button>
-                            </div>
-
-                            <!-- CSV Export Section -->
-                            <div
-                                class="flex items-start space-x-4 pt-6 border-t border-gray-200 dark:border-gray-700"
-                            >
-                                <div class="flex-1">
-                                    <h4
-                                        class="text-sm font-medium text-gray-900 dark:text-white mb-3"
-                                    >
-                                        Export Trades to CSV
-                                    </h4>
-                                    <p
-                                        class="text-sm text-gray-600 dark:text-gray-400 mb-4"
-                                    >
-                                        Export all your trades to a CSV file
-                                        with generic headers compatible with
-                                        Excel, Google Sheets, and other trading
-                                        journals. Exports all trades with full
-                                        details.
-                                    </p>
-                                </div>
-                                <button
-                                    @click="exportTradesToCSV"
-                                    :disabled="csvExportLoading"
-                                    class="btn-secondary flex-shrink-0"
-                                >
-                                    <span
-                                        v-if="csvExportLoading"
-                                        class="flex items-center"
-                                    >
-                                        <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"
-                                        ></div>
-                                        Exporting...
-                                    </span>
-                                    <span v-else class="flex items-center">
-                                        <svg
-                                            class="w-4 h-4 mr-2"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                                stroke-width="2"
-                                                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                                            ></path>
-                                        </svg>
-                                        Export Trades CSV
-                                    </span>
-                                </button>
-                            </div>
-
-                            <!-- Import Section -->
-                            <div
-                                class="flex items-start space-x-4 pt-6 border-t border-gray-200 dark:border-gray-700"
-                            >
-                                <div class="flex-1">
-                                    <h4
-                                        class="text-sm font-medium text-gray-900 dark:text-white mb-3"
-                                    >
-                                        Import Data
-                                    </h4>
-                                    <p
-                                        class="text-sm text-gray-600 dark:text-gray-400 mb-4"
-                                    >
-                                        Import previously exported TradeTally
-                                        data. This will merge with your existing
-                                        data without duplicating trades.
-                                    </p>
-                                </div>
-                                <div class="flex-shrink-0">
-                                    <input
-                                        ref="fileInput"
-                                        type="file"
-                                        accept=".json,application/json"
-                                        @change="handleFileSelect"
-                                        class="hidden"
-                                    />
-                                    <button
-                                        @click="$refs.fileInput.click()"
-                                        class="btn-secondary"
-                                    >
-                                        <svg
-                                            class="w-4 h-4 mr-2"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                                stroke-width="2"
-                                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
-                                            ></path>
-                                        </svg>
-                                        Choose File
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Selected File and Import Button -->
-                            <div
-                                v-if="selectedFile"
-                                class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
-                            >
-                                <span
-                                    class="text-sm text-gray-600 dark:text-gray-400 truncate mr-4"
-                                >
-                                    Selected: {{ selectedFile.name }}
-                                </span>
-                                <button
-                                    @click="importUserData"
-                                    :disabled="importLoading"
-                                    class="btn-primary flex-shrink-0"
-                                >
-                                    <span
-                                        v-if="importLoading"
-                                        class="flex items-center"
-                                    >
-                                        <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
-                                        ></div>
-                                        Importing...
-                                    </span>
-                                    <span v-else class="flex items-center">
-                                        <svg
-                                            class="w-4 h-4 mr-2"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                                stroke-width="2"
-                                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                                            ></path>
-                                        </svg>
-                                        Import Data
-                                    </span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <DataExportImport
+                    :export-loading="exportLoading"
+                    :csv-export-loading="csvExportLoading"
+                    :import-loading="importLoading"
+                    :selected-file="selectedFile"
+                    @export="exportUserData"
+                    @export-csv="exportTradesToCSV"
+                    @file-select="handleFileSelect"
+                    @import="importUserData"
+                />
             </template>
 
             <!-- System Logs Tab (Admin Only) -->
@@ -2797,11 +1573,20 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, defineAsyncComponent } from "vue";
 import { useAuthStore } from "@/stores/auth";
+import { useTradesStore } from "@/stores/trades";
+import { useAccountsStore } from "@/stores/accounts";
 import { useVersionStore } from "@/stores/version";
+import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import { useNotification } from "@/composables/useNotification";
 import api from "@/services/api";
+import {
+    normalizeTradeChartResolution,
+    readTradeChartDefaultResolution,
+    TRADE_CHART_RESOLUTION_PREFERENCE_KEY,
+    TRADE_CHART_RESOLUTION_OPTIONS,
+} from "@/utils/tradeChartPreferences";
 import { CURRENCY_OPTIONS } from "@/composables/useCurrencyFormatter";
 import MdiIcon from "@/components/MdiIcon.vue";
 import { mdiApi } from "@mdi/js";
@@ -2811,9 +1596,20 @@ import {
 } from "@heroicons/vue/24/outline";
 import LogsViewer from "@/components/admin/LogsViewer.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
+import AIAnalysisSettings from "@/components/settings/AIAnalysisSettings.vue";
+import AiProviderSettings from "@/components/settings/AiProviderSettings.vue";
+import CusipAiProviderSettings from "@/components/settings/CusipAiProviderSettings.vue";
+import AdminAiProviderSettings from "@/components/settings/AdminAiProviderSettings.vue";
+import AdminCusipAiProviderSettings from "@/components/settings/AdminCusipAiProviderSettings.vue";
+import FeeProfileSettings from "@/components/settings/FeeProfileSettings.vue";
+import DataExportImport from "@/components/settings/DataExportImport.vue";
+const TradeAllocationSettings = defineAsyncComponent(() => import("@/components/settings/TradeAllocationSettings.vue"));
 
 const authStore = useAuthStore();
+const tradesStore = useTradesStore();
+const accountsStore = useAccountsStore();
 const versionStore = useVersionStore();
+const uiPreferencesStore = useUiPreferencesStore();
 const { showSuccess, showError, showDangerConfirmation } = useNotification();
 
 // Icons
@@ -2845,6 +1641,7 @@ const aiForm = ref({
     apiKey: "",
     url: "",
     model: "",
+    apiKeyConfigured: false,
 });
 
 const aiLoading = ref(false);
@@ -2853,6 +1650,77 @@ const currencyOptions = CURRENCY_OPTIONS;
 const currencySelectOptions = computed(() =>
     currencyOptions.map((c) => ({ value: c.code, label: `${c.code} - ${c.name}` }))
 );
+const manualFxOptions = computed(() => currencySelectOptions.value.filter(option => option.value !== 'USD'));
+const manualFxCode = ref('EUR');
+const manualFxRate = ref('');
+const manualFxRates = ref([]);
+const manualFxLoading = ref(false);
+const manualFxSaving = ref(false);
+
+async function loadManualFxRates() {
+    manualFxLoading.value = true;
+    try {
+        const response = await api.get('/settings/fx-rates');
+        manualFxRates.value = response.data.rates || [];
+    } catch (error) {
+        showError('Exchange rates unavailable', error.response?.data?.error || 'Could not load manual rates');
+    } finally {
+        manualFxLoading.value = false;
+    }
+}
+
+async function saveManualFxRate() {
+    const per_usd = Number(manualFxRate.value);
+    if (!Number.isFinite(per_usd) || per_usd <= 0) {
+        showError('Invalid exchange rate', 'Enter a number greater than zero');
+        return;
+    }
+    manualFxSaving.value = true;
+    try {
+        await api.put(`/settings/fx-rates/${manualFxCode.value}`, { per_usd });
+        showSuccess('Rate saved', `1 USD = ${per_usd} ${manualFxCode.value}`);
+        await loadManualFxRates();
+        try {
+            await Promise.all([tradesStore.fetchTrades(), tradesStore.fetchAnalytics()]);
+        } catch {
+            showError('Trades could not refresh', 'The rate was saved. Refresh the page to see updated totals.');
+        }
+    } catch (error) {
+        showError('Rate not saved', error.response?.data?.details || error.response?.data?.error || 'Could not save rate');
+    } finally {
+        manualFxSaving.value = false;
+    }
+}
+
+async function removeManualFxRate(code) {
+    manualFxSaving.value = true;
+    try {
+        await api.delete(`/settings/fx-rates/${code}`);
+        showSuccess('Rate removed', `${code} will use provider rates when available`);
+        await loadManualFxRates();
+        try {
+            await Promise.all([tradesStore.fetchTrades(), tradesStore.fetchAnalytics()]);
+        } catch {
+            showError('Trades could not refresh', 'The rate was removed. Refresh the page to see updated totals.');
+        }
+    } catch (error) {
+        showError('Rate not removed', error.response?.data?.error || 'Could not remove rate');
+    } finally {
+        manualFxSaving.value = false;
+    }
+}
+
+const tradeChartResolutionOptions = TRADE_CHART_RESOLUTION_OPTIONS;
+
+function savedTradeChartResolution(settings = null) {
+    const remotePreference =
+        settings?.uiPreferences?.[TRADE_CHART_RESOLUTION_PREFERENCE_KEY];
+    if (remotePreference !== undefined && remotePreference !== null) {
+        return normalizeTradeChartResolution(remotePreference);
+    }
+
+    return readTradeChartDefaultResolution();
+}
 
 // CUSIP AI Provider Settings
 const cusipAiForm = ref({
@@ -2861,6 +1729,7 @@ const cusipAiForm = ref({
     url: "",
     model: "",
     useMainProvider: true,
+    apiKeyConfigured: false,
 });
 
 const cusipAiLoading = ref(false);
@@ -2870,16 +1739,47 @@ const analyticsForm = ref({
     statisticsCalculation: "average",
     analyticsPositionGrouping: false,
     edgeReportEnabled: false,
+    breakeven_tolerance_mode: "ticks",
     breakevenToleranceTicks: 0,
+    breakeven_tolerance_dollars: 0,
     autoCloseExpiredOptions: true,
     defaultStopLossType: "percent",
     defaultStopLossPercent: null,
     defaultStopLossDollars: null,
+    defaultTakeProfitType: "percent",
     defaultTakeProfitPercent: null,
+    defaultTakeProfitRMultiple: null,
+    defaultTakeProfitDollars: null,
     displayCurrency: "USD",
+    trade_chart_default_resolution: "1",
 });
 
 const analyticsLoading = ref(false);
+
+const breakevenToleranceModeOptions = [
+    { value: "ticks", label: "Ticks" },
+    { value: "dollars", label: "Dollars" },
+];
+
+const breakevenToleranceInputId = computed(() =>
+    analyticsForm.value.breakeven_tolerance_mode === "dollars"
+        ? "breakevenToleranceDollars"
+        : "breakevenToleranceTicks",
+);
+
+const breakevenToleranceInputLabel = computed(() =>
+    analyticsForm.value.breakeven_tolerance_mode === "dollars"
+        ? "Dollar Amount"
+        : "Default Tick Amount",
+);
+
+const breakevenToleranceDescription = computed(() => {
+    if (analyticsForm.value.breakeven_tolerance_mode === "dollars") {
+        return "Trades whose gross P&L falls within plus or minus this amount are counted as breakeven instead of wins or losses. This applies to stocks, options, futures, and combined multi-leg positions. Commissions and fees are ignored. Leave at 0 to count only exact breakeven trades.";
+    }
+
+    return "Trades whose gross P&L falls within this many ticks of zero are counted as breakeven instead of wins or losses. This applies to instruments with a tick size and point value, such as futures. Commissions and fees are ignored. Leave at 0 to count only trades that exit exactly at entry.";
+});
 
 // Per-instrument breakeven tolerance overrides, edited as rows then serialized
 // to a { UNDERLYING: ticks } map on save.
@@ -2926,21 +1826,10 @@ const tradeImportForm = ref({
 });
 const tradeImportLoading = ref(false);
 
-// Broker Fee Settings
-const brokerFeeSettings = ref([]);
-const brokerFeeForm = ref({
-    broker: "",
-    instrument: "",
-    commissionPerContract: 0,
-    commissionPerSide: 0,
-    exchangeFeePerContract: 0,
-    nfaFeePerContract: 0.02,
-    clearingFeePerContract: 0,
-    platformFeePerContract: 0,
-    notes: "",
-});
-const brokerFeeLoading = ref(false);
-const editingBrokerFee = ref(null);
+// Named fee profiles
+const feeProfiles = ref([]);
+const feeProfileAccounts = ref([]);
+const feeProfilesLoading = ref(false);
 
 // Quality Weights Settings - per instrument profile (stock, option)
 const qualityWeightsLoading = ref(false);
@@ -3052,6 +1941,8 @@ const adminAiForm = ref({
     classifierApiKey: "",
     classifierUrl: "",
     classifierModel: "",
+    apiKeyConfigured: false,
+    classifierApiKeyConfigured: false,
 });
 const adminAiLoading = ref(false);
 
@@ -3062,6 +1953,7 @@ const adminCusipAiForm = ref({
     url: "",
     model: "",
     useMainProvider: true,
+    apiKeyConfigured: false,
 });
 const adminCusipAiLoading = ref(false);
 
@@ -3091,96 +1983,15 @@ function getApiDocsUrl() {
 }
 
 // AI Provider Functions
-function getModelPlaceholder() {
-    switch (aiForm.value.provider) {
-        case "gemini":
-            return "e.g., gemini-1.5-pro";
-        case "claude":
-            return "e.g., claude-3-5-sonnet";
-        case "openai":
-            return "e.g., gpt-4o";
-        case "deepseek":
-            return "e.g., deepseek-chat";
-        case "kimi":
-            return "e.g., moonshot-v1-8k";
-        case "ollama":
-            return "e.g., llama3.1";
-        case "lmstudio":
-            return "e.g., local-model (auto-detected)";
-        case "perplexity":
-            return "e.g., sonar";
-        case "local":
-            return "e.g., custom-model";
-        default:
-            return "Model name";
-    }
-}
-
-function getApiKeyPlaceholder() {
-    switch (aiForm.value.provider) {
-        case "gemini":
-            return "AIza...";
-        case "claude":
-            return "sk-ant-...";
-        case "openai":
-            return "sk-...";
-        case "deepseek":
-            return "sk-...";
-        case "kimi":
-            return "sk-...";
-        case "ollama":
-            return "Optional API key";
-        case "perplexity":
-            return "pplx-...";
-        case "lmstudio":
-            return "Optional API key";
-        case "local":
-            return "Enter API key";
-        default:
-            return "Enter API key";
-    }
-}
-
-function getApiKeyHelp() {
-    switch (aiForm.value.provider) {
-        case "gemini":
-            return "Get your API key from Google AI Studio";
-        case "claude":
-            return "Get your API key from Anthropic Console";
-        case "openai":
-            return "Get your API key from OpenAI Dashboard";
-        case "deepseek":
-            return "Get your API key from DeepSeek Platform";
-        case "kimi":
-            return "Get your API key from Moonshot AI Platform";
-        case "ollama":
-            return "API key is optional for Ollama";
-        case "perplexity":
-            return "Get your API key from Perplexity AI Settings";
-        case "lmstudio":
-            return "API key is optional for LM Studio";
-        case "local":
-            return "Enter your custom API key if required";
-        default:
-            return "Enter your API key";
-    }
-}
-
-function onProviderChange() {
-    // Clear URL and API key when provider changes
-    aiForm.value.url = "";
-    aiForm.value.apiKey = "";
-    aiForm.value.model = "";
-}
-
 async function loadAISettings() {
     try {
         const response = await api.get("/settings/ai-provider");
         aiForm.value = {
             provider: response.data.aiProvider || "",
-            apiKey: response.data.aiApiKey || "",
+            apiKey: "",
             url: response.data.aiApiUrl || "",
             model: response.data.aiModel || "",
+            apiKeyConfigured: response.data.aiApiKey === "***",
         };
     } catch (error) {
         console.error("Failed to load AI settings:", error);
@@ -3191,12 +2002,16 @@ async function loadAISettings() {
 async function updateAISettings() {
     aiLoading.value = true;
     try {
-        await api.put("/settings/ai-provider", {
+        const response = await api.put("/settings/ai-provider", {
             aiProvider: aiForm.value.provider,
-            aiApiKey: aiForm.value.apiKey,
+            aiApiKey:
+                aiForm.value.apiKey ||
+                (aiForm.value.apiKeyConfigured ? "***" : ""),
             aiApiUrl: aiForm.value.url,
             aiModel: aiForm.value.model,
         });
+        aiForm.value.apiKey = "";
+        aiForm.value.apiKeyConfigured = response.data.aiApiKey === "***";
         showSuccess("Success", "AI provider settings updated successfully");
     } catch (error) {
         console.error("Failed to update AI settings:", error);
@@ -3210,72 +2025,16 @@ async function updateAISettings() {
 }
 
 // CUSIP AI Provider Functions
-function getCusipModelPlaceholder() {
-    switch (cusipAiForm.value.provider) {
-        case "gemini":
-            return "e.g., gemini-1.5-pro";
-        case "claude":
-            return "e.g., claude-3-5-sonnet-20241022";
-        case "openai":
-            return "e.g., gpt-4o";
-        case "deepseek":
-            return "e.g., deepseek-chat";
-        case "kimi":
-            return "e.g., moonshot-v1-8k";
-        case "ollama":
-            return "e.g., llama3.2";
-        case "perplexity":
-            return "e.g., llama-3.1-sonar-large-128k-online";
-        case "lmstudio":
-            return "e.g., local-model";
-        default:
-            return "Model name";
-    }
-}
-
-function getCusipApiKeyPlaceholder() {
-    switch (cusipAiForm.value.provider) {
-        case "gemini":
-            return "Your Google AI API key";
-        case "claude":
-            return "Your Anthropic API key";
-        case "openai":
-            return "Your OpenAI API key";
-        case "deepseek":
-            return "Your DeepSeek API key";
-        case "kimi":
-            return "Your Moonshot AI API key";
-        case "perplexity":
-            return "Your Perplexity API key";
-        default:
-            return "API key (if required)";
-    }
-}
-
-function onCusipProviderChange() {
-    cusipAiForm.value.url = "";
-    cusipAiForm.value.apiKey = "";
-    cusipAiForm.value.model = "";
-}
-
-function onCusipUseMainProviderChange() {
-    if (cusipAiForm.value.useMainProvider) {
-        cusipAiForm.value.provider = "gemini";
-        cusipAiForm.value.url = "";
-        cusipAiForm.value.apiKey = "";
-        cusipAiForm.value.model = "";
-    }
-}
-
 async function loadCusipAISettings() {
     try {
         const response = await api.get("/settings/cusip-ai-provider");
         cusipAiForm.value = {
             provider: response.data.cusipAiProvider || "",
-            apiKey: response.data.cusipAiApiKey || "",
+            apiKey: "",
             url: response.data.cusipAiApiUrl || "",
             model: response.data.cusipAiModel || "",
             useMainProvider: response.data.useMainProvider !== false,
+            apiKeyConfigured: response.data.cusipAiApiKey === "***",
         };
     } catch (error) {
         console.error("Failed to load CUSIP AI settings:", error);
@@ -3285,13 +2044,18 @@ async function loadCusipAISettings() {
 async function updateCusipAISettings() {
     cusipAiLoading.value = true;
     try {
-        await api.put("/settings/cusip-ai-provider", {
+        const response = await api.put("/settings/cusip-ai-provider", {
             cusipAiProvider: cusipAiForm.value.provider,
-            cusipAiApiKey: cusipAiForm.value.apiKey,
+            cusipAiApiKey:
+                cusipAiForm.value.apiKey ||
+                (cusipAiForm.value.apiKeyConfigured ? "***" : ""),
             cusipAiApiUrl: cusipAiForm.value.url,
             cusipAiModel: cusipAiForm.value.model,
             useMainProvider: cusipAiForm.value.useMainProvider,
         });
+        cusipAiForm.value.apiKey = "";
+        cusipAiForm.value.apiKeyConfigured =
+            response.data.cusipAiApiKey === "***";
         showSuccess(
             "Success",
             "CUSIP AI provider settings updated successfully",
@@ -3308,62 +2072,92 @@ async function updateCusipAISettings() {
 }
 
 // Analytics Settings Functions
-async function loadAnalyticsSettings() {
+async function loadAnalyticsSettings(settingsData = null) {
     try {
-        const response = await api.get("/settings");
+        const settings =
+            settingsData ?? (await api.get("/settings")).data.settings;
         analyticsForm.value = {
             statisticsCalculation:
-                response.data.settings.statisticsCalculation || "average",
+                settings.statisticsCalculation || "average",
             analyticsPositionGrouping:
-                response.data.settings.analyticsPositionGrouping === true,
+                settings.analyticsPositionGrouping === true,
             edgeReportEnabled:
-                response.data.settings.edgeReportEnabled === true,
+                settings.edgeReportEnabled === true,
+            breakeven_tolerance_mode:
+                settings.breakeven_tolerance_mode ??
+                settings.breakevenToleranceMode ??
+                "ticks",
             breakevenToleranceTicks:
-                Number(response.data.settings.breakevenToleranceTicks) || 0,
+                Number(settings.breakevenToleranceTicks) || 0,
+            breakeven_tolerance_dollars:
+                Number(
+                    settings.breakeven_tolerance_dollars ??
+                        settings.breakevenToleranceDollars,
+                ) || 0,
             autoCloseExpiredOptions:
-                response.data.settings.autoCloseExpiredOptions !== undefined
-                    ? response.data.settings.autoCloseExpiredOptions
+                settings.autoCloseExpiredOptions !== undefined
+                    ? settings.autoCloseExpiredOptions
                     : true,
             defaultStopLossType:
-                response.data.settings.defaultStopLossType || "percent",
+                settings.defaultStopLossType || "percent",
             defaultStopLossPercent:
-                response.data.settings.defaultStopLossPercent || null,
+                settings.defaultStopLossPercent || null,
             defaultStopLossDollars:
-                response.data.settings.defaultStopLossDollars ?? null,
+                settings.defaultStopLossDollars ?? null,
+            defaultTakeProfitType:
+                settings.defaultTakeProfitType || "percent",
             defaultTakeProfitPercent:
-                response.data.settings.defaultTakeProfitPercent || null,
+                settings.defaultTakeProfitPercent || null,
+            defaultTakeProfitRMultiple:
+                settings.defaultTakeProfitRMultiple ?? null,
+            defaultTakeProfitDollars:
+                settings.defaultTakeProfitDollars ?? null,
             displayCurrency:
-                response.data.settings.displayCurrency || "USD",
+                settings.displayCurrency || "USD",
+            trade_chart_default_resolution:
+                savedTradeChartResolution(settings),
         };
         breakevenToleranceRows.value = breakevenRowsFromMap(
-            response.data.settings.breakevenToleranceTicksByUnderlying,
+            settings.breakevenToleranceTicksByUnderlying,
         );
     } catch (error) {
         console.error("Failed to load analytics settings:", error);
         // Default values if loading fails
         analyticsForm.value.statisticsCalculation = "average";
         analyticsForm.value.analyticsPositionGrouping = false;
+        analyticsForm.value.breakeven_tolerance_mode = "ticks";
         analyticsForm.value.breakevenToleranceTicks = 0;
+        analyticsForm.value.breakeven_tolerance_dollars = 0;
         analyticsForm.value.autoCloseExpiredOptions = true;
         analyticsForm.value.defaultStopLossType = "percent";
         analyticsForm.value.defaultStopLossPercent = null;
         analyticsForm.value.defaultStopLossDollars = null;
+        analyticsForm.value.defaultTakeProfitType = "percent";
         analyticsForm.value.defaultTakeProfitPercent = null;
+        analyticsForm.value.defaultTakeProfitRMultiple = null;
+        analyticsForm.value.defaultTakeProfitDollars = null;
         analyticsForm.value.displayCurrency = "USD";
+        analyticsForm.value.trade_chart_default_resolution =
+            savedTradeChartResolution();
     }
 }
 
 async function updateAnalyticsSettings() {
     analyticsLoading.value = true;
     try {
+        await uiPreferencesStore.init();
         await api.put("/settings", {
             statisticsCalculation: analyticsForm.value.statisticsCalculation,
             analyticsPositionGrouping:
                 analyticsForm.value.analyticsPositionGrouping === true,
             edgeReportEnabled:
                 analyticsForm.value.edgeReportEnabled === true,
+            breakeven_tolerance_mode:
+                analyticsForm.value.breakeven_tolerance_mode,
             breakevenToleranceTicks:
                 Number(analyticsForm.value.breakevenToleranceTicks) || 0,
+            breakeven_tolerance_dollars:
+                Number(analyticsForm.value.breakeven_tolerance_dollars) || 0,
             breakevenToleranceTicksByUnderlying: breakevenMapFromRows(),
             autoCloseExpiredOptions:
                 analyticsForm.value.autoCloseExpiredOptions,
@@ -3373,11 +2167,36 @@ async function updateAnalyticsSettings() {
                 analyticsForm.value.defaultStopLossPercent || null,
             defaultStopLossDollars:
                 analyticsForm.value.defaultStopLossDollars ?? null,
+            defaultTakeProfitType:
+                analyticsForm.value.defaultTakeProfitType || "percent",
             defaultTakeProfitPercent:
                 analyticsForm.value.defaultTakeProfitPercent || null,
+            defaultTakeProfitRMultiple:
+                analyticsForm.value.defaultTakeProfitRMultiple ?? null,
+            defaultTakeProfitDollars:
+                analyticsForm.value.defaultTakeProfitDollars ?? null,
             displayCurrency:
                 analyticsForm.value.displayCurrency || "USD",
         });
+
+        const chartResolution = normalizeTradeChartResolution(
+            analyticsForm.value.trade_chart_default_resolution,
+        );
+        analyticsForm.value.trade_chart_default_resolution = chartResolution;
+        localStorage.setItem(
+            TRADE_CHART_RESOLUTION_PREFERENCE_KEY,
+            chartResolution,
+        );
+        uiPreferencesStore.notifyChanged(
+            TRADE_CHART_RESOLUTION_PREFERENCE_KEY,
+            chartResolution,
+        );
+        await uiPreferencesStore.flush();
+
+        // Stop-loss and take-profit defaults can backfill existing trades.
+        await tradesStore.fetchTrades();
+        await tradesStore.fetchAnalytics();
+
         // Re-fetch user so the auth store picks up the new display_currency
         await authStore.fetchUser();
         showSuccess("Success", "Analytics preferences updated successfully");
@@ -3394,10 +2213,10 @@ async function updateAnalyticsSettings() {
 }
 
 // Privacy Settings Functions
-async function loadPrivacySettings() {
+async function loadPrivacySettings(settingsData = null) {
     try {
-        const response = await api.get("/settings");
-        const settings = response.data.settings;
+        const settings =
+            settingsData ?? (await api.get("/settings")).data.settings;
 
         privacyForm.value = {
             publicProfile: settings.publicProfile ?? false,
@@ -3432,10 +2251,10 @@ async function updatePrivacySettings() {
 }
 
 // Trade Import Settings Functions
-async function loadTradeImportSettings() {
+async function loadTradeImportSettings(settingsData = null) {
     try {
-        const response = await api.get("/settings");
-        const settings = response.data.settings;
+        const settings =
+            settingsData ?? (await api.get("/settings")).data.settings;
 
         tradeImportForm.value = {
             enableTradeGrouping: settings.enableTradeGrouping ?? true,
@@ -3471,110 +2290,95 @@ async function updateTradeImportSettings() {
     }
 }
 
-// Broker Fee Settings Functions
-async function loadBrokerFeeSettings() {
+// Fetch /settings once and hydrate every section that reads from it.
+// The individual loaders keep their optional-fetch fallback so they can
+// still be called standalone (e.g. to refresh a single section).
+async function loadAllSettings() {
+    let settings = null;
     try {
-        const response = await api.get("/settings/broker-fees");
-        if (response.data.success) {
-            brokerFeeSettings.value = response.data.data;
+        const response = await api.get("/settings");
+        settings = response.data.settings;
+    } catch (error) {
+        console.error("Failed to load settings:", error);
+        // Leave settings null - each loader retries its own fetch and falls
+        // back to its catch-block defaults if that fails too
+    }
+    await Promise.all([
+        loadAnalyticsSettings(settings),
+        loadPrivacySettings(settings),
+        loadTradeImportSettings(settings),
+    ]);
+}
+
+// Named fee profile functions
+async function loadFeeProfiles() {
+    feeProfilesLoading.value = true;
+    try {
+        const [profilesResponse, accounts] = await Promise.all([
+            api.get("/settings/fee-profiles"),
+            accountsStore.fetchAccounts()
+        ]);
+        if (profilesResponse.data.success) {
+            feeProfiles.value = profilesResponse.data.data || [];
         }
+        feeProfileAccounts.value = accounts || accountsStore.accounts || [];
     } catch (error) {
-        console.error("Failed to load broker fee settings:", error);
-    }
-}
-
-function calculateTotalFees(setting) {
-    return (
-        (parseFloat(setting.commissionPerContract) || 0) +
-        (parseFloat(setting.commissionPerSide) || 0) +
-        (parseFloat(setting.exchangeFeePerContract) || 0) +
-        (parseFloat(setting.nfaFeePerContract) || 0) +
-        (parseFloat(setting.clearingFeePerContract) || 0) +
-        (parseFloat(setting.platformFeePerContract) || 0)
-    );
-}
-
-function editBrokerFee(setting) {
-    editingBrokerFee.value = setting.id;
-    // Use nullish coalescing (??) instead of || to preserve 0 values
-    // This ensures that if user explicitly set a fee to 0, it stays 0
-    brokerFeeForm.value = {
-        broker: setting.broker,
-        instrument: setting.instrument || "",
-        commissionPerContract: setting.commissionPerContract ?? 0,
-        commissionPerSide: setting.commissionPerSide ?? 0,
-        exchangeFeePerContract: setting.exchangeFeePerContract ?? 0,
-        nfaFeePerContract: setting.nfaFeePerContract ?? 0,
-        clearingFeePerContract: setting.clearingFeePerContract ?? 0,
-        platformFeePerContract: setting.platformFeePerContract ?? 0,
-        notes: setting.notes || "",
-    };
-}
-
-function cancelEditBrokerFee() {
-    editingBrokerFee.value = null;
-    resetBrokerFeeForm();
-}
-
-function resetBrokerFeeForm() {
-    brokerFeeForm.value = {
-        broker: "",
-        instrument: "",
-        commissionPerContract: 0,
-        commissionPerSide: 0,
-        exchangeFeePerContract: 0,
-        nfaFeePerContract: 0.02,
-        clearingFeePerContract: 0,
-        platformFeePerContract: 0,
-        notes: "",
-    };
-}
-
-async function saveBrokerFee() {
-    if (!brokerFeeForm.value.broker) {
-        showError("Error", "Please select a broker");
-        return;
-    }
-
-    brokerFeeLoading.value = true;
-    try {
-        await api.post("/settings/broker-fees", brokerFeeForm.value);
-        showSuccess(
-            "Success",
-            `Broker fee settings for ${brokerFeeForm.value.broker} saved successfully`,
-        );
-        await loadBrokerFeeSettings();
-        cancelEditBrokerFee();
-    } catch (error) {
-        console.error("Failed to save broker fee settings:", error);
-        showError(
-            "Error",
-            error.response?.data?.error || "Failed to save broker fee settings",
-        );
+        console.error("Failed to load fee profiles:", error);
+        showError("Fee profiles unavailable", "Fee profiles could not be loaded. Existing legacy broker defaults remain available during the transition.");
     } finally {
-        brokerFeeLoading.value = false;
+        feeProfilesLoading.value = false;
     }
 }
 
-function deleteBrokerFee(id) {
+async function saveFeeProfile(profile, on_saved) {
+    feeProfilesLoading.value = true;
+    try {
+        const method = profile.id ? "put" : "post";
+        const url = profile.id ? `/settings/fee-profiles/${profile.id}` : "/settings/fee-profiles";
+        await api[method](url, profile);
+        on_saved?.();
+        showSuccess("Fee profile saved", `${profile.name} is ready to assign to trading accounts.`);
+        await loadFeeProfiles();
+    } catch (error) {
+        console.error("Failed to save fee profile:", error);
+        showError("Fee profile not saved", error.response?.data?.error || "Failed to save fee profile");
+    } finally {
+        feeProfilesLoading.value = false;
+    }
+}
+
+function deleteFeeProfile(profile) {
     showDangerConfirmation(
-        "Delete Broker Fee",
-        "Are you sure you want to delete this broker fee configuration?",
+        "Delete Fee Profile",
+        `Delete ${profile.name}? Assigned accounts will become unmapped and imports will no longer use this profile.`,
         async () => {
+            feeProfilesLoading.value = true;
             try {
-                await api.delete(`/settings/broker-fees/${id}`);
-                showSuccess("Success", "Broker fee settings deleted");
-                await loadBrokerFeeSettings();
+                await api.delete(`/settings/fee-profiles/${profile.id}`);
+                showSuccess("Fee profile deleted", `${profile.name} was deleted.`);
+                await loadFeeProfiles();
             } catch (error) {
-                console.error("Failed to delete broker fee settings:", error);
-                showError(
-                    "Error",
-                    error.response?.data?.error ||
-                        "Failed to delete broker fee settings",
-                );
+                console.error("Failed to delete fee profile:", error);
+                showError("Fee profile not deleted", error.response?.data?.error || "Failed to delete fee profile");
+            } finally {
+                feeProfilesLoading.value = false;
             }
         },
     );
+}
+
+async function assignFeeProfile({ profileId, accountIds }) {
+    feeProfilesLoading.value = true;
+    try {
+        await api.put(`/settings/fee-profiles/${profileId}/accounts`, { account_ids: accountIds });
+        await loadFeeProfiles();
+        feeProfileAccounts.value = await accountsStore.fetchAccounts({ force: true });
+    } catch (error) {
+        console.error("Failed to assign fee profile:", error);
+        showError("Assignment not saved", error.response?.data?.error || "Failed to assign fee profile");
+    } finally {
+        feeProfilesLoading.value = false;
+    }
 }
 
 // Quality Weights Functions
@@ -3663,14 +2467,17 @@ async function fetchAdminAISettings() {
         const response = await api.get("/settings/admin/ai");
         adminAiForm.value = {
             provider: response.data.aiProvider || "",
-            apiKey: response.data.aiApiKey || "",
+            apiKey: "",
             url: response.data.aiApiUrl || "",
             model: response.data.aiModel || "",
             classifierEnabled: response.data.aiClassifierEnabled === true,
             classifierProvider: response.data.aiClassifierProvider || "",
-            classifierApiKey: response.data.aiClassifierApiKey || "",
+            classifierApiKey: "",
             classifierUrl: response.data.aiClassifierApiUrl || "",
             classifierModel: response.data.aiClassifierModel || "",
+            apiKeyConfigured: response.data.aiApiKey === "***",
+            classifierApiKeyConfigured:
+                response.data.aiClassifierApiKey === "***",
         };
     } catch (error) {
         console.error("Failed to fetch admin AI settings:", error);
@@ -3681,17 +2488,26 @@ async function fetchAdminAISettings() {
 async function updateAdminAISettings() {
     adminAiLoading.value = true;
     try {
-        await api.put("/settings/admin/ai", {
+        const response = await api.put("/settings/admin/ai", {
             aiProvider: adminAiForm.value.provider,
-            aiApiKey: adminAiForm.value.apiKey,
+            aiApiKey:
+                adminAiForm.value.apiKey ||
+                (adminAiForm.value.apiKeyConfigured ? "***" : ""),
             aiApiUrl: adminAiForm.value.url,
             aiModel: adminAiForm.value.model,
             aiClassifierEnabled: adminAiForm.value.classifierEnabled,
             aiClassifierProvider: adminAiForm.value.classifierProvider,
-            aiClassifierApiKey: adminAiForm.value.classifierApiKey,
+            aiClassifierApiKey:
+                adminAiForm.value.classifierApiKey ||
+                (adminAiForm.value.classifierApiKeyConfigured ? "***" : ""),
             aiClassifierApiUrl: adminAiForm.value.classifierUrl,
             aiClassifierModel: adminAiForm.value.classifierModel,
         });
+        adminAiForm.value.apiKey = "";
+        adminAiForm.value.classifierApiKey = "";
+        adminAiForm.value.apiKeyConfigured = response.data.aiApiKey === "***";
+        adminAiForm.value.classifierApiKeyConfigured =
+            response.data.aiClassifierApiKey === "***";
         showSuccess(
             "Success",
             "Admin AI provider settings updated successfully",
@@ -3707,169 +2523,17 @@ async function updateAdminAISettings() {
     }
 }
 
-function onAdminProviderChange() {
-    // Clear API key and URL when provider changes
-    adminAiForm.value.apiKey = "";
-    adminAiForm.value.url = "";
-    adminAiForm.value.model = "";
-    if (!adminAiForm.value.classifierProvider) {
-        adminAiForm.value.classifierApiKey = "";
-        adminAiForm.value.classifierUrl = "";
-    }
-}
-
-function onAdminClassifierEnabledChange() {
-    if (!adminAiForm.value.classifierEnabled) {
-        adminAiForm.value.classifierProvider = "";
-        adminAiForm.value.classifierApiKey = "";
-        adminAiForm.value.classifierUrl = "";
-        adminAiForm.value.classifierModel = "";
-    }
-}
-
-function onAdminClassifierProviderChange() {
-    adminAiForm.value.classifierApiKey = "";
-    adminAiForm.value.classifierUrl = "";
-    adminAiForm.value.classifierModel = "";
-}
-
-function getEffectiveAdminClassifierProvider() {
-    return adminAiForm.value.classifierProvider || adminAiForm.value.provider;
-}
-
-function getAdminClassifierModelPlaceholder() {
-    switch (getEffectiveAdminClassifierProvider()) {
-        case "gemini":
-            return "gemini-1.5-flash";
-        case "claude":
-            return "claude-3-haiku-20240307";
-        case "openai":
-            return "gpt-4o-mini";
-        case "deepseek":
-            return "deepseek-chat";
-        case "kimi":
-            return "moonshot-v1-8k";
-        case "ollama":
-            return "llama3.1";
-        case "lmstudio":
-            return "local-model";
-        case "perplexity":
-            return "sonar";
-        case "local":
-            return "custom-model";
-        default:
-            return "Smaller checking model";
-    }
-}
-
-function getAdminClassifierUrlPlaceholder() {
-    switch (adminAiForm.value.classifierProvider) {
-        case "ollama":
-            return "http://localhost:11434";
-        case "lmstudio":
-            return "http://localhost:1234";
-        case "local":
-            return "http://localhost:8000";
-        default:
-            return "API URL";
-    }
-}
-
-function getAdminClassifierApiKeyPlaceholder() {
-    switch (adminAiForm.value.classifierProvider) {
-        case "gemini":
-            return "Enter Google Gemini API key";
-        case "claude":
-            return "Enter Anthropic Claude API key";
-        case "openai":
-            return "Enter OpenAI API key";
-        case "deepseek":
-            return "Enter DeepSeek API key";
-        case "kimi":
-            return "Enter Moonshot AI API key";
-        case "perplexity":
-            return "Enter Perplexity API key";
-        case "ollama":
-        case "lmstudio":
-            return "Optional API key";
-        default:
-            return "Enter API key";
-    }
-}
-
-function getAdminModelPlaceholder() {
-    switch (adminAiForm.value.provider) {
-        case "gemini":
-            return "gemini-1.5-flash";
-        case "claude":
-            return "claude-3-5-sonnet-20241022";
-        case "openai":
-            return "gpt-4o";
-        case "deepseek":
-            return "deepseek-chat";
-        case "kimi":
-            return "moonshot-v1-8k";
-        case "ollama":
-            return "llama3.1";
-        case "lmstudio":
-            return "local-model (auto-detected)";
-        case "perplexity":
-            return "sonar";
-        case "local":
-            return "custom-model";
-        default:
-            return "Leave blank for default";
-    }
-}
-
-function getAdminApiKeyPlaceholder() {
-    switch (adminAiForm.value.provider) {
-        case "gemini":
-            return "Enter Google Gemini API key";
-        case "claude":
-            return "Enter Anthropic Claude API key";
-        case "openai":
-            return "Enter OpenAI API key";
-        case "deepseek":
-            return "Enter DeepSeek API key";
-        case "kimi":
-            return "Enter Moonshot AI API key";
-        case "ollama":
-            return "Optional: Enter Ollama API key";
-        default:
-            return "Enter API key";
-    }
-}
-
-function getAdminApiKeyHelp() {
-    switch (adminAiForm.value.provider) {
-        case "gemini":
-            return "Get your free API key at: https://aistudio.google.com/app/apikey";
-        case "claude":
-            return "Get your API key at: https://console.anthropic.com/";
-        case "openai":
-            return "Get your API key at: https://platform.openai.com/api-keys";
-        case "deepseek":
-            return "Get your API key at: https://platform.deepseek.com/api_keys";
-        case "kimi":
-            return "Get your API key at: https://platform.moonshot.ai/console/api-keys";
-        case "ollama":
-            return "API key is optional for Ollama. Leave blank if not needed.";
-        default:
-            return "API key for your chosen provider";
-    }
-}
-
 // Admin CUSIP AI Settings Functions
 async function fetchAdminCusipAISettings() {
     try {
         const response = await api.get("/settings/admin/cusip-ai");
         adminCusipAiForm.value = {
             provider: response.data.cusipAiProvider || "",
-            apiKey: response.data.cusipAiApiKey || "",
+            apiKey: "",
             url: response.data.cusipAiApiUrl || "",
             model: response.data.cusipAiModel || "",
             useMainProvider: response.data.useMainProvider !== false,
+            apiKeyConfigured: response.data.cusipAiApiKey === "***",
         };
     } catch (error) {
         console.error("Failed to fetch admin CUSIP AI settings:", error);
@@ -3879,13 +2543,18 @@ async function fetchAdminCusipAISettings() {
 async function updateAdminCusipAISettings() {
     adminCusipAiLoading.value = true;
     try {
-        await api.put("/settings/admin/cusip-ai", {
+        const response = await api.put("/settings/admin/cusip-ai", {
             cusipAiProvider: adminCusipAiForm.value.provider,
-            cusipAiApiKey: adminCusipAiForm.value.apiKey,
+            cusipAiApiKey:
+                adminCusipAiForm.value.apiKey ||
+                (adminCusipAiForm.value.apiKeyConfigured ? "***" : ""),
             cusipAiApiUrl: adminCusipAiForm.value.url,
             cusipAiModel: adminCusipAiForm.value.model,
             useMainProvider: adminCusipAiForm.value.useMainProvider,
         });
+        adminCusipAiForm.value.apiKey = "";
+        adminCusipAiForm.value.apiKeyConfigured =
+            response.data.cusipAiApiKey === "***";
         showSuccess(
             "Success",
             "Admin CUSIP AI provider settings updated successfully",
@@ -3899,65 +2568,6 @@ async function updateAdminCusipAISettings() {
         );
     } finally {
         adminCusipAiLoading.value = false;
-    }
-}
-
-function onAdminCusipProviderChange() {
-    adminCusipAiForm.value.apiKey = "";
-    adminCusipAiForm.value.url = "";
-    adminCusipAiForm.value.model = "";
-}
-
-function onAdminCusipUseMainProviderChange() {
-    if (adminCusipAiForm.value.useMainProvider) {
-        adminCusipAiForm.value.provider = "gemini";
-        adminCusipAiForm.value.url = "";
-        adminCusipAiForm.value.apiKey = "";
-        adminCusipAiForm.value.model = "";
-    }
-}
-
-function getAdminCusipModelPlaceholder() {
-    switch (adminCusipAiForm.value.provider) {
-        case "gemini":
-            return "gemini-1.5-flash";
-        case "claude":
-            return "claude-3-5-sonnet-20241022";
-        case "openai":
-            return "gpt-4o";
-        case "deepseek":
-            return "deepseek-chat";
-        case "kimi":
-            return "moonshot-v1-8k";
-        case "ollama":
-            return "llama3.1";
-        case "lmstudio":
-            return "local-model (auto-detected)";
-        case "perplexity":
-            return "sonar";
-        case "local":
-            return "custom-model";
-        default:
-            return "Leave blank for default";
-    }
-}
-
-function getAdminCusipApiKeyPlaceholder() {
-    switch (adminCusipAiForm.value.provider) {
-        case "gemini":
-            return "Enter Google Gemini API key";
-        case "claude":
-            return "Enter Anthropic Claude API key";
-        case "openai":
-            return "Enter OpenAI API key";
-        case "deepseek":
-            return "Enter DeepSeek API key";
-        case "kimi":
-            return "Enter Moonshot AI API key";
-        case "ollama":
-            return "Optional: Enter Ollama API key";
-        default:
-            return "Enter API key";
     }
 }
 
@@ -4154,10 +2764,8 @@ async function checkForUpdates() {
 onMounted(() => {
     loadAISettings();
     loadCusipAISettings();
-    loadAnalyticsSettings();
-    loadPrivacySettings();
-    loadTradeImportSettings();
-    loadBrokerFeeSettings();
+    loadAllSettings();
+    loadFeeProfiles();
     fetchQualityWeights();
 
     // Load admin AI settings if user is admin
@@ -4165,5 +2773,6 @@ onMounted(() => {
         fetchAdminAISettings();
         fetchAdminCusipAISettings();
     }
+    if (['admin', 'owner'].includes(authStore.user?.role)) loadManualFxRates();
 });
 </script>

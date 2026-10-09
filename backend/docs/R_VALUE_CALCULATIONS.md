@@ -34,16 +34,16 @@ For Management R calculations, both the actual outcome and the ghost scenario (w
 ### Stop Loss for R Calculations
 R values use the **current** stop loss, not the original. The `risk_level_history` field tracks historical stop loss moves for display purposes (showing "Saved R" from SL moves), but R calculations always use the current stop loss value.
 
-### Fixed-Dollar-Risk Users (issue #345)
-When a user's `default_stop_loss_type` is `dollar`, their risk per trade is a **constant dollar amount** (`default_stop_loss_dollars`), so **1R is that fixed dollar amount on every trade — even when the stop is later trailed**. This is the one place the "use the current stop loss" rule above is overridden: for dollar-risk users the risk unit stays anchored to the planned dollar risk, not the (possibly moved) current stop distance.
+### Dollar-Based Default Stops
+When a user's `default_stop_loss_type` is `dollar`, `default_stop_loss_dollars` supplies a default stop price for new and imported trades. It does **not** override a valid stop stored on an individual trade.
 
-This applies consistently across all three R surfaces:
+The setting is used by the R surfaces as follows:
 
-- **Dashboard / analytics aggregate** (`TradeQueries.getAnalytics`): derives R as `pnl / dollar_risk`. Because `pnl` is already in dollars (futures/option multiplier applied), this needs no per-instrument multiplier and reconciles exactly: `SUM(R) = SUM(pnl) / risk`.
-- **R-Multiple Analysis & R-Performance chart** (`calculateRMultiples`): the per-share risk becomes `dollar_risk / (qty × multiplier)` and `riskAmount` becomes `dollar_risk`, so actual R, target R, weighted target R, and R-lost all share that unit.
-- **Management R** (`TargetHitAnalysisService.calculateManagementR`): same per-share risk substitution, so planned/management R stay consistent.
+- **Dashboard / analytics aggregate** (`TradeQueries.getAnalytics`): a valid current stop uses `pnl / ((entry − stop) × qty × multiplier)`. If the stop no longer defines positive risk, it falls back to `pnl / default_stop_loss_dollars` so a trailed-stop trade is not dropped.
+- **R-Multiple Analysis & R-Performance chart** (`calculateRMultiples`): a valid current stop uses `(entry − stop) × qty × multiplier`. The configured dollar amount is a fallback only when the current stop no longer defines positive risk, such as after it is trailed through breakeven.
+- **Management R** (`TargetHitAnalysisService.calculateManagementR`): uses the same stop-first, dollar-fallback precedence so planned and management R stay consistent with the analysis card.
 
-Deriving risk from each stored stop instead skewed results — winners trailed to/above breakeven yielded a NULL/≤0 price-based risk and dropped out, while losers with a tight stored stop blew up the denominator. The dollar substitution is gated on dollar mode; **percent-stop users keep the per-trade `(entry − stop) × qty × multiplier` derivation unchanged.** The controller loads the setting via `getUserDollarRisk(userId)` and threads `{ dollarRisk }` into both functions.
+The fallback keeps trades whose stops have crossed entry from disappearing from analytics, while ensuring imported or manually edited stops control their own analysis. Percent-stop users always use the per-trade `(entry − stop) × qty × multiplier` derivation.
 
 ---
 
@@ -210,17 +210,18 @@ to both the R-Performance summary and the Individual Trade Analysis view.
 Combination rules (each leg is first calculated individually with the formulas above,
 then combined):
 
-- **Position risk unit (1R)** = the fixed dollar risk for dollar-mode users (#345 — a
-  grouped position is one bet of the fixed amount), otherwise the total planned dollar
-  risk (sum of leg risk amounts) across the analyzed legs.
+- **Position risk unit (1R)** = the total stop-derived dollar risk across analyzed legs.
+  If every leg's current stop is invalid and uses the configured dollar fallback, the
+  grouped position retains one fixed fallback unit rather than multiplying it by the
+  number of legs.
 - **Combined R values are dollar-weighted, not raw sums**: each leg's R is converted
   back to dollars (`leg R × leg risk amount`), summed, and divided by the position risk
   unit. This guarantees the combined R carries the sign of the combined net P&L.
   Summing raw leg Rs let a small-risk leg dominate — a losing bull put spread whose
   hedge leg risked a few dollars reported a positive combined Actual R next to a
-  negative combined P&L (the CEG report in the issue #359 follow-up). For dollar-mode
-  users every leg's risk amount IS the position risk unit, so the weighted form reduces
-  to the plain sum of leg Rs.
+  negative combined P&L (the CEG report in the issue #359 follow-up). When every leg
+  uses the position's configured dollar fallback, the weighted form reduces to the
+  plain sum of leg Rs.
 - **Actual R** = dollar-weighted combination of leg Actual R values (same rule as the
   R-Performance chart's grouped rows)
 - **Management R** = dollar-weighted combination over legs that have one, null when

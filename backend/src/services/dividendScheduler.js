@@ -8,17 +8,34 @@
  * - Records dividends to trade_dividends table
  */
 
+const IntervalScheduler = require('./schedulers/IntervalScheduler');
 const DividendService = require('./dividendService');
 
 // Run daily at 6 AM (in milliseconds from midnight)
 const SCHEDULER_HOUR = 6; // 6 AM
 const CHECK_INTERVAL = 60 * 60 * 1000; // Check every hour if it's time to run
+const LOG_PREFIX = '[DIVIDEND-SCHEDULER]';
 
-class DividendScheduler {
+class DividendScheduler extends IntervalScheduler {
   constructor() {
-    this.interval = null;
-    this.isRunning = false;
-    this.lastRunDate = null;
+    super({
+      intervalMs: CHECK_INTERVAL,
+      messages: {
+        startLogs: [
+          `${LOG_PREFIX} Starting dividend scheduler...`,
+          `${LOG_PREFIX} Scheduled to run daily at ${SCHEDULER_HOUR}:00`
+        ],
+        started: `${LOG_PREFIX} Scheduler started`,
+        stopping: `${LOG_PREFIX} Stopping dividend scheduler...`,
+        stopped: `${LOG_PREFIX} Scheduler stopped`,
+        skip: `${LOG_PREFIX} Previous run still in progress, skipping...`,
+        runError: `${LOG_PREFIX} [ERROR] Scheduler error:`,
+        initialError: `${LOG_PREFIX} Initial check failed:`,
+        scheduledError: `${LOG_PREFIX} Scheduled check failed:`,
+        manualRun: `${LOG_PREFIX} Manual run triggered...`,
+        shouldRunTriggered: `${LOG_PREFIX} Scheduled time reached, starting dividend processing...`
+      }
+    });
   }
 
   /**
@@ -39,83 +56,21 @@ class DividendScheduler {
    * Process dividends for all users
    */
   async processDividends() {
-    if (this.isRunning) {
-      console.log('[DIVIDEND-SCHEDULER] Previous run still in progress, skipping...');
-      return;
-    }
-
-    this.isRunning = true;
-    const logPrefix = '[DIVIDEND-SCHEDULER]';
-
-    try {
-      console.log(`${logPrefix} Starting scheduled dividend check...`);
-
-      const summary = await DividendService.processAllDividends();
-
-      // Update last run date
-      this.lastRunDate = new Date().toISOString().split('T')[0];
-
-      console.log(`${logPrefix} Scheduled dividend check complete`);
-      return summary;
-    } catch (error) {
-      console.error(`${logPrefix} [ERROR] Scheduler error:`, error);
-    } finally {
-      this.isRunning = false;
-    }
+    return this.runGuarded();
   }
 
-  /**
-   * Check if it's time to run and process if needed
-   */
-  async checkAndRun() {
-    if (this.shouldRun()) {
-      console.log('[DIVIDEND-SCHEDULER] Scheduled time reached, starting dividend processing...');
-      await this.processDividends();
-    }
-  }
+  async execute() {
+    const logPrefix = LOG_PREFIX;
 
-  /**
-   * Start the scheduler
-   */
-  start() {
-    console.log('[DIVIDEND-SCHEDULER] Starting dividend scheduler...');
-    console.log(`[DIVIDEND-SCHEDULER] Scheduled to run daily at ${SCHEDULER_HOUR}:00`);
+    console.log(`${logPrefix} Starting scheduled dividend check...`);
 
-    // Check immediately on start (in case we missed today's run)
-    this.checkAndRun().catch(error => {
-      console.error('[DIVIDEND-SCHEDULER] Initial check failed:', error);
-    });
+    const summary = await DividendService.processAllDividends();
 
-    // Schedule hourly checks
-    this.interval = setInterval(() => {
-      this.checkAndRun().catch(error => {
-        console.error('[DIVIDEND-SCHEDULER] Scheduled check failed:', error);
-      });
-    }, CHECK_INTERVAL);
+    // Update last run date
+    this.lastRunDate = new Date().toISOString().split('T')[0];
 
-    console.log('[DIVIDEND-SCHEDULER] Scheduler started');
-  }
-
-  /**
-   * Stop the scheduler
-   */
-  stop() {
-    console.log('[DIVIDEND-SCHEDULER] Stopping dividend scheduler...');
-
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-
-    console.log('[DIVIDEND-SCHEDULER] Scheduler stopped');
-  }
-
-  /**
-   * Force run now (for manual triggering/testing)
-   */
-  async runNow() {
-    console.log('[DIVIDEND-SCHEDULER] Manual run triggered...');
-    return await this.processDividends();
+    console.log(`${logPrefix} Scheduled dividend check complete`);
+    return summary;
   }
 
   /**

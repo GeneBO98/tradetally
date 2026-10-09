@@ -8,8 +8,15 @@ jest.mock('../../src/config/database', () => ({
 }));
 jest.mock('../../src/utils/imageProcessor', () => ({}));
 jest.mock('../../src/services/tierService', () => ({}));
+jest.mock('../../src/models/User', () => ({ findById: jest.fn() }));
+jest.mock('fs', () => {
+  const actual = jest.requireActual('fs');
+  return { ...actual, promises: { ...actual.promises, access: jest.fn() } };
+});
 
 const db = require('../../src/config/database');
+const User = require('../../src/models/User');
+const fs = require('fs').promises;
 const jwt = require('jsonwebtoken');
 const { TOKEN_PURPOSES, generateToken } = require('../../src/middleware/auth');
 
@@ -41,6 +48,8 @@ describe('Trade image endpoint — pre_2fa token rejection', () => {
     jest.clearAllMocks();
     process.env.JWT_SECRET = 'test-secret-for-image-tests';
     db.query.mockResolvedValue({ rows: [] }); // no attachment found -> 404 path
+    User.findById.mockResolvedValue({ id: 'owner-1', is_active: true, session_version: 0 });
+    fs.access.mockResolvedValue(undefined);
   });
 
   test('rejects a pre_2fa-purpose JWT (attachment lookup never runs)', async () => {
@@ -83,6 +92,41 @@ describe('Trade image endpoint — pre_2fa token rejection', () => {
     // test environment. The important thing is we didn't bail at 403 Access
     // Denied, which would indicate the ACCESS token was rejected.
     expect(res.statusCode).not.toBe(403);
+  });
+
+  test('marks private trade images as non-cacheable', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [{ is_public: false, user_id: 'owner-1', file_type: 'image/webp', file_url: '/uploads/trades/x.webp' }]
+    });
+    const req = {
+      params: { id: 'trade-1', filename: 'img.webp' },
+      query: {},
+      user: { id: 'owner-1' },
+      header: () => null
+    };
+    const res = createRes();
+
+    await tradeController.getTradeImage(req, res, jest.fn());
+
+    expect(res.headers['Cache-Control']).toBe('private, no-store, max-age=0');
+    expect(res.sendFile).toHaveBeenCalled();
+  });
+
+  test('only marks public trade images as publicly immutable', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [{ is_public: true, user_id: 'other-user', file_type: 'image/webp', file_url: '/uploads/trades/x.webp' }]
+    });
+    const req = {
+      params: { id: 'trade-1', filename: 'img.webp' },
+      query: {},
+      user: null,
+      header: () => null
+    };
+    const res = createRes();
+
+    await tradeController.getTradeImage(req, res, jest.fn());
+
+    expect(res.headers['Cache-Control']).toBe('public, max-age=31536000, immutable');
   });
 });
 

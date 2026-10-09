@@ -19,6 +19,7 @@ jest.mock('../../src/utils/currencyConverter', () => ({
 }));
 
 const { parseCSV } = require('../../src/utils/csvParser');
+const calculationContracts = require('../../../tests/fixtures/trading-calculation-contracts.json');
 
 function buf(str) {
   return Buffer.from(str, 'utf-8');
@@ -478,6 +479,38 @@ describe('IBKR parser', () => {
     expect(result.trades[0].symbol).toBe('AAPL');
   });
 
+  test.each(['auto', 'ibkr'])('parses compact Flex Query TradeDate rows with %s selection', async (broker) => {
+    const compactFlexCSV = [
+      'ClientAccountID,Symbol,Buy/Sell,Quantity,Price,Amount,Commission,NetCash,TradeDate,SettleDate,Exchange,OrderType,CurrencyPrimary,AssetClass',
+      'DUN261693,VIVK,BUY,41,3.13,128.33,-1.000123,-129.330123,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,100,3.13,313,-0.0003,-313.0003,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,109,3.13,341.17,-0.250327,-341.420327,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,148,3.86,571.28,-1.000444,-572.280444,20260721,20260722,DRCTEDGE,LMT,USD,STK',
+      'DUN261693,VIVK,BUY,352,3.86,1358.72,-1.501056,-1360.221056,20260721,20260722,MEMX,LMT,USD,STK'
+    ].join('\n');
+
+    const result = await parseCSV(buf(compactFlexCSV), broker, {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expect(result.diagnostics.detectedBroker).toBe('ibkr');
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'VIVK',
+      side: 'long',
+      quantity: 750,
+      entryPrice: 3.6166666666666667,
+      exitPrice: null,
+      tradeDate: '2026-07-21',
+      accountIdentifier: 'DUN261693',
+      originalCurrency: 'USD',
+      commission: 3.75225,
+      broker: 'ibkr'
+    }));
+    expect(result.trades[0].executions).toHaveLength(5);
+  });
+
   test('handles IBKR Flex date format (YYYYMMDD;HHMMSS)', async () => {
     const result = await parseCSV(buf(ibkrActivityCSV), 'ibkr', {});
     expectValidResult(result);
@@ -696,6 +729,18 @@ describe('TradingView parser', () => {
     expect(result.trades.length).toBeGreaterThanOrEqual(1);
   });
 
+  test('preserves forex quantities above one million units from TradingView order history', async () => {
+    const csv = [
+      'Symbol,Side,Type,Quantity,Limit price,Stop price,Fill price,Commission,Placing time,Closing time,Order ID,Level ID,Leverage,Margin',
+      'TEST:EURUSD,Buy,Market,2235309,,,1.10000,,2026-01-01 09:00:00,2026-01-01 09:00:00,1001,,100x,',
+      'TEST:EURUSD,Sell,Stop Loss,2235309,,1.09900,1.09900,,2026-01-01 09:00:00,2026-01-01 09:10:00,1002,,,'
+    ].join('\n');
+    const result = await parseCSV(buf(csv), 'tradingview', {});
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].quantity).toBe(2235309);
+  });
+
   test('parses performance export format', async () => {
     const perfCSV = [
       'buyFillId,sellFillId,symbol,qty,buyPrice,sellPrice,boughtTimestamp,soldTimestamp,pnl',
@@ -724,6 +769,11 @@ describe('TradingView parser', () => {
     ].join('\n');
     const result = await parseCSV(buf(withCancelled), 'tradingview', {});
     expectValidResult(result);
+    expect(result.diagnostics.skippedRows).toBe(1);
+    expect(result.diagnostics.expected_skipped_rows).toBe(1);
+    expect(result.diagnostics.warnings).not.toEqual(expect.arrayContaining([
+      expect.stringContaining('High skip rate')
+    ]));
   });
 
   test('keeps fractional order-history quantities from creating fake short open positions', async () => {
@@ -841,6 +891,44 @@ describe('Webull parser', () => {
   test('parses standard Webull trades', async () => {
     const result = await parseCSV(buf(webullCSV), 'webull', {});
     expect(result.trades.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('parses year-first Webull timestamps with comma-prefixed GMT offsets', async () => {
+    const regionalCSV = [
+      'Name,Symbol,Side,Status,Filled,Total Qty,Price,Avg Price,Time-in-Force,Placed Time,Filled Time',
+      'VCI Global Ltd,VCIG,Buy,Filled,40.0,40.0,1.2299,1.2299,DAY,"2026/07/20 08:03:06,GMT-04","2026/07/20 08:03:06,GMT-04"',
+      'VCI Global Ltd,VCIG,Sell,Filled,40.0,40.0,1.23,1.23,DAY,"2026/07/20 08:03:36,GMT-04","2026/07/20 08:03:36,GMT-04"'
+    ].join('\n');
+
+    const result = await parseCSV(buf(regionalCSV), 'generic', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toMatchObject({
+      symbol: 'VCIG',
+      side: 'long',
+      quantity: 40,
+      entryPrice: 1.2299,
+      exitPrice: 1.23
+    });
+    expect(result.diagnostics.detectedBroker).toBe('webull');
+    expect(result.diagnostics.selectedBroker).toBe('generic');
+    expect(result.diagnostics.invalidRows).toBe(0);
+  });
+
+  test('reports invalid Webull timestamps in diagnostics', async () => {
+    const invalidDateCSV = [
+      'Name,Symbol,Side,Status,Filled,Price,Time-in-Force,Placed Time,Filled Time',
+      'Apple Inc,AAPL,Buy,Filled,100,150.00,Day,not-a-date,not-a-date'
+    ].join('\n');
+
+    const result = await parseCSV(buf(invalidDateCSV), 'webull', {});
+
+    expect(result.trades).toHaveLength(0);
+    expect(result.diagnostics.invalidRows).toBe(1);
+    expect(result.diagnostics.skippedReasons).toEqual([
+      { row: 1, reason: 'Invalid filled time: not-a-date' }
+    ]);
   });
 
   test('parses alternate Webull format', async () => {
@@ -1051,6 +1139,19 @@ describe('Questrade parser', () => {
     const result = await parseCSV(buf(optionsCSV), 'questrade', {});
     expectValidResult(result);
   });
+
+  test('uses shared regional date normalization', async () => {
+    const regionalCSV = [
+      'Symbol,Action,Fill Qty,Fill Price,Exec Time,Commission',
+      'AAPL,Buy,100,150.00,20.07.2026 09:30:00 UTC+02,4.95',
+      'AAPL,Sell,100,155.00,20.07.2026 10:00:00 UTC+02,4.95'
+    ].join('\n');
+
+    const result = await parseCSV(buf(regionalCSV), 'questrade', {});
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].tradeDate).toBe('2026-07-20');
+  });
 });
 
 // ──────────────────────────────────────────────
@@ -1082,6 +1183,19 @@ describe('Tastytrade parser', () => {
     const result = await parseCSV(buf(optCSV), 'tastytrade', {});
     expectValidResult(result);
   });
+
+  test('uses shared year-first and GMT-offset date normalization', async () => {
+    const regionalCSV = [
+      'Date,Type,Action,Symbol,Instrument Type,Description,Value,Quantity,Average Price,Commissions,Fees,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,Call or Put',
+      '"2026/07/20 08:03:06,GMT-04",Trade,Buy to Open,AAPL,Equity,AAPL Apple Inc,15000.00,100,150.00,-1.00,0.00,AAPL,AAPL,,,',
+      '"2026/07/20 08:33:06,GMT-04",Trade,Sell to Close,AAPL,Equity,AAPL Apple Inc,-15500.00,100,155.00,-1.00,0.00,AAPL,AAPL,,,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(regionalCSV), 'tastytrade', {});
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].tradeDate).toBe('2026-07-20');
+  });
 });
 
 // ──────────────────────────────────────────────
@@ -1107,6 +1221,49 @@ describe('E*TRADE parser', () => {
   });
 });
 
+describe('Dashboard-derived CSV import contracts', () => {
+  test.each(calculationContracts.csv_import_cases)('$id', async ({ csv, expected }) => {
+    const result = await parseCSV(buf(csv), 'auto', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.diagnostics.detectedBroker).toBe(expected.detected_broker);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: expected.symbol,
+      broker: expected.broker,
+      side: expected.side,
+      quantity: expected.quantity,
+      entryPrice: expected.entry_price,
+      exitPrice: expected.exit_price,
+      tradeDate: expected.trade_date,
+      instrumentType: expected.instrument_type
+    }));
+    if (expected.commission !== undefined) {
+      expect(result.trades[0].commission).toBeCloseTo(expected.commission, 6);
+    }
+    if (expected.fees !== undefined) {
+      expect(result.trades[0].fees).toBeCloseTo(expected.fees, 6);
+    }
+    if (expected.execution_count !== undefined) {
+      expect(result.trades[0].executions).toHaveLength(expected.execution_count);
+    }
+    if (expected.pnl !== undefined) {
+      expect(result.trades[0].pnl).toBeCloseTo(expected.pnl, 6);
+    }
+    if (expected.account_identifier !== undefined) {
+      expect(result.trades[0].accountIdentifier).toBe(expected.account_identifier);
+    }
+    if (expected.mae !== undefined) {
+      expect(result.trades[0].mae).toBeCloseTo(expected.mae, 6);
+    }
+    if (expected.mfe !== undefined) {
+      expect(result.trades[0].mfe).toBeCloseTo(expected.mfe, 6);
+    }
+  });
+});
+
 // ──────────────────────────────────────────────
 // ProjectX Parser
 // ──────────────────────────────────────────────
@@ -1114,6 +1271,16 @@ describe('ProjectX parser', () => {
   const projectxCSV = [
     'Id,ContractName,EnteredAt,ExitedAt,EntryPrice,ExitPrice,Fees,PnL,Size,Type,TradeDay,TradeDuration,Commissions',
     '1,ESM24,01/01/2025 09:30:00 +00:00,01/01/2025 10:00:00 +00:00,5000.00,5010.00,1.00,500.00,1,Long,01/01/2025,00:30:00,2.00'
+  ].join('\n');
+
+  const projectxOrderHistoryCSV = [
+    'Id,AccountName,ContractName,Status,Type,Size,Side,CreatedAt,TradeDay,FilledAt,CancelledAt,TriggeredAt,StopPrice,LimitPrice,ExecutePrice,TriggeredPrice,PositionDisposition,CreationDisposition,RejectionReason,ExchangeOrderId,PlatformOrderId',
+    '1,TSB17847,MESM6,Filled,Market,1,Bid,06/11/2026 07:45:21 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 07:45:21 -06:00,,,,7305.5,7300.5,,Opening,Trader,,EX-1,P-1',
+    '2,TSB17847,MESM6,Filled,Market,1,Ask,06/11/2026 07:46:21 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 07:46:21 -06:00,,,,7303.75,7303.75,,Closing,ClosePosition,,EX-2,P-2',
+    '3,TSB17847,MESM6,Filled,Market,2,Ask,06/11/2026 08:00:00 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 08:00:00 -06:00,,,,7310,7310,,Opening,Trader,,EX-3,P-3',
+    '4,TSB17847,MESM6,Filled,Market,1,Bid,06/11/2026 08:01:00 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 08:01:00 -06:00,,,,7308,7308,,Closing,Trader,,EX-4,P-4',
+    '5,TSB17847,MESM6,Filled,Market,1,Bid,06/11/2026 08:02:00 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 08:02:00 -06:00,,,,7307,7307,,Closing,ClosePosition,,EX-5,P-5',
+    '6,TSB17847,MESM6,Rejected,Stop,1,Ask,06/11/2026 08:03:00 -06:00,06/11/2026 00:00:00 -05:00,,,,7300.5,,,,Undetermined,StopLoss,CME:Sell order stop price must be below last trade price,,P-6'
   ].join('\n');
 
   test('returns valid result with trades array (regression)', async () => {
@@ -1124,6 +1291,53 @@ describe('ProjectX parser', () => {
   test('parses ContractName for futures symbol', async () => {
     const result = await parseCSV(buf(projectxCSV), 'projectx', {});
     expect(result.trades.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('parses ProjectX order history with Bid/Ask sides and partial closes', async () => {
+    const result = await parseCSV(buf(projectxOrderHistoryCSV), 'auto', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.diagnostics.detectedBroker).toBe('projectx_orders');
+    expect(result.diagnostics.skippedRows).toBe(1);
+    expect(result.diagnostics.skippedReasons).toEqual(expect.arrayContaining([
+      expect.objectContaining({ row: 6, reason: 'Rejected order' })
+    ]));
+    expect(result.trades).toHaveLength(2);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'MESM6',
+      broker: 'projectx',
+      side: 'long',
+      quantity: 1,
+      entryPrice: 7300.5,
+      exitPrice: 7303.75,
+      pnl: 16.25,
+      accountIdentifier: 'TSB17847',
+      instrumentType: 'future',
+      pointValue: 5
+    }));
+    expect(result.trades[0].executions.map(execution => execution.orderId)).toEqual(['P-1', 'P-2']);
+    expect(result.trades[1]).toEqual(expect.objectContaining({
+      side: 'short',
+      quantity: 2,
+      entryPrice: 7310,
+      exitPrice: 7307.5,
+      pnl: 25
+    }));
+    expect(result.trades[1].executions).toHaveLength(3);
+  });
+
+  test('reroutes ProjectX order history when TradingView is selected', async () => {
+    const result = await parseCSV(buf(projectxOrderHistoryCSV), 'tradingview', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expect(result.trades).toHaveLength(2);
+    expect(result.diagnostics.detectedBroker).toBe('projectx_orders');
+    expect(result.diagnostics.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('headers match ProjectX order history')
+    ]));
   });
 });
 
@@ -1283,6 +1497,73 @@ describe('Generic parser', () => {
       exitPrice: 1.14025,
       quantity: 2,
       side: 'long'
+    }));
+  });
+
+  test('parses separator-free UTC completed trade headers and ignores unrelated columns', async () => {
+    const completedTradeCSV = [
+      'Symbol,Type,Side,EntryDateUTC,ExitDateUTC,EntryPrice,ExitPrice,Quantity,Units,PositionSize,Leverage,LotValue,TickSize,TickValue,Fees',
+      'CLRO,stock,long,2026-07-06 16:50:47,2026-07-06 16:53:10,7.45,7.59,2,shares,not-importable,,,,,0',
+      'CLRO,stock,long,2026-07-06 16:50:47,2026-07-06 16:53:10,7.45,7.55,2,shares,,,,,,0',
+      'JLHL,stock,long,2026-07-09 20:16:38,2026-07-09 20:21:29,28.27,28.72,1,shares,,,,,,0'
+    ].join('\n');
+
+    const result = await parseCSV(buf(completedTradeCSV), 'generic', {
+      userTimezone: 'America/Chicago',
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(3);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'CLRO',
+      tradeDate: '2026-07-06',
+      entryTime: '2026-07-06T16:50:47Z',
+      exitTime: '2026-07-06T16:53:10Z',
+      entryPrice: 7.45,
+      exitPrice: 7.59,
+      quantity: 2,
+      side: 'long',
+      fees: 0
+    }));
+  });
+
+  test('parses completed trade rows with Open Date, Close Date, and PnL columns', async () => {
+    const completedTradeCSV = [
+      'Symbol,Side,Quantity,Open Price,Close Price,Open Date,Close Date,PnL',
+      'WallStreet30,Buy,1,52323.3,52258.3,27/07/2026 15:24:08,27/07/2026 16:14:18,-65',
+      'WallStreet30,Buy,1,52224.6,52260.9,27/07/2026 15:29:57,27/07/2026 16:14:18,36.3',
+      'WallStreet30,Buy,1,52217.4,52260.3,27/07/2026 16:09:03,27/07/2026 16:14:17,42.9',
+      'WallStreet30,Buy,1,52216.7,52262.1,27/07/2026 15:31:14,27/07/2026 16:14:16,45.4',
+      'WallStreet30,Buy,0.5,52183.7,52237.5,27/07/2026 16:10:24,27/07/2026 16:13:31,26.9',
+      'WallStreet30,Sell,0.5,52500,52450,05/08/2026 09:30:00,05/08/2026 10:00:00,25'
+    ].join('\n');
+
+    const result = await parseCSV(buf(completedTradeCSV), 'generic', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(6);
+    expect(result.diagnostics.invalidRows).toBe(0);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'WallStreet30',
+      tradeDate: '2026-07-27',
+      entryTime: '2026-07-27T15:24:08',
+      exitTime: '2026-07-27T16:14:18',
+      entryPrice: 52323.3,
+      exitPrice: 52258.3,
+      quantity: 1,
+      side: 'long',
+      pnl: -65
+    }));
+    expect(result.trades[5]).toEqual(expect.objectContaining({
+      tradeDate: '2026-08-05',
+      entryTime: '2026-08-05T09:30:00',
+      exitTime: '2026-08-05T10:00:00',
+      side: 'short',
+      pnl: 25
     }));
   });
 
@@ -1473,6 +1754,42 @@ describe('Generic parser', () => {
     expect(result.diagnostics.skippedReasons[0].reason).toContain('time was present, but no trade date was found');
     expect(result.diagnostics.user_summary).toEqual(expect.objectContaining({
       title: expect.stringContaining('missing a trade date')
+    }));
+  });
+});
+
+describe('NinjaTrader parser', () => {
+  test('parses semicolon execution rows with European decimals without duplicating costs', async () => {
+    const csv = [
+      'Instrument;Action;Quantity;Price;Time;ID;E/X;Position;Order ID;Name;Commission;Rate;Account display name;Connection;',
+      'MES JUN26;Buy;1;7200,75;27/04/2026 6:05:02;execution-1;Entry;1 L;order-1;Entry;0,62 $;1;Playback101;Playback;',
+      'MES JUN26;Sell;1;7204,75;27/04/2026 6:10:02;execution-2;Exit;0;order-2;Exit;0,62 $;1;Playback101;Playback;'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'auto', {
+      tradeGroupingSettings: { enabled: true, timeGapMinutes: 60 }
+    });
+
+    expectValidResult(result);
+    expect(result.diagnostics.detectedBroker).toBe('ninjatrader');
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toEqual(expect.objectContaining({
+      symbol: 'MES JUN26',
+      broker: 'ninjatrader',
+      side: 'long',
+      quantity: 1,
+      entryPrice: 7200.75,
+      exitPrice: 7204.75,
+      commission: 1.24,
+      fees: 0,
+      pnl: 18.76,
+      accountIdentifier: 'Playback101',
+      instrumentType: 'future'
+    }));
+    expect(result.trades[0].executions).toHaveLength(2);
+    expect(result.trades[0].executions[0]).toEqual(expect.objectContaining({
+      commission: 0.62,
+      fees: 0
     }));
   });
 });

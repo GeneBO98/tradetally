@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
 const TierService = require('./tierService');
 const aiService = require('../utils/aiService');
 const adminSettingsService = require('./adminSettings');
@@ -1220,10 +1221,8 @@ class OverconfidenceAnalyticsService {
         return null;
       }
 
-      // For local providers (ollama, lmstudio, local), API key is optional
-      const needsApiKey = !['ollama', 'lmstudio', 'local'].includes(aiSettings.provider);
-      if (needsApiKey && !aiSettings.apiKey) {
-        console.log(`[AI REC] AI recommendations not available - API key required for ${aiSettings.provider} but not configured`);
+      if (!aiService.isProviderConfigured(aiSettings)) {
+        console.log(`[AI REC] AI recommendations not available - ${aiSettings.provider} is not fully configured`);
         return null;
       }
 
@@ -1303,9 +1302,9 @@ class OverconfidenceAnalyticsService {
     const contextQuery = `
       SELECT 
         COUNT(*) as total_trades,
-        AVG(pnl) as avg_pnl,
+        AVG(${fxUsd('pnl', '')}) as avg_pnl,
         (COUNT(*) FILTER (WHERE pnl > 0))::float / COUNT(*) as win_rate,
-        AVG(quantity * entry_price) as avg_position_size,
+        AVG(quantity * ${fxUsd('entry_price', '')}) as avg_position_size,
         COUNT(DISTINCT symbol) as symbols_traded,
         EXTRACT(DAYS FROM (MAX(entry_time) - MIN(entry_time))) as trading_days
       FROM trades 

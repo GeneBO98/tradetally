@@ -1,7 +1,9 @@
+const { instructionsForPrompt } = require('../utils/aiAnalysisInstructions');
+const { loadImageContext, describeImageContext } = require('./aiImageContext');
 const db = require('../config/database');
 const Trade = require('../models/Trade');
 const TradeQueries = require('./tradeQueries');
-const { isPositionGroupingEnabled } = require('../utils/positionGrouping');
+const { isPositionGroupingEnabled, hasBrokerageOrder } = require('../utils/positionGrouping');
 const AICreditService = require('./aiCreditService');
 const AIProvider = require('../utils/aiProvider');
 const TierService = require('./tierService');
@@ -191,6 +193,7 @@ ${clippedMessage}`;
   // for ungrouped legacy rows.
   static positionGroupKey(trade) {
     if (trade.position_group_id) return String(trade.position_group_id);
+    if (hasBrokerageOrder(trade)) return String(trade.id);
     const underlying = (trade.underlying_symbol && String(trade.underlying_symbol).trim() !== '')
       ? trade.underlying_symbol
       : trade.symbol;
@@ -613,6 +616,7 @@ Keep recommendations specific and data-driven. Use bullet points for clarity.`;
     const attachments = (Array.isArray(trade.attachments) ? trade.attachments : [])
       .filter(attachment => attachment?.file_url)
       .map(attachment => this.compactObject({
+        attachment_id: attachment.id,
         file_name: attachment.file_name,
         file_type: attachment.file_type,
         file_url: attachment.file_url,
@@ -826,7 +830,7 @@ TRADER PROFILE:
       : 'No attached chart URLs available.';
 
     const images = visualContext.images?.length
-      ? visualContext.images.map((image, index) => `- Image ${index + 1}: ${image.file_name || 'unnamed'} (${image.file_type || 'unknown type'}) at ${image.file_url}`).join('\n')
+      ? visualContext.images.map(image => `- Attachment reference: ${image.file_name || 'unnamed'} (${image.file_type || 'unknown type'}) at ${image.file_url}`).join('\n')
       : 'No attached trade images available.';
 
     // Strategy-first framing (issue #339): when the trade belongs to a detected
@@ -862,7 +866,7 @@ ${legLines}
       executionsHeading = 'EXECUTIONS (for the analyzed leg):';
     }
 
-    const sharedCaveat = 'Base the analysis only on the available trade data, executions, enrichment, news, sector/company context, notes, chart links, and image attachment references below. If chart or image URLs are not directly viewable by your model, explicitly say you are using them as attachment references rather than visually inspecting them.';
+    const sharedCaveat = 'Base the analysis only on the available trade data, executions, enrichment, news, notes, supplied screenshots and chart references. Image and chart URLs alone do not provide visual evidence; use only screenshot pixels explicitly supplied.';
     const intro = positionGroup
       ? `You are a professional trading coach and technical analyst. Analyze one multi-leg option strategy as a single combined trade to determine what went wrong, what worked, and what the trader should change next time. ${sharedCaveat} The trade record below is one leg of the strategy; evaluate the whole structure described in the STRATEGY SNAPSHOT section as one combined trade.`
       : `You are a professional trading coach and technical analyst. Analyze one specific trade to determine what went wrong, what worked, and what the trader should change next time. ${sharedCaveat}`;
@@ -907,6 +911,9 @@ ${charts}
 
 Images:
 ${images}
+
+SCREENSHOT AVAILABILITY:
+${describeImageContext(tradeSummary.ai_metadata?.image_context)}
 
 QUALITY METRICS:
 ${JSON.stringify(trade.quality_metrics || {}, null, 2)}
@@ -996,14 +1003,27 @@ Be direct, data-driven, and specific. Do not give generic trading advice.`;
         : []
     };
 
-    // Build the analysis prompt
+    tradeSummary.ai_analysis_instructions = aiSettings.ai_analysis_instructions || '';
+    const image_context = isSingleTradeAnalysis
+      ? await loadImageContext(userId, options.tradeId, aiSettings.provider)
+      : { images: [], metadata: null };
+    if (image_context.metadata) tradeSummary.ai_metadata.image_context = image_context.metadata;
+
+    // Build the analysis prompt with the preferences snapshotted for this session.
     const prompt = isSingleTradeAnalysis
       ? this.buildSingleTradePrompt(tradeSummary, tradingProfile)
       : this.buildAnalysisPrompt(tradeSummary, tradingProfile);
 
     // Generate initial analysis
     console.log('[AI_SESSION] Generating initial analysis...');
-    const initialAnalysis = await AIProvider.generateResponse(prompt, aiSettings);
+    const initialAnalysis = await AIProvider.generateResponse(prompt + instructionsForPrompt(tradeSummary.ai_analysis_instructions), aiSettings, ...(image_context.images.length ? [{ images: image_context.images }] : []));
+
+    const storedFilters = isSingleTradeAnalysis
+      ? { tradeId: options.tradeId, analysisType: 'single_trade' }
+      : { ...normalizedFilters };
+    if (options.request_id) {
+      storedFilters.request_id = options.request_id;
+    }
 
     // Create session record
     const sessionResult = await db.query(
@@ -1013,7 +1033,7 @@ Be direct, data-driven, and specific. Do not give generic trading advice.`;
        RETURNING id, filters_applied, trade_count, followup_count, max_followups, status, expires_at, created_at`,
       [
         userId,
-        JSON.stringify(isSingleTradeAnalysis ? { tradeId: options.tradeId, analysisType: 'single_trade' } : normalizedFilters),
+        JSON.stringify(storedFilters),
         isSingleTradeAnalysis ? 1 : tradeSummary.metrics.trade_count,
         JSON.stringify(tradeSummary),
         this.MAX_FOLLOWUPS
@@ -1042,6 +1062,7 @@ Be direct, data-driven, and specific. Do not give generic trading advice.`;
 
     return {
       session_id: session.id,
+      request_id: options.request_id || null,
       initial_analysis: initialAnalysis,
       trade_summary: isSingleTradeAnalysis ? {
         analysis_type: 'single_trade',
@@ -1171,7 +1192,12 @@ Please provide a helpful, specific response to the user's question. Reference th
 
     // Generate response
     console.log('[AI_SESSION] Generating follow-up response...');
-    const response = await AIProvider.generateResponse(contextPrompt, aiSettings);
+    const image_context = isSingleTrade && tradeSummary.ai_metadata?.image_context
+      ? await loadImageContext(userId, tradeSummary.trade_id, aiSettings.provider, tradeSummary.ai_metadata.image_context.included_images || [])
+      : { images: [], metadata: null };
+    const followup_prompt = contextPrompt + instructionsForPrompt(tradeSummary.ai_analysis_instructions || '')
+      + (isSingleTrade ? `\nSCREENSHOT AVAILABILITY:\n${describeImageContext(image_context.metadata)}` : '');
+    const response = await AIProvider.generateResponse(followup_prompt, aiSettings, ...(image_context.images.length ? [{ images: image_context.images }] : []));
 
     // Store user message
     await db.query(
@@ -1187,14 +1213,18 @@ Please provide a helpful, specific response to the user's question. Reference th
       [sessionId, response, AICreditService.getCost('FOLLOWUP')]
     );
 
+    // Keep the original image list for subsequent follow-ups, and record the latest availability.
+    if (image_context.metadata) tradeSummary.ai_metadata.last_followup_image_context = image_context.metadata;
+
     // Update session follow-up count and expiration
     await db.query(
       `UPDATE ai_sessions
        SET followup_count = followup_count + 1,
            expires_at = CURRENT_TIMESTAMP + INTERVAL '${this.SESSION_EXPIRY_HOURS} hours',
-           updated_at = CURRENT_TIMESTAMP
+           updated_at = CURRENT_TIMESTAMP,
+           trade_summary = $2::jsonb
        WHERE id = $1`,
-      [sessionId]
+      [sessionId, JSON.stringify(tradeSummary)]
     );
 
     // Deduct credits
@@ -1205,6 +1235,7 @@ Please provide a helpful, specific response to the user's question. Reference th
 
     return {
       response,
+      image_context: image_context.metadata,
       followup_count: newFollowupCount,
       max_followups: session.max_followups,
       followups_remaining: session.max_followups - newFollowupCount,
@@ -1291,6 +1322,7 @@ Please provide a helpful, specific response to the user's question. Reference th
       trade_count: row.trade_count,
       followup_count: row.followup_count,
       max_followups: row.max_followups,
+      request_id: row.filters_applied?.request_id || null,
       created_at: row.created_at
     }));
   }
@@ -1438,6 +1470,7 @@ Please provide a helpful, specific response to the user's question. Reference th
    * @returns {Promise<Object>} { apiKey, modelName, provider, apiUrl }
    */
   static async getAISettings(userId, options = {}) {
+    let ai_analysis_instructions = '';
     let apiKey = options.apiKey;
     let modelName = options.modelName;
     let provider = options.provider;
@@ -1465,6 +1498,7 @@ Please provide a helpful, specific response to the user's question. Reference th
       const settings = await User.getSettings(userId);
 
       if (settings) {
+        ai_analysis_instructions = settings.ai_analysis_instructions || '';
         const userProvider = settings.ai_provider || '';
         const fallbackProvider = adminDefaults.provider || '';
         provider = provider || userProvider || fallbackProvider || 'gemini';
@@ -1497,19 +1531,28 @@ Please provide a helpful, specific response to the user's question. Reference th
       throw new Error('No AI provider configured. Please configure your AI provider in Settings > AI Provider.');
     }
 
-    // For local providers (LM Studio, Ollama), API key is optional
-    const localProviders = ['lmstudio', 'ollama', 'local'];
-    const isLocalProvider = localProviders.includes(provider);
+    // Local and Custom OpenAI-compatible providers may be keyless.
+    const apiKeyOptionalProviders = ['lmstudio', 'ollama', 'local', 'custom', 'codex_cli', 'claude_cli'];
+    const defaultUrlProviders = ['lmstudio', 'ollama', 'local'];
+    const isApiKeyOptional = apiKeyOptionalProviders.includes(provider);
 
-    if (!isLocalProvider && !apiKey) {
+    if (!isApiKeyOptional && !apiKey) {
       throw new Error(`No API key configured for ${provider}. Please configure it in Settings > AI Provider.`);
     }
 
     // Set default API URLs for local providers
-    if (isLocalProvider && !apiUrl) {
+    if (defaultUrlProviders.includes(provider) && !apiUrl) {
       if (provider === 'lmstudio') apiUrl = 'http://localhost:1234/v1';
       else if (provider === 'ollama') apiUrl = 'http://localhost:11434/v1';
       else apiUrl = 'http://localhost:1234/v1'; // generic local
+    }
+
+    if (provider === 'custom' && !apiUrl) {
+      throw new Error('No API URL configured for custom. Please configure it in Settings > AI Provider.');
+    }
+
+    if (provider === 'custom' && !String(modelName || '').trim()) {
+      throw new Error('No model configured for custom. Please configure it in Settings > AI Provider.');
     }
 
     if (apiUrl) {
@@ -1533,11 +1576,25 @@ Please provide a helpful, specific response to the user's question. Reference th
       else classifierApiUrl = 'http://localhost:1234/v1';
     }
 
-    if (classifierDefaults.enabled && classifierApiUrl) {
-      classifierApiUrl = (await validateAiProviderUrl(classifierProvider, classifierApiUrl)).toString();
+    const classifierModelName = classifierDefaults.model ||
+      (classifierProvider === provider ? modelName : '');
+    const effectiveClassifierApiUrl = classifierApiUrl ||
+      (classifierProvider === provider ? apiUrl : '');
+
+    if (classifierDefaults.enabled && classifierProvider === 'custom' && !effectiveClassifierApiUrl) {
+      throw new Error('No API URL configured for the custom AI checking provider.');
+    }
+
+    if (classifierDefaults.enabled && classifierProvider === 'custom' && !String(classifierModelName || '').trim()) {
+      throw new Error('No model configured for the custom AI checking provider.');
+    }
+
+    if (classifierDefaults.enabled && effectiveClassifierApiUrl) {
+      classifierApiUrl = (await validateAiProviderUrl(classifierProvider, effectiveClassifierApiUrl)).toString();
     }
 
     return {
+      ai_analysis_instructions,
       apiKey,
       modelName,
       provider,
@@ -1547,7 +1604,7 @@ Please provide a helpful, specific response to the user's question. Reference th
         provider: classifierProvider,
         apiKey: classifierDefaults.apiKey || '',
         apiUrl: classifierApiUrl,
-        modelName: classifierDefaults.model || ''
+        modelName: classifierModelName
       }
     };
   }

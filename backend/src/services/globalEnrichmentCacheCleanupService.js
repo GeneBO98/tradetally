@@ -1,42 +1,24 @@
+const IntervalScheduler = require('./schedulers/IntervalScheduler');
 const globalEnrichmentCache = require('./globalEnrichmentCacheService');
 const logger = require('../utils/logger');
 
-class GlobalEnrichmentCacheCleanupService {
+const CLEANUP_INTERVAL_HOURS = 6; // Run cleanup every 6 hours
+
+class GlobalEnrichmentCacheCleanupService extends IntervalScheduler {
     constructor() {
-        this.cleanupInterval = null;
-        this.CLEANUP_INTERVAL_HOURS = 6; // Run cleanup every 6 hours
-    }
-
-    /**
-     * Start the cleanup service
-     */
-    start() {
-        if (this.cleanupInterval) {
-            logger.logImport('[CLEAN] Global enrichment cache cleanup service already running');
-            return;
-        }
-
-        // Run initial cleanup
-        this.runCleanup();
-
-        // Schedule periodic cleanup
-        const intervalMs = this.CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000;
-        this.cleanupInterval = setInterval(() => {
-            this.runCleanup();
-        }, intervalMs);
-
-        logger.logImport(`[CLEAN] Global enrichment cache cleanup service started (runs every ${this.CLEANUP_INTERVAL_HOURS} hours)`);
-    }
-
-    /**
-     * Stop the cleanup service
-     */
-    stop() {
-        if (this.cleanupInterval) {
-            clearInterval(this.cleanupInterval);
-            this.cleanupInterval = null;
-            logger.logImport('[CLEAN] Global enrichment cache cleanup service stopped');
-        }
+        super({
+            intervalMs: CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000,
+            guardRestart: true,
+            useRunningGuard: false,
+            stopLogAlways: false,
+            log: (message) => logger.logImport(message),
+            messages: {
+                alreadyStarted: '[CLEAN] Global enrichment cache cleanup service already running',
+                started: `[CLEAN] Global enrichment cache cleanup service started (runs every ${CLEANUP_INTERVAL_HOURS} hours)`,
+                stopped: '[CLEAN] Global enrichment cache cleanup service stopped'
+            }
+        });
+        this.CLEANUP_INTERVAL_HOURS = CLEANUP_INTERVAL_HOURS;
     }
 
     /**
@@ -45,10 +27,10 @@ class GlobalEnrichmentCacheCleanupService {
     async runCleanup() {
         try {
             logger.logImport('[CLEAN] Running global enrichment cache cleanup...');
-            
+
             const deletedCount = await globalEnrichmentCache.cleanupExpiredEntries();
             const stats = await globalEnrichmentCache.getCacheStats();
-            
+
             if (stats) {
                 logger.logImport(`[CLEAN] Cleanup completed: ${deletedCount} expired entries removed`);
                 logger.logImport(`[STATS] Cache stats: ${stats.active_entries} active entries, ${stats.total_cache_hits} total hits, ${stats.unique_symbols} symbols`);
@@ -60,14 +42,18 @@ class GlobalEnrichmentCacheCleanupService {
         }
     }
 
+    async execute() {
+        return this.runCleanup();
+    }
+
     /**
      * Get cleanup service status
      */
     getStatus() {
         return {
-            running: this.cleanupInterval !== null,
+            running: this.interval !== null,
             intervalHours: this.CLEANUP_INTERVAL_HOURS,
-            nextCleanup: this.cleanupInterval ? 
+            nextCleanup: this.interval ?
                 new Date(Date.now() + this.CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000) : null
         };
     }

@@ -266,6 +266,14 @@
                                             title="Synced automatically from your linked brokerage"
                                             >Plaid</span
                                         >
+                                        <div
+                                            v-if="lot.accountIdentifier || lot.broker"
+                                            class="mt-1 text-xs text-gray-500 dark:text-gray-400"
+                                        >
+                                            {{ lot.accountIdentifier || lot.broker }}<span
+                                                v-if="lot.accountIdentifier && lot.broker"
+                                            > · {{ lot.broker }}</span>
+                                        </div>
                                     </td>
                                     <td
                                         class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 dark:text-white"
@@ -595,6 +603,7 @@ import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useInvestmentsStore } from "@/stores/investments";
 import { useNotification } from "@/composables/useNotification";
+import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import { format, parseISO } from "date-fns";
 import EightPillarsCard from "@/components/investments/EightPillarsCard.vue";
 import AddLotModal from "@/components/investments/AddLotModal.vue";
@@ -783,14 +792,7 @@ async function onDividendRecorded() {
     await loadHolding();
 }
 
-function formatCurrency(value) {
-    if (value === null || value === undefined) return "-";
-    return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-    }).format(value);
-}
+const { formatCurrency } = useCurrencyFormatter();
 
 function formatNumber(value) {
     if (value === null || value === undefined) return "-";

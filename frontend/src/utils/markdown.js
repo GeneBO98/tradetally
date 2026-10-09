@@ -61,6 +61,17 @@ export function truncateHtml(html, maxLength) {
 
   if (text.length <= maxLength) return html
 
-  // Simple truncation - just return the first part of the text with ellipsis
-  return text.substring(0, maxLength) + '...'
+  // Simple truncation - just return the first part of the text with ellipsis.
+  // textContent is decoded (e.g. `&lt;img&gt;` becomes `<img>`), and callers
+  // render the result with v-html, so it must be re-escaped before returning.
+  return escapeHtml(text.substring(0, maxLength)) + '...'
+}
+
+function escapeHtml(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }

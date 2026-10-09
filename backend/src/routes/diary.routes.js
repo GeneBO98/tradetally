@@ -7,7 +7,7 @@ const {
   getTodaysEntry,
   getEntry,
   getEntryByDate,
-  createOrUpdateEntry,
+  createEntry,
   updateEntry,
   deleteEntry,
   uploadAttachment,
@@ -19,6 +19,7 @@ const {
   getStats,
   searchEntries,
   analyzeEntries,
+  getAnalysisStatus,
   getGeneralNotes,
   createGeneralNote,
   updateGeneralNote,
@@ -49,6 +50,7 @@ router.get('/stats', getStats);
 
 // AI Analysis of diary entries
 router.get('/analyze', analyzeEntries);
+router.get('/analyze/:requestId', getAnalysisStatus);
 
 // Get diary entry by date
 router.get('/date/:date', getEntryByDate);
@@ -62,8 +64,8 @@ router.delete('/general-notes/:id', deleteGeneralNote);
 // Get specific diary entry by ID
 router.get('/:id', getEntry);
 
-// Create or update diary entry (upsert by date and type)
-router.post('/', createOrUpdateEntry);
+// Create an independent diary entry (multiple entries may share a date)
+router.post('/', createEntry);
 
 // Update specific diary entry
 router.put('/:id', updateEntry);

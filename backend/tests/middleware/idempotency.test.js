@@ -30,7 +30,8 @@ function createRes(req) {
     status: jest.fn().mockReturnThis(),
     json: jest.fn().mockReturnThis(),
     send: jest.fn().mockReturnThis(),
-    setHeader: jest.fn()
+    setHeader: jest.fn(),
+    on: jest.fn()
   };
 }
 
@@ -155,6 +156,53 @@ describe('idempotency middleware', () => {
     expect(db.query).toHaveBeenCalledTimes(3);
     expect(db.query.mock.calls[2][0]).toContain('UPDATE idempotency_keys');
     expect(db.query.mock.calls[2][1][0]).toBe(201);
+  });
+
+  test('does not cache 5xx responses so the key can be retried', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] }) // delete expired
+      .mockResolvedValueOnce({ rows: [{ id: 'reservation-1' }] }) // insert reservation
+      .mockResolvedValueOnce({ rows: [] }); // release reservation
+
+    const req = createReq({
+      headers: { 'idempotency-key': 'flaky-key' },
+      body: { symbol: 'MSFT' }
+    });
+    const res = createRes(req);
+    const middleware = idempotencyMiddleware({ routeKey: '/api/v1/trades' });
+
+    await middleware(req, res, jest.fn());
+
+    res.status(500);
+    res.json({ error: { code: 'INTERNAL_ERROR' } });
+    await Promise.resolve();
+
+    expect(db.query).toHaveBeenCalledTimes(3);
+    expect(db.query.mock.calls[2][0]).toContain('DELETE FROM idempotency_keys');
+    expect(db.query.mock.calls[2][1]).toEqual(['reservation-1']);
+  });
+
+  test('releases the reservation when the connection closes without a response', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] }) // delete expired
+      .mockResolvedValueOnce({ rows: [{ id: 'reservation-2' }] }) // insert reservation
+      .mockResolvedValueOnce({ rows: [] }); // release reservation
+
+    const req = createReq({
+      headers: { 'idempotency-key': 'abandoned-key' },
+      body: { symbol: 'MSFT' }
+    });
+    const res = createRes(req);
+    const middleware = idempotencyMiddleware({ routeKey: '/api/v1/trades' });
+
+    await middleware(req, res, jest.fn());
+
+    const closeHandler = res.on.mock.calls.find(([event]) => event === 'close')[1];
+    closeHandler();
+    await Promise.resolve();
+
+    expect(db.query.mock.calls[2][0]).toContain('DELETE FROM idempotency_keys');
+    expect(db.query.mock.calls[2][1]).toEqual(['reservation-2']);
   });
 
   test('falls back to default ttl when IDEMPOTENCY_TTL_HOURS is invalid', async () => {

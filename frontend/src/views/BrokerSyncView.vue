@@ -77,6 +77,7 @@
             :connection="connection"
             :sync-disabled="!canSync"
             @sync="handleSync"
+            @reconnect="handleReconnect"
             @test="handleTest"
             @settings="openSettingsModal"
             @delete="handleDelete"
@@ -130,6 +131,27 @@
                   <h4 class="font-medium text-gray-900 dark:text-white">Charles Schwab</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {{ store.schwabConnection ? 'Already connected' : schwabConnecting ? 'Connecting...' : 'Connect via OAuth' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Trading 212 Card -->
+            <div
+              class="rounded-lg border-2 p-6 transition-colors"
+              :class="canAddTrading212
+                ? 'cursor-pointer border-dashed border-gray-300 hover:border-primary-500 dark:border-gray-600 dark:hover:border-primary-400'
+                : 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-50 dark:border-gray-700 dark:bg-gray-800'"
+              @click="canAddTrading212 && openTrading212Modal()"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-900/30">
+                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">T2</span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">Trading 212</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ store.trading212Connections.length > 0 ? 'Add another environment' : 'Connect with an API key' }}
                   </p>
                 </div>
               </div>
@@ -202,9 +224,9 @@
               @click="canConnectBroker('webull') && handleBrokerOAuthConnect('webull')"
             >
               <div class="flex items-center space-x-4">
-                <div class="flex-shrink-0 w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
-                  <div v-if="brokerConnecting.webull" class="animate-spin h-6 w-6 rounded-full border-2 border-orange-200 border-t-orange-600"></div>
-                  <span v-else class="text-orange-600 dark:text-orange-400 font-bold text-lg">WB</span>
+                <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
+                  <div v-if="brokerConnecting.webull" class="animate-spin h-6 w-6 rounded-full border-2 border-primary-200 border-t-primary-600"></div>
+                  <span v-else class="text-primary-600 dark:text-primary-400 font-bold text-lg">WB</span>
                 </div>
                 <div>
                   <h4 class="font-medium text-gray-900 dark:text-white">Webull</h4>
@@ -229,8 +251,24 @@
       <ProUpgradePrompt
         v-else-if="showUpgradeGate"
         variant="card"
-        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, TradeStation, Alpaca, or Webull to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
+        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, Trading 212, TradeStation, Alpaca, or Webull to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
       />
+
+      <div class="card" v-if="excludedTrades.length">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Trades excluded from IBKR sync</h3>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Deleted trades stay excluded from future syncs. Restore eligibility to import one again on the next sync.</p>
+          <div class="mt-4 max-h-64 overflow-auto divide-y divide-gray-200 dark:divide-gray-700">
+            <div v-for="entry in excludedTrades" :key="entry.id" class="flex items-center justify-between gap-3 py-2 text-sm">
+              <span class="text-gray-800 dark:text-gray-200">{{ entry.symbol }} · {{ entry.side }}<template v-if="entry.account_identifier"> · {{ entry.account_identifier }}</template> · {{ formatDate(entry.entry_time) }}</span>
+              <button type="button" class="text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                :disabled="restoringExclusion === entry.id" @click="restoreExclusion(entry.id)">
+                {{ restoringExclusion === entry.id ? 'Restoring…' : 'Allow future import' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Sync History -->
       <div class="card">
@@ -273,13 +311,29 @@
                   <td class="px-4 py-3 whitespace-nowrap">
                     <span
                       class="px-2 py-1 text-xs rounded-full"
-                      :class="getStatusClass(log.status)"
+                      :class="getStatusClass(log)"
                     >
-                      {{ log.status }}
+                      {{ getStatusLabel(log) }}
                     </span>
+                    <details
+                      v-if="warningsFromSyncLog(log).length > 0"
+                      class="mt-2 max-w-xs text-xs text-amber-800 dark:text-amber-300"
+                    >
+                      <summary class="cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded">
+                        View {{ warningsFromSyncLog(log).length }} warning{{ warningsFromSyncLog(log).length === 1 ? '' : 's' }}
+                      </summary>
+                      <ul class="mt-2 space-y-1 list-disc pl-4 whitespace-normal">
+                        <li v-for="(warning, warningIndex) in warningsFromSyncLog(log)" :key="warningIndex">
+                          {{ warning }}
+                        </li>
+                      </ul>
+                    </details>
                   </td>
                   <td class="px-4 py-3 whitespace-nowrap text-gray-900 dark:text-white">
                     {{ log.tradesImported || 0 }}
+                    <span v-if="log.syncDetails?.excluded_trade_count" class="block text-xs text-gray-500 dark:text-gray-400">
+                      {{ log.syncDetails.excluded_trade_count }} excluded by you
+                    </span>
                   </td>
                   <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
                     {{ log.duplicatesDetected || 0 }}
@@ -315,12 +369,25 @@
       :error="store.error"
     />
 
+    <Trading212ConnectionModal
+      v-if="showTrading212Modal"
+      :loading="store.loading"
+      :error="store.error"
+      :existing-environments="trading212Environments"
+      @close="closeTrading212Modal"
+      @save="handleTrading212Save"
+    />
+
     <!-- Settings Modal -->
     <ConnectionSettingsModal
       v-if="showSettingsModal"
       :connection="selectedConnection"
+      :schwab-accounts="schwabAccounts"
+      :accounts-loading="schwabAccountsLoading"
+      :accounts-error="schwabAccountsError"
       @close="showSettingsModal = false"
       @save="handleSettingsSave"
+      @refresh-accounts="refreshSchwabAccounts"
       :loading="store.loading"
     />
 
@@ -342,15 +409,22 @@ import { useRoute, useRouter } from 'vue-router'
 import { useBrokerSyncStore } from '@/stores/brokerSync'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
+import { useUserTimezone } from '@/composables/useUserTimezone'
+import api from '@/services/api'
 import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.vue'
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
+import Trading212ConnectionModal from '@/components/broker-sync/Trading212ConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
 import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
 import ManualTradeReviewModal from '@/components/import/ManualTradeReviewModal.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
+
 const store = useBrokerSyncStore()
 const tradesStore = useTradesStore()
+const excludedTrades = ref([])
+const restoringExclusion = ref(null)
 const route = useRoute()
 const router = useRouter()
 const { showConfirmation, showDangerConfirmation } = useNotification()
@@ -381,8 +455,12 @@ const graceEndsAtFormatted = computed(() => {
 const pricingLink = computed(() => `/pricing?redirect=${encodeURIComponent(route.fullPath)}`)
 
 const showIBKRModal = ref(false)
+const showTrading212Modal = ref(false)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
+const schwabAccounts = ref([])
+const schwabAccountsLoading = ref(false)
+const schwabAccountsError = ref('')
 const successMessage = ref('')
 const showManualReviewModal = ref(false)
 const manualReviewItems = ref([])
@@ -398,6 +476,11 @@ const brokerConnecting = ref({
 })
 const SCHWAB_PENDING_STORAGE_KEY = 'broker_sync_schwab_pending'
 const BROKER_PENDING_STORAGE_KEY = 'broker_sync_pending'
+
+const trading212Environments = computed(() =>
+  store.trading212Connections.map(connection => connection.brokerEnvironment || 'live')
+)
+const canAddTrading212 = computed(() => trading212Environments.value.length < 2)
 
 function brokerConnection(broker, environment = null) {
   return store.connections.find(connection =>
@@ -447,6 +530,18 @@ function manualReviewItemsFromSyncLog(log) {
   return Array.isArray(items) ? items : []
 }
 
+function warningsFromSyncLog(log) {
+  const syncDetails = parseSyncDetails(log?.syncDetails || log?.sync_details)
+  const warnings = syncDetails.warnings || []
+  return Array.isArray(warnings) ? warnings.filter(Boolean).map(warning => String(warning)) : []
+}
+
+function syncCompletedWithWarnings(log) {
+  if (log?.status !== 'completed') return false
+  const syncDetails = parseSyncDetails(log?.syncDetails || log?.sync_details)
+  return syncDetails.outcome === 'warning' || warningsFromSyncLog(log).length > 0
+}
+
 function openManualReviewFromSyncLog(log, force = false) {
   if (!log || (!force && reviewedSyncLogIds.value.has(log.id))) return
 
@@ -493,6 +588,11 @@ async function consumeOAuthCallbackState(query) {
 
   if (query.success === 'schwab') {
     scheduleSuccessMessage('Schwab account connected successfully. Ready to sync trades.')
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('notifications-updated', {
+        detail: { unreadDelta: 0 }
+      }))
+    }
   } else if (query.success === 'tradestation') {
     scheduleSuccessMessage('TradeStation account connected successfully. Ready to sync trades.')
   } else if (query.success === 'alpaca') {
@@ -516,7 +616,8 @@ async function consumeOAuthCallbackState(query) {
 onMounted(async () => {
   await Promise.all([
     store.fetchConnections(),
-    store.fetchSyncLogs()
+    store.fetchSyncLogs(),
+    fetchExcludedTrades()
   ])
   await consumeOAuthCallbackState(route.query)
 })
@@ -536,9 +637,44 @@ function closeIBKRModal() {
   showIBKRModal.value = false
 }
 
+function openTrading212Modal() {
+  if (trading212Environments.value.length >= 2) {
+    store.error = 'Both Trading 212 live and demo environments are already connected.'
+    return
+  }
+  store.clearError()
+  showTrading212Modal.value = true
+}
+
+function closeTrading212Modal() {
+  store.clearError()
+  showTrading212Modal.value = false
+}
+
 function openSettingsModal(connection) {
   selectedConnection.value = connection
+  schwabAccounts.value = connection.schwab_accounts || []
+  schwabAccountsError.value = ''
   showSettingsModal.value = true
+
+  if (connection.brokerType === 'schwab') {
+    refreshSchwabAccounts()
+  }
+}
+
+async function refreshSchwabAccounts() {
+  if (!selectedConnection.value || selectedConnection.value.brokerType !== 'schwab') return
+
+  schwabAccountsLoading.value = true
+  schwabAccountsError.value = ''
+  try {
+    const result = await store.fetchConnectionAccounts(selectedConnection.value.id)
+    schwabAccounts.value = result.accounts || []
+  } catch (error) {
+    schwabAccountsError.value = error.response?.data?.error || 'Unable to load Schwab accounts'
+  } finally {
+    schwabAccountsLoading.value = false
+  }
 }
 
 async function handleIBKRSave(credentials) {
@@ -546,6 +682,16 @@ async function handleIBKRSave(credentials) {
     await store.addIBKRConnection(credentials)
     showIBKRModal.value = false
     scheduleSuccessMessage('IBKR connection added successfully!')
+  } catch (error) {
+    // Error is handled by store
+  }
+}
+
+async function handleTrading212Save(connection) {
+  try {
+    await store.addTrading212Connection(connection)
+    showTrading212Modal.value = false
+    scheduleSuccessMessage('Trading 212 connection added successfully. Ready to sync trades.')
   } catch (error) {
     // Error is handled by store
   }
@@ -567,6 +713,11 @@ async function handleSchwabConnect() {
     }
     // Error is handled by store
   }
+}
+
+async function handleReconnect(connection) {
+  if (connection.brokerType !== 'schwab') return
+  await handleSchwabConnect()
 }
 
 async function handleBrokerOAuthConnect(broker, options = {}) {
@@ -598,7 +749,7 @@ async function handleSync(connection) {
 
     // Poll for updates until sync completes
     const pollInterval = 3000
-    const maxAttempts = 40 // 2 minutes max
+    const maxAttempts = 200 // 10 minutes max for rate-limited broker history imports
     let attempts = 0
 
     const poll = async () => {
@@ -624,7 +775,8 @@ async function handleSync(connection) {
         // Sync finished - refresh trades data to update P&L and counts
         await Promise.all([
           tradesStore.fetchTrades(),
-          tradesStore.fetchAnalytics()
+          tradesStore.fetchAnalytics(),
+          fetchExcludedTrades()
         ])
       }
     }
@@ -725,7 +877,8 @@ async function handleDeleteTrades(connection) {
         console.log('[BROKER-SYNC] Refreshing trades store after delete...')
         await Promise.all([
           tradesStore.fetchTrades(),
-          tradesStore.fetchAnalytics()
+          tradesStore.fetchAnalytics(),
+          fetchExcludedTrades()
         ])
         console.log('[BROKER-SYNC] Trades store refreshed. Total P&L:', tradesStore.totalPnL, 'Total trades:', tradesStore.totalTrades)
       } catch (error) {
@@ -741,13 +894,42 @@ async function refreshLogs() {
   await store.fetchSyncLogs()
 }
 
-function formatDate(date) {
-  if (!date) return '-'
-  return new Date(date).toLocaleString()
+async function fetchExcludedTrades() {
+  try {
+    const response = await api.get('/broker-sync/excluded-trades')
+    excludedTrades.value = response.data?.exclusions || []
+  } catch (error) {
+    console.error('[BROKER-SYNC] Failed to load exclusions:', error)
+  }
 }
 
-function getStatusClass(status) {
-  switch (status) {
+async function restoreExclusion(id) {
+  restoringExclusion.value = id
+  try {
+    await api.delete(`/broker-sync/excluded-trades/${id}`)
+    await fetchExcludedTrades()
+  } catch (error) {
+    store.error = error?.response?.data?.error || 'Unable to restore trade import eligibility'
+  } finally {
+    restoringExclusion.value = null
+  }
+}
+
+function formatDate(date) {
+  if (!date) return '-'
+  return formatDateTimeTz(date, { includeSeconds: true })
+}
+
+function getStatusLabel(log) {
+  if (syncCompletedWithWarnings(log)) return 'Completed with warnings'
+  return log?.status || 'unknown'
+}
+
+function getStatusClass(log) {
+  if (syncCompletedWithWarnings(log)) {
+    return 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
+  }
+  switch (log?.status) {
     case 'completed':
       return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
     case 'failed':

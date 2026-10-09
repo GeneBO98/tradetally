@@ -1,0 +1,261 @@
+<template>
+    <!-- CUSIP AI Provider Settings -->
+    <div class="card">
+        <div class="card-body">
+            <h3
+                class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+            >
+                CUSIP Resolution AI Provider
+            </h3>
+            <p
+                class="text-sm text-gray-600 dark:text-gray-400 mb-6"
+            >
+                Optionally configure a separate AI provider
+                specifically for CUSIP resolution. If not
+                configured, the main AI provider above will be used.
+            </p>
+
+            <form
+                @submit.prevent="$emit('submit')"
+                class="space-y-6"
+            >
+                <div class="flex items-center mb-4">
+                    <input
+                        id="useMainProviderForCusip"
+                        v-model="form.useMainProvider"
+                        type="checkbox"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                        @change="onCusipUseMainProviderChange"
+                    />
+                    <label
+                        for="useMainProviderForCusip"
+                        class="ml-2 text-sm text-gray-700 dark:text-gray-300"
+                    >
+                        Use main AI provider for CUSIP resolution
+                    </label>
+                </div>
+
+                <div
+                    v-if="!form.useMainProvider"
+                    class="space-y-6"
+                >
+                    <div
+                        class="grid grid-cols-1 gap-6 sm:grid-cols-2"
+                    >
+                        <div>
+                            <label
+                                for="cusipAiProvider"
+                                class="label"
+                                >CUSIP AI Provider</label
+                            >
+                            <BaseSelect
+                                v-model="form.provider"
+                                :options="availableAiProviderOptions"
+                                placeholder="No provider"
+                                @change="onCusipProviderChange"
+                            />
+                        </div>
+
+                        <div>
+                            <label for="cusipAiModel" class="label">
+                                Model{{ form.provider === "custom" ? "" : " (Optional)" }}
+                            </label>
+                            <input
+                                id="cusipAiModel"
+                                v-model="form.model"
+                                autocomplete="off"
+                                spellcheck="false"
+                                type="text"
+                                class="input"
+                                :placeholder="
+                                    getCusipModelPlaceholder()
+                                "
+                                :required="form.provider === 'custom'"
+                            />
+                        </div>
+                    </div>
+
+                    <div
+                        v-if="HOST_CLI_AI_PROVIDERS.includes(form.provider)"
+                        class="rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-800 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-200"
+                    >
+                        Runs the authenticated CLI installed on the TradeTally backend host.
+                    </div>
+
+                    <div
+                        v-if="URL_REQUIRED_AI_PROVIDERS.includes(form.provider)"
+                    >
+                        <label for="cusipAiUrl" class="label"
+                            >API URL</label
+                        >
+                        <input
+                            id="cusipAiUrl"
+                            v-model="form.url"
+                            type="url"
+                            class="input"
+                            :placeholder="
+                                form.provider === 'ollama'
+                                    ? 'http://localhost:11434'
+                                    : form.provider ===
+                                        'lmstudio'
+                                      ? 'http://localhost:1234'
+                                      : form.provider === 'custom'
+                                        ? 'https://provider.example/v1'
+                                        : 'http://localhost:8000'
+                            "
+                            required
+                        />
+                        <p
+                            v-if="form.provider === 'custom'"
+                            class="mt-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-800 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-200"
+                        >
+                            CUSIP prompts and relevant trading data are sent to this endpoint.
+                            Use a service you trust.
+                        </p>
+                    </div>
+
+                    <div
+                        v-if="
+                            form.provider &&
+                            !API_KEY_HIDDEN_AI_PROVIDERS.includes(form.provider)
+                        "
+                    >
+                        <label for="cusipAiApiKey" class="label"
+                            >API Key</label
+                        >
+                        <input
+                            id="cusipAiApiKey"
+                            v-model="form.apiKey"
+                            type="password"
+                            class="input"
+                            :placeholder="
+                                form.apiKeyConfigured
+                                    ? 'API key saved — enter a new key to replace it'
+                                    : getCusipApiKeyPlaceholder()
+                            "
+                            :required="
+                                !!form.provider &&
+                                !form.apiKeyConfigured &&
+                                !OPTIONAL_API_KEY_AI_PROVIDERS.includes(form.provider)
+                            "
+                        />
+                    </div>
+                </div>
+
+                <div class="flex justify-end">
+                    <button
+                        type="submit"
+                        :disabled="loading"
+                        class="btn-primary"
+                    >
+                        <span
+                            v-if="loading"
+                            class="flex items-center"
+                        >
+                            <div
+                                class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
+                            ></div>
+                            Saving...
+                        </span>
+                        <span v-else>Save CUSIP AI Settings</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+
+<script setup>
+import { computed } from "vue";
+import { useAuthStore } from "@/stores/auth";
+import BaseSelect from "@/components/common/BaseSelect.vue";
+import {
+    AI_PROVIDER_OPTIONS,
+    API_KEY_HIDDEN_AI_PROVIDERS,
+    HOST_CLI_AI_PROVIDERS,
+    OPTIONAL_API_KEY_AI_PROVIDERS,
+    URL_REQUIRED_AI_PROVIDERS,
+} from "@/utils/aiProviderOptions";
+
+const props = defineProps({
+    form: { type: Object, required: true },
+    loading: { type: Boolean, default: false },
+});
+
+defineEmits(["submit"]);
+
+const authStore = useAuthStore();
+const availableAiProviderOptions = computed(() =>
+    ["admin", "owner"].includes(authStore.user?.role)
+        ? AI_PROVIDER_OPTIONS
+        : AI_PROVIDER_OPTIONS.filter(
+              ({ value }) => !HOST_CLI_AI_PROVIDERS.includes(value),
+          ),
+);
+
+function getCusipModelPlaceholder() {
+    switch (props.form.provider) {
+        case "gemini":
+            return "e.g., gemini-2.5-flash";
+        case "claude":
+            return "e.g., claude-3-5-sonnet-20241022";
+        case "openai":
+            return "e.g., gpt-4o";
+        case "deepseek":
+            return "e.g., deepseek-chat";
+        case "kimi":
+            return "e.g., moonshot-v1-8k";
+        case "codex_cli":
+        case "claude_cli":
+            return "Leave blank for CLI default";
+        case "ollama":
+            return "e.g., llama3.2";
+        case "perplexity":
+            return "e.g., llama-3.1-sonar-large-128k-online";
+        case "lmstudio":
+            return "e.g., local-model";
+        case "custom":
+            return "e.g., llama-3.2-3b-instruct";
+        default:
+            return "Model name";
+    }
+}
+
+function getCusipApiKeyPlaceholder() {
+    switch (props.form.provider) {
+        case "gemini":
+            return "Your Google AI API key";
+        case "claude":
+            return "Your Anthropic API key";
+        case "openai":
+            return "Your OpenAI API key";
+        case "deepseek":
+            return "Your DeepSeek API key";
+        case "kimi":
+            return "Your Moonshot AI API key";
+        case "perplexity":
+            return "Your Perplexity API key";
+        case "custom":
+            return "Optional API key";
+        default:
+            return "API key (if required)";
+    }
+}
+
+function onCusipProviderChange() {
+    props.form.url = "";
+    props.form.apiKey = "";
+    props.form.model = "";
+    props.form.apiKeyConfigured = false;
+}
+
+function onCusipUseMainProviderChange() {
+    if (props.form.useMainProvider) {
+        props.form.provider = "gemini";
+        props.form.url = "";
+        props.form.apiKey = "";
+        props.form.model = "";
+        props.form.apiKeyConfigured = false;
+    }
+}
+</script>

@@ -74,10 +74,13 @@
             </span>
           </div>
           <span
-            v-if="item.source === 'user_trades'"
-            class="text-xs bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 px-1.5 py-0.5 rounded flex-shrink-0 ml-2"
+            v-if="item.source === 'user_trades' || item.asset_type === 'crypto'"
+            class="text-xs px-1.5 py-0.5 rounded flex-shrink-0 ml-2"
+            :class="item.asset_type === 'crypto'
+              ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+              : 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300'"
           >
-            Traded
+            {{ item.asset_type === 'crypto' ? 'Crypto' : 'Traded' }}
           </span>
         </li>
       </ul>
@@ -89,6 +92,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import api from '@/services/api'
 import StockLogo from '@/components/common/StockLogo.vue'
+import { debounce } from '@/utils/debounce'
 
 const props = defineProps({
   modelValue: {
@@ -128,7 +132,9 @@ const highlightedIndex = ref(-1)
 const queryText = ref('')
 const isFocused = ref(false)
 
-let debounceTimer = null
+const debouncedFetchSuggestions = debounce((value) => {
+  fetchSuggestions(value)
+}, 300)
 
 const inputId = computed(() => props.id || `symbol-autocomplete-${Math.random().toString(36).slice(2, 9)}`)
 
@@ -142,17 +148,14 @@ function onInput(e) {
   queryText.value = value
   highlightedIndex.value = -1
 
-  if (debounceTimer) clearTimeout(debounceTimer)
-
   if (!value || value.length < 1) {
+    debouncedFetchSuggestions.cancel()
     suggestions.value = []
     isOpen.value = false
     return
   }
 
-  debounceTimer = setTimeout(() => {
-    fetchSuggestions(value)
-  }, 300)
+  debouncedFetchSuggestions(value)
 }
 
 async function fetchSuggestions(q) {
@@ -236,6 +239,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
-  if (debounceTimer) clearTimeout(debounceTimer)
+  debouncedFetchSuggestions.cancel()
 })
 </script>

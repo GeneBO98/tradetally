@@ -400,7 +400,7 @@
                                             : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 hover:text-primary-600',
                                     ]"
                                 >
-                                    {{ period }}
+                                    {{ monthPresetOptions.find(option => option.value === period)?.label || period }}
                                 </button>
                                 <button
                                     @click="refreshPortfolioData"
@@ -1546,10 +1546,13 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
+import { ref, computed, nextTick, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useInvestmentsStore } from "@/stores/investments";
 import { useNotification } from "@/composables/useNotification";
+import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
+import { formatPercent as formatPercentBase } from "@/utils/formatters";
 import { format } from "date-fns";
 import api from "@/services/api";
 import EightPillarsCard from "@/components/investments/EightPillarsCard.vue";
@@ -1563,6 +1566,7 @@ import StockAnalyzerSection from "@/components/investments/dcf/StockAnalyzerSect
 import PortfolioPerformanceChart from "@/components/investments/PortfolioPerformanceChart.vue";
 import { useScannerStore } from "@/stores/scanner";
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
+import { useVisibilityPolling } from "@/composables/useVisibilityPolling";
 import StockLogo from "@/components/common/StockLogo.vue";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 import IncomeAnalytics from "@/components/investments/IncomeAnalytics.vue";
@@ -1591,7 +1595,7 @@ const searchSymbol = ref("");
 const showAddHoldingModal = ref(false);
 const showFavoritesOnly = ref(false);
 const holdingToDelete = ref(null);
-const portfolioPeriods = ["1M", "3M", "6M", "1Y", "5Y", "10Y", "YTD"];
+const portfolioPeriods = ["this_month", "last_month", "1M", "3M", "6M", "1Y", "5Y", "10Y", "YTD"];
 const portfolioPeriod = ref("6M");
 // True from first render until the initial data load finishes. Separate from
 // portfolioLoading because the loading flag is only set inside store actions,
@@ -1617,7 +1621,6 @@ const portfolioLoadedAt = ref(null);
 // we poll until the backend has filled in fresh quotes for every stale symbol.
 const PRICE_POLL_INTERVAL_MS = 3000;
 const PRICE_POLL_MAX_MS = 90 * 1000; // give up after this so we never poll forever
-let pricePollTimer = null;
 let pricePollStartedAt = 0;
 // Stall detection: if the number of positions awaiting a quote stops dropping
 // for a few polls, the remaining symbols simply can't be quoted (delisted,
@@ -1864,6 +1867,7 @@ function buildPortfolioParams() {
     const params = {
         benchmark: benchmarkSymbol.value.trim().toUpperCase() || "SPY",
         period: portfolioPeriod.value,
+        ...(['this_month', 'last_month'].includes(portfolioPeriod.value) ? resolveDatePreset(portfolioPeriod.value) : {}),
     };
 
     if (selectedAccount.value) {
@@ -1969,11 +1973,13 @@ async function loadPortfolioData({ force = false, periodOnly = false, preserveTa
     }
 }
 
+// Visibility-gated poller: pauses while the tab is hidden and, on refocus,
+// immediately runs a poll if an interval elapsed while hidden. Async-safe:
+// a tick is skipped if the previous poll is still in flight.
+const pricePoller = useVisibilityPolling(() => runPricePoll(), PRICE_POLL_INTERVAL_MS);
+
 function stopPricePolling() {
-    if (pricePollTimer) {
-        clearTimeout(pricePollTimer);
-        pricePollTimer = null;
-    }
+    pricePoller.stop();
     pricesUpdating.value = false;
 }
 
@@ -1991,7 +1997,7 @@ function maybeStartPricePolling() {
     pricePollStartedAt = Date.now();
     pricePollStallCount = 0;
     pricePollLastPending = pendingPriceCount.value;
-    pricePollTimer = setTimeout(runPricePoll, PRICE_POLL_INTERVAL_MS);
+    pricePoller.start(); // first poll fires after PRICE_POLL_INTERVAL_MS
 }
 
 async function runPricePoll() {
@@ -2040,10 +2046,8 @@ async function runPricePoll() {
     const stalled = pricePollStallCount >= PRICE_POLL_MAX_STALLS;
     if (pending === 0 || timedOut || stalled || activeTab.value !== "holdings") {
         stopPricePolling();
-        return;
     }
-
-    pricePollTimer = setTimeout(runPricePoll, PRICE_POLL_INTERVAL_MS);
+    // Otherwise the poller keeps firing on its interval.
 }
 
 async function loadAccountComparison() {
@@ -2063,6 +2067,7 @@ async function loadAccountComparison() {
                 const params = {
                     benchmark: benchmarkSymbol.value.trim().toUpperCase() || "SPY",
                     period: portfolioPeriod.value,
+        ...(['this_month', 'last_month'].includes(portfolioPeriod.value) ? resolveDatePreset(portfolioPeriod.value) : {}),
                     accounts: account.value,
                 };
                 const [overviewResult, rebalanceResult] = await Promise.allSettled([
@@ -2165,10 +2170,6 @@ watch(activeTab, async (newTab) => {
         await loadPortfolioData(); // cached — instant if still fresh
         await loadAccountComparison();
     }
-});
-
-onBeforeUnmount(() => {
-    stopPricePolling();
 });
 
 watch(selectedAccount, async () => {
@@ -2440,6 +2441,7 @@ function openFullCompare() {
         query: {
             accounts: Array.from(selectedComparisonAccounts.value).join(","),
             period: portfolioPeriod.value,
+        ...(['this_month', 'last_month'].includes(portfolioPeriod.value) ? resolveDatePreset(portfolioPeriod.value) : {}),
             benchmark: (benchmarkSymbol.value || "SPY").trim().toUpperCase(),
         },
     });
@@ -2621,13 +2623,11 @@ async function addToWatchlist() {
     }
 }
 
+const { formatCurrency: formatCurrencyBase } = useCurrencyFormatter();
+
 function formatCurrency(value) {
     if (value === null || value === undefined) return "N/A";
-    return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-    }).format(value);
+    return formatCurrencyBase(value);
 }
 
 function formatNumber(value) {
@@ -2639,9 +2639,7 @@ function formatNumber(value) {
 }
 
 function formatPercent(value, showSign = true) {
-    if (value === null || value === undefined) return "";
-    const sign = showSign && value >= 0 ? "+" : "";
-    return `${sign}${value.toFixed(2)}%`;
+    return formatPercentBase(value, { showSign, nullValue: "" });
 }
 
 function formatMetric(value, decimals = 2) {

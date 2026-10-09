@@ -522,6 +522,7 @@ class WebMentionService {
       type: 'web_mention_alert',
       data: payload
     });
+    await NotificationService.sendMobileNotification(rule.user_id, 'web_mention_alert', payload, notificationResult.rows[0].id);
     await db.query('UPDATE web_mention_rules SET last_evaluated_at = NOW() WHERE id = $1', [rule.id]);
     return { alerted: true, article_count: distinctMatches.length };
   }

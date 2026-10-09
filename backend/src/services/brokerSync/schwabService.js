@@ -19,6 +19,7 @@ const OptionStrategyGroupingService = require('../optionStrategyGroupingService'
 const db = require('../../config/database');
 
 const SCHWAB_API_BASE = 'https://api.schwabapi.com/trader/v1';
+const BrokerReauthNotificationService = require('./brokerReauthNotificationService');
 const TOKEN_REFRESH_BUFFER = 5 * 60 * 1000; // Refresh 5 minutes before expiration
 
 class SchwabService {
@@ -131,6 +132,12 @@ class SchwabService {
     return String(a.orderId || '').localeCompare(String(b.orderId || ''));
   }
 
+  _getPositionKey(tx) {
+    const accountIdentifier = tx.accountIdentifier || 'default';
+    const instrumentIdentifier = tx.matchingSymbol || tx.symbol;
+    return JSON.stringify([accountIdentifier, instrumentIdentifier]);
+  }
+
   _parseSchwabOptionSymbol(symbol) {
     if (!symbol) return null;
 
@@ -179,7 +186,7 @@ class SchwabService {
         return { accessToken: newTokens.accessToken, needsReauth: false };
       } catch (error) {
         console.error('[SCHWAB] Token refresh failed:', error.message);
-        await BrokerConnection.updateStatus(connection.id, 'expired', 'Refresh token expired - please re-authenticate');
+        await BrokerReauthNotificationService.markRequired(connection, 'Charles Schwab');
         return { accessToken: null, needsReauth: true };
       }
     }
@@ -201,7 +208,7 @@ class SchwabService {
         return { accessToken: newTokens.accessToken, needsReauth: false };
       } catch (error) {
         console.error('[SCHWAB] Token refresh failed:', error.message);
-        await BrokerConnection.updateStatus(connection.id, 'expired', 'Refresh token expired - please re-authenticate');
+        await BrokerReauthNotificationService.markRequired(connection, 'Charles Schwab');
         return { accessToken: null, needsReauth: true };
       }
     }
@@ -225,7 +232,7 @@ class SchwabService {
       } catch (error) {
         // Refresh token likely expired (7 day limit)
         console.error('[SCHWAB] Token refresh failed:', error.message);
-        await BrokerConnection.updateStatus(connection.id, 'expired', 'Refresh token expired - please re-authenticate');
+        await BrokerReauthNotificationService.markRequired(connection, 'Charles Schwab');
         return { accessToken: null, needsReauth: true };
       }
     }
@@ -521,9 +528,13 @@ class SchwabService {
    */
   matchTransactions(transactions) {
     const rawTrades = [];
-    // Track open positions by symbol: { symbol: [{ qty, price, time, ... }] }
+    // Track open positions by account and instrument. A Schwab login can expose
+    // multiple accounts that hold the same symbol, so symbol-only FIFO matching
+    // can incorrectly consume an IRA lot for a taxable-account sale (or vice
+    // versa).
     const openPositions = {};
-    // Track round-trip IDs per symbol - increments each time position goes flat then re-opens
+    // Track round-trip IDs per account/instrument - increments each time that
+    // specific account position goes flat and then re-opens.
     const roundTripCounters = {};
 
     // Sort all transactions by time
@@ -539,7 +550,7 @@ class SchwabService {
 
     for (const tx of sorted) {
       const symbol = tx.symbol;
-      const positionKey = tx.matchingSymbol || symbol;
+      const positionKey = this._getPositionKey(tx);
 
       // Handle transactions without positionEffect - try to infer from context
       let positionEffect = tx.positionEffect;
@@ -1095,11 +1106,27 @@ class SchwabService {
       throw new Error('No Schwab accounts found');
     }
 
-    console.log(`[SCHWAB] Found ${accounts.length} accounts to sync`);
+    const schwabAccounts = [...new Set(
+      accounts.map(account => this.redactAccountNumber(account.accountNumber)).filter(Boolean)
+    )].map(accountIdentifier => ({ account_identifier: accountIdentifier }));
+    await BrokerConnection.updateBrokerMetadata(connection.id, {
+      schwab_accounts: schwabAccounts
+    });
 
-    // Fetch transactions from ALL accounts, tagging each with the account identifier
+    const excludedAccountIdentifiers = new Set(
+      Array.isArray(connection.excluded_account_identifiers)
+        ? connection.excluded_account_identifiers
+        : []
+    );
+    const includedAccounts = accounts.filter(account =>
+      !excludedAccountIdentifiers.has(this.redactAccountNumber(account.accountNumber))
+    );
+
+    console.log(`[SCHWAB] Found ${accounts.length} accounts; syncing ${includedAccounts.length} and excluding ${accounts.length - includedAccounts.length}`);
+
+    // Fetch transactions only from included accounts, tagging each with the account identifier
     let allTransactions = [];
-    for (const account of accounts) {
+    for (const account of includedAccounts) {
       const redactedAccount = this.redactAccountNumber(account.accountNumber);
       console.log(`[SCHWAB] Fetching transactions for account ${redactedAccount}...`);
       try {
@@ -1230,6 +1257,14 @@ class SchwabService {
     await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'Schwab broker sync');
     console.log(`[SCHWAB] Invalidating analytics cache for user ${userId}`);
     await AnalyticsCache.invalidate(userId);
+
+    // Per-row creates skip achievements; run one end-of-batch check instead
+    if (imported > 0) {
+      const AchievementService = require('../achievementService');
+      AchievementService.checkAndAwardAchievements(userId).catch(error => {
+        console.warn(`[SCHWAB] Failed to check achievements after sync for user ${userId}:`, error.message);
+      });
+    }
 
     return { imported, skipped, failed, duplicates };
   }

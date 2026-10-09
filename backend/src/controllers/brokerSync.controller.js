@@ -9,15 +9,19 @@ const schwabService = require('../services/brokerSync/schwabService');
 const tradestationService = require('../services/brokerSync/tradestationService');
 const alpacaService = require('../services/brokerSync/alpacaService');
 const webullService = require('../services/brokerSync/webullService');
+const trading212Service = require('../services/brokerSync/trading212Service');
 const brokerSyncService = require('../services/brokerSync');
 const TierService = require('../services/tierService');
 const AnalyticsCache = require('../services/analyticsCache');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const logger = require('../utils/logger');
+const { getUserTimezone } = require('../utils/timezone');
 const db = require('../config/database');
 const crypto = require('crypto');
+const BrokerTradeExclusions = require('../services/brokerTradeExclusions');
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const SCHWAB_REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const OAUTH_BROKER_SERVICES = {
   tradestation: tradestationService,
@@ -32,6 +36,16 @@ function redactAccountNumber(accountNumber) {
   return `****${value.slice(-4)}`;
 }
 
+function normalizeExcludedAccountIdentifiers(value) {
+  if (!Array.isArray(value)) return [];
+
+  return [...new Set(
+    value
+      .map(identifier => String(identifier || '').trim())
+      .filter(identifier => identifier.length > 0 && identifier.length <= 50)
+  )].slice(0, 50);
+}
+
 // Send a consistent 403 when a free user hits a Pro-only broker-sync action.
 function sendProRequired(res, check) {
   return res.status(403).json({
@@ -42,6 +56,61 @@ function sendProRequired(res, check) {
     requiredTier: 'pro',
     currentTier: check.tier
   });
+}
+
+function normalizeOAuthContext(context) {
+  if (!context) return {};
+  if (typeof context === 'string') {
+    try {
+      return JSON.parse(context) || {};
+    } catch {
+      return {};
+    }
+  }
+  return context;
+}
+
+function buildBrokerSyncRedirect(params = {}, context = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, String(value));
+    }
+  });
+
+  const queryString = query.toString();
+  const suffix = queryString ? `?${queryString}` : '';
+
+  if (context.platform === 'ios') {
+    return `tradetally://broker-sync${suffix}`;
+  }
+
+  return `${process.env.FRONTEND_URL}/settings/broker-sync${suffix}`;
+}
+
+async function getOAuthStateContext(stateToken, provider) {
+  if (!stateToken || !provider) return {};
+
+  try {
+    const result = await db.query(
+      `SELECT context
+         FROM oauth_pending_states
+        WHERE state_token = $1
+          AND provider = $2
+        LIMIT 1`,
+      [stateToken, provider]
+    );
+
+    return normalizeOAuthContext(result.rows[0]?.context);
+  } catch (error) {
+    logger.logError('Error looking up OAuth state context:', error);
+    return {};
+  }
+}
+
+async function redirectBrokerSync(res, provider, stateToken, params = {}, context = null) {
+  const resolvedContext = context ? normalizeOAuthContext(context) : await getOAuthStateContext(stateToken, provider);
+  return res.redirect(buildBrokerSyncRedirect(params, resolvedContext));
 }
 
 const brokerSyncController = {
@@ -151,7 +220,8 @@ const brokerSyncController = {
 
       // Calculate next sync time if auto-sync enabled
       if (autoSyncEnabled && syncFrequency !== 'manual') {
-        const nextSync = BrokerConnection.calculateNextSync(syncFrequency, syncTime);
+        const userTimezone = await getUserTimezone(userId);
+        const nextSync = BrokerConnection.calculateNextSync(syncFrequency, syncTime, userTimezone);
         if (nextSync) {
           await BrokerConnection.update(connection.id, { nextScheduledSync: nextSync });
         }
@@ -174,11 +244,73 @@ const brokerSyncController = {
   },
 
   /**
+   * Add a Trading 212 API-key connection.
+   */
+  async addTrading212Connection(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) {
+        return sendProRequired(res, access);
+      }
+
+      const {
+        api_key: apiKey,
+        api_secret: apiSecret,
+        broker_environment: brokerEnvironment = 'live',
+        account_label: accountLabel = '',
+        auto_sync_enabled: autoSyncEnabled = false,
+        sync_frequency: syncFrequency = 'daily',
+        sync_time: syncTime = '06:00:00',
+        sync_start_date: syncStartDate = null
+      } = req.body;
+
+      const validation = await trading212Service.validateCredentials(apiKey, apiSecret, brokerEnvironment);
+      if (!validation.valid) {
+        return res.status(400).json({ success: false, error: validation.message });
+      }
+
+      const connection = await BrokerConnection.create(userId, {
+        brokerType: 'trading212',
+        trading212ApiKey: apiKey,
+        trading212ApiSecret: apiSecret,
+        externalAccountId: validation.accountId,
+        brokerEnvironment,
+        brokerMetadata: { currency: validation.currency || null },
+        accountLabel: accountLabel || null,
+        autoSyncEnabled,
+        syncFrequency,
+        syncTime,
+        syncStartDate
+      });
+
+      await BrokerConnection.updateStatus(connection.id, 'active', 'Connection validated successfully');
+      if (autoSyncEnabled && syncFrequency !== 'manual') {
+        const userTimezone = await getUserTimezone(userId);
+        const nextSync = BrokerConnection.calculateNextSync(syncFrequency, syncTime, userTimezone);
+        if (nextSync) await BrokerConnection.update(connection.id, { nextScheduledSync: nextSync });
+      }
+
+      const updatedConnection = await BrokerConnection.findById(connection.id, false);
+      console.log(`[BROKER-SYNC] Trading 212 ${brokerEnvironment} connection created for user ${userId}`);
+      return res.status(201).json({
+        success: true,
+        data: updatedConnection,
+        message: 'Trading 212 connection added successfully'
+      });
+    } catch (error) {
+      logger.logError('Error adding Trading 212 connection:', error);
+      next(error);
+    }
+  },
+
+  /**
    * Initialize Schwab OAuth flow
    */
   async initSchwabOAuth(req, res, next) {
     try {
       const userId = req.user.id;
+      const { platform } = req.body || {};
 
       // Broker sync is a Pro feature
       const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
@@ -199,11 +331,12 @@ const brokerSyncController = {
       // client-supplied state blob (which was forgeable in the legacy design).
       const stateToken = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
+      const context = { platform: platform === 'ios' ? 'ios' : 'web' };
 
       await db.query(
-        `INSERT INTO oauth_pending_states (state_token, user_id, provider, expires_at)
-         VALUES ($1, $2, $3, $4)`,
-        [stateToken, userId, 'schwab', expiresAt]
+        `INSERT INTO oauth_pending_states (state_token, user_id, provider, expires_at, context)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [stateToken, userId, 'schwab', expiresAt, JSON.stringify(context)]
       );
 
       // Build authorization URL
@@ -236,11 +369,11 @@ const brokerSyncController = {
       // Handle OAuth errors
       if (oauthError) {
         console.error('[BROKER-SYNC] Schwab OAuth error:', oauthError);
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=${oauthError}`);
+        return redirectBrokerSync(res, 'schwab', state, { error: oauthError });
       }
 
       if (!code || !state) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=missing_params`);
+        return redirectBrokerSync(res, 'schwab', state, { error: 'missing_params' });
       }
 
       // Look up the state server-side. The row recovers the initiating userId;
@@ -253,23 +386,24 @@ const brokerSyncController = {
             AND provider = 'schwab'
             AND consumed_at IS NULL
             AND expires_at > NOW()
-          RETURNING user_id`,
+          RETURNING user_id, context`,
         [state]
       );
 
       if (stateLookup.rows.length === 0) {
         console.warn('[SCHWAB-OAUTH] Rejected callback with invalid, expired, or reused state');
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=invalid_state`);
+        return redirectBrokerSync(res, 'schwab', state, { error: 'invalid_state' });
       }
 
       const userId = stateLookup.rows[0].user_id;
+      const redirectContext = normalizeOAuthContext(stateLookup.rows[0].context);
 
       // Broker sync is a Pro feature. The init endpoint already gates this, but
       // re-check here in case the user's tier changed mid-flow.
       const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
       if (!access.allowed) {
         console.warn('[SCHWAB-OAUTH] Rejected callback: broker sync is Pro-only for this free user');
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=pro_required`);
+        return redirectBrokerSync(res, 'schwab', state, { error: 'pro_required' }, redirectContext);
       }
 
       // Exchange code for tokens
@@ -300,6 +434,7 @@ const brokerSyncController = {
 
       // Calculate token expiration
       const expiresAt = new Date(Date.now() + expires_in * 1000);
+      const refreshTokenExpiresAt = new Date(Date.now() + SCHWAB_REFRESH_TOKEN_TTL_MS);
       console.log('[SCHWAB-OAUTH] Token expires at:', expiresAt);
 
       // Get account info
@@ -324,19 +459,35 @@ const brokerSyncController = {
         schwabAccessToken: access_token,
         schwabRefreshToken: refresh_token,
         schwabTokenExpiresAt: expiresAt,
+        schwabRefreshTokenExpiresAt: refreshTokenExpiresAt,
         schwabAccountId: accountNumber,
+        brokerMetadata: {
+          schwab_accounts: (accountsResponse.data || [])
+            .map(account => redactAccountNumber(account?.securitiesAccount?.accountNumber))
+            .filter(Boolean)
+            .map(accountIdentifier => ({ account_identifier: accountIdentifier }))
+        },
         autoSyncEnabled: false,
         syncFrequency: 'daily'
       });
       console.log('[SCHWAB-OAUTH] Connection created:', connection.id);
 
-      await BrokerConnection.updateStatus(connection.id, 'active', 'OAuth connection successful');
+      await BrokerConnection.updateStatus(connection.id, 'active', 'OAuth connection successful', true);
+      await db.query(
+        `UPDATE notifications
+            SET read = true
+          WHERE user_id = $1
+            AND type IN ('broker_reauth_expiring', 'broker_reauth_required')
+            AND data->>'connection_id' = $2
+            AND COALESCE(read, false) = false`,
+        [userId, connection.id]
+      );
       console.log('[SCHWAB-OAUTH] Connection status updated to active');
 
       console.log(`[BROKER-SYNC] Schwab connection created for user ${userId}`);
 
       // Redirect back to frontend
-      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?success=schwab`);
+      res.redirect(buildBrokerSyncRedirect({ success: 'schwab' }, redirectContext));
     } catch (error) {
       console.error('[SCHWAB-OAUTH] ERROR MESSAGE:', error.message);
       console.error('[SCHWAB-OAUTH] ERROR STATUS:', error.response?.status);
@@ -347,8 +498,11 @@ const brokerSyncController = {
 
       // Provide more specific error message in redirect
       const errorCode = error.response?.status || 'unknown';
-      const errorMsg = encodeURIComponent(error.message || 'oauth_failed');
-      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=oauth_failed&details=${errorMsg}&status=${errorCode}`);
+      return redirectBrokerSync(res, 'schwab', req.query?.state, {
+        error: 'oauth_failed',
+        details: error.message || 'oauth_failed',
+        status: errorCode
+      });
     }
   },
 
@@ -359,7 +513,7 @@ const brokerSyncController = {
     try {
       const userId = req.user.id;
       const { broker } = req.params;
-      const { environment } = req.body || {};
+      const { environment, platform } = req.body || {};
       const service = OAUTH_BROKER_SERVICES[broker];
 
       // Broker sync is a Pro feature
@@ -384,7 +538,10 @@ const brokerSyncController = {
 
       const stateToken = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
-      const context = { environment: environment || null };
+      const context = {
+        environment: environment || null,
+        platform: platform === 'ios' ? 'ios' : 'web'
+      };
 
       await db.query(
         `INSERT INTO oauth_pending_states (state_token, user_id, provider, expires_at, context)
@@ -412,15 +569,15 @@ const brokerSyncController = {
       const service = OAUTH_BROKER_SERVICES[broker];
 
       if (!service) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=unsupported_broker`);
+        return res.redirect(buildBrokerSyncRedirect({ error: 'unsupported_broker' }));
       }
 
       if (oauthError) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=${encodeURIComponent(oauthError)}&broker=${broker}`);
+        return redirectBrokerSync(res, broker, state, { error: oauthError, broker });
       }
 
       if (!code || !state) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=missing_params&broker=${broker}`);
+        return redirectBrokerSync(res, broker, state, { error: 'missing_params', broker });
       }
 
       const stateLookup = await db.query(
@@ -435,27 +592,92 @@ const brokerSyncController = {
       );
 
       if (stateLookup.rows.length === 0) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=invalid_state&broker=${broker}`);
+        return redirectBrokerSync(res, broker, state, { error: 'invalid_state', broker });
       }
 
       const userId = stateLookup.rows[0].user_id;
+      const context = normalizeOAuthContext(stateLookup.rows[0].context);
 
       // Broker sync is a Pro feature. The init endpoint already gates this, but
       // re-check here in case the user's tier changed mid-flow.
       const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
       if (!access.allowed) {
-        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=pro_required&broker=${broker}`);
+        return redirectBrokerSync(res, broker, state, { error: 'pro_required', broker }, context);
       }
 
-      const context = stateLookup.rows[0].context || {};
       const tokens = await service.exchangeCodeForTokens(code);
       await service.createConnectionFromTokens(userId, tokens, context);
 
-      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?success=${broker}`);
+      res.redirect(buildBrokerSyncRedirect({ success: broker }, context));
     } catch (error) {
       logger.logError('Error handling broker OAuth callback:', error);
-      const errorMsg = encodeURIComponent(error.message || 'oauth_failed');
-      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=oauth_failed&details=${errorMsg}`);
+      return redirectBrokerSync(res, req.params?.broker, req.query?.state, {
+        error: 'oauth_failed',
+        details: error.message || 'oauth_failed'
+      });
+    }
+  },
+
+  /**
+   * Refresh the list of Schwab accounts available to this connection.
+   */
+  async getConnectionAccounts(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const connection = await BrokerConnection.findById(id, true);
+
+      if (!connection || connection.userId !== userId) {
+        return res.status(404).json({
+          success: false,
+          error: 'Broker connection not found'
+        });
+      }
+
+      if (connection.brokerType !== 'schwab') {
+        return res.status(400).json({
+          success: false,
+          error: 'Account exclusions are currently available for Schwab connections only'
+        });
+      }
+
+      const { accessToken, needsReauth } = await schwabService.ensureValidToken(connection);
+      if (needsReauth) {
+        return res.status(409).json({
+          success: false,
+          error: 'Schwab authentication expired. Please reconnect your account.'
+        });
+      }
+
+      const accounts = await schwabService.getAccountNumbers(accessToken);
+      const accountIdentifiers = [...new Set(
+        accounts.map(account => redactAccountNumber(account.accountNumber)).filter(Boolean)
+      )];
+      const schwabAccounts = accountIdentifiers.map(accountIdentifier => ({
+        account_identifier: accountIdentifier
+      }));
+
+      await BrokerConnection.updateBrokerMetadata(id, {
+        schwab_accounts: schwabAccounts
+      });
+
+      const excludedAccountIdentifiers = normalizeExcludedAccountIdentifiers(
+        connection.excluded_account_identifiers
+      );
+
+      return res.json({
+        success: true,
+        data: {
+          accounts: schwabAccounts.map(account => ({
+            ...account,
+            excluded: excludedAccountIdentifiers.includes(account.account_identifier)
+          })),
+          excluded_account_identifiers: excludedAccountIdentifiers
+        }
+      });
+    } catch (error) {
+      logger.logError('Error fetching broker connection accounts:', error);
+      next(error);
     }
   },
 
@@ -466,7 +688,14 @@ const brokerSyncController = {
     try {
       const userId = req.user.id;
       const { id } = req.params;
-      const { accountLabel, autoSyncEnabled, syncFrequency, syncTime, syncStartDate } = req.body;
+      const {
+        accountLabel,
+        autoSyncEnabled,
+        syncFrequency,
+        syncTime,
+        syncStartDate,
+        excluded_account_identifiers: excludedAccountIdentifiers
+      } = req.body;
 
       // Verify ownership
       const connection = await BrokerConnection.findById(id, false);
@@ -477,26 +706,51 @@ const brokerSyncController = {
         });
       }
 
+      if (
+        Object.prototype.hasOwnProperty.call(req.body, 'excluded_account_identifiers') &&
+        connection.brokerType !== 'schwab'
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: 'Account exclusions are currently available for Schwab connections only'
+        });
+      }
+
       // Update settings. syncStartDate and accountLabel may be explicitly null
       // (meaning "all time" / "clear label"), so only forward them when present.
-      const updates = {
-        autoSyncEnabled,
-        syncFrequency,
-        syncTime
-      };
+      const updates = {};
+      if (Object.prototype.hasOwnProperty.call(req.body, 'autoSyncEnabled')) {
+        updates.autoSyncEnabled = autoSyncEnabled;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body, 'syncFrequency')) {
+        updates.syncFrequency = syncFrequency;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body, 'syncTime')) {
+        updates.syncTime = syncTime;
+      }
       if (Object.prototype.hasOwnProperty.call(req.body, 'syncStartDate')) {
         updates.syncStartDate = syncStartDate;
       }
       if (Object.prototype.hasOwnProperty.call(req.body, 'accountLabel')) {
         updates.accountLabel = accountLabel;
       }
-      const updated = await BrokerConnection.update(id, updates);
+      if (Object.keys(updates).length > 0) {
+        await BrokerConnection.update(id, updates);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(req.body, 'excluded_account_identifiers')) {
+        await BrokerConnection.updateBrokerMetadata(id, {
+          excluded_account_identifiers: normalizeExcludedAccountIdentifiers(excludedAccountIdentifiers)
+        });
+      }
 
       // Recalculate next sync time
       if (autoSyncEnabled && syncFrequency !== 'manual') {
+        const userTimezone = await getUserTimezone(userId);
         const nextSync = BrokerConnection.calculateNextSync(
           syncFrequency || connection.syncFrequency,
-          syncTime || connection.syncTime
+          syncTime || connection.syncTime,
+          userTimezone
         );
         if (nextSync) {
           await BrokerConnection.update(id, { nextScheduledSync: nextSync });
@@ -697,6 +951,12 @@ const brokerSyncController = {
             testResult = { valid: false, message: `Schwab connection test failed: ${error.message}` };
           }
         }
+      } else if (connection.brokerType === 'trading212') {
+        testResult = await trading212Service.validateCredentials(
+          connection.trading212ApiKey,
+          connection.trading212ApiSecret,
+          connection.brokerEnvironment || 'live'
+        );
       } else if (OAUTH_BROKER_SERVICES[connection.brokerType]) {
         const service = OAUTH_BROKER_SERVICES[connection.brokerType];
         const { accessToken, needsReauth } = await service.ensureValidToken(connection);
@@ -708,7 +968,7 @@ const brokerSyncController = {
       }
 
       if (testResult.valid) {
-        await BrokerConnection.updateStatus(id, 'active', 'Connection test successful');
+        await BrokerConnection.updateStatus(id, 'active', 'Connection test successful', true);
       } else {
         await BrokerConnection.updateStatus(id, 'error', testResult.message);
       }
@@ -772,25 +1032,33 @@ const brokerSyncController = {
       // Delete trades synced from this specific broker connection. IBKR legacy
       // sync rows can be missing broker_connection_id, so fall back by broker.
       const db = require('../config/database');
-      const result = await db.query(
-        `DELETE FROM trades WHERE user_id = $1 AND broker_connection_id = $2 RETURNING id`,
-        [userId, id]
-      );
-
-      let legacyDeletedCount = 0;
-      if (String(connection.brokerType).toLowerCase() === 'ibkr') {
-        const legacyResult = await db.query(
-          `DELETE FROM trades
-           WHERE user_id = $1
-             AND broker_connection_id IS NULL
-             AND LOWER(broker) = LOWER($2)
-           RETURNING id`,
-          [userId, connection.brokerType]
+      const { deletedCount, legacyDeletedCount } = await db.withTransaction(async client => {
+        const current = await client.query(
+          'SELECT id FROM trades WHERE user_id = $1 AND broker_connection_id = $2',
+          [userId, id]
         );
-        legacyDeletedCount = legacyResult.rowCount;
-      }
-
-      const deletedCount = result.rowCount + legacyDeletedCount;
+        await BrokerTradeExclusions.recordDeleted(client, userId, current.rows.map(row => row.id));
+        const result = await client.query(
+          'DELETE FROM trades WHERE user_id = $1 AND broker_connection_id = $2 RETURNING id',
+          [userId, id]
+        );
+        let legacyCount = 0;
+        if (String(connection.brokerType).toLowerCase() === 'ibkr') {
+          const legacy = await client.query(
+            `SELECT id FROM trades WHERE user_id = $1
+              AND broker_connection_id IS NULL AND LOWER(broker) = LOWER($2)
+              AND import_id IS NULL`, [userId, connection.brokerType]
+          );
+          await BrokerTradeExclusions.recordDeleted(client, userId, legacy.rows.map(row => row.id));
+          const deletedLegacy = await client.query(
+            `DELETE FROM trades WHERE user_id = $1
+              AND broker_connection_id IS NULL AND LOWER(broker) = LOWER($2)
+              AND import_id IS NULL RETURNING id`, [userId, connection.brokerType]
+          );
+          legacyCount = deletedLegacy.rowCount;
+        }
+        return { deletedCount: result.rowCount + legacyCount, legacyDeletedCount: legacyCount };
+      });
       console.log(`[BROKER-SYNC] Deleted ${deletedCount} synced trades for connection ${id} (user ${userId}); legacy=${legacyDeletedCount}`);
 
       if (deletedCount > 0) {
@@ -809,6 +1077,25 @@ const brokerSyncController = {
       logger.logError('Error deleting broker trades:', error);
       next(error);
     }
+  },
+
+  async listExcludedTrades(req, res, next) {
+    try {
+      const exclusions = await BrokerTradeExclusions.list(req.user.id);
+      res.json({ exclusions: exclusions.map(({ executions, ...entry }) => entry) });
+    } catch (error) { next(error); }
+  },
+
+  async restoreExcludedTrade(req, res, next) {
+    try {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+        return res.status(400).json({ error: 'Invalid excluded trade ID' });
+      }
+      if (!await BrokerTradeExclusions.restore(req.user.id, req.params.id)) {
+        return res.status(404).json({ error: 'Excluded trade not found' });
+      }
+      res.json({ success: true });
+    } catch (error) { next(error); }
   }
 };
 

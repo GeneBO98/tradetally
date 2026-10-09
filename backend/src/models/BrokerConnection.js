@@ -5,6 +5,45 @@
 
 const db = require('../config/database');
 const encryptionService = require('../services/brokerSync/encryptionService');
+const { toSnakeCase } = require('../utils/caseConvert');
+const { localToUTC } = require('../utils/timezone');
+
+function getZonedDateTimeParts(date, timezone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date);
+
+  const value = (type) => Number(parts.find(part => part.type === type)?.value);
+  return {
+    year: value('year'),
+    month: value('month'),
+    day: value('day'),
+    hour: value('hour') === 24 ? 0 : value('hour'),
+    minute: value('minute'),
+    second: value('second')
+  };
+}
+
+function addCalendarDays({ year, month, day }, days) {
+  const result = new Date(Date.UTC(year, month - 1, day + days));
+  return {
+    year: result.getUTCFullYear(),
+    month: result.getUTCMonth() + 1,
+    day: result.getUTCDate()
+  };
+}
+
+function formatNaiveDateTime(date, hour, minute, second) {
+  const pad = value => String(value).padStart(2, '0');
+  return `${date.year}-${pad(date.month)}-${pad(date.day)}T${pad(hour)}:${pad(minute)}:${pad(second)}`;
+}
 
 // pg-types parses PostgreSQL DATE columns via `new Date(y, m, d)` (server-local
 // midnight). Letting JSON serialize that Date via toISOString() shifts the
@@ -34,7 +73,10 @@ class BrokerConnection {
       schwabAccessToken,
       schwabRefreshToken,
       schwabTokenExpiresAt,
+      schwabRefreshTokenExpiresAt,
       schwabAccountId,
+      trading212ApiKey,
+      trading212ApiSecret,
       oauthAccessToken,
       oauthRefreshToken,
       oauthTokenExpiresAt,
@@ -55,6 +97,8 @@ class BrokerConnection {
     const encryptedIbkrToken = ibkrFlexToken ? encryptionService.encrypt(ibkrFlexToken) : null;
     const encryptedSchwabAccess = schwabAccessToken ? encryptionService.encrypt(schwabAccessToken) : null;
     const encryptedSchwabRefresh = schwabRefreshToken ? encryptionService.encrypt(schwabRefreshToken) : null;
+    const encryptedTrading212ApiKey = trading212ApiKey ? encryptionService.encrypt(trading212ApiKey) : null;
+    const encryptedTrading212ApiSecret = trading212ApiSecret ? encryptionService.encrypt(trading212ApiSecret) : null;
     const encryptedOAuthAccess = oauthAccessToken ? encryptionService.encrypt(oauthAccessToken) : null;
     const encryptedOAuthRefresh = oauthRefreshToken ? encryptionService.encrypt(oauthRefreshToken) : null;
 
@@ -92,15 +136,44 @@ class BrokerConnection {
       query = `
         INSERT INTO broker_connections (
           user_id, broker_type, connection_status,
-          schwab_access_token, schwab_refresh_token, schwab_token_expires_at, schwab_account_id,
-          account_label, auto_sync_enabled, sync_frequency, sync_time, sync_start_date
+          schwab_access_token, schwab_refresh_token, schwab_token_expires_at,
+          schwab_refresh_token_expires_at, schwab_account_id,
+          broker_metadata, account_label, auto_sync_enabled, sync_frequency, sync_time, sync_start_date
         )
-        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         ON CONFLICT (user_id) WHERE broker_type = 'schwab' DO UPDATE SET
           schwab_access_token = EXCLUDED.schwab_access_token,
           schwab_refresh_token = EXCLUDED.schwab_refresh_token,
           schwab_token_expires_at = EXCLUDED.schwab_token_expires_at,
+          schwab_refresh_token_expires_at = EXCLUDED.schwab_refresh_token_expires_at,
+          schwab_reauth_reminder_sent_at = NULL,
           schwab_account_id = EXCLUDED.schwab_account_id,
+          broker_metadata = COALESCE(broker_connections.broker_metadata, '{}'::jsonb) || EXCLUDED.broker_metadata,
+          connection_status = 'pending',
+          consecutive_failures = 0,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+      `;
+      params = [
+        userId, brokerType, encryptedSchwabAccess, encryptedSchwabRefresh,
+        schwabTokenExpiresAt, schwabRefreshTokenExpiresAt, schwabAccountId,
+        JSON.stringify(brokerMetadata || {}), accountLabel,
+        autoSyncEnabled, syncFrequency, syncTime, syncStartDate
+      ];
+    } else if (brokerType === 'trading212') {
+      query = `
+        INSERT INTO broker_connections (
+          user_id, broker_type, connection_status,
+          trading212_api_key, trading212_api_secret, external_account_id,
+          broker_environment, broker_metadata, account_label,
+          auto_sync_enabled, sync_frequency, sync_time, sync_start_date
+        )
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (user_id, (COALESCE(broker_environment, 'live'))) WHERE broker_type = 'trading212' DO UPDATE SET
+          trading212_api_key = EXCLUDED.trading212_api_key,
+          trading212_api_secret = EXCLUDED.trading212_api_secret,
+          external_account_id = EXCLUDED.external_account_id,
+          broker_metadata = EXCLUDED.broker_metadata,
           account_label = EXCLUDED.account_label,
           auto_sync_enabled = EXCLUDED.auto_sync_enabled,
           sync_frequency = EXCLUDED.sync_frequency,
@@ -112,9 +185,10 @@ class BrokerConnection {
         RETURNING *
       `;
       params = [
-        userId, brokerType, encryptedSchwabAccess, encryptedSchwabRefresh,
-        schwabTokenExpiresAt, schwabAccountId, accountLabel,
-        autoSyncEnabled, syncFrequency, syncTime, syncStartDate
+        userId, brokerType, encryptedTrading212ApiKey, encryptedTrading212ApiSecret,
+        externalAccountId || null, brokerEnvironment || 'live',
+        JSON.stringify(brokerMetadata || {}), accountLabel, autoSyncEnabled,
+        syncFrequency, syncTime, syncStartDate
       ];
     } else {
       query = `
@@ -295,19 +369,81 @@ class BrokerConnection {
   }
 
   /**
+   * Atomically claim active Schwab connections entering their final 24 hours.
+   * The claim prevents duplicate reminders across scheduler instances.
+   */
+  static async claimDueSchwabReauthReminders() {
+    const query = `
+      UPDATE broker_connections
+      SET schwab_reauth_reminder_sent_at = CURRENT_TIMESTAMP
+      WHERE broker_type = 'schwab'
+        AND connection_status = 'active'
+        AND schwab_refresh_token_expires_at > CURRENT_TIMESTAMP
+        AND schwab_refresh_token_expires_at <= CURRENT_TIMESTAMP + INTERVAL '24 hours'
+        AND schwab_reauth_reminder_sent_at IS NULL
+      RETURNING *
+    `;
+
+    const result = await db.query(query);
+    return result.rows.map(row => this.formatConnection(row, false));
+  }
+
+  static async releaseSchwabReauthReminder(connectionId) {
+    await db.query(
+      `UPDATE broker_connections
+       SET schwab_reauth_reminder_sent_at = NULL
+       WHERE id = $1
+         AND broker_type = 'schwab'
+         AND connection_status = 'active'`,
+      [connectionId]
+    );
+  }
+
+  /**
    * Update connection status
    */
-  static async updateStatus(connectionId, status, message = null) {
+  static async updateStatus(connectionId, status, message = null, resetFailures = false) {
     const query = `
       UPDATE broker_connections
       SET connection_status = $2,
           last_sync_message = COALESCE($3, last_sync_message),
+          consecutive_failures = CASE WHEN $4 THEN 0 ELSE consecutive_failures END,
+          last_error_at = CASE WHEN $4 THEN NULL ELSE last_error_at END,
+          last_error_message = CASE WHEN $4 THEN NULL ELSE last_error_message END,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
       RETURNING *
     `;
 
-    const result = await db.query(query, [connectionId, status, message]);
+    const result = await db.query(query, [connectionId, status, message, resetFailures]);
+    if (result.rows.length === 0) return null;
+
+    return this.formatConnection(result.rows[0], false);
+  }
+
+  /**
+   * Mark a connection as requiring interactive reauthorization.
+   *
+   * The status predicate makes this an atomic state transition: concurrent
+   * token refresh failures can race, but only the first caller receives a row
+   * and sends user notifications. Reconnecting changes the status back to
+   * active, so a future expiration can notify again.
+   */
+  static async markReauthRequired(connectionId, message) {
+    const query = `
+      UPDATE broker_connections
+      SET connection_status = 'expired',
+          last_sync_status = 'failed',
+          last_sync_message = $2,
+          last_error_at = CURRENT_TIMESTAMP,
+          last_error_message = $2,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+        AND connection_status <> 'expired'
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [connectionId, message]);
     if (result.rows.length === 0) return null;
 
     return this.formatConnection(result.rows[0], false);
@@ -316,12 +452,13 @@ class BrokerConnection {
   /**
    * Update connection after successful sync
    */
-  static async updateAfterSync(connectionId, tradesImported, tradesSkipped, nextSync = null) {
+  static async updateAfterSync(connectionId, tradesImported, tradesSkipped, nextSync = null, options = {}) {
+    const advanceLastSync = options.advanceLastSync !== false;
     const query = `
       UPDATE broker_connections
       SET connection_status = 'active',
-          last_sync_at = CURRENT_TIMESTAMP,
-          last_sync_status = 'success',
+          last_sync_at = CASE WHEN $5 THEN CURRENT_TIMESTAMP ELSE last_sync_at END,
+          last_sync_status = CASE WHEN $5 THEN 'success' ELSE 'warning' END,
           last_sync_trades_imported = $2,
           last_sync_trades_skipped = $3,
           next_scheduled_sync = $4,
@@ -333,7 +470,7 @@ class BrokerConnection {
       RETURNING *
     `;
 
-    const result = await db.query(query, [connectionId, tradesImported, tradesSkipped, nextSync]);
+    const result = await db.query(query, [connectionId, tradesImported, tradesSkipped, nextSync, advanceLastSync]);
     if (result.rows.length === 0) return null;
 
     return this.formatConnection(result.rows[0], false);
@@ -350,10 +487,11 @@ class BrokerConnection {
   static async scheduleTransientRetry(connectionId, delayMinutes = 30) {
     const query = `
       UPDATE broker_connections
-      SET next_scheduled_sync = LEAST(
-            COALESCE(next_scheduled_sync, NOW() + ($2 || ' minutes')::interval),
-            NOW() + ($2 || ' minutes')::interval
-          ),
+      SET next_scheduled_sync = CASE
+            WHEN next_scheduled_sync IS NULL OR next_scheduled_sync <= NOW()
+              THEN NOW() + ($2 || ' minutes')::interval
+            ELSE LEAST(next_scheduled_sync, NOW() + ($2 || ' minutes')::interval)
+          END,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
         AND auto_sync_enabled = true
@@ -393,13 +531,13 @@ class BrokerConnection {
    * Update connection settings
    */
   static async update(connectionId, updates) {
-    const allowedFields = ['auto_sync_enabled', 'sync_frequency', 'sync_time', 'sync_start_date', 'account_label'];
+    const allowedFields = ['auto_sync_enabled', 'sync_frequency', 'sync_time', 'sync_start_date', 'account_label', 'next_scheduled_sync'];
     const setClauses = [];
     const values = [];
     let paramCount = 1;
 
     for (const [key, value] of Object.entries(updates)) {
-      const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      const snakeKey = toSnakeCase(key);
       if (allowedFields.includes(snakeKey)) {
         setClauses.push(`${snakeKey} = $${paramCount}`);
         values.push(value);
@@ -419,6 +557,24 @@ class BrokerConnection {
     `;
 
     const result = await db.query(query, values);
+    if (result.rows.length === 0) return null;
+
+    return this.formatConnection(result.rows[0], false);
+  }
+
+  /**
+   * Merge broker-specific public settings into the connection metadata.
+   */
+  static async updateBrokerMetadata(connectionId, metadata) {
+    const query = `
+      UPDATE broker_connections
+      SET broker_metadata = COALESCE(broker_metadata, '{}'::jsonb) || $2::jsonb,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [connectionId, JSON.stringify(metadata || {})]);
     if (result.rows.length === 0) return null;
 
     return this.formatConnection(result.rows[0], false);
@@ -504,8 +660,9 @@ class BrokerConnection {
   /**
    * Calculate next scheduled sync time based on frequency
    * Supported frequencies: manual, hourly, every_4_hours, every_6_hours, every_12_hours, daily
+   * Daily times are interpreted in the supplied IANA timezone.
    */
-  static calculateNextSync(syncFrequency, syncTime) {
+  static calculateNextSync(syncFrequency, syncTime, timezone = process.env.TZ || 'UTC') {
     if (syncFrequency === 'manual') return null;
 
     const now = new Date();
@@ -550,14 +707,49 @@ class BrokerConnection {
       }
       case 'daily':
       default: {
-        // Daily sync at specific time
-        const [hours, minutes] = syncTime.split(':').map(Number);
-        const next = new Date(now);
-        next.setHours(hours, minutes, 0, 0);
-        // If the time has passed today, schedule for tomorrow
-        if (next <= now) {
-          next.setDate(next.getDate() + 1);
+        // Interpret the configured clock time in the user's timezone, then
+        // persist the resulting instant as UTC in next_scheduled_sync.
+        const timeMatch = String(syncTime || '').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (!timeMatch) {
+          throw new Error(`Invalid broker sync time: ${syncTime}`);
         }
+
+        const hours = Number(timeMatch[1]);
+        const minutes = Number(timeMatch[2]);
+        const seconds = Number(timeMatch[3] || 0);
+        if (hours > 23 || minutes > 59 || seconds > 59) {
+          throw new Error(`Invalid broker sync time: ${syncTime}`);
+        }
+
+        let resolvedTimezone = timezone || 'UTC';
+        let localNow;
+        try {
+          localNow = getZonedDateTimeParts(now, resolvedTimezone);
+        } catch (error) {
+          console.warn(`[BROKER-SYNC] Invalid user timezone "${resolvedTimezone}"; scheduling in UTC`);
+          resolvedTimezone = 'UTC';
+          localNow = getZonedDateTimeParts(now, resolvedTimezone);
+        }
+
+        const targetSeconds = (hours * 60 * 60) + (minutes * 60) + seconds;
+        const currentSeconds = (localNow.hour * 60 * 60) + (localNow.minute * 60) + localNow.second;
+        const daysToAdd = targetSeconds <= currentSeconds ? 1 : 0;
+        let targetDate = addCalendarDays(localNow, daysToAdd);
+        let next = new Date(localToUTC(
+          formatNaiveDateTime(targetDate, hours, minutes, seconds),
+          resolvedTimezone
+        ));
+
+        // Guard unusual DST transitions and ambiguous wall-clock times. The
+        // next scheduled instant must always be in the future.
+        if (next <= now) {
+          targetDate = addCalendarDays(targetDate, 1);
+          next = new Date(localToUTC(
+            formatNaiveDateTime(targetDate, hours, minutes, seconds),
+            resolvedTimezone
+          ));
+        }
+
         return next;
       }
     }
@@ -601,8 +793,16 @@ class BrokerConnection {
         connection.ibkrFlexToken = encryptionService.decrypt(row.ibkr_flex_token);
       }
     } else if (row.broker_type === 'schwab') {
+      const brokerMetadata = row.broker_metadata || {};
       connection.schwabAccountId = row.schwab_account_id;
       connection.schwabTokenExpiresAt = row.schwab_token_expires_at;
+      connection.schwab_refresh_token_expires_at = row.schwab_refresh_token_expires_at;
+      connection.schwab_accounts = Array.isArray(brokerMetadata.schwab_accounts)
+        ? brokerMetadata.schwab_accounts
+        : [];
+      connection.excluded_account_identifiers = Array.isArray(brokerMetadata.excluded_account_identifiers)
+        ? brokerMetadata.excluded_account_identifiers
+        : [];
       // Only include decrypted tokens if explicitly requested
       if (includeCredentials) {
         if (row.schwab_access_token) {
@@ -610,6 +810,18 @@ class BrokerConnection {
         }
         if (row.schwab_refresh_token) {
           connection.schwabRefreshToken = encryptionService.decrypt(row.schwab_refresh_token);
+        }
+      }
+    } else if (row.broker_type === 'trading212') {
+      connection.externalAccountId = row.external_account_id;
+      connection.brokerEnvironment = row.broker_environment || 'live';
+      connection.brokerMetadata = row.broker_metadata || {};
+      if (includeCredentials) {
+        if (row.trading212_api_key) {
+          connection.trading212ApiKey = encryptionService.decrypt(row.trading212_api_key);
+        }
+        if (row.trading212_api_secret) {
+          connection.trading212ApiSecret = encryptionService.decrypt(row.trading212_api_secret);
         }
       }
     } else if (['tradestation', 'alpaca', 'webull'].includes(row.broker_type)) {

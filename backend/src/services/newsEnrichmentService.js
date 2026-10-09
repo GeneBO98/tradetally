@@ -506,6 +506,16 @@ class NewsEnrichmentService {
       endDate = null
     } = options;
 
+    const normalizedBatchSize = Number(batchSize);
+    const normalizedMaxTrades = maxTrades == null ? null : Number(maxTrades);
+    if (!Number.isInteger(normalizedBatchSize) || normalizedBatchSize < 1 || normalizedBatchSize > 100) {
+      throw new Error('batchSize must be an integer between 1 and 100');
+    }
+    if (normalizedMaxTrades != null &&
+        (!Number.isInteger(normalizedMaxTrades) || normalizedMaxTrades < 1 || normalizedMaxTrades > 10000)) {
+      throw new Error('maxTrades must be an integer between 1 and 10000');
+    }
+
     if (this.isProcessing) {
       logger.logImport('News backfill already in progress');
       return;
@@ -541,12 +551,19 @@ class NewsEnrichmentService {
         paramCount++;
       }
 
+      let limitClause = '';
+      if (normalizedMaxTrades != null) {
+        limitClause = `LIMIT $${paramCount}`;
+        params.push(normalizedMaxTrades);
+        paramCount++;
+      }
+
       const tradesQuery = `
         SELECT id, symbol, underlying_symbol, instrument_type, trade_date, user_id
         FROM trades 
         ${whereClause}
         ORDER BY trade_date DESC, symbol
-        ${maxTrades ? `LIMIT ${maxTrades}` : ''}
+        ${limitClause}
       `;
 
       const tradesResult = await db.query(tradesQuery, params);
@@ -582,10 +599,10 @@ class NewsEnrichmentService {
       let processed = 0;
       let enriched = 0;
 
-      for (let i = 0; i < uniqueSymbolDates.length; i += batchSize) {
-        const batch = uniqueSymbolDates.slice(i, i + batchSize);
+      for (let i = 0; i < uniqueSymbolDates.length; i += normalizedBatchSize) {
+        const batch = uniqueSymbolDates.slice(i, i + normalizedBatchSize);
         
-        logger.logImport(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(uniqueSymbolDates.length / batchSize)} (${batch.length} items)`);
+        logger.logImport(`Processing batch ${Math.floor(i / normalizedBatchSize) + 1}/${Math.ceil(uniqueSymbolDates.length / normalizedBatchSize)} (${batch.length} items)`);
 
         for (const item of batch) {
           try {
@@ -644,7 +661,7 @@ class NewsEnrichmentService {
         }
 
         // Longer pause between batches
-        if (i + batchSize < uniqueSymbolDates.length) {
+        if (i + normalizedBatchSize < uniqueSymbolDates.length) {
           logger.logImport(`Batch complete. Waiting 5 seconds before next batch...`);
           await new Promise(resolve => setTimeout(resolve, 5000));
         }
@@ -662,7 +679,7 @@ class NewsEnrichmentService {
   /**
    * Get news enrichment statistics
    */
-  async getStats() {
+  async getStats(userId, includeGlobal = false) {
     try {
       const statsQuery = `
         SELECT 
@@ -672,6 +689,7 @@ class NewsEnrichmentService {
           COUNT(*) FILTER (WHERE news_checked_at IS NOT NULL) as trades_checked
         FROM trades 
         WHERE exit_time IS NOT NULL AND exit_price IS NOT NULL
+          AND ($1::boolean = true OR user_id = $2)
       `;
 
       const cacheStatsQuery = `
@@ -683,14 +701,12 @@ class NewsEnrichmentService {
         FROM news_cache
       `;
 
-      const [statsResult, cacheResult] = await Promise.all([
-        db.query(statsQuery),
-        db.query(cacheStatsQuery)
-      ]);
+      const statsResult = await db.query(statsQuery, [includeGlobal, userId]);
+      const cacheResult = includeGlobal ? await db.query(cacheStatsQuery) : null;
 
       return {
         trades: statsResult.rows[0],
-        cache: cacheResult.rows[0],
+        ...(cacheResult ? { cache: cacheResult.rows[0] } : {}),
         isProcessing: this.isProcessing
       };
 

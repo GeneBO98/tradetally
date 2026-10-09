@@ -1,0 +1,395 @@
+jest.mock('../../src/config/database', () => ({
+  query: jest.fn(),
+  pool: { connect: jest.fn() }
+}));
+
+jest.mock('../../src/models/User', () => ({
+  getSettings: jest.fn(),
+  createSettings: jest.fn(),
+  updateSettings: jest.fn()
+}));
+
+jest.mock('../../src/models/Trade', () => ({}));
+
+jest.mock('../../src/services/adminSettings', () => ({
+  updateDefaultAISettings: jest.fn(),
+  updateDefaultCusipAISettings: jest.fn()
+}));
+
+jest.mock('../../src/utils/urlSecurity', () => ({
+  validateAiProviderUrl: jest.fn()
+}));
+
+jest.mock('../../src/services/brokerSync/encryptionService', () => ({
+  isEncrypted: jest.fn(() => false),
+  encrypt: jest.fn(value => value)
+}));
+
+jest.mock('../../src/services/pnlEngine', () => ({ computeTradePnl: jest.fn() }));
+jest.mock('../../src/services/analyticsCache', () => ({ invalidate: jest.fn() }));
+jest.mock('../../src/services/settingsCache', () => ({ invalidate: jest.fn() }));
+jest.mock('../../src/services/optionStrategyGroupingService', () => ({}));
+
+const User = require('../../src/models/User');
+const adminSettingsService = require('../../src/services/adminSettings');
+const { validateAiProviderUrl } = require('../../src/utils/urlSecurity');
+const settingsController = require('../../src/controllers/settings.controller');
+
+function createResponse() {
+  const res = {
+    status: jest.fn(),
+    json: jest.fn()
+  };
+  res.status.mockReturnValue(res);
+  return res;
+}
+
+describe('AI provider settings', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    validateAiProviderUrl.mockResolvedValue(new URL('https://provider.example/v1'));
+    adminSettingsService.updateDefaultAISettings.mockResolvedValue(true);
+    adminSettingsService.updateDefaultCusipAISettings.mockResolvedValue(true);
+  });
+
+  test('saves user Custom settings without requiring an API key', async () => {
+    User.updateSettings.mockResolvedValue({
+      ai_provider: 'custom',
+      ai_api_key: null,
+      ai_api_url: 'https://provider.example/v1',
+      ai_model: 'hosted-model'
+    });
+    const req = {
+      user: { id: 'user-1' },
+      body: {
+        aiProvider: 'custom',
+        aiApiKey: '',
+        aiApiUrl: 'https://provider.example/v1',
+        aiModel: 'hosted-model'
+      }
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await settingsController.updateAIProviderSettings(req, res, next);
+
+    expect(validateAiProviderUrl).toHaveBeenCalledWith('custom', 'https://provider.example/v1');
+    expect(User.updateSettings).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      ai_provider: 'custom',
+      ai_api_url: 'https://provider.example/v1',
+      ai_model: 'hosted-model',
+      ai_api_key: ''
+    }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ aiProvider: 'custom' }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [{ aiApiUrl: '', aiModel: 'hosted-model' }, 'API URL is required for custom'],
+    [{ aiApiUrl: 'https://provider.example/v1', aiModel: '' }, 'Model is required for custom']
+  ])('rejects incomplete user Custom settings', async (overrides, message) => {
+    const req = {
+      user: { id: 'user-1' },
+      body: {
+        aiProvider: 'custom',
+        aiApiKey: '',
+        aiApiUrl: 'https://provider.example/v1',
+        aiModel: 'hosted-model',
+        ...overrides
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAIProviderSettings(req, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: message });
+    expect(User.updateSettings).not.toHaveBeenCalled();
+  });
+
+  test('saves Custom CUSIP settings without an API key', async () => {
+    User.updateSettings.mockResolvedValue({
+      cusip_ai_provider: 'custom',
+      cusip_ai_api_key: null,
+      cusip_ai_api_url: 'https://provider.example/v1',
+      cusip_ai_model: 'cusip-model'
+    });
+    const req = {
+      user: { id: 'user-1' },
+      body: {
+        cusipAiProvider: 'custom',
+        cusipAiApiKey: '',
+        cusipAiApiUrl: 'https://provider.example/v1',
+        cusipAiModel: 'cusip-model',
+        useMainProvider: false
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateCusipAIProviderSettings(req, res, jest.fn());
+
+    expect(User.updateSettings).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      cusip_ai_provider: 'custom',
+      cusip_ai_model: 'cusip-model'
+    }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ cusipAiProvider: 'custom' }));
+  });
+
+  test('accepts Custom admin defaults and a Custom classifier without API keys', async () => {
+    const req = {
+      user: { role: 'admin' },
+      body: {
+        aiProvider: 'custom',
+        aiApiKey: '',
+        aiApiUrl: 'https://provider.example/v1',
+        aiModel: 'work-model',
+        aiClassifierEnabled: true,
+        aiClassifierProvider: 'custom',
+        aiClassifierApiKey: '',
+        aiClassifierApiUrl: 'https://classifier.example/v1',
+        aiClassifierModel: 'checking-model'
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAdminAISettings(req, res, jest.fn());
+
+    expect(adminSettingsService.updateDefaultAISettings).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'custom',
+      apiUrl: 'https://provider.example/v1',
+      model: 'work-model',
+      classifierProvider: 'custom',
+      classifierApiUrl: 'https://classifier.example/v1',
+      classifierModel: 'checking-model'
+    }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ aiProvider: 'custom' }));
+  });
+
+  test('saves Custom admin CUSIP defaults without an API key', async () => {
+    const req = {
+      user: { role: 'admin' },
+      body: {
+        cusipAiProvider: 'custom',
+        cusipAiApiKey: '',
+        cusipAiApiUrl: 'https://provider.example/v1',
+        cusipAiModel: 'cusip-model',
+        useMainProvider: false
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAdminCusipAISettings(req, res, jest.fn());
+
+    expect(adminSettingsService.updateDefaultCusipAISettings).toHaveBeenCalledWith({
+      provider: 'custom',
+      apiKey: '',
+      apiUrl: 'https://provider.example/v1',
+      model: 'cusip-model'
+    });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ cusipAiProvider: 'custom' }));
+  });
+
+  test('preserves a user API key when only the model changes', async () => {
+    User.updateSettings.mockResolvedValue({
+      ai_provider: 'openai',
+      ai_api_key: 'stored-key',
+      ai_api_url: '',
+      ai_model: 'new-model'
+    });
+    const req = {
+      user: { id: 'user-1' },
+      body: {
+        aiProvider: 'openai',
+        aiApiKey: '***',
+        aiApiUrl: '',
+        aiModel: 'new-model'
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAIProviderSettings(req, res, jest.fn());
+
+    expect(User.updateSettings).toHaveBeenCalledWith('user-1', {
+      ai_provider: 'openai',
+      ai_api_url: '',
+      ai_model: 'new-model'
+    });
+  });
+
+  test('preserves a user CUSIP API key when only the model changes', async () => {
+    User.updateSettings.mockResolvedValue({
+      cusip_ai_provider: 'openai',
+      cusip_ai_api_key: 'stored-key',
+      cusip_ai_api_url: '',
+      cusip_ai_model: 'new-model'
+    });
+    const req = {
+      user: { id: 'user-1' },
+      body: {
+        cusipAiProvider: 'openai',
+        cusipAiApiKey: '***',
+        cusipAiApiUrl: '',
+        cusipAiModel: 'new-model',
+        useMainProvider: false
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateCusipAIProviderSettings(req, res, jest.fn());
+
+    expect(User.updateSettings).toHaveBeenCalledWith('user-1', {
+      cusip_ai_provider: 'openai',
+      cusip_ai_api_url: '',
+      cusip_ai_model: 'new-model'
+    });
+  });
+
+  test('preserves the admin API key when only the model changes', async () => {
+    const req = {
+      user: { role: 'admin' },
+      body: {
+        aiProvider: 'openai',
+        aiApiKey: '***',
+        aiApiUrl: '',
+        aiModel: 'new-model',
+        aiClassifierEnabled: false,
+        aiClassifierProvider: '',
+        aiClassifierApiKey: '',
+        aiClassifierApiUrl: '',
+        aiClassifierModel: ''
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAdminAISettings(req, res, jest.fn());
+
+    expect(adminSettingsService.updateDefaultAISettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'openai',
+        apiKey: undefined,
+        model: 'new-model'
+      })
+    );
+  });
+
+  test('preserves the admin CUSIP API key when only the model changes', async () => {
+    const req = {
+      user: { role: 'admin' },
+      body: {
+        cusipAiProvider: 'openai',
+        cusipAiApiKey: '***',
+        cusipAiApiUrl: '',
+        cusipAiModel: 'new-model',
+        useMainProvider: false
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAdminCusipAISettings(req, res, jest.fn());
+
+    expect(adminSettingsService.updateDefaultCusipAISettings).toHaveBeenCalledWith({
+      provider: 'openai',
+      apiKey: undefined,
+      apiUrl: '',
+      model: 'new-model'
+    });
+  });
+
+  test.each(['codex_cli', 'claude_cli'])('accepts %s admin defaults without a key or URL', async provider => {
+    const req = {
+      user: { role: 'admin' },
+      body: {
+        aiProvider: provider,
+        aiApiKey: '',
+        aiApiUrl: '',
+        aiModel: '',
+        aiClassifierEnabled: true,
+        aiClassifierProvider: provider,
+        aiClassifierApiKey: '',
+        aiClassifierApiUrl: '',
+        aiClassifierModel: ''
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAdminAISettings(req, res, jest.fn());
+
+    expect(adminSettingsService.updateDefaultAISettings).toHaveBeenCalledWith(expect.objectContaining({
+      provider,
+      apiKey: '',
+      apiUrl: '',
+      classifierProvider: provider,
+      classifierApiKey: '',
+      classifierApiUrl: ''
+    }));
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  test('allows an admin to select a CLI provider for personal analysis', async () => {
+    User.updateSettings.mockResolvedValue({
+      ai_provider: 'codex_cli',
+      ai_api_key: null,
+      ai_api_url: null,
+      ai_model: null
+    });
+    const req = {
+      user: { id: 'admin-1', role: 'admin' },
+      body: {
+        aiProvider: 'codex_cli',
+        aiApiKey: '',
+        aiApiUrl: '',
+        aiModel: ''
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAIProviderSettings(req, res, jest.fn());
+
+    expect(User.updateSettings).toHaveBeenCalledWith('admin-1', expect.objectContaining({
+      ai_provider: 'codex_cli'
+    }));
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  test('prevents regular users from selecting backend-host CLI credentials', async () => {
+    const req = {
+      user: { id: 'user-1', role: 'user' },
+      body: {
+        aiProvider: 'claude_cli',
+        aiApiKey: '',
+        aiApiUrl: '',
+        aiModel: ''
+      }
+    };
+    const res = createResponse();
+
+    await settingsController.updateAIProviderSettings(req, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(User.updateSettings).not.toHaveBeenCalled();
+  });
+
+});
+
+
+describe('personal AI analysis settings', () => {
+  beforeEach(() => { jest.clearAllMocks(); User.getSettings.mockResolvedValue({ ai_analysis_instructions: 'Original' }); });
+  test('returns only the authenticated user preference in snake_case', async () => {
+    const res = createResponse();
+    await settingsController.getAIAnalysisSettings({ user: { id: 'owner' } }, res, jest.fn());
+    expect(User.getSettings).toHaveBeenCalledWith('owner');
+    expect(res.json).toHaveBeenCalledWith({ ai_analysis_instructions: 'Original' });
+  });
+  test.each(['Yellow support; purple resistance.', ''])('saves and clears personal instructions: %s', async value => {
+    const res = createResponse();
+    await settingsController.updateAIAnalysisSettings({ user: { id: 'owner' }, body: { ai_analysis_instructions: value } }, res, jest.fn());
+    expect(User.updateSettings).toHaveBeenCalledWith('owner', { ai_analysis_instructions: value });
+    expect(res.json).toHaveBeenCalledWith({ ai_analysis_instructions: value });
+  });
+  test.each([null, 123, {}, 'x'.repeat(6001)])('rejects invalid instructions before persistence', async value => {
+    const res = createResponse();
+    await settingsController.updateAIAnalysisSettings({ user: { id: 'owner' }, body: { ai_analysis_instructions: value } }, res, jest.fn());
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(User.updateSettings).not.toHaveBeenCalled();
+  });
+});

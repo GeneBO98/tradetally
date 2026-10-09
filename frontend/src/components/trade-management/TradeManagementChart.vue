@@ -135,6 +135,7 @@ const priceWarnings = ref([])  // Warnings about unreachable TP/SL
 const takeProfitAchievable = ref(null)  // null = no TP set, true = achievable, false = not achievable
 let chart = null
 let candleSeries = null
+let candleMarkers = null
 
 async function loadChart() {
   if (loading.value) return
@@ -336,8 +337,11 @@ function createChart() {
     },
   })
 
+  // Bound to the series that was just removed, so addTradeMarkers must build a new one.
+  candleMarkers = null
+
   // Create candlestick series - using softer, more muted colors
-  candleSeries = chart.addCandlestickSeries({
+  candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
     upColor: '#059669',      // emerald-600
     downColor: '#dc2626',    // red-600
     borderUpColor: '#059669',
@@ -517,7 +521,11 @@ function addTradeMarkers(candles) {
   if (markers.length > 0) {
     // Sort markers by time to ensure proper rendering
     markers.sort((a, b) => a.time - b.time)
-    candleSeries.setMarkers(markers)
+    if (!candleMarkers) {
+      candleMarkers = LightweightCharts.createSeriesMarkers(candleSeries, markers)
+    } else {
+      candleMarkers.setMarkers(markers)
+    }
     console.log('[CHART] Set', markers.length, 'trade markers')
   }
 

@@ -4,16 +4,19 @@
  */
 
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
+const { convertForDisplay } = require('../utils/displayCurrency');
 const Trade = require('../models/Trade');
 const User = require('../models/User');
 const TradeQueries = require('../services/tradeQueries');
+const AnalyticsCache = require('../services/analyticsCache');
 const logger = require('../utils/logger');
 const TargetHitAnalysisService = require('../services/targetHitAnalysisService');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
-const ensureString = require('../utils/ensureString');
+const { parseTradeFilters, tradeFilterProfiles } = require('../utils/tradeFilters');
 const { uuidv4 } = require('../utils/uuid');
-const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
-const { POSITION_GROUP_KEY } = require('../utils/positionGrouping');
+const { getBreakevenToleranceConfig, breakevenPredicate, isBreakevenGrossPnl } = require('../utils/breakeven');
+const { POSITION_GROUP_KEY, brokerageOrderSql, hasBrokerageOrder } = require('../utils/positionGrouping');
 
 /**
  * Parse a Trade Management request's query params into a filter spec for
@@ -22,45 +25,7 @@ const { POSITION_GROUP_KEY } = require('../utils/positionGrouping');
  * (limit/offset are handled separately by each endpoint.)
  */
 function parseTradeManagementFilters(query = {}) {
-  const {
-    startDate, endDate, symbol, symbolExact, sector, strategy, tags,
-    strategies, setups, sectors,
-    side, minPrice, maxPrice, minQuantity, maxQuantity,
-    status, minPnl, maxPnl, pnlType, broker, brokers, importId, accounts, hasNews,
-    holdTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
-  } = query;
-
-  return {
-    startDate: startDate || undefined,
-    endDate: endDate || undefined,
-    symbol: ensureString(symbol) || undefined,
-    symbolExact: symbolExact === 'true',
-    sector: sector || undefined,
-    strategy: strategy || undefined,
-    tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
-    strategies: strategies ? ensureString(strategies).split(',') : undefined,
-    setups: setups ? ensureString(setups).split(',') : undefined,
-    sectors: sectors ? ensureString(sectors).split(',') : undefined,
-    side: side || undefined,
-    minPrice,
-    maxPrice,
-    minQuantity,
-    maxQuantity,
-    status: status || undefined,
-    minPnl,
-    maxPnl,
-    pnlType: pnlType || undefined,
-    broker: broker || undefined,
-    brokers: brokers || undefined,
-    importId: importId || undefined,
-    accounts: accounts ? ensureString(accounts).split(',') : undefined,
-    hasNews,
-    holdTime: holdTime || undefined,
-    daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
-    instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
-    optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
-    qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined
-  };
+  return parseTradeFilters(query, tradeFilterProfiles.tradeManagement);
 }
 
 function inferInstrumentType(trade) {
@@ -77,7 +42,7 @@ function roundR(value) {
 
 // Per-unit dollar multiplier for a trade (1 share for stocks, contract_size for
 // options, point_value for futures). Mirrors the inline resolution below; used
-// to express a fixed dollar risk as a per-share value (#345).
+// to express the configured dollar-risk fallback as a per-share value.
 function instrumentMultiplier(trade) {
   const instrumentType = inferInstrumentType(trade);
   if (instrumentType === 'future') {
@@ -96,8 +61,10 @@ function instrumentMultiplier(trade) {
   return 1;
 }
 
-// Returns the user's fixed dollar risk per trade when they use dollar-based
-// default stops, else null. Used to switch R's risk unit to dollars (#345).
+// Returns the user's configured default dollar risk, else null. Trade
+// Management uses this only as a fallback when the current stop cannot define
+// a positive price-based risk (for example, after a stop is trailed through
+// breakeven). A valid stored stop always takes precedence.
 async function getUserDollarRisk(userId) {
   const { dollarRisk } = await getTradeManagementPreferences(userId);
   return dollarRisk;
@@ -124,9 +91,7 @@ async function getTradeManagementPreferences(userId) {
   return preferences;
 }
 
-// For fixed-dollar-risk users, R's risk unit is a constant dollar amount, so the
-// per-share risk is that amount spread across the position. Returns null unless
-// the user is in dollar mode with a positive risk (#345).
+// Express the configured dollar-risk fallback as a per-share value.
 function dollarRiskPerShare(trade, dollarRisk) {
   if (!dollarRisk || dollarRisk <= 0) return null;
   const qty = parseFloat(trade.quantity);
@@ -144,11 +109,11 @@ function dollarRiskPerShare(trade, dollarRisk) {
 function calculateRMultiples(trade, options = {}) {
   const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side, pnl, quantity, manual_target_hit_first, instrument_type, contract_size, point_value, risk_level_history } = trade;
 
-  // Fixed-dollar-risk users (#345): R's risk unit is a constant dollar amount,
-  // not the stored stop distance. dollarRiskUnit is the equivalent per-share
-  // risk; when set it replaces (entry - stop) everywhere below so actual, target,
-  // weighted, and management R all reconcile to net P&L / dollar risk.
-  const dollarRisk = options.dollarRisk && options.dollarRisk > 0 ? options.dollarRisk : null;
+  // The configured dollar amount is a default, not an override. A valid stored
+  // stop is the trade-specific source of truth; the default is retained only as
+  // a fallback for stops that no longer define positive risk (such as a stop
+  // trailed beyond entry).
+  const configuredDollarRisk = options.dollarRisk && options.dollarRisk > 0 ? options.dollarRisk : null;
 
   // Cap potential R at 10R to prevent unrealistic values from distorting charts
   const MAX_POTENTIAL_R = 10;
@@ -212,10 +177,19 @@ function calculateRMultiples(trade, options = {}) {
   
   logger.debug('[R-CALC] Parsed prices:', { entryPrice, exitPrice, stopLoss, instrument_type: instrument_type || 'stock' });
 
-  // Per-share risk for dollar-mode users; null otherwise (price-based risk used).
+  const priceBasedRisk = side === 'long'
+    ? entryPrice - stopLoss
+    : stopLoss - entryPrice;
+  const dollarRisk = priceBasedRisk > 0 ? null : configuredDollarRisk;
   const dollarRiskUnit = dollarRisk ? dollarRiskPerShare(trade, dollarRisk) : null;
   if (dollarRiskUnit) {
-    logger.debug('[R-CALC] Using fixed dollar risk unit:', { dollarRisk, dollarRiskUnit });
+    logger.debug('[R-CALC] Current stop has no positive risk; using configured dollar-risk fallback:', {
+      priceBasedRisk,
+      dollarRisk,
+      dollarRiskUnit
+    });
+  } else {
+    logger.debug('[R-CALC] Using current stop for risk:', { priceBasedRisk });
   }
 
   // Determine the take profit price to use for single-target analysis
@@ -319,7 +293,7 @@ function calculateRMultiples(trade, options = {}) {
 
   logger.debug('[R-CALC] ========== R-Value Calculation ==========');
   if (side === 'long') {
-    // For long positions: risk is entry - stop loss (or the fixed dollar risk unit)
+    // For long positions: risk is entry - stop loss (or the dollar fallback)
     risk = dollarRiskUnit ?? (entryPrice - stopLoss);
     logger.debug('[R-CALC] LONG trade - risk per share:', risk);
 
@@ -359,7 +333,7 @@ function calculateRMultiples(trade, options = {}) {
       }
     }
   } else {
-    // For short positions: risk is stop loss - entry (or the fixed dollar risk unit)
+    // For short positions: risk is stop loss - entry (or the dollar fallback)
     risk = dollarRiskUnit ?? (stopLoss - entryPrice);
     logger.debug('[R-CALC] SHORT trade - risk per share:', risk);
 
@@ -485,9 +459,8 @@ function calculateRMultiples(trade, options = {}) {
     tradeQuantity = 1;
   }
 
-  // Dollar-mode: the risk amount IS the fixed dollar risk, so actual R becomes
-  // net P&L / dollar risk. Keep the instrument multiplier from the block above so
-  // dollar amounts (actual/target P&L) stay in real dollars.
+  // When the current stop is invalid, the configured dollar default is the
+  // fallback risk amount. Otherwise use the amount calculated from the stop.
   const riskAmount = dollarRisk
     ? dollarRisk
     : (calculatedRiskAmount && calculatedRiskAmount > 0
@@ -577,7 +550,7 @@ function calculateRMultiples(trade, options = {}) {
       (symbol && /^(MES|ES|MNQ|NQ|MYM|YM|M2K|RTY|MGC|GC|MCL|CL|SI|HG)/i.test(symbol));
 
     // For futures detected by symbol but with wrong instrument_type, recalculate riskAmount
-    // (skipped in dollar mode, where the risk amount is the fixed dollar risk).
+    // (skipped when using the configured dollar-risk fallback).
     let effectiveRiskAmount = riskAmount;
     if (!dollarRisk && isFutures && instrumentType !== 'future') {
       // Recalculate with correct futures multiplier
@@ -694,6 +667,7 @@ function calculateRMultiples(trade, options = {}) {
     // Dollar amounts
     risk_per_share: Math.round(risk * 100) / 100,
     risk_amount: Math.round(riskAmount * 100) / 100,
+    risk_basis: dollarRisk ? 'default_dollar' : 'current_stop',
     actual_pl_per_share: Math.round(actualPL * 100) / 100,
     actual_pl_amount: pnl !== null && pnl !== undefined ? parseFloat(pnl) : Math.round(actualPLAmount * 100) / 100,
     target_pl_per_share: targetPL !== undefined ? Math.round(targetPL * 100) / 100 : null,
@@ -881,7 +855,7 @@ function calculateTradeR(trade) {
   return result;
 }
 
-function buildRPerformanceGroups(rows, groupByPosition) {
+function buildRPerformanceGroups(rows, groupByPosition, breakevenConfig) {
   if (!groupByPosition) {
     return rows.map(row => ({
       id: row.id,
@@ -903,6 +877,7 @@ function buildRPerformanceGroups(rows, groupByPosition) {
         symbol: row.position_symbol || row.underlying_symbol || row.symbol,
         trade_date: row.trade_date,
         pnl: 0,
+        gross_pnl: 0,
         is_breakeven: false,
         position_legs: []
       });
@@ -910,14 +885,22 @@ function buildRPerformanceGroups(rows, groupByPosition) {
 
     const group = groupsByKey.get(groupKey);
     group.pnl += parseFloat(row.pnl) || 0;
+    group.gross_pnl +=
+      (parseFloat(row.pnl) || 0) +
+      (parseFloat(row.commission) || 0) +
+      (parseFloat(row.fees) || 0);
     group.position_legs.push(row);
   });
 
   return Array.from(groupsByKey.values()).map(group => ({
     ...group,
     pnl: Math.round(group.pnl * 100) / 100,
-    // Grouped positions use the same net-P&L breakeven rule as dashboard whole-trade analytics.
-    is_breakeven: Math.round(group.pnl * 100) / 100 === 0
+    gross_pnl: Math.round(group.gross_pnl * 100) / 100,
+    // Tick mode preserves the historical exact-net grouped rule. Dollar mode
+    // applies the configured range to the combined position's gross P&L.
+    is_breakeven: breakevenConfig?.mode === 'dollars'
+      ? isBreakevenGrossPnl(group.gross_pnl, breakevenConfig)
+      : Math.round(group.pnl * 100) / 100 === 0
   }));
 }
 
@@ -938,12 +921,18 @@ function parseTradeJsonFields(row) {
   return trade;
 }
 
-// The position's 1R unit for combined R values. Dollar-mode users (#345) risk
-// the fixed dollar amount per position, so combined R stays SUM(pnl)/risk like
-// the dashboard aggregate; otherwise 1R is the total planned dollar risk across
-// the analyzed legs.
+// The position's 1R unit for combined R values. Valid stop-derived leg risks
+// take precedence. If every leg had to use the configured dollar fallback,
+// preserve the one-fixed-risk-unit-per-position behavior from issue #345.
 function positionRiskAmount(analyses, dollarRisk) {
-  if (dollarRisk && dollarRisk > 0) return dollarRisk;
+  if (
+    dollarRisk &&
+    dollarRisk > 0 &&
+    analyses.length > 0 &&
+    analyses.every(analysis => analysis.risk_basis === 'default_dollar')
+  ) {
+    return dollarRisk;
+  }
   return analyses.reduce((sum, a) => sum + (Number(a.risk_amount) || 0), 0);
 }
 
@@ -953,7 +942,7 @@ function positionRiskAmount(analyses, dollarRisk) {
 // outcome. Summing raw leg Rs instead let a small-risk leg dominate: a losing
 // bull put spread whose hedge leg risked a few dollars reported a positive
 // combined Actual R next to a negative combined P&L (issue #359 follow-up).
-// For dollar-mode users every leg's risk amount IS the position risk unit, so
+// When every leg uses the single configured dollar fallback for the position,
 // this reduces to the plain sum of leg Rs.
 function combinePositionR(parts, positionRisk) {
   if (parts.length === 0) return null;
@@ -1120,6 +1109,9 @@ function combineLegAnalyses(analyzableEntries, allLegs, dollarRisk = null) {
     planned_pl_amount: null,
     risk_per_share: null,
     risk_amount: riskAmount,
+    risk_basis: analyses.every(a => a.risk_basis === 'default_dollar')
+      ? 'default_dollar'
+      : 'current_stop',
     actual_pl_per_share: null,
     actual_pl_amount: actualPlAmount,
     target_pl_per_share: null,
@@ -1287,9 +1279,16 @@ const tradeManagementController = {
         const groupedQuery = `
           WITH base AS (
             SELECT
-              t.id, t.symbol, t.trade_date, t.entry_time, t.exit_time, t.entry_price, t.exit_price,
-              t.quantity, t.side, t.pnl, t.pnl_percent,
-              t.stop_loss, t.take_profit, t.r_value,
+              t.id, t.symbol, t.trade_date, t.entry_time, t.exit_time,
+              ${fxUsd('entry_price', 't')} AS entry_price,
+              ${fxUsd('exit_price', 't')} AS exit_price,
+              t.quantity, t.side,
+              -- Legs of one position can be summed below, so normalize first.
+              ${fxUsd('pnl', 't')} AS pnl,
+              t.pnl_percent,
+              ${fxUsd('stop_loss', 't')} AS stop_loss,
+              ${fxUsd('take_profit', 't')} AS take_profit,
+              t.r_value,
               t.strategy, t.broker, t.instrument_type,
               t.manual_target_hit_first, t.target_hit_analysis,
               ${POSITION_GROUP_KEY} AS position_group_key,
@@ -1370,7 +1369,7 @@ const tradeManagementController = {
 
         const total = parseInt(countResult.rows[0].total);
 
-        return res.json({
+        return res.json(await convertForDisplay(req, {
           trades,
           position_grouping: true,
           pagination: {
@@ -1379,7 +1378,7 @@ const tradeManagementController = {
             offset,
             has_more: offset + trades.length < total
           }
-        });
+        }, { clone: false }));
       }
 
       // numbered_trades numbers the SAME filtered set the R-Performance chart
@@ -1434,7 +1433,7 @@ const tradeManagementController = {
       const countResult = await db.query(countQuery, values);
       const total = parseInt(countResult.rows[0].total);
 
-      res.json({
+      res.json(await convertForDisplay(req, {
         trades,
         position_grouping: false,
         pagination: {
@@ -1443,7 +1442,7 @@ const tradeManagementController = {
           offset,
           has_more: offset + trades.length < total
         }
-      });
+      }, { clone: false }));
     } catch (error) {
       logger.error('Error fetching trades for selection:', error);
       res.status(500).json({ error: 'Failed to fetch trades' });
@@ -1485,10 +1484,11 @@ const tradeManagementController = {
         if (trade.position_group_id) {
           groupCondition = (idx) => `t.position_group_id = $${idx}`;
           groupParams.push(trade.position_group_id);
-        } else if (trade.entry_time) {
+        } else if (trade.entry_time && !hasBrokerageOrder(trade)) {
           // Mirrors POSITION_GROUP_KEY's fallback key. A trade with no group id
           // and no entry_time keys on its own id and can never have siblings.
           groupCondition = (idx) => `t.position_group_id IS NULL
+             AND NOT ${brokerageOrderSql('t')}
              AND COALESCE(t.account_identifier, '') = $${idx}
              AND COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol) = $${idx + 1}
              AND t.entry_time = $${idx + 2}`;
@@ -1879,10 +1879,11 @@ const tradeManagementController = {
       const updateResult = await db.query(updateQuery, values);
       const updatedTrade = updateResult.rows[0];
 
-      // Recalculate R-value if we have stop loss and exit price
-      // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
-      if (updatedTrade.stop_loss && updatedTrade.exit_price) {
-        const rValue = Trade.calculateRValue(
+      // Recalculate derived R fields after any level change. Persist null when
+      // the inputs no longer support the calculation so removing a stop does
+      // not leave a stale R value behind.
+      const rValue = updatedTrade.stop_loss && updatedTrade.exit_price
+        ? Trade.calculateRValue(
           parseFloat(updatedTrade.entry_price),
           parseFloat(updatedTrade.stop_loss),
           parseFloat(updatedTrade.exit_price),
@@ -1897,27 +1898,22 @@ const tradeManagementController = {
             symbol: updatedTrade.symbol,
             underlyingAsset: updatedTrade.underlying_asset
           }
-        );
-
-        if (rValue !== null) {
-          await db.query(
-            `UPDATE trades SET r_value = $1 WHERE id = $2`,
-            [rValue, tradeId]
-          );
-          updatedTrade.r_value = rValue;
-        }
-      }
+        )
+        : null;
 
       // Calculate and store management R
       const dollarRisk = await getUserDollarRisk(userId);
       const managementR = TargetHitAnalysisService.calculateManagementR(updatedTrade, { dollarRisk });
-      if (managementR !== null) {
-        await db.query(
-          `UPDATE trades SET management_r = $1 WHERE id = $2`,
-          [managementR, tradeId]
-        );
-        updatedTrade.management_r = managementR;
-      }
+      await db.query(
+        `UPDATE trades
+         SET r_value = $1, management_r = $2
+         WHERE id = $3 AND user_id = $4`,
+        [rValue, managementR, tradeId, userId]
+      );
+      updatedTrade.r_value = rValue;
+      updatedTrade.management_r = managementR;
+
+      await AnalyticsCache.invalidate(userId);
 
       logger.info(`[TRADE-MANAGEMENT] Updated trade ${tradeId} levels for user ${userId}`);
 
@@ -1952,7 +1948,7 @@ const tradeManagementController = {
       const { whereClause, values, paramCount } = await TradeQueries._buildWhereClause(userId, filterSpec);
 
       // Classify break-even with the SAME tolerance-aware predicate the dashboard
-      // analytics use (gross P&L within the user's configured tick tolerance),
+      // analytics use (gross P&L within the user's configured tolerance),
       // not the naive actual_r == 0. Otherwise a small win inside the tolerance
       // band counts as a win here but as break-even on the dashboard, so the W/L/BE
       // splits disagree for the same filtered trades (issue #351).
@@ -2010,7 +2006,11 @@ const tradeManagementController = {
       const chartData = [];
       const tradeDetails = [];
 
-      const performanceRows = buildRPerformanceGroups(result.rows.map(parseTradeJsonFields), groupByPosition);
+      const performanceRows = buildRPerformanceGroups(
+        result.rows.map(parseTradeJsonFields),
+        groupByPosition,
+        breakevenConfig
+      );
 
       performanceRows.forEach((performanceTrade) => {
         const legResults = [];
@@ -2229,6 +2229,7 @@ const tradeManagementController = {
         `UPDATE trades SET target_hit_analysis = $1 WHERE id = $2`,
         [JSON.stringify(analysisResult), tradeId]
       );
+      await AnalyticsCache.invalidate(userId);
 
       res.json(analysisResult);
     } catch (error) {
@@ -2360,6 +2361,7 @@ const tradeManagementController = {
       const updateResult = await db.query(updateQuery, updateValues);
 
       const updatedTrade = updateResult.rows[0];
+      await AnalyticsCache.invalidate(userId);
       logger.debug('[MANUAL-TARGET] Update successful:', {
         id: updatedTrade.id,
         manual_target_hit_first: updatedTrade.manual_target_hit_first,

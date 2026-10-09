@@ -1,4 +1,5 @@
 const Playbook = require('../models/Playbook');
+const { convertForDisplay } = require('../utils/displayCurrency');
 const PlaybookAdherenceService = require('../services/playbookAdherence.service');
 const AchievementService = require('../services/achievementService');
 
@@ -217,7 +218,7 @@ const playbookController = {
       const { accounts } = req.query;
       const accountsArray = accounts ? String(accounts).split(',').filter(Boolean) : undefined;
       const analytics = await Playbook.getAnalytics(req.user.id, accountsArray);
-      res.json(analytics);
+      res.json(await convertForDisplay(req, analytics, { clone: false }));
     } catch (error) {
       next(error);
     }

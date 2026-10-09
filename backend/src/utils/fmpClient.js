@@ -4,6 +4,9 @@ const historicalPriceCache = require('./historicalPriceCache');
 const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
 const { FinnhubPriority, FinnhubRequestScheduler } = require('./finnhubScheduler');
+const { localToUTC } = require('./timezone');
+const { CRYPTO_SYMBOLS, CRYPTO_TO_COINGECKO } = require('./cryptoAssets');
+const { parseForexPair } = require('./forexSymbols');
 
 class UnsupportedMarketDataError extends Error {
   constructor(feature) {
@@ -46,8 +49,20 @@ function unixSeconds(dateLike) {
   return Math.floor(new Date(dateLike).getTime() / 1000);
 }
 
+function fmpIntradayUnixSeconds(dateLike) {
+  if (typeof dateLike === 'number') return unixSeconds(dateLike);
+  const easternTimestamp = localToUTC(String(dateLike).replace(' ', 'T'), 'America/New_York');
+  return unixSeconds(easternTimestamp);
+}
+
 function normalizePeriod(frequency) {
   return frequency === 'quarterly' ? 'quarter' : 'annual';
+}
+
+function normalizeFmpStockSymbol(symbol) {
+  const normalizedSymbol = String(symbol || '').trim().toUpperCase();
+  const exchangeQualifiedMatch = normalizedSymbol.match(/^[^:]+:(.+)$/);
+  return exchangeQualifiedMatch ? exchangeQualifiedMatch[1] : normalizedSymbol;
 }
 
 class FmpClient {
@@ -120,19 +135,31 @@ class FmpClient {
       return response.data;
     };
 
-    try {
-      return await this.scheduler.schedule(executeRequest, requestContext);
-    } catch (error) {
-      if (error.code && String(error.code).startsWith('FINNHUB_SCHEDULER_')) {
+    const MAX_RATE_LIMIT_RETRIES = 2;
+    let rateLimitRetries = 0;
+
+    while (true) {
+      try {
+        return await this.scheduler.schedule(executeRequest, requestContext);
+      } catch (error) {
+        if (error.code && String(error.code).startsWith('FINNHUB_SCHEDULER_')) {
+          throw error;
+        }
+        if (error.response) {
+          // A 429 puts the scheduler into cooldown; re-queue the request and
+          // let the scheduler pace the retry once the provider window clears.
+          if (error.response.status === 429 && rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
+            rateLimitRetries++;
+            console.warn(`[FMP] 429 on ${endpoint}, re-queueing (retry ${rateLimitRetries}/${MAX_RATE_LIMIT_RETRIES})`);
+            continue;
+          }
+          if (error.response.status === 429) {
+            throw new Error(`FMP API rate limit exceeded: ${error.response.status}`);
+          }
+          throw new Error(`FMP API error: ${error.response.status} - ${error.response.data?.error || error.response.statusText || 'Unknown error'}`);
+        }
         throw error;
       }
-      if (error.response) {
-        if (error.response.status === 429) {
-          throw new Error(`FMP API rate limit exceeded: ${error.response.status}`);
-        }
-        throw new Error(`FMP API error: ${error.response.status} - ${error.response.data?.error || error.response.statusText || 'Unknown error'}`);
-      }
-      throw error;
     }
   }
 
@@ -380,7 +407,13 @@ class FmpClient {
     const normalizedContext = this.normalizeUserContext(userIdOrOptions, options);
     const userId = normalizedContext.userId;
     const requestOptions = normalizedContext.options;
-    const symbolUpper = symbol.toUpperCase();
+    // TradingView imports can preserve exchange-qualified stock symbols such as
+    // NASDAQ:DEVS. FMP expects only the provider ticker (DEVS) in candle calls.
+    const symbolUpper = normalizeFmpStockSymbol(symbol);
+
+    if (!symbolUpper) {
+      throw new Error('A symbol is required to get candle data');
+    }
 
     if (userId) {
       const userTier = await TierService.getUserTier(userId);
@@ -394,7 +427,8 @@ class FmpClient {
       }
     }
 
-    const cacheKey = `fmp_${symbolUpper}_${resolution}_${from}_${to}`;
+    // v2 timestamps are true UTC epochs derived from FMP's Eastern wall clock.
+    const cacheKey = `fmp_v2_${symbolUpper}_${resolution}_${from}_${to}`;
     const cached = await cache.get('stock_candles', cacheKey);
     if (cached) return cached;
 
@@ -413,8 +447,11 @@ class FmpClient {
     });
 
     const rows = Array.isArray(data) ? data : (data?.historical || []);
+    const isDaily = endpoint === '/historical-price-eod/full';
     const candles = rows.map(row => ({
-      time: unixSeconds(row.date || row.label),
+      time: isDaily
+        ? unixSeconds(row.date || row.label)
+        : fmpIntradayUnixSeconds(row.date || row.label),
       open: asNumber(row.open),
       high: asNumber(row.high),
       low: asNumber(row.low),
@@ -443,19 +480,84 @@ class FmpClient {
     return this.getStockCandles(symbol, resolution, from, to, userIdOrOptions, options);
   }
 
-  async getTradeChartData(symbol, entryDate, exitDate = null, userId = null) {
+  async getTradeChartData(symbol, entryDate, exitDate = null, userId = null, requestedResolution = '1') {
+    const intervals = {
+      '1': '1min',
+      '5': '5min',
+      '15': '15min',
+      '60': '1hour',
+      D: 'daily'
+    };
+    const resolution = Object.hasOwn(intervals, requestedResolution) ? requestedResolution : '1';
     const entryTime = new Date(entryDate);
     const entryDateUTC = new Date(entryTime.toISOString().split('T')[0] + 'T00:00:00.000Z');
-    const chartFromTime = new Date(entryDateUTC.getTime() + 9 * 60 * 60 * 1000);
-    const chartToTime = new Date(entryDateUTC.getTime() + 25 * 60 * 60 * 1000);
+    const exitTime = exitDate ? new Date(exitDate) : entryTime;
+    const chartFromTime = resolution === 'D'
+      ? new Date(entryDateUTC.getTime() - 30 * 24 * 60 * 60 * 1000)
+      : new Date(entryDateUTC.getTime() + 9 * 60 * 60 * 1000);
+    const chartToTime = resolution === 'D'
+      ? new Date(Math.max(entryTime.getTime(), exitTime.getTime()) + 10 * 24 * 60 * 60 * 1000)
+      : new Date(entryDateUTC.getTime() + 25 * 60 * 60 * 1000);
     const fromTimestamp = Math.floor(chartFromTime.getTime() / 1000);
     const toTimestamp = Math.floor(chartToTime.getTime() / 1000);
-    const candles = await this.getStockCandles(symbol, '1', fromTimestamp, toTimestamp, userId);
+    const candles = await this.getStockCandles(symbol, resolution, fromTimestamp, toTimestamp, userId);
     return {
-      type: 'intraday',
-      interval: '1min',
+      type: resolution === 'D' ? 'daily' : 'intraday',
+      interval: intervals[resolution],
       candles,
       source: 'fmp'
+    };
+  }
+
+  async getForexTradeChartData(symbol, entryDate, exitDate = null, userId = null, requestedResolution = '1') {
+    const providerSymbol = parseForexPair(symbol).pair;
+    const chartData = await this.getTradeChartData(providerSymbol, entryDate, exitDate, userId, requestedResolution);
+    return { ...chartData, chart_symbol: providerSymbol };
+  }
+
+  /**
+   * FMP exposes continuous commodity/futures charts through symbols such as
+   * GCUSD. Keep this provider-specific mapping here so futures roots are never
+   * sent to an equity endpoint as ambiguous tickers such as ES or CL.
+   */
+  async getFuturesTradeChartData(root, trade, userId = null, requestedResolution = '1') {
+    const providerSymbol = `${String(root).trim().toUpperCase()}USD`;
+    const entryTime = new Date(trade.entry_time || trade.trade_date);
+    const exitTime = trade.exit_time ? new Date(trade.exit_time) : entryTime;
+    const resolution = Object.hasOwn({ '1': true, '5': true, '15': true, '60': true, D: true }, requestedResolution)
+      ? requestedResolution
+      : '1';
+    const intervals = {
+      '1': '1min',
+      '5': '5min',
+      '15': '15min',
+      '60': '1hour',
+      D: 'daily'
+    };
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const chartFromTime = resolution === 'D'
+      ? new Date(entryTime.getTime() - 30 * oneDayMs)
+      : new Date(entryTime.getTime() - 12 * 60 * 60 * 1000);
+    const chartToTime = resolution === 'D'
+      ? new Date(Math.min(Date.now(), Math.max(entryTime.getTime(), exitTime.getTime()) + 10 * oneDayMs))
+      : new Date(Math.min(Date.now(), entryTime.getTime() + 12 * 60 * 60 * 1000));
+    const candles = await this.getStockCandles(
+      providerSymbol,
+      resolution,
+      Math.floor(chartFromTime.getTime() / 1000),
+      Math.floor(chartToTime.getTime() / 1000),
+      userId
+    );
+
+    return {
+      type: resolution === 'D' ? 'daily' : 'intraday',
+      interval: intervals[resolution],
+      candles,
+      source: 'fmp',
+      symbol: trade.symbol,
+      chart_symbol: providerSymbol,
+      futures_continuous: true,
+      available_resolutions: ['1', '5', '15', '60', 'D']
     };
   }
 
@@ -520,8 +622,8 @@ class FmpClient {
   async getStockSplits(symbol, from, to, options = {}) {
     if (!this.apiKey) return [];
     const symbolUpper = symbol.toUpperCase();
-    const cacheKey = `fmp_stock_splits_${symbolUpper}_${from}_${to}`;
-    const cached = await cache.get(cacheKey);
+    const cacheKey = `fmp_${symbolUpper}_${from}_${to}`;
+    const cached = await cache.get('stock_splits', cacheKey);
     if (cached) return cached;
 
     const data = await this.makeRequest('/splits', { symbol: symbolUpper, from, to }, {
@@ -537,7 +639,7 @@ class FmpClient {
       toFactor: asNumber(row.denominator ?? row.toFactor),
       ratio: row.ratio || null
     }));
-    await cache.set(cacheKey, splits, 86400);
+    await cache.set('stock_splits', cacheKey, splits, 24 * 60 * 60 * 1000);
     return splits;
   }
 
@@ -578,7 +680,9 @@ class FmpClient {
     const row = (data?.historical || data || [])[0];
     const rate = asNumber(row?.close ?? row?.price);
     if (!rate) throw new Error(`No forex rate available for ${baseUpper}/${targetUpper} on ${formattedDate}`);
-    await cache.set('forex_rates', cacheKey, rate);
+    // Explicit TTL: the value is numeric, so the 3-arg form would be misread
+    // as a direct-key set with a TTL
+    await cache.set('forex_rates', cacheKey, rate, 24 * 60 * 60 * 1000);
     return rate;
   }
 
@@ -619,6 +723,7 @@ class FmpClient {
       ebit: asNumber(row.ebit),
       ebitda: asNumber(row.ebitda),
       eps: asNumber(row.eps),
+      currency: (row.reportedCurrency || 'USD').toUpperCase(),
       sharesOutstanding: asNumber(row.weightedAverageShsOut ?? row.weightedAverageSharesOutstanding),
       sharesBasic: asNumber(row.weightedAverageShsOut),
       sharesDiluted: asNumber(row.weightedAverageShsOutDil)
@@ -824,16 +929,8 @@ class FmpClient {
   }
 }
 
-FmpClient.CRYPTO_SYMBOLS = [
-  'BTC', 'ETH', 'XRP', 'LTC', 'BCH', 'ADA', 'DOT', 'LINK', 'XLM', 'DOGE',
-  'UNI', 'USDT', 'USDC', 'BNB', 'SOL', 'AVAX', 'MATIC', 'ATOM', 'FIL', 'TRX',
-  'ETC', 'XMR', 'ALGO', 'VET', 'THETA', 'AAVE', 'EOS', 'MKR', 'COMP',
-  'SHIB', 'CRO', 'DAI', 'WBTC', 'LDO', 'APT', 'ARB', 'OP', 'NEAR', 'ICP',
-  'APE', 'GRT', 'FTM', 'SAND', 'MANA', 'AXS', 'EGLD', 'QNT', 'HBAR', 'CHZ',
-  'FLOW', 'XTZ', 'NEO', 'PEPE', 'SUI'
-];
-
-FmpClient.CRYPTO_TO_COINGECKO = require('./finnhubClient').constructor.CRYPTO_TO_COINGECKO;
+FmpClient.CRYPTO_SYMBOLS = CRYPTO_SYMBOLS;
+FmpClient.CRYPTO_TO_COINGECKO = CRYPTO_TO_COINGECKO;
 FmpClient.prototype.isCryptoSymbol = require('./finnhubClient').isCryptoSymbol.bind(require('./finnhubClient'));
 FmpClient.prototype.getCryptoQuote = require('./finnhubClient').getCryptoQuote.bind(require('./finnhubClient'));
 FmpClient.prototype.getCryptoProfile = require('./finnhubClient').getCryptoProfile.bind(require('./finnhubClient'));

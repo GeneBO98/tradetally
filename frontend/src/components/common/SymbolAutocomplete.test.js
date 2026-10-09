@@ -76,6 +76,33 @@ describe('SymbolAutocomplete', () => {
     expect(wrapper.emitted('select')[0]).toEqual([suggestion])
   })
 
+  it('identifies crypto suggestions', async () => {
+    vi.useFakeTimers()
+    api.get.mockResolvedValueOnce({
+      data: {
+        results: [{
+          symbol: 'BTC',
+          company_name: 'Bitcoin',
+          source: 'crypto',
+          asset_type: 'crypto'
+        }]
+      }
+    })
+
+    const wrapper = mount(SymbolAutocomplete, {
+      props: { modelValue: '' }
+    })
+
+    await wrapper.get('input').trigger('focus')
+    await wrapper.get('input').setValue('bitcoin')
+    await vi.advanceTimersByTimeAsync(300)
+    await nextTick()
+
+    expect(wrapper.text()).toContain('BTC')
+    expect(wrapper.text()).toContain('Bitcoin')
+    expect(wrapper.text()).toContain('Crypto')
+  })
+
   it('clears suggestions after a failed search', async () => {
     vi.useFakeTimers()
     api.get.mockRejectedValueOnce(new Error('Network failed'))

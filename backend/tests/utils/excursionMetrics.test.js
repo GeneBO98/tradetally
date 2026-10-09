@@ -121,4 +121,29 @@ describe('excursionMetrics', () => {
     expect(metrics.outcome).toBe('scratch');
     expect(metrics.is_winner).toBe(false);
   });
+
+  test('classifies a small stock win as scratch using dollar tolerance', () => {
+    const trade = {
+      symbol: 'AAPL',
+      instrument_type: 'stock',
+      side: 'long',
+      entry_price: 100,
+      exit_price: 100.08,
+      quantity: 100,
+      pnl: 6,
+      commission: 2,
+      fees: 0,
+      executions: []
+    };
+
+    const metrics = buildExcursionMetrics(trade, 500, {
+      mode: 'dollars',
+      default: 10,
+      byUnderlying: {}
+    });
+
+    expect(metrics.gross_pnl).toBe(8);
+    expect(metrics.outcome).toBe('scratch');
+    expect(metrics.is_winner).toBe(false);
+  });
 });

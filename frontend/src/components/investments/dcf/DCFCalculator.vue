@@ -256,6 +256,7 @@
         scenario="Bear"
         :fair-value="results.fair_value_low"
         :current-price="currentPrice"
+        :currency="currency"
         :margin-of-safety="results.margin_of_safety_low"
         :current-price-return="results.current_price_return_low"
       />
@@ -263,6 +264,7 @@
         scenario="Base"
         :fair-value="results.fair_value_medium"
         :current-price="currentPrice"
+        :currency="currency"
         :margin-of-safety="results.margin_of_safety_medium"
         :current-price-return="results.current_price_return_medium"
       />
@@ -270,6 +272,7 @@
         scenario="Bull"
         :fair-value="results.fair_value_high"
         :current-price="currentPrice"
+        :currency="currency"
         :margin-of-safety="results.margin_of_safety_high"
         :current-price-return="results.current_price_return_high"
       />
@@ -311,6 +314,10 @@
 import { ref, computed, watch } from 'vue'
 import DCFResultCard from './DCFResultCard.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatPercent as formatPercentBase } from '@/utils/formatters'
+
+const { formatCurrency } = useCurrencyFormatter()
 
 const props = defineProps({
   metrics: {
@@ -332,6 +339,10 @@ const props = defineProps({
   autoSave: {
     type: Boolean,
     default: false
+  },
+  currency: {
+    type: String,
+    default: ''
   }
 })
 
@@ -365,22 +376,12 @@ const awaitingAutoSave = ref(false)
 
 // Helper functions
 function formatPercent(value) {
-  if (value === null || value === undefined) return '-'
-  return `${(value * 100).toFixed(1)}%`
+  return formatPercentBase(value, { digits: 1, multiplier: 100 })
 }
 
 function formatRatio(value) {
   if (value === null || value === undefined) return '-'
   return `${value.toFixed(1)}x`
-}
-
-function formatCurrency(value) {
-  if (value === null || value === undefined) return '-'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(value)
 }
 
 // Reset inputs when metrics change (new symbol selected)

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const tradeController = require('../controllers/trade.controller');
-const { authenticate, optionalAuth } = require('../middleware/auth');
+const { authenticate, optionalAuth, requireAdmin } = require('../middleware/auth');
 const { flexibleAuth, flexibleOptionalAuth, requireApiScope } = require('../middleware/apiKeyAuth');
 const { validate, schemas } = require('../middleware/validation');
 const multer = require('multer');
@@ -27,14 +27,14 @@ const upload = multer({
     });
 
     const name = file.originalname.toLowerCase();
-    // Trust the .csv extension — browsers/OSes report CSVs with many mimetypes
-    // (text/csv, application/csv, application/vnd.ms-excel, text/plain, application/octet-stream).
-    const isCsv = name.endsWith('.csv');
+    // Trust supported export extensions — browsers/OSes report delimited and
+    // Sierra Chart files with many different mimetypes.
+    const isTradeExport = /\.(csv|txt|data)$/.test(name);
     const isImage = /\.(jpe?g|png|gif)$/.test(name) && /^image\//.test(file.mimetype);
 
-    console.log('File validation:', { isCsv, isImage, actualMimetype: file.mimetype });
+    console.log('File validation:', { isTradeExport, isImage, actualMimetype: file.mimetype });
 
-    if (isCsv || isImage) {
+    if (isTradeExport || isImage) {
       return cb(null, true);
     }
     console.log('File rejected - invalid type');
@@ -213,7 +213,7 @@ router.post('/', flexibleAuth, requireApiScope('trades:write'), validate(schemas
  *                 enum: [long, short]
  *               instrumentType:
  *                 type: string
- *                 enum: [stock, option, future, crypto]
+ *                 enum: [stock, option, future, crypto, forex]
  *                 default: stock
  *               broker:
  *                 type: string
@@ -344,6 +344,26 @@ router.post('/force-complete-enrichment', authenticate, tradeController.forceCom
  *         description: Open positions with current quotes
  */
 router.get('/open-positions-quotes', authenticate, tradeController.getOpenPositionsWithQuotes);
+
+/**
+ * @swagger
+ * /api/trades/open-positions-ranges:
+ *   get:
+ *     summary: Get 52-week high/low for open position symbols
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: symbols
+ *         schema:
+ *           type: string
+ *         description: Comma-separated symbols (max 50)
+ *     responses:
+ *       200:
+ *         description: Map of symbol to { week_52_high, week_52_low } or null
+ */
+router.get('/open-positions-ranges', authenticate, tradeController.getOpenPositionRanges);
 
 /**
  * @swagger
@@ -481,7 +501,7 @@ router.get('/accounts', authenticate, tradeController.getAccountList);
  *               file:
  *                 type: string
  *                 format: binary
- *                 description: CSV file containing trades
+ *                 description: Broker trade export file containing trades
  *     responses:
  *       200:
  *         description: Import started successfully
@@ -506,7 +526,7 @@ router.get('/import/requirements', authenticate, tradeController.checkImportRequ
  * /api/trades/import/validate:
  *   post:
  *     summary: Validate import file before importing
- *     description: Pre-validates a CSV file to detect broker format mismatch and provide file analysis
+ *     description: Pre-validates a broker export file to detect format mismatch and provide file analysis
  *     tags: [Trades]
  *     security:
  *       - bearerAuth: []
@@ -520,7 +540,7 @@ router.get('/import/requirements', authenticate, tradeController.checkImportRequ
  *               file:
  *                 type: string
  *                 format: binary
- *                 description: CSV file to validate
+ *                 description: Broker trade export file to validate
  *               broker:
  *                 type: string
  *                 description: User-selected broker format
@@ -546,6 +566,7 @@ router.get('/import/requirements', authenticate, tradeController.checkImportRequ
  *                   type: integer
  */
 router.post('/import/validate', authenticate, importLimiter, upload.single('file'), tradeController.validateImportFile);
+router.post('/import/analyze-accounts', authenticate, importLimiter, upload.single('file'), tradeController.analyzeImportAccounts);
 
 router.post('/import', authenticate, importLimiter, upload.single('file'), tradeController.importTrades);
 router.post('/import/manual-review', authenticate, importLimiter, tradeController.resolveManualReviewTrades);
@@ -604,8 +625,8 @@ router.get('/import/history', authenticate, tradeController.getImportHistory);
  */
 router.delete('/import/bulk', authenticate, importLimiter, tradeController.bulkDeleteImports);
 router.delete('/import/:importId', authenticate, importLimiter, tradeController.deleteImport);
-router.get('/import/logs', authenticate, tradeController.getImportLogs);
-router.get('/import/logs/:filename', authenticate, tradeController.getLogFile);
+router.get('/import/logs', authenticate, requireAdmin, tradeController.getImportLogs);
+router.get('/import/logs/:filename', authenticate, requireAdmin, tradeController.getLogFile);
 router.get('/cusip/resolution-status', authenticate, tradeController.getCusipResolutionStatus);
 router.get('/cusip/:cusip', authenticate, tradeController.lookupCusip);
 router.post('/cusip', authenticate, tradeController.addCusipMapping);
@@ -659,6 +680,9 @@ router.post('/cusip/resolve-unresolved', authenticate, tradeController.resolveUn
  *                         type: string
  */
 router.delete('/bulk', authenticate, tradeController.bulkDeleteTrades);
+router.patch('/bulk', authenticate, tradeController.bulkUpdateMetadata);
+router.patch('/bulk/stops', authenticate, tradeController.bulkUpdateStops);
+router.post('/bulk/stops/preview', authenticate, tradeController.previewBulkStops);
 
 /**
  * @swagger

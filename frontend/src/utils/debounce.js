@@ -1,3 +1,5 @@
+import { ref, watchEffect } from 'vue'
+
 /**
  * Creates a debounced version of a function that delays invoking until after
  * the specified wait milliseconds have elapsed since the last time it was invoked.
@@ -14,7 +16,6 @@ export function debounce(func, wait, options = {}) {
   let timeout
   let lastArgs
   let lastThis
-  let lastCallTime
   let result
 
   function invokeFunc() {
@@ -26,54 +27,29 @@ export function debounce(func, wait, options = {}) {
     return result
   }
 
-  function leadingEdge() {
-    // Reset any timeout
-    timeout = undefined
-
-    // Execute function if leading=true
-    if (leading) {
-      return invokeFunc()
-    }
-  }
-
-  function remainingWait() {
-    const timeSinceLastCall = Date.now() - lastCallTime
-    const timeWaiting = wait - timeSinceLastCall
-
-    return timeWaiting
-  }
-
-  function shouldInvoke() {
-    return lastCallTime === undefined || Date.now() - lastCallTime >= wait
-  }
-
+  // Fires the trailing edge. invokeFunc clears lastArgs, so a leading-edge
+  // call that saw no further invocations during the wait won't double-fire.
   function timerExpired() {
+    timeout = undefined
     if (trailing && lastArgs) {
-      return invokeFunc()
+      invokeFunc()
     }
-    timeout = lastArgs = lastThis = undefined
   }
 
   function debounced(...args) {
-    const time = Date.now()
-    const isInvoking = shouldInvoke()
-
     lastArgs = args
     lastThis = this
-    lastCallTime = time
 
-    if (isInvoking) {
-      if (timeout === undefined) {
-        return leadingEdge()
-      }
-    }
+    const callNow = leading && timeout === undefined
 
     if (timeout !== undefined) {
       clearTimeout(timeout)
     }
-
     timeout = setTimeout(timerExpired, wait)
 
+    if (callNow) {
+      return invokeFunc()
+    }
     return result
   }
 
@@ -85,7 +61,12 @@ export function debounce(func, wait, options = {}) {
   }
 
   debounced.flush = function() {
-    return timeout === undefined ? result : timerExpired()
+    if (timeout === undefined) {
+      return result
+    }
+    clearTimeout(timeout)
+    timerExpired()
+    return result
   }
 
   return debounced

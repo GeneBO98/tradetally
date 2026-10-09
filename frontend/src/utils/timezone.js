@@ -269,8 +269,9 @@ export function utcToLocalInput(utcDateTime, timezone = 'UTC') {
     let hour = values.hour
     if (hour === '24') hour = '00'
 
-    // Return in datetime-local format: YYYY-MM-DDTHH:mm
-    return `${values.year}-${values.month}-${values.day}T${hour}:${values.minute}`
+    // Preserve seconds for datetime-local inputs that use step="1". Broker
+    // execution timestamps rely on this precision for duplicate detection.
+    return `${values.year}-${values.month}-${values.day}T${hour}:${values.minute}:${values.second}`
   } catch (error) {
     console.error('[TIMEZONE] Error converting UTC to local input:', error, { utcDateTime, timezone })
     return ''

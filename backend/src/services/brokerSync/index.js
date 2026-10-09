@@ -12,6 +12,8 @@ const schwabService = require('./schwabService');
 const tradestationService = require('./tradestationService');
 const alpacaService = require('./alpacaService');
 const webullService = require('./webullService');
+const trading212Service = require('./trading212Service');
+const { getUserTimezone } = require('../../utils/timezone');
 
 class BrokerSyncService {
   /**
@@ -81,7 +83,8 @@ class BrokerSyncService {
           result = await ibkrService.syncTrades(connection, {
             startDate,
             endDate,
-            syncLogId: syncLog.id
+            syncLogId: syncLog.id,
+            syncType
           });
           break;
 
@@ -117,6 +120,14 @@ class BrokerSyncService {
           });
           break;
 
+        case 'trading212':
+          result = await trading212Service.syncTrades(connection, {
+            startDate,
+            endDate,
+            syncLogId: syncLog.id
+          });
+          break;
+
         default:
           throw new Error(`Unknown broker type: ${connection.brokerType}`);
       }
@@ -133,6 +144,19 @@ class BrokerSyncService {
         duplicatesDetected: result.duplicates,
         syncDetails: {
           warnings: result.warnings || [],
+          warning_details: result.warningDetails || [],
+          outcome: result.outcome || ((result.warnings || []).length > 0 ? 'warning' : 'success'),
+          report_formats: result.reportFormats || [],
+          windows_requested: result.windowsRequested || 0,
+          windows_completed: result.windowsCompleted || 0,
+          requested_ranges: result.requestedRanges || [],
+          returned_ranges: result.returnedRanges || [],
+          reports_retrieved: result.reportsRetrieved || 0,
+          latest_window_retrieved: result.latestWindowRetrieved !== false,
+          latest_retrieved_end_date: result.latestRetrievedEndDate || null,
+          trade_rows: result.tradeRows || 0,
+          excluded_trade_count: result.excluded || 0,
+          open_position_rows: result.openPositionRows || 0,
           open_positions_parsed: result.openPositionsParsed || 0,
           manual_review_count: result.manualReviewCount || 0,
           manual_review_items: result.manualReviewItems || []
@@ -140,18 +164,30 @@ class BrokerSyncService {
       });
 
       // Update connection status
-      const nextSync = connection.autoSyncEnabled && connection.syncFrequency !== 'manual'
-        ? BrokerConnection.calculateNextSync(connection.syncFrequency, connection.syncTime)
-        : null;
+      let nextSync = null;
+      if (connection.autoSyncEnabled && connection.syncFrequency !== 'manual') {
+        const userTimezone = await getUserTimezone(connection.userId);
+        nextSync = BrokerConnection.calculateNextSync(
+          connection.syncFrequency,
+          connection.syncTime,
+          userTimezone
+        );
+      }
 
+      const latestReportRetrieved = connection.brokerType !== 'ibkr' || result.latestWindowRetrieved !== false;
       await BrokerConnection.updateAfterSync(
         connectionId,
         result.imported + expiredClosed,
         result.skipped,
-        nextSync
+        nextSync,
+        { advanceLastSync: latestReportRetrieved }
       );
 
-      console.log(`[BROKER-SYNC] Sync completed: ${result.imported} imported, ${result.duplicates} duplicates, ${expiredClosed} expired options closed`);
+      if (latestReportRetrieved) {
+        console.log(`[BROKER-SYNC] Sync completed: ${result.imported} imported, ${result.duplicates} duplicates, ${expiredClosed} expired options closed`);
+      } else {
+        console.warn('[BROKER-SYNC] Sync completed with no retrievable IBKR statement; preserving the previous successful-sync cursor');
+      }
 
       return {
         success: true,
@@ -277,6 +313,12 @@ class BrokerSyncService {
           valid: webullService.isConfigured(),
           message: webullService.isConfigured() ? 'Webull OAuth is configured' : 'Webull OAuth is not configured'
         };
+      case 'trading212':
+        return trading212Service.validateCredentials(
+          credentials.apiKey,
+          credentials.apiSecret,
+          credentials.environment
+        );
 
       default:
         return { valid: false, message: `Unknown broker type: ${brokerType}` };

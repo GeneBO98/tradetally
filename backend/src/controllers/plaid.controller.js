@@ -1,3 +1,4 @@
+const { parseReportDateRange } = require('../utils/reportDateRange');
 const PlaidBalanceSnapshot = require('../models/PlaidBalanceSnapshot');
 const plaidFundingService = require('../services/plaid/plaidFundingService');
 
@@ -69,6 +70,7 @@ const plaidController = {
 
   async getBalanceHistory(req, res) {
     try {
+      const explicit_range = parseReportDateRange(req.query);
       const schemaReady = await PlaidBalanceSnapshot.hasSchema();
       if (!schemaReady) {
         return res.json({ success: true, data: { series: [], accounts: [] } });
@@ -76,15 +78,16 @@ const plaidController = {
 
       const days = Math.min(Math.max(parseInt(req.query.days, 10) || 90, 1), 730);
       const data = await PlaidBalanceSnapshot.getHistory(req.user.id, {
+        ...explicit_range,
         days,
         plaidAccountRowId: req.query.plaidAccountRowId || null
       });
 
       res.json({ success: true, data });
     } catch (error) {
-      res.status(getPlaidErrorStatus(error)).json({
+      res.status(error.status || getPlaidErrorStatus(error)).json({
         success: false,
-        message: 'Failed to fetch Plaid balance history'
+        message: error.status === 400 ? error.message : 'Failed to fetch Plaid balance history'
       });
     }
   },

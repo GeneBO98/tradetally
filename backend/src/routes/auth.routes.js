@@ -104,6 +104,7 @@ router.post('/register', authLimiter, validate(schemas.register), authController
  *         description: Invalid credentials
  */
 router.post('/login', authLimiter, validate(schemas.login), authController.login);
+router.post('/biometric-login', authLimiter, validate(schemas.biometricLogin), authController.biometricLogin);
 /**
  * @swagger
  * /api/auth/verify-2fa:

@@ -9,112 +9,144 @@
  * - Skips symbols already fetched within the last hour
  */
 
+const IntervalScheduler = require('./schedulers/IntervalScheduler');
 const NewsService = require('./newsService');
+const pushNotificationService = require('./pushNotificationService');
+const SchedulerStatusService = require('./schedulerStatusService');
 
 const CHECK_INTERVAL = 60 * 60 * 1000; // Run every hour
+const LOG_PREFIX = '[NEWS-SCHEDULER]';
+const SCHEDULER_NAME = 'news';
 
-class NewsScheduler {
+class NewsScheduler extends IntervalScheduler {
   constructor() {
-    this.interval = null;
-    this.isRunning = false;
-    this.lastRunDate = null;
+    super({
+      intervalMs: CHECK_INTERVAL,
+      useUnref: true,
+      messages: {
+        startLogs: [
+          `${LOG_PREFIX} Starting news scheduler...`,
+          `${LOG_PREFIX} Scheduled to run every hour`
+        ],
+        started: `${LOG_PREFIX} Scheduler started`,
+        stopping: `${LOG_PREFIX} Stopping news scheduler...`,
+        stopped: `${LOG_PREFIX} Scheduler stopped`,
+        skip: `${LOG_PREFIX} Previous run still in progress, skipping...`,
+        runError: `${LOG_PREFIX} [ERROR] Scheduler error:`,
+        initialError: `${LOG_PREFIX} Initial run failed:`,
+        scheduledError: `${LOG_PREFIX} Scheduled run failed:`,
+        manualRun: `${LOG_PREFIX} Manual run triggered...`
+      }
+    });
   }
 
   /**
    * Process news for all open position symbols
    */
   async processNews() {
-    if (this.isRunning) {
-      console.log('[NEWS-SCHEDULER] Previous run still in progress, skipping...');
-      return;
-    }
+    return this.runGuarded();
+  }
 
-    this.isRunning = true;
-    const logPrefix = '[NEWS-SCHEDULER]';
+  async execute() {
+    const logPrefix = LOG_PREFIX;
+    const startedAt = new Date();
+    this.lastAttemptDate = startedAt.toISOString();
+    await this.persistDiagnostic('started', startedAt);
 
     try {
       console.log(`${logPrefix} Starting scheduled news fetch...`);
 
       const symbols = await NewsService.getAllTrackedSymbols();
 
+      let summary;
       if (symbols.length === 0) {
         console.log(`${logPrefix} No tracked symbols found, skipping news fetch`);
-        this.lastRunDate = new Date().toISOString();
-        return;
+        summary = {
+          fetched: 0, skipped: 0, errors: 0, total: 0,
+          changedSymbols: [], usersTargeted: 0, usersNotified: 0
+        };
+      } else {
+        console.log(`${logPrefix} Found ${symbols.length} tracked symbols (open positions + watchlists)`);
+
+        summary = await NewsService.fetchAndCacheAll(symbols);
+
+        const changedSymbols = summary.changedSymbols || [];
+        if (changedSymbols.length > 0) {
+          const userIds = await NewsService.getUserIdsTrackingSymbols(changedSymbols);
+          let usersNotified = 0;
+
+          // Keep APNs traffic bounded while still allowing accounts with several
+          // devices to refresh promptly.
+          for (let index = 0; index < userIds.length; index += 10) {
+            const batch = userIds.slice(index, index + 10);
+            const results = await Promise.all(
+              batch.map(userId => pushNotificationService.sendBackgroundRefresh(userId, 'news_updated'))
+            );
+            usersNotified += results.filter(result => result.success).length;
+          }
+
+          summary.usersTargeted = userIds.length;
+          summary.usersNotified = usersNotified;
+        } else {
+          summary.usersTargeted = 0;
+          summary.usersNotified = 0;
+        }
       }
 
-      console.log(`${logPrefix} Found ${symbols.length} tracked symbols (open positions + watchlists)`);
-
-      const summary = await NewsService.fetchAndCacheAll(symbols);
-
-      this.lastRunDate = new Date().toISOString();
+      const succeededAt = new Date();
+      this.lastRunDate = succeededAt.toISOString();
+      this.lastSuccessDate = this.lastRunDate;
+      this.lastError = null;
+      this.lastSummary = summary;
+      await this.persistDiagnostic('success', succeededAt, summary);
 
       console.log(`${logPrefix} News fetch complete - fetched: ${summary.fetched}, skipped (cached): ${summary.skipped}, errors: ${summary.errors}`);
       return summary;
     } catch (error) {
-      console.error(`${logPrefix} [ERROR] Scheduler error:`, error);
-    } finally {
-      this.isRunning = false;
+      const failedAt = new Date();
+      this.lastRunDate = failedAt.toISOString();
+      this.lastFailureDate = this.lastRunDate;
+      this.lastError = error.message;
+      await this.persistDiagnostic('failure', failedAt, error);
+      throw error;
     }
   }
 
-  /**
-   * Start the scheduler
-   */
-  start() {
-    console.log('[NEWS-SCHEDULER] Starting news scheduler...');
-    console.log('[NEWS-SCHEDULER] Scheduled to run every hour');
-
-    // Run immediately on start to populate cache
-    this.processNews().catch(error => {
-      console.error('[NEWS-SCHEDULER] Initial run failed:', error);
-    });
-
-    // Schedule hourly runs
-    this.interval = setInterval(() => {
-      this.processNews().catch(error => {
-        console.error('[NEWS-SCHEDULER] Scheduled run failed:', error);
-      });
-    }, CHECK_INTERVAL);
-    if (typeof this.interval.unref === 'function') {
-      this.interval.unref();
+  async persistDiagnostic(kind, at, detail) {
+    try {
+      if (kind === 'started') return await SchedulerStatusService.recordStarted(SCHEDULER_NAME, at);
+      if (kind === 'success') return await SchedulerStatusService.recordSuccess(SCHEDULER_NAME, detail, at);
+      return await SchedulerStatusService.recordFailure(SCHEDULER_NAME, detail, at);
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Failed to persist ${kind} diagnostic:`, error.message);
+      return null;
     }
-
-    console.log('[NEWS-SCHEDULER] Scheduler started');
   }
 
-  /**
-   * Stop the scheduler
-   */
-  stop() {
-    console.log('[NEWS-SCHEDULER] Stopping news scheduler...');
-
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-
-    console.log('[NEWS-SCHEDULER] Scheduler stopped');
-  }
-
-  /**
-   * Force run now (for manual triggering/testing)
-   */
-  async runNow() {
-    console.log('[NEWS-SCHEDULER] Manual run triggered...');
-    return await this.processNews();
-  }
-
-  /**
-   * Get scheduler status
-   */
   getStatus() {
     return {
-      running: this.interval !== null,
-      processing: this.isRunning,
-      checkIntervalMinutes: CHECK_INTERVAL / 60000,
-      lastRunDate: this.lastRunDate
+      ...super.getStatus(),
+      lastAttemptDate: this.lastAttemptDate || null,
+      lastSuccessDate: this.lastSuccessDate || null,
+      lastFailureDate: this.lastFailureDate || null,
+      lastError: this.lastError || null,
+      lastSummary: this.lastSummary || null
     };
+  }
+
+  async getPersistentStatus() {
+    try {
+      return {
+        ...this.getStatus(),
+        persisted: await SchedulerStatusService.get(SCHEDULER_NAME)
+      };
+    } catch (error) {
+      return {
+        ...this.getStatus(),
+        persisted: null,
+        diagnosticStorageError: error.message
+      };
+    }
   }
 }
 

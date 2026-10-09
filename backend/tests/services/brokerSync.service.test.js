@@ -3,19 +3,25 @@ jest.mock('axios', () => ({
 }));
 
 jest.mock('../../src/utils/csvParser', () => ({
-  parseCSV: jest.fn()
+  parseCSV: jest.fn(),
+  parseIBKRRecords: jest.fn()
 }));
 
 jest.mock('../../src/models/Trade', () => ({
-  create: jest.fn()
+  create: jest.fn(),
+  calculateRValue: jest.fn().mockReturnValue(2)
 }));
 
 jest.mock('../../src/models/BrokerConnection', () => ({
   updateSyncLog: jest.fn(),
   updateSchwabTokens: jest.fn(),
-  updateStatus: jest.fn()
+  updateStatus: jest.fn(),
+  updateBrokerMetadata: jest.fn()
 }));
 
+jest.mock('../../src/services/tierService', () => ({
+  hasBrokerSyncBetaAccess: jest.fn(async () => false)
+}));
 jest.mock('../../src/services/analyticsCache', () => ({
   invalidateUserCache: jest.fn(),
   invalidate: jest.fn()
@@ -29,17 +35,118 @@ jest.mock('../../src/utils/cache', () => ({
 jest.mock('../../src/config/database', () => ({
   query: jest.fn()
 }));
+jest.mock('../../src/services/brokerTradeExclusions', () => ({
+  list: jest.fn().mockResolvedValue([]),
+  matches: jest.fn().mockReturnValue(false)
+}));
+
+jest.mock('../../src/utils/timezone', () => ({
+  getUserTimezone: jest.fn().mockResolvedValue('UTC')
+}));
 
 const Trade = require('../../src/models/Trade');
+const BrokerConnection = require('../../src/models/BrokerConnection');
 const db = require('../../src/config/database');
-const { parseCSV } = require('../../src/utils/csvParser');
+const { parseCSV, parseIBKRRecords } = require('../../src/utils/csvParser');
+const { getUserTimezone } = require('../../src/utils/timezone');
 const ibkrService = require('../../src/services/brokerSync/ibkrService');
+const BrokerTradeExclusions = require('../../src/services/brokerTradeExclusions');
 const schwabService = require('../../src/services/brokerSync/schwabService');
 const alpacaService = require('../../src/services/brokerSync/alpacaService');
 
 describe('broker sync duplicate protection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  test('IBKR importTrades skips a deleted trade before duplicate or create handling', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    BrokerTradeExclusions.list.mockResolvedValueOnce([{ id: 'excluded-1' }]);
+    BrokerTradeExclusions.matches.mockReturnValueOnce(true);
+
+    const result = await ibkrService.importTrades('user-1', [{ symbol: 'AAPL', side: 'long' }], {});
+
+    expect(result).toMatchObject({ excluded: 1, skipped: 0, imported: 0, failed: 0 });
+    expect(Trade.create).not.toHaveBeenCalled();
+    expect(BrokerTradeExclusions.matches).toHaveBeenCalledTimes(1);
+  });
+
+  test('IBKR fill updates recompute stored R from the existing stop', async () => {
+    const achievements = jest.spyOn(require('../../src/services/achievementService'), 'checkAndAwardAchievements')
+      .mockResolvedValue();
+    const lookup = jest.spyOn(ibkrService, 'getExistingTradesForDuplicateCheck').mockResolvedValue([{
+      id: 'trade-1', stop_loss: 95, instrument_type: 'stock'
+    }]);
+    const duplicate = jest.spyOn(ibkrService, 'isDuplicateTrade').mockImplementation(trade => {
+      trade.isUpdate = true;
+      trade.existingTradeId = 'trade-1';
+      return false;
+    });
+    db.query.mockResolvedValue({ rowCount: 1 });
+    try {
+      const result = await ibkrService.importTrades('user-1', [{
+        symbol: 'AAPL', side: 'long', quantity: 10, entryPrice: 100,
+        executionData: [
+          { datetime: '2026-09-01T14:00:00Z', type: 'entry', action: 'buy', price: 100, quantity: 10 },
+          { datetime: '2026-09-01T15:00:00Z', type: 'exit', action: 'sell', price: 110, quantity: 10 }
+        ]
+      }], {});
+
+      expect(result).toMatchObject({ updated: 1, failed: 0 });
+      expect(Trade.calculateRValue).toHaveBeenCalledWith(100, 95, 110, 'long', expect.objectContaining({ quantity: 10 }));
+      const update = db.query.mock.calls.find(([sql]) => sql.includes('UPDATE trades'));
+      expect(update[0]).toContain('r_value = $14');
+      expect(update[1][13]).toBe(2);
+    } finally {
+      lookup.mockRestore();
+      duplicate.mockRestore();
+      achievements.mockRestore();
+    }
+  });
+
+  test('Schwab sync never fetches transactions from an excluded account', async () => {
+    const ensureTokenSpy = jest.spyOn(schwabService, 'ensureValidToken')
+      .mockResolvedValue({ accessToken: 'access-token', needsReauth: false });
+    const accountNumbersSpy = jest.spyOn(schwabService, 'getAccountNumbers')
+      .mockResolvedValue([
+        { accountNumber: '11111111', hashValue: 'ira-hash' },
+        { accountNumber: '22222222', hashValue: 'taxable-hash' }
+      ]);
+    const transactionsSpy = jest.spyOn(schwabService, 'getTransactions')
+      .mockResolvedValue([]);
+    const importSpy = jest.spyOn(schwabService, 'importTrades')
+      .mockResolvedValue({ imported: 0, skipped: 0, failed: 0, duplicates: 0 });
+
+    try {
+      await schwabService.syncTrades({
+        id: 'connection-1',
+        userId: 'user-1',
+        excluded_account_identifiers: ['****1111']
+      });
+
+      expect(transactionsSpy).toHaveBeenCalledTimes(1);
+      expect(transactionsSpy).toHaveBeenCalledWith(
+        'access-token',
+        'taxable-hash',
+        undefined,
+        undefined
+      );
+      expect(BrokerConnection.updateBrokerMetadata).toHaveBeenCalledWith(
+        'connection-1',
+        {
+          schwab_accounts: [
+            { account_identifier: '****1111' },
+            { account_identifier: '****2222' }
+          ]
+        }
+      );
+      expect(importSpy).toHaveBeenCalledWith('user-1', 'connection-1', []);
+    } finally {
+      ensureTokenSpy.mockRestore();
+      accountNumbersSpy.mockRestore();
+      transactionsSpy.mockRestore();
+      importSpy.mockRestore();
+    }
   });
 
   test('IBKR importTrades skips a duplicate trade repeated within the same sync batch', async () => {
@@ -160,18 +267,73 @@ describe('broker sync duplicate protection', () => {
     expect(isDuplicate).toBe(true);
   });
 
-  test('IBKR execution matching uses order IDs when they are present', () => {
+  test('IBKR execution matching never uses an order ID alone', () => {
     expect(
       ibkrService.executionsMatch(
         { orderId: 'abc123', datetime: '2026-03-06T15:00:00Z', quantity: 5, price: 100 },
         { orderId: 'abc123', datetime: '2026-03-06T15:30:00Z', quantity: 5, price: 101 }
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  test('IBKR Flex request never sends fd/td date overrides', () => {
+  test('IBKR execution matching prioritizes execution IDs, trade IDs, then legacy fill details', () => {
+    expect(ibkrService.executionsMatch(
+      { execution_id: 'EXEC-1', datetime: '2026-03-06T15:00:00Z', quantity: 5, price: 100 },
+      { executionId: 'EXEC-1', datetime: '2026-03-06T16:00:00Z', quantity: 7, price: 101 }
+    )).toBe(true);
+    expect(ibkrService.executionsMatch(
+      { execution_id: 'EXEC-1', datetime: '2026-03-06T15:00:00Z', quantity: 5, price: 100 },
+      { execution_id: 'EXEC-2', datetime: '2026-03-06T15:00:00Z', quantity: 5, price: 100 }
+    )).toBe(false);
+    expect(ibkrService.executionsMatch(
+      { trade_id: 'TRADE-1' },
+      { tradeId: 'TRADE-1' }
+    )).toBe(true);
+    expect(ibkrService.executionsMatch(
+      { order_id: 'ORDER-1', datetime: '2026-03-06T15:00:00Z', action: 'buy', quantity: 5, price: 100, conid: '123' },
+      { orderId: 'ORDER-1', datetime: '2026-03-06T15:00:00Z', action: 'buy', quantity: 5, price: 100, conid: '123' }
+    )).toBe(true);
+  });
+
+  test('IBKR resync detects an identical execution set and updates when a new fill appears', () => {
+    const existing = [{
+      id: 'trade-1',
+      symbol: 'AAPL',
+      side: 'long',
+      quantity: 103,
+      entry_price: 300,
+      entry_time: '2026-05-18T09:30:04Z',
+      trade_date: '2026-05-18',
+      instrument_type: 'stock',
+      executions: [{ execution_id: 'EXEC-1', datetime: '2026-05-18T09:30:04Z', action: 'buy', quantity: 103, price: 300 }]
+    }];
+    const firstFill = { execution_id: 'EXEC-1', datetime: '2026-05-18T09:30:04Z', action: 'buy', quantity: 103, price: 300 };
+
+    expect(ibkrService.isDuplicateTrade({
+      symbol: 'AAPL', side: 'long', quantity: 103, entryPrice: 300, entryTime: '2026-05-18T09:30:04Z',
+      executionData: [firstFill]
+    }, existing, {})).toBe(true);
+
+    const withNewFill = {
+      symbol: 'AAPL', side: 'long', quantity: 240, entryPrice: 300, entryTime: '2026-05-18T09:30:04Z',
+      executionData: [
+        firstFill,
+        { execution_id: 'EXEC-2', datetime: '2026-05-18T09:30:04Z', action: 'buy', quantity: 137, price: 300 }
+      ]
+    };
+    expect(ibkrService.isDuplicateTrade(withNewFill, existing, {})).toBe(false);
+    expect(withNewFill).toMatchObject({ isUpdate: true, existingTradeId: 'trade-1' });
+  });
+
+  test('IBKR credential validation request does not send date overrides', () => {
+    const params = ibkrService.buildReportRequestParams('token-1', 'query-1');
+
+    expect(params).toEqual({ t: 'token-1', q: 'query-1', v: '3' });
+  });
+
+  test('IBKR sync request sends an explicit date window capped at 365 days', () => {
     const params = ibkrService.buildReportRequestParams('token-1', 'query-1', {
-      syncType: 'manual',
+      overrideDates: true,
       startDate: '2025-01-01',
       endDate: '2026-01-01'
     });
@@ -179,10 +341,10 @@ describe('broker sync duplicate protection', () => {
     expect(params).toEqual({
       t: 'token-1',
       q: 'query-1',
-      v: '3'
+      v: '3',
+      fd: '20250102',
+      td: '20260101'
     });
-    expect(params).not.toHaveProperty('fd');
-    expect(params).not.toHaveProperty('td');
   });
 
   test('IBKR sync adds transferred stock Open Positions rows before import', async () => {
@@ -193,7 +355,7 @@ describe('broker sync duplicate protection', () => {
       'Open Positions,Data,Summary,Stocks,USD,AMC,10,5.50,55,U123,265598'
     ].join('\n');
 
-    parseCSV.mockResolvedValueOnce({ trades: [] });
+    parseIBKRRecords.mockResolvedValueOnce({ trades: [], diagnostics: { warnings: [] } });
     const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport').mockResolvedValue({ referenceCode: 'ref-1' });
     const fetchSpy = jest.spyOn(ibkrService, 'fetchFlexReport').mockResolvedValue(csv);
     const context = { existingPositions: {}, existingExecutions: {}, userId: 'user-1' };
@@ -213,7 +375,7 @@ describe('broker sync duplicate protection', () => {
         brokerType: 'ibkr',
         ibkrFlexToken: 'token',
         ibkrFlexQueryId: 'query'
-      }, { endDate: '2026-06-19' });
+      }, { startDate: '2026-06-19', endDate: '2026-06-19' });
 
       expect(importSpy).toHaveBeenCalledWith(
         'user-1',
@@ -257,7 +419,7 @@ describe('broker sync duplicate protection', () => {
       action: 'sell'
     };
 
-    parseCSV.mockResolvedValueOnce({
+    parseIBKRRecords.mockResolvedValueOnce({
       trades: [],
       manualReviewItems: [reviewItem],
       diagnostics: { warnings: ['1 sell-only stock execution requires manual review before importing.'] }
@@ -281,15 +443,15 @@ describe('broker sync duplicate protection', () => {
         brokerType: 'ibkr',
         ibkrFlexToken: 'token',
         ibkrFlexQueryId: 'query'
-      });
+      }, { startDate: '2026-06-19', endDate: '2026-06-19' });
 
-      expect(parseCSV).toHaveBeenCalledWith(
-        Buffer.from(csv, 'utf8'),
-        'ibkr',
+      expect(parseIBKRRecords).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ Symbol: 'IBKR' })]),
         expect.objectContaining({
           brokerConnectionId: 'conn-1',
           brokerType: 'ibkr'
-        })
+        }),
+        'ibkr'
       );
       expect(importSpy).toHaveBeenCalledWith('user-1', [], context);
       expect(result).toMatchObject({
@@ -297,6 +459,46 @@ describe('broker sync duplicate protection', () => {
         manualReviewCount: 1,
         manualReviewItems: [reviewItem]
       });
+    } finally {
+      requestSpy.mockRestore();
+      fetchSpy.mockRestore();
+      contextSpy.mockRestore();
+      importSpy.mockRestore();
+    }
+  });
+
+  test('IBKR sync passes the user timezone to the shared import parser', async () => {
+    parseIBKRRecords.mockResolvedValueOnce({ trades: [], diagnostics: { warnings: [] } });
+    getUserTimezone.mockResolvedValueOnce('America/New_York');
+    const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport').mockResolvedValue({ referenceCode: 'ref-1' });
+    const fetchSpy = jest.spyOn(ibkrService, 'fetchFlexReport').mockResolvedValue(
+      'Account,Symbol,DateTime,Quantity,TradePrice,Buy/Sell\nU1,AAPL,20260714;093000,1,100,BUY'
+    );
+    const context = { existingPositions: {}, existingExecutions: {}, userId: 'user-1' };
+    const contextSpy = jest.spyOn(ibkrService, 'getExistingContext').mockResolvedValue(context);
+    const importSpy = jest.spyOn(ibkrService, 'importTrades').mockResolvedValue({
+      imported: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      duplicates: 0
+    });
+
+    try {
+      await ibkrService.syncTrades({
+        id: 'conn-1',
+        userId: 'user-1',
+        brokerType: 'ibkr',
+        ibkrFlexToken: 'token',
+        ibkrFlexQueryId: 'query'
+      }, { startDate: '2026-07-14', endDate: '2026-07-14' });
+
+      expect(getUserTimezone).toHaveBeenCalledWith('user-1');
+      expect(parseIBKRRecords).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ DateTime: '20260714;093000' })]),
+        expect.objectContaining({ userTimezone: 'America/New_York' }),
+        'ibkr'
+      );
     } finally {
       requestSpy.mockRestore();
       fetchSpy.mockRestore();
@@ -682,6 +884,235 @@ describe('broker sync duplicate protection', () => {
       pnl: 25
     });
   });
+
+  test('IBKR All Time builds chronological inclusive windows covering exactly ten years', () => {
+    const windows = ibkrService.buildSyncWindows({}, { endDate: '2026-07-15', syncType: 'manual' });
+
+    expect(windows[0].start_date).toBe('2016-07-15');
+    expect(windows[windows.length - 1].end_date).toBe('2026-07-15');
+    windows.forEach((window, index) => {
+      const days = (new Date(`${window.end_date}T00:00:00Z`) - new Date(`${window.start_date}T00:00:00Z`)) / 86400000 + 1;
+      expect(days).toBeLessThanOrEqual(365);
+      if (index > 0) {
+        const expectedStart = new Date(`${windows[index - 1].end_date}T00:00:00Z`);
+        expectedStart.setUTCDate(expectedStart.getUTCDate() + 1);
+        expect(window.start_date).toBe(expectedStart.toISOString().slice(0, 10));
+      }
+    });
+  });
+
+  test('IBKR All Time handles a leap-day end date without skipping February 28', () => {
+    const windows = ibkrService.buildSyncWindows({}, { endDate: '2024-02-29', syncType: 'manual' });
+    expect(windows[0].start_date).toBe('2014-02-28');
+    expect(windows[windows.length - 1].end_date).toBe('2024-02-29');
+  });
+
+  test('IBKR defaults an Activity sync to the prior day in the user timezone', () => {
+    const windows = ibkrService.buildSyncWindows({ syncStartDate: '2026-07-01' }, {
+      now: '2026-08-01T01:30:00Z',
+      timezone: 'America/New_York',
+      syncType: 'manual'
+    });
+
+    // It is still July 31 in New York, so July 30 is the latest default
+    // Activity date even though UTC has already advanced to August 1.
+    expect(windows[windows.length - 1].end_date).toBe('2026-07-30');
+  });
+
+  test('IBKR scheduled sync uses a seven-day overlap bounded by the configured floor', () => {
+    expect(ibkrService.buildSyncWindows({
+      syncStartDate: '2026-07-05',
+      lastSyncAt: '2026-07-10T15:00:00Z'
+    }, {
+      endDate: '2026-07-15',
+      syncType: 'scheduled'
+    })).toEqual([{ start_date: '2026-07-05', end_date: '2026-07-15' }]);
+
+    expect(ibkrService.buildSyncWindows({
+      syncStartDate: '2026-01-01',
+      lastSyncAt: '2026-07-10T15:00:00Z'
+    }, {
+      endDate: '2026-07-15',
+      syncType: 'retry'
+    })[0].start_date).toBe('2026-07-03');
+  });
+
+  test('IBKR Open Positions synthesizes only a safe same-direction quantity delta', () => {
+    const result = ibkrService.extractOpenPositionTradesFromRecords([
+      { Account: 'U123', AssetClass: 'STK', Symbol: 'AAPL', Conid: '265598', Position: '340', CostBasisMoney: '102000' }
+    ], { id: 'conn-1', brokerType: 'ibkr' }, {}, {
+      endDate: '2026-07-15',
+      parsedTrades: [{
+        symbol: 'AAPL',
+        side: 'long',
+        quantity: 240,
+        accountIdentifier: 'U123',
+        conid: '265598',
+        instrumentType: 'stock'
+      }]
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(result.trades).toEqual([
+      expect.objectContaining({ symbol: 'AAPL', side: 'long', quantity: 100, entryPrice: 300 })
+    ]);
+  });
+
+  test('IBKR Open Positions counts every stored row of a split position', () => {
+    // Regression: existingPositions keeps only the last row per symbol/conid,
+    // so a 0.856 + 0.1062 position alternately re-created each half per sync.
+    const stored = [
+      { id: 't1', symbol: 'IBKR', side: 'long', quantity: 0.856, conid: '43645865', accountIdentifier: 'U1', instrumentType: 'stock' },
+      { id: 't2', symbol: 'IBKR', side: 'long', quantity: 0.1062, conid: '43645865', accountIdentifier: 'U1', instrumentType: 'stock' }
+    ];
+    const result = ibkrService.extractOpenPositionTradesFromRecords([
+      { Account: 'U1', AssetClass: 'STK', Symbol: 'IBKR', Conid: '43645865', Position: '0.9622', CostBasisPrice: '92.018291' }
+    ], { id: 'conn-1', brokerType: 'ibkr' }, {
+      existingPositions: { IBKR: stored[1], conid_43645865: stored[1] },
+      existingOpenPositions: stored
+    }, { endDate: '2026-09-21', parsedTrades: [] });
+
+    expect(result.trades).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  test.each([
+    ['exact', '240', '300', 0],
+    ['zero cost', '340', '0', 0],
+    ['reduced', '200', '300', 0],
+    ['opposite direction', '-100', '300', 0]
+  ])('IBKR Open Positions preserves execution data for %s reconciliation', (_label, summary, cost, expectedTrades) => {
+    const result = ibkrService.extractOpenPositionTradesFromRecords([
+      { Account: 'U123', AssetClass: 'STK', Symbol: 'AAPL', Conid: '265598', Position: summary, CostBasisPrice: cost }
+    ], { id: 'conn-1', brokerType: 'ibkr' }, {}, {
+      endDate: '2026-07-15',
+      parsedTrades: [{
+        symbol: 'AAPL', side: 'long', quantity: 240, accountIdentifier: 'U123', conid: '265598', instrumentType: 'stock'
+      }]
+    });
+
+    expect(result.trades).toHaveLength(expectedTrades);
+    if (_label === 'exact') expect(result.warnings).toEqual([]);
+    else expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
+  test('IBKR treats an explicit-window 1003 as an empty completed window with warnings', async () => {
+    const emptyWindowError = Object.assign(new Error('No statement'), { errorCode: '1003' });
+    const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport').mockRejectedValue(emptyWindowError);
+    const fetchSpy = jest.spyOn(ibkrService, 'fetchGeneratedReport');
+    const contextSpy = jest.spyOn(ibkrService, 'getExistingContext').mockResolvedValue({ existingPositions: {}, existingExecutions: {} });
+    const importSpy = jest.spyOn(ibkrService, 'importTrades').mockResolvedValue({ imported: 0, updated: 0, skipped: 0, failed: 0, duplicates: 0 });
+    parseIBKRRecords.mockResolvedValueOnce({ trades: [], diagnostics: { warnings: [], skippedReasons: [] } });
+
+    try {
+      const result = await ibkrService.syncTrades({
+        id: 'conn-1', userId: 'user-1', brokerType: 'ibkr', ibkrFlexToken: 'token', ibkrFlexQueryId: 'query'
+      }, { startDate: '2026-07-15', endDate: '2026-07-15' });
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ outcome: 'warning', windowsRequested: 1, windowsCompleted: 1, tradeRows: 0 });
+      expect(result.warningDetails).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'EMPTY_WINDOW_1003' })
+      ]));
+    } finally {
+      requestSpy.mockRestore();
+      fetchSpy.mockRestore();
+      contextSpy.mockRestore();
+      importSpy.mockRestore();
+    }
+  });
+
+  test('IBKR backs the implicit Activity end date through a weekend after 1003', async () => {
+    const noStatement = Object.assign(new Error('No statement'), { errorCode: '1003' });
+    const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport')
+      .mockRejectedValueOnce(noStatement)
+      .mockRejectedValueOnce(noStatement)
+      .mockResolvedValueOnce({ referenceCode: 'ref-friday' });
+    const fetchSpy = jest.spyOn(ibkrService, 'fetchGeneratedReport').mockResolvedValue({
+      content: '<FlexQueryResponse><FlexStatements><FlexStatement accountId="U1" fromDate="20260727" toDate="20260731"><OpenPositions /><Trades /></FlexStatement></FlexStatements></FlexQueryResponse>',
+      format: 'xml'
+    });
+    const contextSpy = jest.spyOn(ibkrService, 'getExistingContext').mockResolvedValue({ existingPositions: {}, existingExecutions: {} });
+    const importSpy = jest.spyOn(ibkrService, 'importTrades').mockResolvedValue({ imported: 0, updated: 0, skipped: 0, failed: 0, duplicates: 0 });
+    parseIBKRRecords.mockResolvedValueOnce({ trades: [], diagnostics: { warnings: [], skippedReasons: [] } });
+
+    try {
+      const result = await ibkrService.syncTrades({
+        id: 'conn-1', userId: 'user-1', brokerType: 'ibkr', ibkrFlexToken: 'token', ibkrFlexQueryId: 'query'
+      }, {
+        startDate: '2026-07-27',
+        now: '2026-08-03T12:00:00Z'
+      });
+
+      expect(requestSpy.mock.calls.map(call => call[2].endDate)).toEqual([
+        '2026-08-02',
+        '2026-08-01',
+        '2026-07-31'
+      ]);
+      expect(fetchSpy).toHaveBeenCalledWith('ref-friday', 'token', undefined, {
+        start_date: '2026-07-27',
+        end_date: '2026-07-31'
+      });
+      expect(result).toMatchObject({
+        outcome: 'success',
+        latestWindowRetrieved: true,
+        latestRetrievedEndDate: '2026-07-31',
+        reportsRetrieved: 1,
+        windowsRequested: 3
+      });
+    } finally {
+      requestSpy.mockRestore();
+      fetchSpy.mockRestore();
+      contextSpy.mockRestore();
+      importSpy.mockRestore();
+    }
+  });
+
+  test('IBKR treats a genuinely empty report with matching metadata as an ordinary completion', async () => {
+    const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport').mockResolvedValue({ referenceCode: 'ref-1' });
+    const fetchSpy = jest.spyOn(ibkrService, 'fetchGeneratedReport').mockResolvedValue({
+      content: '<FlexQueryResponse><FlexStatements><FlexStatement accountId="U1" fromDate="20260715" toDate="20260715"><OpenPositions /><Trades /></FlexStatement></FlexStatements></FlexQueryResponse>',
+      format: 'xml'
+    });
+    const contextSpy = jest.spyOn(ibkrService, 'getExistingContext').mockResolvedValue({ existingPositions: {}, existingExecutions: {} });
+    const importSpy = jest.spyOn(ibkrService, 'importTrades').mockResolvedValue({ imported: 0, updated: 0, skipped: 0, failed: 0, duplicates: 0 });
+    parseIBKRRecords.mockResolvedValueOnce({ trades: [], diagnostics: { warnings: [], skippedReasons: [] } });
+
+    try {
+      const result = await ibkrService.syncTrades({
+        id: 'conn-1', userId: 'user-1', brokerType: 'ibkr', ibkrFlexToken: 'token', ibkrFlexQueryId: 'query'
+      }, { startDate: '2026-07-15', endDate: '2026-07-15' });
+
+      expect(result).toMatchObject({ outcome: 'success', warnings: [], tradeRows: 0, openPositionRows: 0 });
+    } finally {
+      requestSpy.mockRestore();
+      fetchSpy.mockRestore();
+      contextSpy.mockRestore();
+      importSpy.mockRestore();
+    }
+  });
+
+  test('IBKR does not import any window when a later backfill window fails', async () => {
+    const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport')
+      .mockResolvedValueOnce({ referenceCode: 'ref-1' })
+      .mockResolvedValueOnce({ referenceCode: 'ref-2' });
+    const fetchSpy = jest.spyOn(ibkrService, 'fetchGeneratedReport')
+      .mockResolvedValueOnce({ content: 'Account,Symbol,DateTime,Quantity,TradePrice,Buy/Sell\nU1,AAPL,20250101;093000,1,100,BUY', format: 'csv' })
+      .mockRejectedValueOnce(new Error('second window failed'));
+    const importSpy = jest.spyOn(ibkrService, 'importTrades');
+
+    try {
+      await expect(ibkrService.syncTrades({
+        id: 'conn-1', userId: 'user-1', brokerType: 'ibkr', ibkrFlexToken: 'token', ibkrFlexQueryId: 'query'
+      }, { startDate: '2025-01-01', endDate: '2026-01-01' })).rejects.toThrow('second window failed');
+      expect(parseIBKRRecords).not.toHaveBeenCalled();
+      expect(importSpy).not.toHaveBeenCalled();
+    } finally {
+      requestSpy.mockRestore();
+      fetchSpy.mockRestore();
+      importSpy.mockRestore();
+    }
+  });
 });
 
 describe('IBKR transient error handling', () => {
@@ -689,11 +1120,121 @@ describe('IBKR transient error handling', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    ibkrService.sendRequestTimestamps = [];
     jest.spyOn(ibkrService, 'sleep').mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  test('SendRequest pacing enforces both the one-second and rolling-minute limits', async () => {
+    const now = 1_800_000_000_000;
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    ibkrService.sendRequestTimestamps = [now - 500];
+    await ibkrService.waitForSendRequestSlot();
+    expect(ibkrService.sleep).toHaveBeenCalledWith(500);
+
+    ibkrService.sleep.mockClear();
+    ibkrService.sendRequestTimestamps = Array.from({ length: 10 }, (_, index) => now - 30000 + (index * 3000));
+    await ibkrService.waitForSendRequestSlot();
+    expect(ibkrService.sleep).toHaveBeenCalledWith(30000);
+  });
+
+  test('requestFlexReport ignores the legacy Url element supplied by IBKR', async () => {
+    // IBKR's docs mark the <Url> response element as legacy and instruct
+    // clients to ignore it; statements are always fetched from ndcdyn.
+    axios.get.mockResolvedValueOnce({
+      data: '<FlexStatementResponse><Status>Success</Status><ReferenceCode>REF-123</ReferenceCode><Url>https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement</Url></FlexStatementResponse>'
+    });
+
+    await expect(ibkrService.requestFlexReport('token', 'query')).resolves.toEqual({
+      referenceCode: 'REF-123',
+      statementUrl: 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement'
+    });
+  });
+
+  test('requestFlexReport falls back to ndcdyn when the response omits Url', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: '<FlexStatementResponse><Status>Success</Status><ReferenceCode>REF-123</ReferenceCode></FlexStatementResponse>'
+    });
+
+    await expect(ibkrService.requestFlexReport('token', 'query')).resolves.toMatchObject({
+      statementUrl: 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement'
+    });
+  });
+
+  test('requestFlexReport retries without date overrides when IBKR returns 1003', async () => {
+    axios.get
+      .mockResolvedValueOnce({
+        data: '<FlexStatementResponse><Status>Fail</Status><ErrorCode>1003</ErrorCode><ErrorMessage>Statement is not available.</ErrorMessage></FlexStatementResponse>'
+      })
+      .mockResolvedValueOnce({
+        data: '<FlexStatementResponse><Status>Success</Status><ReferenceCode>REF-123</ReferenceCode></FlexStatementResponse>'
+      });
+
+    await ibkrService.requestFlexReport('token', 'query', {
+      overrideDates: true,
+      startDate: '2025-07-16',
+      endDate: '2026-07-15'
+    });
+
+    expect(axios.get.mock.calls[0][1].params).toEqual(expect.objectContaining({
+      fd: '20250716',
+      td: '20260715'
+    }));
+    expect(axios.get.mock.calls[1][1].params).toEqual({ t: 'token', q: 'query', v: '3' });
+    expect(ibkrService.sleep).toHaveBeenCalledWith(1000);
+  });
+
+  test('requestFlexReport does not use the saved query period for an explicit historical window', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: '<FlexStatementResponse><Status>Fail</Status><ErrorCode>1003</ErrorCode><ErrorMessage>Statement is not available.</ErrorMessage></FlexStatementResponse>'
+    });
+
+    await expect(ibkrService.requestFlexReport('token', 'query', {
+      overrideDates: true,
+      startDate: '2026-07-01',
+      endDate: '2026-07-15',
+      allowBareFallback: false
+    })).rejects.toMatchObject({ errorCode: '1003' });
+
+    expect(axios.get).toHaveBeenCalledTimes(1);
+  });
+
+  test('fetchFlexReport polls the statement URL returned by SendRequest', async () => {
+    const statementUrl = 'https://gdcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement';
+    axios.get.mockResolvedValueOnce({ data: 'Symbol,Quantity,Price\nAAPL,10,150.50\n' });
+
+    const report = await ibkrService.fetchFlexReport('REF-123', 'token', {
+      maxWait: 60000,
+      statementUrl,
+      sourceWindow: { start_date: '2026-07-15', end_date: '2026-07-15' }
+    });
+
+    expect(axios.get).toHaveBeenCalledWith(statementUrl, expect.objectContaining({
+      params: { t: 'token', q: 'REF-123', v: '3' }
+    }));
+    expect(report).toMatchObject({
+      format: 'csv',
+      source_window: { start_date: '2026-07-15', end_date: '2026-07-15' },
+      statement_metadata: []
+    });
+  });
+
+  test('fetchFlexReport returns XML in a report envelope', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: '<FlexQueryResponse queryName="TradeTally"><FlexStatements count="1"><FlexStatement><Trades /></FlexStatement></FlexStatements></FlexQueryResponse>'
+    });
+
+    await expect(ibkrService.fetchFlexReport('REF-123', 'token', { maxWait: 60000 }))
+      .resolves.toMatchObject({
+        format: 'xml',
+        content: expect.stringContaining('<Trades />')
+      });
+
+    expect(axios.get).toHaveBeenCalledTimes(1);
   });
 
   test('fetchFlexReport keeps polling when IBKR returns an unknown code with a "try again" message', async () => {
@@ -707,7 +1248,7 @@ describe('IBKR transient error handling', () => {
       });
 
     const csv = await ibkrService.fetchFlexReport('REF-123', 'token', { maxWait: 60000 });
-    expect(csv).toContain('AAPL');
+    expect(csv.content).toContain('AAPL');
     expect(axios.get).toHaveBeenCalledTimes(2);
   });
 

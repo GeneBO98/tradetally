@@ -44,20 +44,50 @@ export const useAccountsStore = defineStore('accounts', () => {
   // ACCOUNTS
   // ========================================
 
-  async function fetchAccounts() {
+  // In-flight request de-duplication + short-lived freshness guard so that
+  // multiple components mounting on the same page trigger at most one
+  // GET /accounts network call.
+  const FETCH_FRESHNESS_MS = 30 * 1000
+  let pendingFetch = null
+  let lastFetchedAt = 0
+
+  async function fetchAccounts(options = {}) {
+    const force = options.force === true
+
+    // Concurrent callers share the same in-flight request
+    if (pendingFetch) {
+      return pendingFetch
+    }
+
+    // Skip refetch when data is fresh (unless forced)
+    if (!force && lastFetchedAt && Date.now() - lastFetchedAt < FETCH_FRESHNESS_MS) {
+      return accounts.value
+    }
+
     loading.value = true
     error.value = null
 
-    try {
-      const response = await api.get('/accounts')
-      accounts.value = response.data.data || []
-      return accounts.value
-    } catch (err) {
-      error.value = err.response?.data?.message || 'Failed to fetch accounts'
-      throw err
-    } finally {
-      loading.value = false
-    }
+    pendingFetch = (async () => {
+      try {
+        const response = await api.get('/accounts')
+        accounts.value = response.data.data || []
+        lastFetchedAt = Date.now()
+        return accounts.value
+      } catch (err) {
+        error.value = err.response?.data?.message || 'Failed to fetch accounts'
+        throw err
+      } finally {
+        loading.value = false
+        pendingFetch = null
+      }
+    })()
+
+    return pendingFetch
+  }
+
+  // Mark cached accounts stale so the next fetchAccounts() hits the network
+  function invalidateAccounts() {
+    lastFetchedAt = 0
   }
 
   async function fetchAccount(accountId) {
@@ -97,7 +127,7 @@ export const useAccountsStore = defineStore('accounts', () => {
 
     try {
       const response = await api.post('/accounts', accountData)
-      await fetchAccounts()
+      await fetchAccounts({ force: true })
       return response.data.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to create account'
@@ -113,7 +143,7 @@ export const useAccountsStore = defineStore('accounts', () => {
 
     try {
       const response = await api.put(`/accounts/${accountId}`, updates)
-      await fetchAccounts()
+      await fetchAccounts({ force: true })
       return response.data.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to update account'
@@ -123,24 +153,40 @@ export const useAccountsStore = defineStore('accounts', () => {
     }
   }
 
-  async function deleteAccount(accountId) {
+  async function deleteAccount(accountId, options = {}) {
     loading.value = true
     error.value = null
 
     try {
-      await api.delete(`/accounts/${accountId}`)
-      await fetchAccounts()
-      // Clear cashflow if we deleted the current account
-      if (currentAccount.value?.id === accountId) {
-        currentAccount.value = null
-        cashflow.value = null
-      }
+      await api.delete(`/accounts/${accountId}`, {
+        data: {
+          delete_trades: options.delete_trades === true
+        }
+      })
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to delete account'
       throw err
     } finally {
       loading.value = false
     }
+
+    // The delete succeeded. Clear stale local state and refresh the account
+    // list, but a refresh failure must never be reported as a delete failure.
+    if (currentAccount.value?.id === accountId) {
+      currentAccount.value = null
+      cashflow.value = null
+    }
+
+    let refreshFailed = false
+    try {
+      await fetchAccounts({ force: true })
+    } catch (err) {
+      refreshFailed = true
+      error.value = null
+      console.error('Account deleted, but refreshing the account list failed:', err)
+    }
+
+    return { refreshFailed }
   }
 
   // ========================================
@@ -229,6 +275,7 @@ export const useAccountsStore = defineStore('accounts', () => {
   // ========================================
 
   function $reset() {
+    lastFetchedAt = 0
     accounts.value = []
     currentAccount.value = null
     cashflow.value = null
@@ -260,6 +307,7 @@ export const useAccountsStore = defineStore('accounts', () => {
 
     // Actions - Accounts
     fetchAccounts,
+    invalidateAccounts,
     fetchAccount,
     fetchPrimaryAccount,
     fetchUnlinkedIdentifiers,

@@ -29,17 +29,19 @@ class DatabentoClient {
       throw new Error('Databento API key not configured');
     }
 
-    const queryString = new URLSearchParams(params).toString();
-    const path = `/v0/${endpoint}${queryString ? '?' + queryString : ''}`;
+    const body = new URLSearchParams(params).toString();
+    const path = `/v0/${endpoint}`;
 
     return new Promise((resolve, reject) => {
       const options = {
         hostname: this.baseUrl,
         path: path,
-        method: 'GET',
+        method: 'POST',
         headers: {
           'Authorization': 'Basic ' + Buffer.from(this.apiKey + ':').toString('base64'),
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body)
         }
       };
 
@@ -87,6 +89,7 @@ class DatabentoClient {
         reject(new Error(`Databento request failed: ${error.message}`));
       });
 
+      req.write(body);
       req.end();
     });
   }

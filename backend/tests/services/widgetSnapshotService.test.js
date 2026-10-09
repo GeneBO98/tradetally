@@ -1,0 +1,274 @@
+jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
+jest.mock('../../src/utils/cache', () => ({ get: jest.fn(), set: jest.fn() }));
+jest.mock('../../src/services/analyticsCache', () => ({ get: jest.fn(), set: jest.fn() }));
+jest.mock('../../src/services/tradeQueries', () => ({ cacheKey: jest.fn(), getAnalytics: jest.fn() }));
+jest.mock('../../src/models/Trade', () => ({ findOpenPositionsByUser: jest.fn() }));
+jest.mock('../../src/services/newsService', () => ({
+  getCachedNews: jest.fn(),
+  requestBackgroundRefresh: jest.fn()
+}));
+jest.mock('../../src/utils/finnhub', () => ({
+  isConfigured: jest.fn(),
+  getBatchQuotes: jest.fn()
+}));
+jest.mock('../../src/utils/timezone', () => ({
+  getDateInTimezone: jest.fn(() => '2026-08-26'),
+  getDayOfWeekInTimezone: jest.fn(() => 3)
+}));
+
+const db = require('../../src/config/database');
+const cache = require('../../src/utils/cache');
+const AnalyticsCache = require('../../src/services/analyticsCache');
+const TradeQueries = require('../../src/services/tradeQueries');
+const Trade = require('../../src/models/Trade');
+const NewsService = require('../../src/services/newsService');
+const finnhub = require('../../src/utils/finnhub');
+const contracts = require('../../../tests/fixtures/trading-calculation-contracts.json');
+const service = require('../../src/services/widgetSnapshotService');
+
+describe('widgetSnapshotService', () => {
+  let fetchedAt;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    finnhub.isConfigured.mockReturnValue(true);
+    TradeQueries.cacheKey.mockReturnValue('analytics:user_user-1:week');
+    cache.get.mockReturnValue({ summary: { totalPnL: 425.5, winRate: 60, totalTrades: 5 } });
+    AnalyticsCache.get.mockResolvedValue(null);
+    Trade.findOpenPositionsByUser.mockResolvedValue([{
+      id: 'trade-1',
+      symbol: 'AAPL',
+      side: 'long',
+      quantity: 2,
+      entry_price: 100,
+      executions: [],
+      instrument_type: 'stock'
+    }]);
+    db.query.mockImplementation(query => {
+      if (query.includes('price_monitoring')) {
+        return Promise.resolve({ rows: [{ symbol: 'AAPL', current_price: '110', price_change: '2' }] });
+      }
+      if (query.includes('analytics_cache')) {
+        return Promise.resolve({ rows: [{ data: {
+          summaries: [{ headline: 'Stay selective', body: 'Your best setups are working.', tone: 'positive' }]
+        } }] });
+      }
+      throw new Error(`Unexpected query: ${query}`);
+    });
+    fetchedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    NewsService.getCachedNews.mockResolvedValue([
+      { symbol: 'AAPL', fetched_at: fetchedAt, news_items: [{ headline: 'Older', source: 'Wire', datetime: 1787600000, url: 'https://example.com/older' }] },
+      { symbol: 'AAPL', fetched_at: fetchedAt, news_items: [{ headline: 'Newest', source: 'Reuters', datetime: 1787700000, url: 'https://example.com/newest' }] }
+    ]);
+    NewsService.requestBackgroundRefresh.mockReturnValue({ enqueued: 0, deduplicated: 0 });
+  });
+
+  test('composes the exact widget snapshot from cached analytics, quotes, insights, and globally newest news', async () => {
+    const snapshot = await service.getSnapshot({ id: 'user-1', timezone: 'America/Chicago' });
+
+    expect(snapshot).toEqual({
+      weekPnL: 425.5,
+      winRate: 60,
+      weekTrades: 5,
+      openUnrealizedPnL: 20,
+      openPositionsCount: 1,
+      todayPnL: 4,
+      winningOpenPositions: 1,
+      topNews: {
+        headline: 'Newest',
+        source: 'Reuters',
+        symbol: 'AAPL',
+        publishedAt: new Date(1787700000 * 1000).toISOString(),
+        url: 'https://example.com/newest'
+      },
+      recentNews: [{
+        headline: 'Newest',
+        source: 'Reuters',
+        symbol: 'AAPL',
+        publishedAt: new Date(1787700000 * 1000).toISOString(),
+        url: 'https://example.com/newest'
+      }, {
+        headline: 'Older',
+        source: 'Wire',
+        symbol: 'AAPL',
+        publishedAt: new Date(1787600000 * 1000).toISOString(),
+        url: 'https://example.com/older'
+      }],
+      newsFetchedAt: fetchedAt,
+      topInsight: {
+        headline: 'Stay selective',
+        body: 'Your best setups are working.',
+        tone: 'positive'
+      },
+      updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
+    });
+    expect(TradeQueries.getAnalytics).not.toHaveBeenCalled();
+    expect(finnhub.getBatchQuotes).not.toHaveBeenCalled();
+    expect(NewsService.getCachedNews).toHaveBeenCalledWith(['AAPL']);
+    expect(NewsService.requestBackgroundRefresh).not.toHaveBeenCalled();
+  });
+
+  test('ignores an old cache row during regular hours and uses the dashboard quote source', async () => {
+    const fixture = contracts.widget_quote_freshness;
+    Trade.findOpenPositionsByUser.mockResolvedValue([{
+      id: 'trade-1',
+      symbol: fixture.symbol,
+      side: 'long',
+      quantity: fixture.quantity,
+      entry_price: fixture.entry_price,
+      executions: [],
+      instrument_type: 'stock'
+    }]);
+    db.query.mockImplementation(query => {
+      if (query.includes('price_monitoring')) {
+        return Promise.resolve({ rows: [{
+          symbol: fixture.symbol,
+          current_price: fixture.provider_price,
+          price_change: fixture.stale_price_change,
+          last_updated: '2026-09-25T12:00:00.000Z'
+        }] });
+      }
+      if (query.includes('analytics_cache')) return Promise.resolve({ rows: [] });
+      throw new Error(`Unexpected query: ${query}`);
+    });
+    finnhub.getBatchQuotes.mockResolvedValue({
+      [fixture.symbol]: { c: fixture.provider_price, d: fixture.provider_day_change }
+    });
+
+    const snapshot = await service.getSnapshot(
+      { id: 'user-1', timezone: 'America/Chicago' },
+      new Date('2026-09-25T16:00:00.000Z')
+    );
+
+    expect(finnhub.getBatchQuotes).toHaveBeenCalledWith([fixture.symbol], expect.objectContaining({
+      source: 'open_positions',
+      userId: 'user-1'
+    }));
+    expect(snapshot.todayPnL).toBe(fixture.expected_today_pnl);
+    expect(snapshot.openUnrealizedPnL).toBe(fixture.expected_open_pnl);
+  });
+
+  test('freezes the last complete total after the market closes', async () => {
+    let storedClose = null;
+    let dayChange = -32;
+    AnalyticsCache.get.mockImplementation((_userId, key) => Promise.resolve(
+      key.startsWith('widget_today_pnl_') ? storedClose : null
+    ));
+    AnalyticsCache.set.mockImplementation((_userId, key, value) => {
+      if (key.startsWith('widget_today_pnl_')) storedClose = value;
+      return Promise.resolve();
+    });
+    db.query.mockImplementation(query => {
+      if (query.includes('price_monitoring')) {
+        return Promise.resolve({ rows: [{
+          symbol: 'AAPL',
+          current_price: '123',
+          price_change: String(dayChange),
+          last_updated: '2026-09-25T20:01:00.000Z'
+        }] });
+      }
+      if (query.includes('analytics_cache')) return Promise.resolve({ rows: [] });
+      throw new Error(`Unexpected query: ${query}`);
+    });
+    const saturday = new Date('2026-09-26T15:00:00.000Z');
+
+    const first = await service.getSnapshot({ id: 'user-1', timezone: 'America/Chicago' }, saturday);
+    dayChange = 23;
+    const second = await service.getSnapshot({ id: 'user-1', timezone: 'America/Chicago' }, saturday);
+
+    expect(first.todayPnL).toBe(-64);
+    expect(second.todayPnL).toBe(first.todayPnL);
+    expect(AnalyticsCache.set).toHaveBeenCalledTimes(1);
+    expect(finnhub.getBatchQuotes).not.toHaveBeenCalled();
+  });
+
+  test('maps weekend refreshes to Friday and identifies regular market hours', () => {
+    expect(service.equityMarketState(new Date('2026-09-25T16:00:00.000Z'))).toEqual({
+      isOpen: true,
+      sessionDate: '2026-09-25'
+    });
+    expect(service.equityMarketState(new Date('2026-09-26T15:00:00.000Z'))).toEqual({
+      isOpen: false,
+      sessionDate: '2026-09-25'
+    });
+  });
+
+  test('warms and persists the canonical weekly analytics cache on a first-read miss', async () => {
+    cache.get.mockReturnValue(null);
+    AnalyticsCache.get.mockResolvedValue(null);
+    TradeQueries.getAnalytics.mockResolvedValue({ summary: { totalPnL: 10, winRate: 50, totalTrades: 2 } });
+
+    await service.getSnapshot({ id: 'user-1', timezone: 'UTC' });
+
+    expect(TradeQueries.getAnalytics).toHaveBeenCalledWith('user-1', {
+      startDate: '2026-08-24',
+      endDate: '2026-08-26'
+    });
+    expect(AnalyticsCache.set).toHaveBeenCalledWith(
+      'user-1',
+      'analytics:user_user-1:week',
+      expect.any(Object),
+      1440
+    );
+  });
+
+  test('never mistakes an underlying equity cache row for an option contract quote', async () => {
+    Trade.findOpenPositionsByUser.mockResolvedValue([{
+      id: 'option-1',
+      symbol: 'AAPL',
+      side: 'long',
+      quantity: 1,
+      entry_price: 2,
+      executions: [],
+      instrument_type: 'option',
+      contract_size: 100
+    }]);
+
+    const snapshot = await service.getSnapshot({ id: 'user-1', timezone: 'UTC' });
+
+    expect(snapshot.openPositionsCount).toBe(1);
+    expect(snapshot.openUnrealizedPnL).toBe(0);
+    expect(snapshot.todayPnL).toBe(0);
+    expect(snapshot.winningOpenPositions).toBe(0);
+    expect(db.query.mock.calls.some(([query]) => query.includes('price_monitoring'))).toBe(false);
+  });
+
+  test('returns an empty-news cache check time and queues stale refresh without awaiting Finnhub', async () => {
+    const staleFetchedAt = new Date(Date.now() - service.NEWS_STALE_AFTER_MS - 1000).toISOString();
+    NewsService.getCachedNews.mockResolvedValue([{
+      symbol: 'AAPL',
+      fetched_at: staleFetchedAt,
+      news_items: []
+    }]);
+
+    const snapshot = await service.getSnapshot({ id: 'user-1', timezone: 'UTC' });
+
+    expect(snapshot.topNews).toBeNull();
+    expect(snapshot.recentNews).toEqual([]);
+    expect(snapshot.newsFetchedAt).toBe(staleFetchedAt);
+    expect(NewsService.requestBackgroundRefresh).toHaveBeenCalledWith(
+      ['AAPL'],
+      { reason: 'widget_snapshot_stale' }
+    );
+  });
+
+  test('caps recent news at five globally newest unique articles', async () => {
+    NewsService.getCachedNews.mockResolvedValue([{
+      symbol: 'AAPL',
+      fetched_at: fetchedAt,
+      news_items: Array.from({ length: 7 }, (_, index) => ({
+        id: `story-${index}`,
+        headline: `Story ${index}`,
+        source: 'Wire',
+        datetime: 1787700000 - index
+      }))
+    }]);
+
+    const snapshot = await service.getSnapshot({ id: 'user-1', timezone: 'UTC' });
+
+    expect(snapshot.recentNews).toHaveLength(5);
+    expect(snapshot.recentNews.map(item => item.headline)).toEqual([
+      'Story 0', 'Story 1', 'Story 2', 'Story 3', 'Story 4'
+    ]);
+  });
+});

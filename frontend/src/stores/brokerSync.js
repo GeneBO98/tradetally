@@ -28,6 +28,10 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     connections.value.find(c => c.brokerType === 'schwab')
   )
 
+  const trading212Connections = computed(() =>
+    connections.value.filter(c => c.brokerType === 'trading212')
+  )
+
   const isConnectionSyncing = (connectionId) => {
     return syncing.value[connectionId] === true
   }
@@ -96,6 +100,23 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     }
   }
 
+  async function addTrading212Connection(connection) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await api.post('/broker-sync/connections/trading212', connection)
+      await fetchConnections()
+      return response.data.data
+    } catch (err) {
+      console.error('[BROKER-SYNC] Failed to add Trading 212 connection:', err)
+      error.value = err.response?.data?.error || 'Failed to add Trading 212 connection'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function initBrokerOAuth(broker, options = {}) {
     loading.value = true
     error.value = null
@@ -132,6 +153,16 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
       throw err
     } finally {
       loading.value = false
+    }
+  }
+
+  async function fetchConnectionAccounts(connectionId) {
+    try {
+      const response = await api.get(`/broker-sync/connections/${connectionId}/accounts`)
+      return response.data.data
+    } catch (err) {
+      console.error('[BROKER-SYNC] Failed to fetch connection accounts:', err)
+      throw err
     }
   }
 
@@ -289,14 +320,17 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     activeConnections,
     ibkrConnections,
     schwabConnection,
+    trading212Connections,
     isConnectionSyncing,
 
     // Actions
     fetchConnections,
     addIBKRConnection,
+    addTrading212Connection,
     initSchwabOAuth,
     initBrokerOAuth,
     updateConnection,
+    fetchConnectionAccounts,
     deleteConnection,
     deleteBrokerTrades,
     triggerSync,

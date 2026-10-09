@@ -196,6 +196,7 @@ import { ref, computed, onMounted } from 'vue'
 import { DocumentChartBarIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { formatTradeDate } from '@/utils/date'
+import { formatPercent as formatPercentBase } from '@/utils/formatters'
 import { useNotification } from '@/composables/useNotification'
 
 const { showError, showSuccess } = useNotification()
@@ -226,8 +227,7 @@ function formatSignedMoney(value) {
 }
 
 function formatPercent(value) {
-  const parsed = parseFloat(value)
-  return Number.isFinite(parsed) ? `${parsed.toFixed(1)}%` : '-'
+  return formatPercentBase(value, { digits: 1 })
 }
 
 function formatSignedPercent(value) {

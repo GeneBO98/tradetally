@@ -61,11 +61,11 @@
           <form @submit.prevent="loadSessionData" class="flex flex-wrap items-end gap-3">
             <div>
               <label class="label">Instrument</label>
-              <div class="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+              <div class="flex h-11 rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
                 <button
                   type="button"
                   @click="form.instrument = 'stock'"
-                  class="px-3 py-2 text-sm font-medium"
+                  class="h-full px-3 py-0 text-sm font-medium"
                   :class="form.instrument === 'stock'
                     ? 'bg-primary-600 text-white'
                     : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
@@ -76,7 +76,7 @@
                   type="button"
                   @click="futuresAvailable && (form.instrument = 'future')"
                   :disabled="!futuresAvailable"
-                  class="px-3 py-2 text-sm font-medium border-l border-gray-300 dark:border-gray-600"
+                  class="h-full px-3 py-0 text-sm font-medium border-l border-gray-300 dark:border-gray-600"
                   :class="form.instrument === 'future'
                     ? 'bg-primary-600 text-white'
                     : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed'"

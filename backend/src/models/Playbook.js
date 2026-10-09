@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
 
 class Playbook {
   static getReviewTypeForPlaybook(playbook) {
@@ -388,7 +389,9 @@ class Playbook {
             p.is_active,
             r.adherence_score,
             r.followed_plan,
-            t.pnl,
+            -- Normalized to USD before the averages and profit factor below:
+            -- a playbook can hold trades in more than one currency.
+            ${fxUsd('pnl', 't')} AS pnl,
             t.r_value
           FROM playbooks p
           LEFT JOIN trade_playbook_reviews r

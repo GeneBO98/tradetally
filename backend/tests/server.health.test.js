@@ -32,7 +32,8 @@ jest.mock('../src/services/brokerSync/brokerSyncScheduler', () => ({
   stop: jest.fn()
 }));
 jest.mock('../src/services/newsScheduler', () => ({
-  stop: jest.fn()
+  stop: jest.fn(),
+  getPersistentStatus: jest.fn()
 }));
 jest.mock('../src/services/earningsScheduler', () => ({
   stop: jest.fn()
@@ -70,6 +71,7 @@ const backgroundWorker = require('../src/workers/backgroundWorker');
 const jobRecoveryService = require('../src/services/jobRecoveryService');
 const enrichmentCacheCleanupService = require('../src/services/globalEnrichmentCacheCleanupService');
 const backupScheduler = require('../src/services/backupScheduler.service');
+const newsScheduler = require('../src/services/newsScheduler');
 const { buildHealthStatus } = require('../src/services/healthStatus.service');
 
 describe('server health status', () => {
@@ -80,6 +82,11 @@ describe('server health status', () => {
     jobRecoveryService.getStatus.mockReturnValue({ isRunning: true });
     enrichmentCacheCleanupService.getStatus.mockReturnValue({ isRunning: true });
     backupScheduler.getStatus.mockReturnValue({ isRunning: true, enabled: true });
+    newsScheduler.getPersistentStatus.mockResolvedValue({
+      running: true,
+      lastSuccessDate: '2026-08-27T12:00:00.000Z',
+      persisted: { lastSuccessAt: '2026-08-27T12:00:00.000Z', lastError: null }
+    });
   });
 
   test('includes backup and storage sections and degrades status when either is not OK', async () => {
@@ -103,5 +110,8 @@ describe('server health status', () => {
       status: 'DEGRADED',
       warnings: ['Images are stored on the application host.']
     });
+    expect(health.services.newsScheduler).toEqual(expect.objectContaining({
+      lastSuccessDate: '2026-08-27T12:00:00.000Z'
+    }));
   });
 });

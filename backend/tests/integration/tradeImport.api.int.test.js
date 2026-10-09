@@ -73,6 +73,19 @@ describe('CSV import pipeline (TradeStation, real database)', () => {
     expect(res.status).toBe(401);
   });
 
+  test('rejects an override to an account the user does not own', async () => {
+    const res = await request(app)
+      .post('/api/trades/import')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', Buffer.from(TRADESTATION_CSV), 'trades.csv')
+      .field('broker', 'tradestation')
+      .field('account_mode', 'override')
+      .field('accountId', randomUUID());
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Selected account was not found');
+  });
+
   test('imports a TradeStation round trip end to end', async () => {
     const res = await request(app)
       .post('/api/trades/import')
@@ -138,5 +151,34 @@ describe('CSV import pipeline (TradeStation, real database)', () => {
       [user.id]
     );
     expect(trades.rows).toHaveLength(1);
+  });
+
+  test('None imports an identical trade separately without changing the assigned trade', async () => {
+    await db.query(
+      `UPDATE trades
+       SET account_identifier = 'ACCOUNT-A'
+       WHERE user_id = $1`,
+      [user.id]
+    );
+
+    const res = await request(app)
+      .post('/api/trades/import')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', Buffer.from(TRADESTATION_CSV), 'trades.csv')
+      .field('broker', 'tradestation')
+      .field('account_mode', 'none');
+
+    expect(res.status).toBe(202);
+    const importLog = await waitForImport(token, res.body.importId);
+    expect(importLog.status).toBe('completed');
+
+    const trades = await db.query(
+      'SELECT account_identifier, import_id FROM trades WHERE user_id = $1 ORDER BY created_at',
+      [user.id]
+    );
+    expect(trades.rows).toHaveLength(2);
+    expect(trades.rows.filter(trade => trade.account_identifier === 'ACCOUNT-A')).toHaveLength(1);
+    expect(trades.rows.filter(trade => trade.account_identifier === null)).toHaveLength(1);
+    expect(trades.rows.find(trade => trade.account_identifier === null).import_id).toBe(res.body.importId);
   });
 });

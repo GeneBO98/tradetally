@@ -9,7 +9,9 @@ jest.mock('../../src/controllers/brokerSync.controller', () => ({
   getAllSyncLogs: jest.fn(),
   getConnection: jest.fn(),
   getSyncLogs: jest.fn(),
+  getConnectionAccounts: jest.fn(),
   addIBKRConnection: jest.fn(),
+  addTrading212Connection: jest.fn(),
   initSchwabOAuth: jest.fn((req, res) => {
     res.json({ success: true, auth_url: 'https://example.com/oauth' });
   }),
@@ -21,6 +23,8 @@ jest.mock('../../src/controllers/brokerSync.controller', () => ({
   triggerSync: jest.fn(),
   testConnection: jest.fn(),
   deleteBrokerTrades: jest.fn(),
+  listExcludedTrades: jest.fn(),
+  restoreExcludedTrade: jest.fn(),
   getSyncStatus: jest.fn()
 }));
 

@@ -23,7 +23,10 @@ function cloneHeadersWithoutCsrf(headers = {}) {
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
-  withCredentials: true // Enable sending cookies with requests
+  withCredentials: true, // Enable sending cookies with requests
+  // Fail ordinary reads promptly so a stalled upstream cannot leave a page
+  // spinner indefinitely. Upload and AI requests can override this per call.
+  timeout: 30000
   // Don't set default Content-Type - let each request set its own
 })
 

@@ -56,6 +56,13 @@
               Settings
             </button>
             <button
+              v-if="connection.brokerType === 'schwab' && connection.connectionStatus === 'expired'"
+              @click="emit('reconnect', connection); showMenu = false"
+              class="w-full px-4 py-2 text-left text-sm font-medium text-primary-600 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              Reconnect Schwab
+            </button>
+            <button
               @click="emit('test', connection); showMenu = false"
               class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
             >
@@ -93,7 +100,7 @@
           </div>
 
           <button
-            @click="emit('sync', connection)"
+            @click="connection.connectionStatus === 'expired' ? emit('reconnect', connection) : emit('sync', connection)"
             :disabled="syncing || syncDisabled"
             :title="syncDisabled ? 'Broker sync is a Pro feature' : ''"
             class="btn-primary text-sm py-1.5 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -102,13 +109,13 @@
               <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
               Syncing...
             </span>
-            <span v-else>Sync Now</span>
+            <span v-else>{{ connection.connectionStatus === 'expired' ? 'Reconnect' : 'Sync Now' }}</span>
           </button>
         </div>
 
         <!-- Error Message -->
         <div
-          v-if="connection.lastErrorMessage && connection.connectionStatus === 'error'"
+          v-if="connection.lastErrorMessage && ['error', 'expired'].includes(connection.connectionStatus)"
           class="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded text-sm text-red-700 dark:text-red-300"
         >
           {{ connection.lastErrorMessage }}
@@ -121,6 +128,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useBrokerSyncStore } from '@/stores/brokerSync'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 
 const props = defineProps({
   connection: {
@@ -134,9 +142,10 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['sync', 'test', 'settings', 'delete', 'deleteTrades'])
+const emit = defineEmits(['sync', 'reconnect', 'test', 'settings', 'delete', 'deleteTrades'])
 
 const store = useBrokerSyncStore()
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 const showMenu = ref(false)
 const menuRef = ref(null)
 
@@ -176,8 +185,15 @@ const brokerStyles = computed(() => {
       return {
         name: 'Webull',
         abbrev: 'WB',
-        bgClass: 'bg-orange-100 dark:bg-orange-900/30',
-        textClass: 'text-orange-600 dark:text-orange-400'
+        bgClass: 'bg-primary-100 dark:bg-primary-900/30',
+        textClass: 'text-primary-600 dark:text-primary-400'
+      }
+    case 'trading212':
+      return {
+        name: props.connection.brokerEnvironment === 'demo' ? 'Trading 212 Demo' : 'Trading 212 Live',
+        abbrev: 'T2',
+        bgClass: 'bg-primary-100 dark:bg-primary-900/30',
+        textClass: 'text-primary-600 dark:text-primary-400'
       }
     default:
       return {
@@ -218,7 +234,7 @@ function formatDate(date) {
     return `${hours}h ago`
   }
 
-  return d.toLocaleDateString()
+  return formatDateTimeTz(date, { includeTime: false })
 }
 
 // Close menu when clicking outside

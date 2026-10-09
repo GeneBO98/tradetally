@@ -81,7 +81,8 @@ describe('FinnhubRequestScheduler', () => {
     const scheduler = new FinnhubRequestScheduler({
       maxCallsPerMinute: 3,
       maxCallsPerSecond: 10,
-      activeReservePerMinute: 1
+      activeReservePerMinute: 1,
+      safetyFactor: 1
     });
 
     const results = await Promise.allSettled([
@@ -159,5 +160,77 @@ describe('FinnhubRequestScheduler', () => {
       code: 'FINNHUB_SCHEDULER_SKIPPED'
     });
     expect(scheduler.getStats().backgroundSkips).toBe(1);
+  });
+
+  test('applies a safety factor below the configured provider limit', () => {
+    const scheduler = new FinnhubRequestScheduler({
+      maxCallsPerMinute: 150,
+      maxCallsPerSecond: 30
+    });
+
+    expect(scheduler.maxCallsPerMinute).toBe(135);
+    expect(scheduler.maxCallsPerSecond).toBe(27);
+    expect(scheduler.configuredCallsPerMinute).toBe(150);
+    expect(scheduler.configuredCallsPerSecond).toBe(30);
+  });
+
+  test('background requests without explicit maxQueueWaitMs queue instead of skipping', async () => {
+    const scheduler = new FinnhubRequestScheduler({
+      maxCallsPerMinute: 10,
+      maxCallsPerSecond: 10,
+      autoProcess: false
+    });
+
+    const queued = scheduler.schedule(async () => 'enrichment', {
+      endpoint: '/stock/metric',
+      source: 'basic_financials',
+      priority: FinnhubPriority.BACKGROUND_ENRICHMENT,
+      background: true
+    });
+
+    // Not rejected while waiting for capacity
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(scheduler.queue.length).toBe(1);
+
+    scheduler.processQueue();
+    await expect(queued).resolves.toBe('enrichment');
+    expect(scheduler.getStats().backgroundSkips).toBe(0);
+  });
+
+  test('pauses all sends after an upstream 429', async () => {
+    const scheduler = new FinnhubRequestScheduler({
+      maxCallsPerMinute: 10,
+      maxCallsPerSecond: 10
+    });
+    const error = new Error('rate limited');
+    error.response = { status: 429, headers: {} };
+
+    await expect(scheduler.schedule(async () => { throw error; }, {
+      endpoint: '/quote',
+      source: 'quote',
+      priority: FinnhubPriority.ACTIVE_QUOTE
+    })).rejects.toBe(error);
+
+    expect(scheduler.cooldownUntil).toBeGreaterThan(Date.now());
+    expect(scheduler.hasCapacity({ background: false })).toBe(false);
+  });
+
+  test('honors Retry-After when entering cooldown', async () => {
+    const scheduler = new FinnhubRequestScheduler({
+      maxCallsPerMinute: 10,
+      maxCallsPerSecond: 10
+    });
+    const error = new Error('rate limited');
+    error.response = { status: 429, headers: { 'retry-after': '30' } };
+
+    await expect(scheduler.schedule(async () => { throw error; }, {
+      endpoint: '/quote',
+      source: 'quote',
+      priority: FinnhubPriority.ACTIVE_QUOTE
+    })).rejects.toBe(error);
+
+    const remaining = scheduler.cooldownUntil - Date.now();
+    expect(remaining).toBeGreaterThan(25000);
+    expect(remaining).toBeLessThanOrEqual(30000);
   });
 });

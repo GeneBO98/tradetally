@@ -54,6 +54,25 @@ const normalizeFieldNames = (body) => {
   return normalized;
 };
 
+/**
+ * Validate one payload against a schema outside the middleware chain (used by
+ * bulk endpoints, where each array item must pass the same schema as the
+ * single-item route). Returns { value } or { fields } on failure.
+ */
+const validatePayload = (schema, body) => {
+  const { error, value } = schema.validate(normalizeFieldNames(body));
+  if (error) {
+    return {
+      fields: error.details.map(d => ({
+        field: d.path.join('.'),
+        message: d.message,
+        type: d.type
+      }))
+    };
+  }
+  return { value };
+};
+
 const validate = (schema) => {
   return (req, res, next) => {
     // Normalize snake_case to camelCase before validation
@@ -109,7 +128,7 @@ const nullableDate = Joi.alternatives().try(
 );
 const nullableNumber = Joi.alternatives().try(Joi.number(), Joi.valid(null, ''));
 const currencyCode = Joi.string().trim().uppercase().pattern(/^[A-Z]{3}$/).allow(null, '');
-const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local');
+const aiProviderSchema = Joi.string().valid('gemini', 'claude', 'openai', 'deepseek', 'kimi', 'codex_cli', 'claude_cli', 'ollama', 'lmstudio', 'perplexity', 'local', 'custom');
 
 const schemas = {
   register: Joi.object({
@@ -137,8 +156,22 @@ const schemas = {
 
   login: Joi.object({
     email: emailField.required(),
-    password: Joi.string().required()
+    password: Joi.string().required(),
+    biometric_enrollment: Joi.boolean().optional()
   }),
+
+  biometricLogin: Joi.object({
+    biometric_token: Joi.string().required()
+  }),
+
+  newsBackfill: Joi.object({
+    user_id: Joi.string().guid({ version: ['uuidv4'] }).optional(),
+    userId: Joi.string().guid({ version: ['uuidv4'] }).optional(),
+    batch_size: Joi.number().integer().min(1).max(100).optional(),
+    batchSize: Joi.number().integer().min(1).max(100).optional(),
+    max_trades: Joi.number().integer().min(1).max(10000).allow(null).optional(),
+    maxTrades: Joi.number().integer().min(1).max(10000).allow(null).optional()
+  }).oxor('user_id', 'userId').oxor('batch_size', 'batchSize').oxor('max_trades', 'maxTrades'),
 
   internalCrmSyncRun: Joi.object({
     targets: Joi.array()
@@ -171,7 +204,8 @@ const schemas = {
     token: Joi.string().allow('', null),
     twoFactorCode: Joi.string().allow('', null),
     two_factor_code: Joi.string().allow('', null),
-    code: Joi.string().allow('', null)
+    code: Joi.string().allow('', null),
+    biometric_enrollment: Joi.boolean().optional()
   }).or('tempToken', 'temp_token', 'token')
     .or('twoFactorCode', 'two_factor_code', 'code'),
 
@@ -184,8 +218,8 @@ const schemas = {
     exitPrice: Joi.number().min(0).allow(null, ''),
     quantity: Joi.number().positive().required(),
     side: Joi.string().valid('long', 'short').required(),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto').default('stock'),
-    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto').optional(), // Accept snake_case for API compatibility
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').optional(), // Accept snake_case for API compatibility
     commission: Joi.number().default(0),  // Can be negative for rebates
     entryCommission: Joi.number().default(0),  // Can be negative for rebates
     exitCommission: Joi.number().default(0),  // Can be negative for rebates
@@ -289,8 +323,8 @@ const schemas = {
   createShellTrade: Joi.object({
     symbol: Joi.string().max(20).required(),
     side: Joi.string().valid('long', 'short').required(),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto').default('stock'),
-    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto').optional(),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').optional(),
     broker: Joi.string().max(50).allow(''),
     account_identifier: Joi.string().max(50).allow(''),
     strategy: Joi.string().max(100).allow(''),
@@ -343,7 +377,7 @@ const schemas = {
     exitPrice: Joi.number().min(0).allow(null, ''),
     quantity: Joi.number().positive(),
     side: Joi.string().valid('long', 'short'),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto'),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex'),
     commission: Joi.number(),  // Can be negative for rebates
     entryCommission: Joi.number(),  // Can be negative for rebates
     exitCommission: Joi.number(),  // Can be negative for rebates
@@ -462,7 +496,11 @@ const schemas = {
     statisticsCalculation: Joi.string().valid('average', 'median'),
     analyticsPositionGrouping: Joi.boolean(),
     edgeReportEnabled: Joi.boolean(),
+    breakevenToleranceMode: Joi.string().valid('ticks', 'dollars'),
+    breakeven_tolerance_mode: Joi.string().valid('ticks', 'dollars'),
     breakevenToleranceTicks: Joi.number().integer().min(0).max(1000).allow(null),
+    breakevenToleranceDollars: Joi.number().min(0).max(1000000).allow(null),
+    breakeven_tolerance_dollars: Joi.number().min(0).max(1000000).allow(null),
     breakevenToleranceTicksByUnderlying: Joi.object()
       .pattern(/^[A-Za-z0-9]+$/, Joi.number().integer().min(0).max(1000))
       .allow(null),
@@ -472,7 +510,10 @@ const schemas = {
     defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar'),
     defaultStopLossPercent: Joi.number().min(0).max(100).allow(null),
     defaultStopLossDollars: Joi.number().min(0).allow(null),
+    defaultTakeProfitType: Joi.string().valid('percent', 'risk_reward', 'dollar'),
     defaultTakeProfitPercent: Joi.number().min(0).max(1000).allow(null),
+    defaultTakeProfitRMultiple: Joi.number().min(0).max(1000).allow(null),
+    defaultTakeProfitDollars: Joi.number().min(0).allow(null),
     dashboardLayout: Joi.array().items(Joi.object({
       id: Joi.string().required(),
       visible: Joi.boolean().required()
@@ -483,6 +524,7 @@ const schemas = {
       size: Joi.string().valid('full', 'half').optional()
     })).allow(null),
     displayCurrency: Joi.string().max(10),
+    tradeAllocationsEnabled: Joi.boolean(),
     uiPreferences: Joi.object()
   }).min(1),
 
@@ -718,9 +760,9 @@ const schemas = {
   }),
 
   billingAppleReceipt: Joi.object({
-    transaction_id: Joi.string().required(),
-    product_id: Joi.string().required(),
-    receipt_data: Joi.string().required(),
+    transaction_id: Joi.string().trim().max(255).required(),
+    product_id: Joi.string().trim().max(255).required(),
+    receipt_data: Joi.string().trim().max(100000).required(),
     environment: Joi.string().valid('Sandbox', 'Production', 'Xcode', 'LocalTesting').allow('', null)
   }),
 
@@ -733,6 +775,7 @@ const schemas = {
     filters: Joi.object().unknown(true).default({}),
     tradeId: Joi.string().trim().max(64),
     analysisType: Joi.string().valid('single_trade'),
+    request_id: Joi.string().trim().max(100).pattern(/^[a-zA-Z0-9_-]+$/),
     apiKey: Joi.string().trim().max(500),
     modelName: Joi.string().trim().max(200)
   }),
@@ -748,17 +791,29 @@ const schemas = {
     flexQueryId: Joi.string().trim().required(),
     accountLabel: nullableString(255),
     autoSyncEnabled: Joi.boolean().default(false),
-    syncFrequency: Joi.string().valid('manual', 'hourly', 'daily', 'weekly').default('manual'),
+    syncFrequency: Joi.string().valid('manual', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours', 'daily').default('manual'),
     syncTime: nullableString(10),
     syncStartDate: nullableDate
+  }),
+
+  brokerSyncTrading212Connection: Joi.object({
+    api_key: Joi.string().trim().required(),
+    api_secret: Joi.string().trim().required(),
+    broker_environment: Joi.string().valid('live', 'demo').default('live'),
+    account_label: nullableString(255),
+    auto_sync_enabled: Joi.boolean().default(false),
+    sync_frequency: Joi.string().valid('manual', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours', 'daily').default('manual'),
+    sync_time: nullableString(10),
+    sync_start_date: nullableDate
   }),
 
   brokerSyncConnectionUpdate: Joi.object({
     accountLabel: nullableString(255),
     autoSyncEnabled: Joi.boolean(),
-    syncFrequency: Joi.string().valid('manual', 'hourly', 'daily', 'weekly'),
+    syncFrequency: Joi.string().valid('manual', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours', 'daily'),
     syncTime: nullableString(10),
-    syncStartDate: nullableDate
+    syncStartDate: nullableDate,
+    excluded_account_identifiers: Joi.array().items(Joi.string().trim().max(50)).max(50)
   }).min(1),
 
   brokerSyncManualSync: Joi.object({
@@ -773,7 +828,10 @@ const schemas = {
     initialBalance: Joi.number().min(0).default(0),
     initialBalanceDate: nullableDate.required(),
     isPrimary: Joi.boolean().default(false),
-    notes: nullableString(2000)
+    notes: nullableString(2000),
+    isArchived: Joi.boolean().default(false),
+    includeInReports: Joi.boolean().default(true),
+    feeProfileId: Joi.string().uuid().allow(null, '')
   }),
 
   accountUpdate: Joi.object({
@@ -783,7 +841,10 @@ const schemas = {
     initialBalance: Joi.number().min(0),
     initialBalanceDate: nullableDate,
     isPrimary: Joi.boolean(),
-    notes: nullableString(2000)
+    notes: nullableString(2000),
+    isArchived: Joi.boolean(),
+    includeInReports: Joi.boolean(),
+    feeProfileId: Joi.string().uuid().allow(null, '')
   }).min(1),
 
   accountTransaction: Joi.object({
@@ -939,4 +1000,4 @@ const schemas = {
 
 schemas.trade = schemas.createTrade;
 
-module.exports = { validate, schemas };
+module.exports = { validate, validatePayload, schemas };

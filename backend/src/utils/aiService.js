@@ -1,21 +1,40 @@
 const gemini = require('./gemini');
 const User = require('../models/User');
 const adminSettingsService = require('../services/adminSettings');
-const { validateAiProviderUrl } = require('./urlSecurity');
+const { validateAiProviderUrl, fetchAiProviderUrl } = require('./urlSecurity');
 const { sanitizeErrorForLogging, summarizeUrlForLogging } = require('./logSanitizer');
+const AIProvider = require('./aiProvider');
+
+const hasOwn = (object, property) => Object.prototype.hasOwnProperty.call(object, property);
+
+const resolveMaxTokens = (options, fallback) => {
+  if (!hasOwn(options, 'maxTokens')) return fallback;
+
+  return Number.isSafeInteger(options.maxTokens) && options.maxTokens > 0
+    ? options.maxTokens
+    : null;
+};
+
+const optionalTokenLimit = (parameter, options, fallback) => {
+  const maxTokens = resolveMaxTokens(options, fallback);
+  return maxTokens ? { [parameter]: maxTokens } : {};
+};
 
 class AIService {
   constructor() {
     this.providers = {
       gemini: this.useGemini.bind(this),
       claude: this.useClaude.bind(this),
+      codex_cli: this.useCli.bind(this),
+      claude_cli: this.useCli.bind(this),
       openai: this.useOpenAI.bind(this),
       deepseek: this.useDeepSeek.bind(this),
       kimi: this.useKimi.bind(this),
       ollama: this.useOllama.bind(this),
       lmstudio: this.useLMStudio.bind(this),
       perplexity: this.usePerplexity.bind(this),
-      local: this.useLocal.bind(this)
+      local: this.useLocal.bind(this),
+      custom: this.useCustom.bind(this)
     };
   }
 
@@ -155,6 +174,10 @@ class AIService {
         return !!settings.apiKey && settings.apiKey.trim() !== '';
       case 'claude':
         return !!settings.apiKey && settings.apiKey.trim() !== '';
+      case 'codex_cli':
+      case 'claude_cli':
+        // Installation and authentication are checked when the CLI is invoked.
+        return true;
       case 'openai':
         return !!settings.apiKey && settings.apiKey.trim() !== '';
       case 'deepseek':
@@ -173,6 +196,10 @@ class AIService {
       case 'local':
         // Local requires URL, API key is optional
         return !!settings.apiUrl && settings.apiUrl.trim() !== '';
+      case 'custom':
+        // Custom OpenAI-compatible providers require a URL and explicit model.
+        return !!settings.apiUrl && settings.apiUrl.trim() !== '' &&
+          !!settings.model && settings.model.trim() !== '';
       default:
         return false;
     }
@@ -273,7 +300,9 @@ Your response:`;
 
     const response = await anthropic.messages.create({
       model: settings.model || 'claude-3-5-sonnet-20241022',
-      max_completion_tokens: options.maxTokens || 1000,
+      // Anthropic requires max_tokens. Other providers can omit their token
+      // parameter entirely when journal analysis is configured as uncapped.
+      max_tokens: resolveMaxTokens(options, 1000) || 8192,
       messages: [
         {
           role: 'user',
@@ -283,6 +312,13 @@ Your response:`;
     });
 
     return response.content[0].text;
+  }
+
+  async useCli(prompt, settings, options = {}) {
+    return AIProvider.generateResponse(prompt, {
+      provider: settings.provider,
+      modelName: settings.model
+    }, options);
   }
 
   async useOpenAI(prompt, settings, options = {}) {
@@ -326,7 +362,8 @@ Your response:`;
 
     const openai = new OpenAI({
       apiKey: settings.apiKey,
-      baseURL: validatedBaseUrl
+      baseURL: validatedBaseUrl,
+      fetch: (url, init) => fetchAiProviderUrl(provider, url, init)
     });
 
     const providerName = options.providerName || 'OpenAI-compatible';
@@ -336,8 +373,8 @@ Your response:`;
     try {
       // Build request parameters
       const tokenParam = provider === 'openai'
-        ? { max_completion_tokens: options.maxTokens || 1000 }
-        : { max_tokens: options.maxTokens || 1000 };
+        ? optionalTokenLimit('max_completion_tokens', options, 1000)
+        : optionalTokenLimit('max_tokens', options, 1000);
 
       const requestParams = {
         model: model,
@@ -383,8 +420,6 @@ Your response:`;
   }
 
   async useOllama(prompt, settings, options = {}) {
-    const { default: fetch } = await import('node-fetch');
-    
     if (!settings.apiUrl) {
       throw new Error('Ollama API URL not configured');
     }
@@ -396,50 +431,16 @@ Your response:`;
       model: settings.model || 'llama3.1'
     });
 
-    const validatedApiUrl = await validateAiProviderUrl('ollama', settings.apiUrl);
     const model = settings.model || 'llama3.1';
-    const url = `${validatedApiUrl.toString().replace(/\/$/, '')}/api/generate`;
-
-    const headers = {
-      'Content-Type': 'application/json'
-    };
-
-    // Only add Authorization header if API key is provided and not empty
-    if (settings.apiKey && settings.apiKey.trim() !== '') {
-      headers['Authorization'] = `Bearer ${settings.apiKey}`;
-    }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        prompt,
-        stream: false,
-        options: {
-          num_predict: options.maxTokens || 1000
-        }
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    
-    // Ollama returns the response in the 'response' field
-    if (!data.response) {
-      console.error('Ollama response missing expected "response" field');
-      throw new Error('Invalid response format from Ollama API');
-    }
-    
-    return data.response;
+    return AIProvider.generateResponse(prompt, {
+      provider: 'ollama',
+      apiKey: settings.apiKey,
+      apiUrl: settings.apiUrl,
+      modelName: model
+    }, options);
   }
 
   async useLMStudio(prompt, settings, options = {}) {
-    const { default: fetch } = await import('node-fetch');
-    
     // LM Studio defaults to localhost:1234
     const apiUrl = settings.apiUrl || 'http://localhost:1234';
     const validatedApiUrl = await validateAiProviderUrl('lmstudio', apiUrl);
@@ -449,7 +450,7 @@ Your response:`;
 
     try {
       // LM Studio uses OpenAI-compatible API at /v1/chat/completions
-      const response = await fetch(`${validatedApiUrl.toString().replace(/\/$/, '')}/v1/chat/completions`, {
+      const response = await fetchAiProviderUrl('lmstudio', `${validatedApiUrl.toString().replace(/\/$/, '')}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -464,7 +465,7 @@ Your response:`;
             }
           ],
           temperature: 0.1,
-          max_tokens: options.maxTokens || 1000,
+          ...optionalTokenLimit('max_tokens', options, 1000),
           stream: false
         })
       });
@@ -488,8 +489,6 @@ Your response:`;
   }
 
   async usePerplexity(prompt, settings, options = {}) {
-    const { default: fetch } = await import('node-fetch');
-    
     if (!settings.apiKey) {
       throw new Error('Perplexity API key not configured');
     }
@@ -498,7 +497,7 @@ Your response:`;
     console.log('[PERPLEXITY] Model:', settings.model || 'sonar');
 
     try {
-      const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      const response = await fetchAiProviderUrl('perplexity', 'https://api.perplexity.ai/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -512,7 +511,7 @@ Your response:`;
               content: prompt
             }
           ],
-          max_tokens: options.maxTokens || 1000
+          ...optionalTokenLimit('max_tokens', options, 1000)
         })
       });
 
@@ -536,16 +535,23 @@ Your response:`;
     }
   }
 
+  async useCustom(prompt, settings, options = {}) {
+    return AIProvider.generateResponse(prompt, {
+      provider: 'custom',
+      apiKey: settings.apiKey,
+      apiUrl: settings.apiUrl,
+      modelName: settings.model
+    }, options);
+  }
+
   async useLocal(prompt, settings, options = {}) {
-    const { default: fetch } = await import('node-fetch');
-    
     if (!settings.apiUrl) {
       throw new Error('Local API URL not configured');
     }
 
     const validatedApiUrl = await validateAiProviderUrl('local', settings.apiUrl);
 
-    const response = await fetch(validatedApiUrl.toString(), {
+    const response = await fetchAiProviderUrl('local', validatedApiUrl.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -554,7 +560,7 @@ Your response:`;
       body: JSON.stringify({
         prompt,
         model: settings.model,
-        max_tokens: options.maxTokens || 1000
+        ...optionalTokenLimit('max_tokens', options, 1000)
       })
     });
 

@@ -3,6 +3,20 @@
  * Supports Gemini, OpenAI, Claude, DeepSeek, Kimi, LM Studio, Ollama, and other OpenAI-compatible APIs
  */
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { fetchAiProviderUrl } = require('./urlSecurity');
+const { summarizeUrlForLogging } = require('./logSanitizer');
+const AICliProvider = require('./aiCliProvider');
+const { resolveGeminiModel } = require('./geminiModels');
+
+const hasOwn = (object, property) => Object.prototype.hasOwnProperty.call(object, property);
+
+const resolveMaxTokens = (options, fallback) => {
+  if (!hasOwn(options, 'maxTokens')) return fallback;
+
+  return Number.isSafeInteger(options.maxTokens) && options.maxTokens > 0
+    ? options.maxTokens
+    : null;
+};
 
 class AIProvider {
   /**
@@ -13,6 +27,23 @@ class AIProvider {
    * @returns {Promise<string>} Generated text response
    */
   static async generateResponse(prompt, settings, options = {}) {
+    if (options.images?.length && !['gemini', 'openai', 'claude'].includes(settings.provider)) {
+      throw new Error('Screenshot analysis is unavailable for this provider');
+    }
+    try {
+      return await this.generateProviderResponse(prompt, settings, options);
+    } catch (error) {
+      if (options.images?.length && /image|vision|multimodal|media.?type|mime|content.?type|inline.?data/i.test(error.message)) {
+        const image_error = new Error('The configured AI model could not accept screenshots. Choose an image-capable Gemini, OpenAI, or Claude model in Settings. No application credits were charged.');
+        image_error.code = 'AI_IMAGE_INPUT_REJECTED';
+        image_error.status = 400;
+        throw image_error;
+      }
+      throw error;
+    }
+  }
+
+  static async generateProviderResponse(prompt, settings, options = {}) {
     const { provider, apiKey, apiUrl, modelName } = settings;
 
     console.log(`[AI_PROVIDER] Using provider: ${provider}, model: ${modelName}`);
@@ -28,21 +59,26 @@ class AIProvider {
         if (!apiKey) {
           throw new Error('DeepSeek API key not configured');
         }
-        return this.generateOpenAICompatible(prompt, apiKey, modelName || 'deepseek-chat', apiUrl || 'https://api.deepseek.com/v1', options);
+        return this.generateOpenAICompatible(prompt, apiKey, modelName || 'deepseek-chat', apiUrl || 'https://api.deepseek.com/v1', { ...options, provider: 'deepseek' });
 
       case 'kimi':
         if (!apiKey) {
           throw new Error('Kimi API key not configured');
         }
-        return this.generateOpenAICompatible(prompt, apiKey, modelName || 'moonshot-v1-8k', apiUrl || 'https://api.moonshot.ai/v1', options);
+        return this.generateOpenAICompatible(prompt, apiKey, modelName || 'moonshot-v1-8k', apiUrl || 'https://api.moonshot.ai/v1', { ...options, provider: 'kimi' });
 
       case 'claude':
         return this.generateClaude(prompt, apiKey, modelName, options);
 
+      case 'codex_cli':
+      case 'claude_cli':
+        return AICliProvider.generateResponse(prompt, { provider, modelName });
+
       case 'lmstudio':
       case 'ollama':
       case 'local':
-        return this.generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, options);
+      case 'custom':
+        return this.generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, { ...options, provider });
 
       case 'perplexity':
         return this.generateOpenAI(prompt, apiKey, modelName, 'https://api.perplexity.ai', options);
@@ -56,17 +92,17 @@ class AIProvider {
   /**
    * Generate using Gemini API
    */
-  static async generateGemini(prompt, apiKey, modelName = 'gemini-1.5-flash', options = {}) {
+  static async generateGemini(prompt, apiKey, modelName = null, options = {}) {
     if (!apiKey) {
       throw new Error('Gemini API key not configured');
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: modelName });
+    const model = genAI.getGenerativeModel({ model: await resolveGeminiModel(apiKey, modelName) });
 
     try {
       const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        contents: [{ role: 'user', parts: [{ text: prompt }, ...(options.images || []).flatMap((image, index) => [{ text: `Image ${index + 1}: ${image.file_name || 'Screenshot'}` }, { inlineData: { mimeType: image.mime_type, data: image.data } }])] }],
         generationConfig: {
           ...(options.maxTokens && { maxOutputTokens: options.maxTokens }),
           ...(options.temperature !== undefined && { temperature: options.temperature })
@@ -88,7 +124,8 @@ class AIProvider {
       throw new Error('OpenAI API key not configured');
     }
 
-    return this.generateOpenAICompatible(prompt, apiKey, modelName, baseUrl, options);
+    const provider = baseUrl.includes('perplexity') ? 'perplexity' : 'openai';
+    return this.generateOpenAICompatible(prompt, apiKey, modelName, baseUrl, { ...options, provider });
   }
 
   /**
@@ -109,8 +146,12 @@ class AIProvider {
         },
         body: JSON.stringify({
           model: modelName,
-          max_tokens: options.maxTokens || 4096,
-          messages: [{ role: 'user', content: prompt }]
+          // Anthropic requires a value even when other providers can delegate
+          // the output ceiling to the model.
+          max_tokens: resolveMaxTokens(options, 4096) || 8192,
+          messages: [{ role: 'user', content: options.images?.length
+            ? [...options.images.flatMap((image, index) => [{ type: 'text', text: `Image ${index + 1}: ${image.file_name || 'Screenshot'}` }, { type: 'image', source: { type: 'base64', media_type: image.mime_type, data: image.data } }]), { type: 'text', text: prompt }]
+            : prompt }]
         })
       });
 
@@ -130,10 +171,36 @@ class AIProvider {
   /**
    * Generate using OpenAI-compatible API (LM Studio, Ollama, etc.)
    */
-  static async generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, options = {}) {
-    const url = `${apiUrl}/chat/completions`;
+  static buildOpenAIChatCompletionsUrl(apiUrl, provider = '') {
+    if (!apiUrl) {
+      throw new Error('OpenAI-compatible API URL not configured');
+    }
 
-    console.log(`[AI_PROVIDER] Calling OpenAI-compatible API at: ${url}`);
+    const url = new URL(apiUrl);
+    url.pathname = url.pathname.replace(/\/+$/, '');
+
+    const normalizedProvider = String(provider).toLowerCase();
+    if (normalizedProvider === 'ollama' || normalizedProvider === 'lmstudio') {
+      const normalizedPath = url.pathname.toLowerCase();
+      if (!normalizedPath || normalizedPath === '/' || (normalizedProvider === 'ollama' && normalizedPath === '/api/generate')) {
+        url.pathname = '/v1';
+      }
+    }
+
+    if (!url.pathname.toLowerCase().endsWith('/chat/completions')) {
+      url.pathname = `${url.pathname}/chat/completions`;
+    }
+    return url.toString();
+  }
+
+  static async generateOpenAICompatible(prompt, apiKey, modelName, apiUrl, options = {}) {
+    if (options.provider === 'custom' && !String(modelName || '').trim()) {
+      throw new Error('Custom AI model not configured');
+    }
+
+    const url = this.buildOpenAIChatCompletionsUrl(apiUrl, options.provider);
+
+    console.log(`[AI_PROVIDER] Calling OpenAI-compatible API at: ${summarizeUrlForLogging(url)}`);
 
     const headers = {
       'Content-Type': 'application/json'
@@ -155,11 +222,13 @@ class AIProvider {
       // `temperature` — only the default is supported. Keep this regex in sync
       // with aiService.js.
       const isReasoningModel = /^(o\d|gpt-5|deepseek-reasoner)/i.test(modelName);
-      const tokenLimit = options.maxTokens || (isReasoningModel ? 16384 : 4096);
+      const tokenLimit = resolveMaxTokens(options, isReasoningModel ? 16384 : 4096);
 
-      const tokenParam = isOpenAIAPI
-        ? { max_completion_tokens: tokenLimit }
-        : { max_tokens: options.maxTokens || 4096 };
+      const tokenParam = tokenLimit
+        ? (isOpenAIAPI
+            ? { max_completion_tokens: tokenLimit }
+            : { max_tokens: tokenLimit })
+        : {};
 
       // Reasoning models don't support custom temperature
       const supportsTemperature = !isReasoningModel;
@@ -173,14 +242,16 @@ class AIProvider {
           },
           {
             role: 'user',
-            content: prompt
+            content: options.images?.length
+              ? [{ type: 'text', text: prompt }, ...options.images.flatMap((image, index) => [{ type: 'text', text: `Image ${index + 1}: ${image.file_name || 'Screenshot'}` }, { type: 'image_url', image_url: { url: `data:${image.mime_type};base64,${image.data}`, detail: 'high' } }])]
+              : prompt
           }
         ],
         ...tokenParam,
         ...(supportsTemperature && { temperature: options.temperature ?? 0.7 })
       };
 
-      const response = await fetch(url, {
+      const response = await fetchAiProviderUrl(options.provider || 'openai', url, {
         method: 'POST',
         headers,
         body: JSON.stringify(body)
@@ -236,12 +307,20 @@ class AIProvider {
    * Check if provider is configured correctly
    */
   static isConfigured(settings) {
-    const { provider, apiKey, apiUrl } = settings;
+    const { provider, apiKey, apiUrl, modelName } = settings;
 
     // Local providers don't require API key
     const localProviders = ['lmstudio', 'ollama', 'local'];
     if (localProviders.includes(provider)) {
       return !!apiUrl;
+    }
+
+    if (provider === 'codex_cli' || provider === 'claude_cli') {
+      return true;
+    }
+
+    if (provider === 'custom') {
+      return !!apiUrl && !!String(modelName || '').trim();
     }
 
     return !!apiKey;

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import api from '@/services/api'
+import { TRADE_CHART_RESOLUTION_PREFERENCE_KEY } from '@/utils/tradeChartPreferences'
 
 // Keys whose values live inside the user_settings.ui_preferences JSONB blob.
 // The same key is also used as the localStorage key so callers can keep
@@ -8,6 +9,7 @@ import api from '@/services/api'
 export const SYNCED_KEYS = Object.freeze([
   'darkMode',
   'tradeListColumns',
+  'tradeListColumnWidths',
   'tradeListFullWidth',
   'tradeFilters',
   'tradeFiltersPeriod',
@@ -16,6 +18,7 @@ export const SYNCED_KEYS = Object.freeze([
   'dashboardCustomStartDate',
   'dashboardCustomEndDate',
   'dashboardRMode',
+  'openPositionsView',
   'analyticsFilters',
   'behavioralAnalyticsFilters',
   'gamificationFilters',
@@ -28,6 +31,9 @@ export const SYNCED_KEYS = Object.freeze([
   'priceAlertsFilters',
   'monthlyPerformanceYear',
   'lastSelectedBroker',
+  'import_strategy_handling',
+  'import_notes_and_descriptions',
+  TRADE_CHART_RESOLUTION_PREFERENCE_KEY,
   'passkey_prompt_dismissed',
   'hiddenStrategies',
   'hiddenSetups',
@@ -37,11 +43,13 @@ export const SYNCED_KEYS = Object.freeze([
 ])
 
 const SYNCED_KEY_SET = new Set(SYNCED_KEYS)
+const RAW_STRING_KEYS = new Set([TRADE_CHART_RESOLUTION_PREFERENCE_KEY])
 const SYNC_DEBOUNCE_MS = 800
 
 function readLocal(key) {
   const raw = localStorage.getItem(key)
   if (raw === null) return undefined
+  if (RAW_STRING_KEYS.has(key)) return raw
   // Try JSON; fall back to raw string for legacy plain values like '12345678'.
   try {
     return JSON.parse(raw)

@@ -5,7 +5,7 @@ This guide will help you migrate TradeTally from Docker containers to running na
 ## Prerequisites
 
 - Ubuntu/Debian-based Linux system (or adjust commands for your OS)
-- Node.js 20+ installed
+- Node.js 24.21.0 or newer installed (Node.js 24 LTS recommended)
 - PostgreSQL 15+ installed
 - Nginx installed
 - PM2 or systemd for process management
@@ -58,24 +58,26 @@ sudo systemctl start postgresql
 sudo systemctl enable postgresql
 ```
 
-### 2.2 Install Node.js 20
+### 2.2 Install Node.js 24 LTS
 
 ```bash
 # Using NodeSource repository
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install nodejs
 
 # Verify installation
-node --version  # Should show v20.x.x
+node --version  # Should show v24.21.0 or a newer Node.js 24 release
 npm --version
 ```
+
+Upgrade existing Node.js 20/22 installations before installing TradeTally dependencies. The repository's `.nvmrc` pins the version used by CI and Docker. If you use PM2, restart the backend under the upgraded Node.js runtime and regenerate its startup service with `pm2 startup` so it does not retain the old Node.js path.
 
 ### 2.3 Install pnpm and PM2
 
 TradeTally uses pnpm for dependency installation.
 
 ```bash
-sudo npm install -g pnpm@10.13.1
+sudo npm install -g pnpm@10.34.5
 sudo npm install -g pm2
 ```
 
@@ -331,10 +333,11 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Timeouts
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+        # Allow slow local AI models to finish on older self-hosted hardware.
+        # This leaves headroom above TradeTally's 10-minute AI request timeout.
+        proxy_connect_timeout 900s;
+        proxy_send_timeout 900s;
+        proxy_read_timeout 900s;
 
         # File upload limits
         client_max_body_size 52M;

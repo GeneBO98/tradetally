@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
 
 // DATE columns arrive from pg as 'YYYY-MM-DD' strings (see config/database.js).
 // new Date('YYYY-MM-DD') would anchor to UTC midnight, which the local-time
@@ -347,8 +348,8 @@ class YearWrappedService {
         COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) as winning_trades,
         COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0) as losing_trades,
         COUNT(*) FILTER (WHERE ${be.is}) as breakeven_trades,
-        COALESCE(SUM(pnl), 0) as total_pnl,
-        COALESCE(AVG(pnl), 0) as avg_pnl,
+        COALESCE(SUM(${fxUsd('pnl', '')}), 0) as total_pnl,
+        COALESCE(AVG(${fxUsd('pnl', '')}), 0) as avg_pnl,
         CASE WHEN COUNT(*) > 0
           THEN (COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::float / COUNT(*) * 100)
           ELSE 0
@@ -434,7 +435,7 @@ class YearWrappedService {
     const result = await db.query(`
       SELECT
         symbol,
-        SUM(pnl) as total_pnl,
+        SUM(${fxUsd('pnl', '')}) as total_pnl,
         COUNT(*) as trade_count,
         COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) as wins,
         CASE WHEN COUNT(*) > 0
@@ -502,7 +503,7 @@ class YearWrappedService {
       SELECT
         strategy,
         COUNT(*) as trade_count,
-        SUM(pnl) as total_pnl
+        SUM(${fxUsd('pnl', '')}) as total_pnl
       FROM trades
       WHERE user_id = $1
         AND EXTRACT(YEAR FROM trade_date) = $2
@@ -872,7 +873,7 @@ class YearWrappedService {
       SELECT
         EXTRACT(YEAR FROM trade_date) as year,
         COUNT(*) as total_trades,
-        COALESCE(SUM(pnl), 0) as total_pnl,
+        COALESCE(SUM(${fxUsd('pnl', '')}), 0) as total_pnl,
         CASE WHEN COUNT(*) > 0
           THEN (COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::float / COUNT(*) * 100)
           ELSE 0
@@ -949,10 +950,10 @@ class YearWrappedService {
         COUNT(*) as total_trades,
         COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0) as wins,
         COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0) as losses,
-        COALESCE(SUM(pnl), 0) as total_pnl,
-        COALESCE(AVG(pnl), 0) as avg_pnl,
-        MAX(pnl) as best_trade,
-        MIN(pnl) as worst_trade,
+        COALESCE(SUM(${fxUsd('pnl', '')}), 0) as total_pnl,
+        COALESCE(AVG(${fxUsd('pnl', '')}), 0) as avg_pnl,
+        MAX(${fxUsd('pnl', '')}) as best_trade,
+        MIN(${fxUsd('pnl', '')}) as worst_trade,
         CASE WHEN COUNT(*) > 0
           THEN (COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::float / COUNT(*) * 100)
           ELSE 0

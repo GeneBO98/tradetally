@@ -2,6 +2,8 @@ const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const encryptionService = require('../services/brokerSync/encryptionService');
+const tierCache = require('../services/tierCache');
+const settingsCache = require('../services/settingsCache');
 const { normalizeEmail } = require('../utils/normalizeEmail');
 
 // Reset and email-verification tokens are stored as sha256 hashes so a read-only
@@ -57,7 +59,7 @@ class User {
     const query = `
       INSERT INTO users (email, username, password_hash, full_name, verification_token, verification_expires, role, is_verified, admin_approved, tier, marketing_consent)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, marketing_consent, created_at
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, marketing_consent, session_version, created_at
     `;
 
     const values = [normalizeEmail(email), username, hashedPassword, fullName, hashLookupToken(verificationToken), verificationExpires, role, isVerified, adminApproved, tier, marketingConsent];
@@ -69,7 +71,8 @@ class User {
   static async findById(id) {
     const query = `
       SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
-             two_factor_enabled, two_factor_secret, two_factor_backup_codes, tier, marketing_consent, created_at, updated_at, last_login_at
+             two_factor_enabled, two_factor_enabled_at, two_factor_secret, two_factor_backup_codes, tier, marketing_consent,
+             session_version, created_at, updated_at, last_login_at
       FROM users
       WHERE id = $1 AND is_active = true
     `;
@@ -93,7 +96,7 @@ class User {
   static async findByEmail(email) {
     const query = `
       SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
-             two_factor_enabled, two_factor_secret, tier, created_at, last_login_at,
+             two_factor_enabled, two_factor_enabled_at, two_factor_secret, two_factor_backup_codes, tier, session_version, created_at, last_login_at,
              failed_login_attempts, account_locked_at
       FROM users
       WHERE email = $1
@@ -160,21 +163,26 @@ class User {
     `;
     
     const result = await db.query(query, [userId]);
-    
+    settingsCache.invalidate(userId);
+
     // If no row was returned due to conflict, fetch the existing settings
     if (result.rows.length === 0) {
       return await this.getSettings(userId);
     }
-    
+
     return result.rows[0];
   }
 
   static async getSettings(userId) {
+    return settingsCache.getOrLoad(userId, () => this.loadSettings(userId));
+  }
+
+  static async loadSettings(userId) {
     const query = `
       SELECT * FROM user_settings
       WHERE user_id = $1
     `;
-    
+
     try {
       const result = await db.query(query, [userId]);
       const settings = decryptSettingsRow(result.rows[0]);
@@ -226,7 +234,9 @@ class User {
       statisticsCalculation: 'statistics_calculation',
       analyticsPositionGrouping: 'analytics_position_grouping',
       edgeReportEnabled: 'edge_report_enabled',
+      breakevenToleranceMode: 'breakeven_tolerance_mode',
       breakevenToleranceTicks: 'breakeven_tolerance_ticks',
+      breakevenToleranceDollars: 'breakeven_tolerance_dollars',
       breakevenToleranceTicksByUnderlying: 'breakeven_tolerance_ticks_by_underlying',
       defaultBroker: 'default_broker',
       enableTradeGrouping: 'enable_trade_grouping',
@@ -237,10 +247,14 @@ class User {
       uiPreferences: 'ui_preferences',
       defaultStopLossPercent: 'default_stop_loss_percent',
       defaultTakeProfitPercent: 'default_take_profit_percent',
+      defaultTakeProfitType: 'default_take_profit_type',
+      defaultTakeProfitRMultiple: 'default_take_profit_r_multiple',
+      defaultTakeProfitDollars: 'default_take_profit_dollars',
       defaultStopLossType: 'default_stop_loss_type',
       defaultStopLossDollars: 'default_stop_loss_dollars',
       timeDisplayFormat: 'time_display_format',
-      displayCurrency: 'display_currency'
+      displayCurrency: 'display_currency',
+      tradeAllocationsEnabled: 'trade_allocations_enabled'
     };
 
     Object.entries(settings).forEach(([key, value]) => {
@@ -279,7 +293,8 @@ class User {
 
     try {
       const result = await db.query(query, values);
-      
+      settingsCache.invalidate(userId);
+
       // Log if dashboard_layout was saved
       if (settings.dashboardLayout) {
         console.log('[SETTINGS] Dashboard layout saved successfully');
@@ -291,17 +306,8 @@ class User {
       // 'percent' on partial payloads — overwriting dollar-based stops (issue
       // #345) — and raced the controller's sync and cache invalidation.
 
-      // If default take profit percentage was updated, apply it to existing trades without a take profit
-      if (settings.defaultTakeProfitPercent !== undefined && settings.defaultTakeProfitPercent > 0) {
-        const Trade = require('./Trade');
-        Trade.applyDefaultTakeProfitToExistingTrades(userId, settings.defaultTakeProfitPercent)
-          .then(count => {
-            console.log(`[SETTINGS] Applied default take profit to ${count} existing trades`);
-          })
-          .catch(error => {
-            console.error('[SETTINGS] Failed to apply default take profit to existing trades:', error);
-          });
-      }
+      // Trade-default propagation is awaited by the settings controller after
+      // persistence so all take-profit modes use the complete saved settings.
 
       return decryptSettingsRow(result.rows[0]);
     } catch (error) {
@@ -328,21 +334,10 @@ class User {
           `;
           filteredValues.push(userId);
           const result = await db.query(fallbackQuery, filteredValues);
+          settingsCache.invalidate(userId);
 
           // Stop loss propagation handled by the settings controller sync
           // (see comment on the primary path above).
-
-          // If default take profit percentage was updated, apply it to existing trades without a take profit
-          if (settings.defaultTakeProfitPercent !== undefined && settings.defaultTakeProfitPercent > 0) {
-            const Trade = require('./Trade');
-            Trade.applyDefaultTakeProfitToExistingTrades(userId, settings.defaultTakeProfitPercent)
-              .then(count => {
-                console.log(`[SETTINGS] Applied default take profit to ${count} existing trades`);
-              })
-              .catch(error => {
-                console.error('[SETTINGS] Failed to apply default take profit to existing trades:', error);
-              });
-          }
 
           return decryptSettingsRow(result.rows[0]);
         }
@@ -416,12 +411,23 @@ class User {
       UPDATE users
       SET password_hash = $1, reset_token = NULL, reset_expires = NULL,
           failed_login_attempts = 0, account_locked_at = NULL,
-          unlock_token = NULL, unlock_expires = NULL
+          unlock_token = NULL, unlock_expires = NULL,
+          session_version = session_version + 1
       WHERE id = $2
       RETURNING *
     `;
 
     const result = await db.query(query, [hashedPassword, userId]);
+    return result.rows[0];
+  }
+
+  static async revokeSessions(userId) {
+    const result = await db.query(`
+      UPDATE users
+      SET session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING session_version
+    `, [userId]);
     return result.rows[0];
   }
 
@@ -500,6 +506,7 @@ class User {
       RETURNING onboarding_completed_at, onboarding_step
     `;
     const result = await db.query(query, [userId]);
+    settingsCache.invalidate(userId);
     return result.rows[0];
   }
 
@@ -515,6 +522,7 @@ class User {
       RETURNING onboarding_step
     `;
     const result = await db.query(query, [userId, step]);
+    settingsCache.invalidate(userId);
     return result.rows[0];
   }
 
@@ -526,6 +534,7 @@ class User {
       RETURNING pro_onboarding_step
     `;
     const result = await db.query(query, [userId, step]);
+    settingsCache.invalidate(userId);
     return result.rows[0];
   }
 
@@ -801,19 +810,30 @@ class User {
 
       // Delete user settings
       await client.query('DELETE FROM user_settings WHERE user_id = $1', [userId]);
+      settingsCache.invalidate(userId);
 
       // Delete API keys
       await client.query('DELETE FROM api_keys WHERE user_id = $1', [userId]);
 
-      // Delete trades (if you want to delete them - otherwise comment this out)
-      await client.query('DELETE FROM trades WHERE user_id = $1', [userId]);
-
-      // Delete job queue entries for this user's trades
+      // Delete user-owned jobs before trades. Once trades are gone, the
+      // tradeId subquery cannot identify legacy jobs whose user_id is null.
       await client.query(`
         DELETE FROM job_queue
-        WHERE data->>'userId' = $1
-        OR data->>'tradeId' IN (SELECT id::text FROM trades WHERE user_id = $2)
-      `, [userId, userId]);
+        WHERE user_id = $1
+        OR data->>'userId' = $1
+        OR data->>'tradeId' IN (SELECT id::text FROM trades WHERE user_id = $1)
+        OR (
+          type = ANY($2::text[])
+          AND LOWER(data->>'email') = LOWER($3)
+        )
+      `, [
+        userId,
+        ['verification_email', 'password_reset_email', 'account_lockout_email'],
+        userInfo?.email || ''
+      ]);
+
+      // Delete trades after their queued work has been canceled.
+      await client.query('DELETE FROM trades WHERE user_id = $1', [userId]);
 
       // Finally, delete the user
       // Other tables with ON DELETE CASCADE will be handled automatically
@@ -877,6 +897,7 @@ class User {
     `;
     
     const result = await db.query(query, [tier, userId]);
+    tierCache.invalidate(userId);
     return result.rows[0];
   }
 
@@ -960,6 +981,7 @@ class User {
     ];
     
     const result = await db.query(query, values);
+    tierCache.invalidate(userId);
     return result.rows[0];
   }
 
@@ -990,8 +1012,9 @@ class User {
       
       const result = await client.query(overrideQuery, [userId, tier, reason, expiresAt, createdBy]);
       await client.query(userUpdateQuery, [tier, userId]);
-      
+
       await client.query('COMMIT');
+      tierCache.invalidate(userId);
       return result.rows[0];
     } catch (error) {
       await client.query('ROLLBACK');
@@ -1026,8 +1049,9 @@ class User {
       
       const result = await client.query(deleteQuery, [userId]);
       await client.query(resetTierQuery, [userId]);
-      
+
       await client.query('COMMIT');
+      tierCache.invalidate(userId);
       return result.rows[0];
     } catch (error) {
       await client.query('ROLLBACK');
@@ -1064,6 +1088,7 @@ class User {
     `;
 
     const result = await db.query(query, [userId, tier, reason, expiresAt, createdBy]);
+    tierCache.invalidate(userId);
     return result.rows[0];
   }
 

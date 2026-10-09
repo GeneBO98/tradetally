@@ -70,6 +70,15 @@ describe('detectBrokerFormat', () => {
     expect(detectBrokerFormat(buf(csv))).toBe('ibkr_trade_confirmation');
   });
 
+  test('detects compact IBKR Flex Query format with TradeDate', () => {
+    const csv = [
+      'ClientAccountID,Symbol,Buy/Sell,Quantity,Price,Amount,Commission,NetCash,TradeDate,SettleDate,Exchange,OrderType,CurrencyPrimary,AssetClass',
+      'DUN261693,VIVK,BUY,41,3.13,128.33,-1.000123,-129.330123,20260721,20260722,DRCTEDGE,LMT,USD,STK'
+    ].join('\n');
+
+    expect(detectBrokerFormat(buf(csv))).toBe('ibkr');
+  });
+
   test('detects IBKR multi-section Activity Statement (Trades section)', () => {
     const csv = [
       'Statement,Header,Field Name,Field Value',
@@ -111,6 +120,26 @@ describe('detectBrokerFormat', () => {
     expect(detectBrokerFormat(buf(csv))).toBe('etrade');
   });
 
+  test('detects E*TRADE detailed activity history', () => {
+    const csv = 'Activity/Trade Date,Transaction Date,Settlement Date,Activity Type,Description,Symbol,Cusip,Quantity #,Price $,Amount $,Commission,Category,Note\n07/10/26,07/10/26,07/13/26,Bought To Open,PUT MDB 07/17/26 312.500,MDB,--,5,2.18,-1091.81,1.81,--,--';
+    expect(detectBrokerFormat(buf(csv))).toBe('etrade');
+  });
+
+  test('detects Fidelity account history', () => {
+    const csv = 'Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Amount ($),Settlement Date\n07-07-2026,ROTH IRA,123,YOU SOLD AAPL,AAPL,APPLE INC,Cash,155,-10,0,0,1550,07-08-2026';
+    expect(detectBrokerFormat(buf(csv))).toBe('fidelity');
+  });
+
+  test('detects ProjectX completed order rows', () => {
+    const csv = 'order_id,account_id,order_date,qty_sent,qty_done,price_done,last_time,account_type,symbol,trading_symbol,account,id,formattedDate\n1,2,2026-07-09,1,1,29684.25,2026-07-09T13:30:00Z,APEX,CM.MNQU6,CM.MNQU6,acct,1,07/09/2026';
+    expect(detectBrokerFormat(buf(csv))).toBe('projectx_orders');
+  });
+
+  test('detects ProjectX order-history rows', () => {
+    const csv = 'Id,AccountName,ContractName,Status,Type,Size,Side,CreatedAt,TradeDay,FilledAt,CancelledAt,TriggeredAt,StopPrice,LimitPrice,ExecutePrice,TriggeredPrice,PositionDisposition,CreationDisposition,RejectionReason,ExchangeOrderId,PlatformOrderId\n1,TSB17847,MESM6,Filled,Market,1,Bid,06/11/2026 07:45:21 -06:00,06/11/2026 00:00:00 -05:00,06/11/2026 07:45:21 -06:00,,,,7305.5,7300.5,,Opening,Trader,,EX-1,P-1';
+    expect(detectBrokerFormat(buf(csv))).toBe('projectx_orders');
+  });
+
   test('detects Firstrade format', () => {
     const csv = 'Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,Interest,Amount,Commission,Fee,CUSIP,RecordType\nSPY,1,600.00,BUY,SPDR S&P 500 ETF TRUST,2025-02-10,2025-02-11,0.00,-600.00,0.00,0.00,78462F103,Trade';
     expect(detectBrokerFormat(buf(csv))).toBe('firstrade');
@@ -123,6 +152,11 @@ describe('detectBrokerFormat', () => {
 
   test('detects Webull alternate format', () => {
     const csv = 'Symbol,B/S,Side Type,Qty,Filled Qty,Filled Avg Price,Filled Time,Status\nAAPL,Buy,Long,100,100,150.00,01/01/2025 09:30,Filled';
+    expect(detectBrokerFormat(buf(csv))).toBe('webull');
+  });
+
+  test('detects Webull international trade record', () => {
+    const csv = 'Symbol & Name,Trade Date,Settlement Date,Buy/Sell,Quantity,Traded Price,Gross Amount,Comm/Fee/Tax,VAT,Net Amount\nGLW CORNING INC,30/06/2026,01/07/2026,SELL,1,254,254,-0.27,-0.02,253.71';
     expect(detectBrokerFormat(buf(csv))).toBe('webull');
   });
 
@@ -139,6 +173,22 @@ describe('detectBrokerFormat', () => {
   test('detects Tradovate paired trades format', () => {
     const csv = 'Position ID,Timestamp,Trade Date,Net Pos,Net Price,Bought,Avg. Buy,Sold,Avg. Sell,Account,Contract,Product,Product Description,_priceFormat,_priceFormatType,_tickSize,Pair ID,Buy Fill ID,Sell Fill ID,Paired Qty,Buy Price,Sell Price,P/L,Currency,Bought Timestamp,Sold Timestamp\n465747740010,04/09/2026 17:14:44,2026-04-09,0,,24,25065.97,24,25061.03,APEX4977960000002,MNQM6,MNQ,Micro E-mini NASDAQ-100,-2,0,0.25,465747740223,465747740203,465747740221,5,25073.25,25072.00,-12.50,USD,04/09/2026 17:14:44,04/09/2026 17:14:44';
     expect(detectBrokerFormat(buf(csv))).toBe('tradovate');
+  });
+
+  test('detects NinjaTrader Trade Performance grid export', () => {
+    const csv = [
+      'Trade number,Instrument,Account,Strategy,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Entry name,Exit name,Profit,Cum. net profit,Commission,Clearing Fee,Exchange Fee,IP Fee,NFA Fee,MAE,MFE,ETD,Bars,',
+      '1,MES 09-26,SIM101,ATM Strategy,Short,1,7427.50,7423.50,7/28/2026 9:45:17 AM,7/28/2026 9:46:05 AM,Entry,Target2,$20.00,$20.00,$0.00,$0.00,$0.00,$0.00,$0.00,$8.75,$21.25,$1.25,0,'
+    ].join('\n');
+    expect(detectBrokerFormat(buf(csv))).toBe('ninjatrader');
+  });
+
+  test('detects semicolon-delimited NinjaTrader Executions grid export', () => {
+    const csv = [
+      'Instrument;Action;Quantity;Price;Time;ID;E/X;Position;Order ID;Name;Commission;Rate;Account display name;Connection;',
+      'MES JUN26;Sell;1;7200,75;27/04/2026 6:05:02;execution-1;Entry;1 S;order-1;Entry;0,62 $;1;Playback101;Playback;'
+    ].join('\n');
+    expect(detectBrokerFormat(buf(csv))).toBe('ninjatrader');
   });
 
   test('detects Questrade format', () => {

@@ -110,6 +110,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useInvestmentsStore } from '@/stores/investments'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { format } from 'date-fns'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 
@@ -173,11 +174,9 @@ async function handleSubmit() {
   }
 }
 
+const { formatCurrency: formatCurrencyBase } = useCurrencyFormatter()
+
 function formatCurrency(value) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 4
-  }).format(value)
+  return formatCurrencyBase(value, { minimumFractionDigits: 4, maximumFractionDigits: 4 })
 }
 </script>

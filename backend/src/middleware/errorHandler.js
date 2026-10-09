@@ -8,6 +8,15 @@ const errorHandler = (err, req, res, next) => {
                               err.code === 'EPIPE' ||
                               err.code === 'ECONNABORTED';
 
+  // Handled application errors carry an exact HTTP response (status + body).
+  // They replace hand-rolled inline `res.status(n).json(body)` calls in
+  // controllers; the body is emitted verbatim so the wire format is identical
+  // to the original inline call. The handler that threw already logged context,
+  // so skip the generic stack log to keep logging behaviour identical too.
+  if (err && err.isAppError) {
+    return res.status(err.statusCode).json(err.body);
+  }
+
   if (!isClientDisconnect) {
     console.error(err.stack);
   }
@@ -17,7 +26,34 @@ const errorHandler = (err, req, res, next) => {
     return;
   }
 
+  if (err.code === 'CORS_ORIGIN_DENIED') {
+    if (isV1Request(req)) {
+      return sendV1Error(res, 403, 'CORS_ORIGIN_DENIED', 'Origin is not allowed');
+    }
+    return res.status(403).json({ error: 'Forbidden', message: 'Origin is not allowed' });
+  }
+
   if (isV1Request(req)) {
+    // Body-parser / multer style errors carry their own 4xx status
+    // (malformed JSON, payload too large, ...). They are client errors, not
+    // server faults, so surface them as-is instead of a generic 500.
+    const clientStatus = err.status || err.statusCode;
+    if (Number.isInteger(clientStatus) && clientStatus >= 400 && clientStatus < 500) {
+      const code = err.type === 'entity.parse.failed'
+        ? 'INVALID_JSON'
+        : clientStatus === 413 ? 'PAYLOAD_TOO_LARGE' : 'BAD_REQUEST';
+      return sendV1Error(res, clientStatus, code, err.expose === false ? 'Bad request' : err.message);
+    }
+
+    if (err.name === 'MulterError') {
+      return sendV1Error(res, err.code === 'LIMIT_FILE_SIZE' ? 413 : 400, err.code || 'BAD_REQUEST', err.message);
+    }
+
+    if (err.code === '22P02') {
+      // Postgres invalid_text_representation, e.g. a malformed UUID path param.
+      return sendV1Error(res, 400, 'BAD_REQUEST', 'Invalid identifier or value format');
+    }
+
     if (err.name === 'ValidationError') {
       return sendV1Error(res, 400, 'VALIDATION_ERROR', err.message);
     }

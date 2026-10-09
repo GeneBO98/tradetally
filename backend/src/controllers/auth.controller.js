@@ -1,21 +1,41 @@
 const User = require('../models/User');
-const jwt = require('jsonwebtoken');
-const { generateToken, TOKEN_PURPOSES, verifyJwtToken } = require('../middleware/auth');
+const { generateToken, TOKEN_PURPOSES, verifyJwtToken, clearAuthUserCache } = require('../middleware/auth');
 const crypto = require('crypto');
 const EmailService = require('../services/emailService');
 const bcrypt = require('bcryptjs');
 const TierService = require('../services/tierService');
 const YearWrappedService = require('../services/yearWrappedService');
 const refreshTokenService = require('../services/refreshToken.service');
-const SampleDataService = require('../services/sampleDataService');
 const activityTrackingService = require('../services/activityTrackingService');
 const accountLockout = require('../services/accountLockoutService');
 const { getClientIp } = require('../utils/clientIp');
 const { generateCsrfToken } = require('../middleware/csrf');
 const { clearAuthCookies, setAuthCookies } = require('../utils/authCookies');
 const jobQueue = require('../utils/jobQueue');
+const { queueVerificationEmail, applyNewUserTrial } = require('../services/newUserSetup');
 
 const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
+
+function generateBiometricLoginToken(user) {
+  return generateToken(user, {
+    purpose: TOKEN_PURPOSES.BIOMETRIC_LOGIN,
+    expiresIn: process.env.BIOMETRIC_LOGIN_EXPIRE || '90d'
+  });
+}
+
+function wantsBiometricEnrollment(req) {
+  return req.body.biometric_enrollment === true ||
+    String(req.headers['x-biometric-enrollment'] || '').toLowerCase() === 'true';
+}
+
+function hasMatchingTwoFactorState(decoded, user) {
+  const enabledAt = user.two_factor_enabled_at
+    ? new Date(user.two_factor_enabled_at).toISOString()
+    : null;
+
+  return decoded.two_factor_enabled === Boolean(user.two_factor_enabled) &&
+    decoded.two_factor_enabled_at === enabledAt;
+}
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -57,22 +77,9 @@ function getBillingEnabled() {
   return process.env.BILLING_ENABLED === 'true';
 }
 
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return '***';
-  const [localPart, domain] = email.split('@');
-  if (localPart.length <= 2) return `**@${domain}`;
-  return `${localPart.slice(0, 2)}***@${domain}`;
-}
+const maskEmail = require('../utils/maskEmail');
 
-function sendVerificationEmailInBackground(email, token) {
-  setImmediate(async () => {
-    try {
-      await jobQueue.addJob('verification_email', { email, token }, 2);
-    } catch (error) {
-      console.warn('[WARNING] Failed to send verification email after registration:', error.message);
-    }
-  });
-}
+const sendVerificationEmailInBackground = queueVerificationEmail;
 
 function queuePasswordResetEmail(email, token) {
   setImmediate(async () => {
@@ -195,41 +202,7 @@ const authController = {
         marketingConsent: marketing_consent
       });
 
-      // For new users on billing-enabled instances: seed sample data and grant
-      // a 14-day Pro trial. Both are best-effort and never block registration.
-      // First user is skipped — they're an admin and get Pro tier permanently.
-      let billingEnabled = false;
-      try {
-        billingEnabled = await TierService.isBillingEnabled(req.headers.host);
-        console.log(`[REGISTER] Billing check: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
-      } catch (billingErr) {
-        console.log('[REGISTER] Billing status check failed (non-blocking):', billingErr.message);
-      }
-
-      if (billingEnabled && !isFirstUser) {
-        try {
-          await SampleDataService.createForUser(user.id);
-          console.log(`[REGISTER] Sample data created for new user ${user.username}`);
-        } catch (sampleErr) {
-          console.log('[REGISTER] Sample data creation failed (non-blocking):', sampleErr.message);
-        }
-
-        // Auto-grant 14-day Pro trial. Reason matches the manual /billing/start-trial
-        // flow ('Free 14-day trial') so trialScheduler picks it up for reminder
-        // and expiration emails. A DB trigger sets users.trial_used = true when
-        // a tier_override with reason ILIKE '%trial%' is inserted.
-        try {
-          const expiresAt = new Date();
-          expiresAt.setDate(expiresAt.getDate() + 14);
-          await User.createTierOverride(user.id, 'pro', 'Free 14-day trial', expiresAt, null);
-          await User.setProOnboardingStep(user.id, 1);
-          console.log(`[REGISTER] 14-day Pro trial granted for new user ${user.username} (expires ${expiresAt.toISOString()})`);
-        } catch (trialErr) {
-          console.log('[REGISTER] Trial grant failed (non-blocking):', trialErr.message);
-        }
-      } else {
-        console.log(`[REGISTER] Skipping sample data + trial: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
-      }
+      await applyNewUserTrial(user, { host: req.headers.host, isFirstUser });
 
       // Log if this user was made an admin
       if (isFirstUser) {
@@ -433,7 +406,10 @@ const authController = {
           pro_onboarding_step: (loginSettings && loginSettings.pro_onboarding_step) || 0
         },
         is_first_login: isFirstLogin,
-        token
+        token,
+        ...(wantsBiometricEnrollment(req)
+          ? { biometric_token: generateBiometricLoginToken(user) }
+          : {})
       });
     } catch (error) {
       next(error);
@@ -455,22 +431,21 @@ const authController = {
       let decoded;
       try {
         decoded = verifyJwtToken(tempToken, { requiredPurpose: TOKEN_PURPOSES.PRE_2FA });
-      } catch (error) {
-        try {
-          // Accept legacy temp tokens minted before token-purpose enforcement.
-          const legacyDecoded = jwt.verify(tempToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-          if (legacyDecoded.purpose) {
-            throw error;
-          }
-          decoded = legacyDecoded;
-        } catch (_) {
-          return res.status(401).json({ error: 'Invalid or expired temporary token' });
-        }
+      } catch (_) {
+        return res.status(401).json({ error: 'Invalid or expired temporary token' });
       }
 
       const user = await User.findById(decoded.id || decoded.userId);
-      if (!user || !user.two_factor_enabled) {
+      if (!user || !user.two_factor_enabled ||
+          decoded.session_version !== Number(user.session_version || 0)) {
         return res.status(400).json({ error: 'Invalid request' });
+      }
+
+      if (getRegistrationMode() === 'approval' && !user.admin_approved) {
+        return res.status(403).json({
+          error: 'Your account is pending admin approval.',
+          requiresApproval: true
+        });
       }
 
       // Verify 2FA code
@@ -539,7 +514,87 @@ const authController = {
           twoFactorEnabled: user.two_factor_enabled
         },
         is_first_login: isFirstLogin,
-        token
+        token,
+        ...(wantsBiometricEnrollment(req)
+          ? { biometric_token: generateBiometricLoginToken(user) }
+          : {})
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async biometricLogin(req, res, next) {
+    try {
+      let decoded;
+      try {
+        decoded = verifyJwtToken(req.body.biometric_token, {
+          requiredPurpose: TOKEN_PURPOSES.BIOMETRIC_LOGIN
+        });
+      } catch (_) {
+        return res.status(401).json({ error: 'Invalid or expired biometric login' });
+      }
+
+      const user = await User.findById(decoded.id);
+      if (!user || !user.is_active ||
+          decoded.session_version !== Number(user.session_version || 0) ||
+          !hasMatchingTwoFactorState(decoded, user)) {
+        return res.status(401).json({ error: 'Invalid or expired biometric login' });
+      }
+
+      if (getRegistrationMode() === 'approval' && !user.admin_approved) {
+        return res.status(403).json({
+          error: 'Your account is pending admin approval.',
+          requiresApproval: true
+        });
+      }
+
+      const isFirstLogin = user.last_login_at == null;
+      await User.updateLastLogin(user.id);
+
+      YearWrappedService.recordLogin(user.id).catch(err => {
+        console.warn('[AUTH] Failed to record biometric login for year wrapped:', err.message);
+      });
+
+      activityTrackingService.trackEvent(user.id, 'auth.login', 'auth', {
+        is_first_login: isFirstLogin,
+        method: 'biometric'
+      }, {
+        ip: getClientIp(req),
+        userAgent: req.headers['user-agent'],
+        marketingConsent: user.marketing_consent
+      });
+
+      const token = generateToken(user, { purpose: TOKEN_PURPOSES.ACCESS });
+      setAuthCookies(req, res, token, generateCsrfToken());
+
+      const { tier: userTier, billingEnabled } = await TierService.getUserTierWithBillingStatus(
+        user.id,
+        req.headers.host
+      );
+      const settings = await User.getSettings(user.id);
+
+      return res.json({
+        message: 'Login successful',
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          fullName: user.full_name,
+          avatarUrl: user.avatar_url,
+          role: user.role,
+          tier: userTier,
+          billingEnabled,
+          isVerified: user.is_verified,
+          adminApproved: user.admin_approved,
+          twoFactorEnabled: user.two_factor_enabled || false,
+          createdAt: user.created_at,
+          onboarding_step: (settings && settings.onboarding_step) || 0,
+          pro_onboarding_step: (settings && settings.pro_onboarding_step) || 0
+        },
+        is_first_login: isFirstLogin,
+        token,
+        biometric_token: generateBiometricLoginToken(user)
       });
     } catch (error) {
       next(error);
@@ -548,6 +603,9 @@ const authController = {
 
   async logout(req, res, next) {
     try {
+      await User.revokeSessions(req.user.id);
+      await refreshTokenService.revokeUserTokens(req.user.id, 'web_logout');
+      clearAuthUserCache(req.user.id);
       clearAuthCookies(req, res);
 
       res.json({ message: 'Logout successful' });
@@ -558,8 +616,12 @@ const authController = {
 
   async getMe(req, res, next) {
     try {
-      const user = await User.findById(req.user.id);
-      const settings = await User.getSettings(req.user.id);
+      // Fetch fresh user (bypasses the auth memo so profile edits reflect
+      // immediately) and settings in parallel - they are independent queries.
+      const [user, settings] = await Promise.all([
+        User.findById(req.user.id),
+        User.getSettings(req.user.id)
+      ]);
       const onboardingCompleted = !!(settings && settings.onboarding_completed_at);
 
       res.json({
@@ -666,6 +728,8 @@ const authController = {
 
       const hashedPassword = await bcrypt.hash(password, 10);
       await User.updatePassword(user.id, hashedPassword);
+      await refreshTokenService.revokeUserTokens(user.id, 'password_reset');
+      clearAuthUserCache(user.id);
 
       res.json({ message: 'Password has been reset successfully' });
     } catch (error) {
@@ -723,14 +787,17 @@ const authController = {
   async resendVerification(req, res, next) {
     try {
       const { email } = req.body;
+      const genericResponse = {
+        message: 'If an unverified account exists, a verification email will be sent.'
+      };
 
       const user = await User.findByEmail(email);
       if (!user) {
-        return res.json({ message: 'If the email exists, a verification email has been sent.' });
+        return res.status(202).json(genericResponse);
       }
 
       if (user.is_verified) {
-        return res.status(400).json({ error: 'Email is already verified' });
+        return res.status(202).json(genericResponse);
       }
 
       // Generate new verification token
@@ -740,7 +807,7 @@ const authController = {
       await User.updateVerificationToken(user.id, verificationToken, verificationExpires);
       sendVerificationEmailInBackground(email, verificationToken);
 
-      res.json({ message: 'Verification email has been resent.' });
+      return res.status(202).json(genericResponse);
     } catch (error) {
       next(error);
     }
@@ -754,6 +821,8 @@ const authController = {
 
       res.json({
         registrationMode,
+        email_verification_available: emailConfigured,
+        email_verification_required: false,
         emailVerificationEnabled: emailConfigured,
         allowRegistration: registrationMode !== 'disabled',
         billingEnabled

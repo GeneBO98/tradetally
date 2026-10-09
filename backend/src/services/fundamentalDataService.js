@@ -300,7 +300,24 @@ class FundamentalDataService {
 
       // Extract EPS directly from income statement (preferred over calculating)
       const eps = findValue(ic, 'earningspersharebasic', 'basicearningspershare', 'earningspershare', 'epsbasic', 'eps');
-      
+
+      // SEC-reported (XBRL) periods carry no explicit currency field; the unit
+      // attached to each concept does (e.g. 'USD', 'EURPerShare'). Foreign
+      // private issuers (20-F) report in their home currency, so infer it
+      // instead of always assuming USD.
+      const inferReportedCurrency = (...conceptArrays) => {
+        for (const items of conceptArrays) {
+          for (const item of items || []) {
+            const unit = String(item?.unit || '');
+            const exact = unit.match(/^([A-Z]{3})$/);
+            if (exact) return exact[1];
+            const perShare = unit.match(/^([A-Z]{3})(?:PerShare|PerItem|PerUnit)$/);
+            if (perShare) return perShare[1];
+          }
+        }
+        return 'USD';
+      };
+
       const result = {
         year: period.year,
         fiscalYear: period.year,
@@ -308,6 +325,7 @@ class FundamentalDataService {
         fiscalQuarter: fiscalQuarter,
         period: period.form === '10-K' ? 'annual' : 'quarterly',
         filingDate: period.filedDate,
+        currency: period.currency || inferReportedCurrency(bs, ic, cf),
         // Income Statement
         revenue,
         netIncome,
@@ -435,6 +453,7 @@ class FundamentalDataService {
             shares_basic = EXCLUDED.shares_basic,
             shares_diluted = EXCLUDED.shares_diluted,
             filing_date = EXCLUDED.filing_date,
+            currency = EXCLUDED.currency,
             raw_data = EXCLUDED.raw_data,
             fetched_at = NOW()
         `;
@@ -612,6 +631,7 @@ class FundamentalDataService {
     return {
       periodsAnalyzed: calculationPeriods.length,
       yearsSpan: current.fiscalYear - prior.fiscalYear,
+      currency: String(current.currency || 'USD').toUpperCase(),
       current: {
         fiscalYear: current.fiscalYear,
         netIncome: current.netIncome,

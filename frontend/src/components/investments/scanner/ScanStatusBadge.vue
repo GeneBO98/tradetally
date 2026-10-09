@@ -54,10 +54,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useScannerStore } from '@/stores/scanner'
 import { useAuthStore } from '@/stores/auth'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 
@@ -65,11 +66,27 @@ const scannerStore = useScannerStore()
 const authStore = useAuthStore()
 
 const triggering = ref(false)
-let pollInterval = null
 
 const scanStatus = computed(() => scannerStore.scanStatus)
 const scanInfo = computed(() => scannerStore.scanInfo)
 const isAdmin = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'owner')
+
+// Visibility-gated polling while a scan is running (stopped automatically on unmount)
+const { start: startPolling, stop: stopPolling } = useVisibilityPolling(pollScanProgress, 5000)
+
+async function pollScanProgress() {
+  try {
+    await scannerStore.fetchStatus()
+    // Fetch results while scan is running to show live updates
+    await scannerStore.fetchResults(scannerStore.pagination.page)
+
+    if (scanStatus.value?.status !== 'running') {
+      stopPolling()
+    }
+  } catch (err) {
+    console.error('Polling error:', err)
+  }
+}
 
 onMounted(async () => {
   try {
@@ -81,10 +98,6 @@ onMounted(async () => {
   } catch (err) {
     // Silently fail - status is optional
   }
-})
-
-onUnmounted(() => {
-  stopPolling()
 })
 
 // Watch for scan status changes to manage polling
@@ -106,31 +119,6 @@ async function triggerScan() {
     console.error('Failed to trigger scan:', err)
   } finally {
     triggering.value = false
-  }
-}
-
-function startPolling() {
-  if (pollInterval) return // Already polling
-
-  pollInterval = setInterval(async () => {
-    try {
-      await scannerStore.fetchStatus()
-      // Fetch results while scan is running to show live updates
-      await scannerStore.fetchResults(scannerStore.pagination.page)
-
-      if (scanStatus.value?.status !== 'running') {
-        stopPolling()
-      }
-    } catch (err) {
-      console.error('Polling error:', err)
-    }
-  }, 5000) // Poll every 5 seconds
-}
-
-function stopPolling() {
-  if (pollInterval) {
-    clearInterval(pollInterval)
-    pollInterval = null
   }
 }
 

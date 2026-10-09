@@ -160,7 +160,7 @@
             :key="period.year + '-bvps'"
             class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
           >
-            {{ formatCurrency(period.totalEquity / period.sharesOutstanding) }}
+            {{ formatCurrency(period.totalEquity / period.sharesOutstanding, { currency }) }}
           </td>
         </tr>
       </tbody>
@@ -169,24 +169,33 @@
 </template>
 
 <script setup>
-defineProps({
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const props = defineProps({
   data: {
     type: Array,
     required: true
+  },
+  currency: {
+    type: String,
+    default: ''
   }
 })
+
+const { formatCurrency, symbolFor } = useCurrencyFormatter()
 
 function formatLargeNumber(value) {
   if (value === null || value === undefined) return '-'
   const absValue = Math.abs(value)
   const isNegative = value < 0
+  const sym = symbolFor(props.currency)
   const prefix = isNegative ? '-' : ''
 
-  if (absValue >= 1e12) return `${prefix}$${(absValue / 1e12).toFixed(2)}T`
-  if (absValue >= 1e9) return `${prefix}$${(absValue / 1e9).toFixed(2)}B`
-  if (absValue >= 1e6) return `${prefix}$${(absValue / 1e6).toFixed(2)}M`
-  if (absValue >= 1e3) return `${prefix}$${(absValue / 1e3).toFixed(2)}K`
-  return `${prefix}$${absValue.toFixed(0)}`
+  if (absValue >= 1e12) return `${prefix}${sym}${(absValue / 1e12).toFixed(2)}T`
+  if (absValue >= 1e9) return `${prefix}${sym}${(absValue / 1e9).toFixed(2)}B`
+  if (absValue >= 1e6) return `${prefix}${sym}${(absValue / 1e6).toFixed(2)}M`
+  if (absValue >= 1e3) return `${prefix}${sym}${(absValue / 1e3).toFixed(2)}K`
+  return `${prefix}${sym}${absValue.toFixed(0)}`
 }
 
 function formatShares(value) {
@@ -202,12 +211,4 @@ function formatRatio(numerator, denominator) {
   return (numerator / denominator).toFixed(2)
 }
 
-function formatCurrency(value) {
-  if (value === null || value === undefined || isNaN(value)) return '-'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(value)
-}
 </script>

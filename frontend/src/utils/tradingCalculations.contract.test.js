@@ -3,6 +3,11 @@ import contracts from '../../../tests/fixtures/trading-calculation-contracts.jso
 import { getTradeGrossPnl, getTradeNetPnl } from './tradePnl'
 
 describe('trading calculation display contracts', () => {
+  it.each(contracts.backup_restore_cases.filter(({ expected }) => expected.exit_time))('displays restored closed-trade P&L for $id', ({ expected }) => {
+    expect(getTradeNetPnl(expected)).toBeCloseTo(expected.pnl, 8)
+    expect(getTradeGrossPnl(expected)).toBeCloseTo(expected.pnl + expected.commission + expected.fees, 8)
+  })
+
   it('keeps frontend net/gross totals aligned with shared analytics fixture', () => {
     const { trades, expected } = contracts.analytics_summary
 
@@ -24,5 +29,16 @@ describe('trading calculation display contracts', () => {
       expect(getTradeNetPnl(trade)).toBeCloseTo(Number(trade.pnl), 8)
       expect(getTradeGrossPnl(trade)).toBeCloseTo(expectedGross, 8)
     }
+  })
+
+  it('displays the expected net and gross P&L for an option that expired worthless', () => {
+    const fixture = contracts.pnl_engine_cases.find(({ id }) => id === 'short_option_expired_worthless')
+    const trade = {
+      ...fixture.expected.aggregate,
+      exit_time: fixture.input.executions[0].exitTime
+    }
+
+    expect(getTradeNetPnl(trade)).toBeCloseTo(9.48, 8)
+    expect(getTradeGrossPnl(trade)).toBeCloseTo(10, 8)
   })
 })

@@ -124,7 +124,8 @@ class PriceFallbackManager {
       if (data && data.c) {
         // Success - mark as unblocked if it was blocked
         this.markUnblocked(endpoint);
-        return { data, source: providerName };
+        // A provider may stamp the data with whoever actually served it.
+        return { data, source: data.source || providerName };
       }
       throw new Error(`Invalid price data from ${providerName}`);
     } catch (providerError) {
@@ -191,7 +192,8 @@ class PriceFallbackManager {
       if (data && data.length > 0) {
         // Success - mark as unblocked if it was blocked
         this.markUnblocked(endpoint);
-        return { data, source: providerName };
+        // A provider may stamp the data with whoever actually served it.
+        return { data, source: data.source || providerName };
       }
       throw new Error(`No candle data from ${providerName}`);
     } catch (providerError) {

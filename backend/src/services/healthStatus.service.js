@@ -2,6 +2,7 @@ const backgroundWorker = require('../workers/backgroundWorker');
 const jobRecoveryService = require('./jobRecoveryService');
 const globalEnrichmentCacheCleanupService = require('./globalEnrichmentCacheCleanupService');
 const backupScheduler = require('./backupScheduler.service');
+const newsScheduler = require('./newsScheduler');
 const storageHealthService = require('./storageHealth.service');
 const backupService = require('./backup.service');
 const db = require('../config/database');
@@ -16,6 +17,7 @@ async function buildHealthStatus() {
       jobRecovery: jobRecoveryService.getStatus(),
       enrichmentCacheCleanup: globalEnrichmentCacheCleanupService.getStatus(),
       backupScheduler: backupScheduler.getStatus(),
+      newsScheduler: await newsScheduler.getPersistentStatus(),
       backups: { status: 'UNKNOWN' },
       storage: { status: 'UNKNOWN' }
     }

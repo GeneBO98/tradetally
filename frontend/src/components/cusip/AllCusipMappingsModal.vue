@@ -426,18 +426,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useNotification } from "@/composables/useNotification";
 import CusipMappingModal from "./CusipMappingModal.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
-// Simple debounce implementation to avoid lodash-es dependency
-const debounce = (func, wait) => {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-};
+import { debounce } from "@/utils/debounce";
 
 const props = defineProps({
     isOpen: {

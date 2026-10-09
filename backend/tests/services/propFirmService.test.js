@@ -443,7 +443,9 @@ describe('PropFirmService CRUD', () => {
 
     expect(db.query).toHaveBeenCalledTimes(1);
     const [sql, params] = db.query.mock.calls[0];
-    expect(sql).toContain('SUM(pnl) AS daily_pnl');
+    // Daily P&L drives the drawdown rules, so mixed-currency rows are
+    // normalized before they are summed.
+    expect(sql).toContain('SUM(trade_amount_usd(pnl, original_currency, exchange_rate, original_entry_price_currency)) AS daily_pnl');
     expect(sql).toContain('GROUP BY trade_date');
     expect(sql).toContain('pnl IS NOT NULL');
     expect(params).toEqual(['user-1', 'APEX-50K-1', '2026-06-01']);

@@ -458,14 +458,22 @@ export const useAuthStore = defineStore('auth', () => {
     if (!registrationConfigPromise) {
       registrationConfigPromise = api.get('/auth/config')
         .then((response) => {
-          registrationConfig.value = response.data
-          return response.data
+          const config = response.data
+          registrationConfig.value = {
+            ...config,
+            email_verification_available:
+              config.email_verification_available ?? config.emailVerificationEnabled ?? false,
+            email_verification_required: config.email_verification_required ?? false
+          }
+          return registrationConfig.value
         })
         .catch((err) => {
           console.error('Failed to fetch registration config:', err)
           // Return default values as fallback
           return {
             registrationMode: 'open',
+            email_verification_available: false,
+            email_verification_required: false,
             emailVerificationEnabled: false,
             allowRegistration: true,
             billingEnabled: true

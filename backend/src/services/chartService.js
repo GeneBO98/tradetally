@@ -1,9 +1,205 @@
 const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
+const databento = require('../utils/databento');
+const yahooFinance = require('../utils/yahooFinance');
+const replayDataService = require('./replayDataService');
 const axios = require('axios');
+const { resolvePriceScale, applyPriceScale } = require('../utils/candlePriceScale');
+const { getFuturesPointValue, getFuturesTickSize } = require('../utils/futuresUtils');
+
+function asNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function toEpochSeconds(value) {
+  if (!value) return null;
+  if (value instanceof Date) return Math.floor(value.getTime() / 1000);
+  if (typeof value === 'number') return Math.floor(value > 1e12 ? value / 1000 : value);
+  const stringValue = String(value).trim().replace(' ', 'T');
+  const hasOffset = /(?:Z|[+-]\d{2}:?\d{2})$/.test(stringValue);
+  const milliseconds = Date.parse(hasOffset ? stringValue : `${stringValue}Z`);
+  return Number.isFinite(milliseconds) ? Math.floor(milliseconds / 1000) : null;
+}
 
 class ChartService {
+  static async convertTradeChartForDisplay(req, chart_data, candles_source) {
+    const { convertForDisplay, resolveDisplayCurrency, getRatesToDisplay } = require('../utils/displayCurrency');
+    const display_currency = await resolveDisplayCurrency(req.user.id);
+    const converted = await convertForDisplay(req, chart_data, {
+      clone: true,
+      rowCurrency: true,
+      skipKeys: new Set(['candles'])
+    });
+    const rates = await getRatesToDisplay([candles_source], display_currency);
+    const candle_rate = rates[candles_source];
+    converted.candles_currency = candle_rate ? display_currency : candles_source;
+    if (candle_rate && Array.isArray(converted.candles)) {
+      for (const candle of converted.candles) {
+        for (const field of ['open', 'high', 'low', 'close']) {
+          if (typeof candle?.[field] === 'number' && Number.isFinite(candle[field])) {
+            candle[field] *= candle_rate;
+          }
+        }
+      }
+    }
+
+    // Split detection compares prices, so both sides must first be in the
+    // same currency. An FX ratio must never be interpreted as a stock split.
+    const trade = converted.trade;
+    const trade_currency = trade?.effective_currency || trade?.currency || converted.display_currency;
+    converted.price_scale = 1;
+    if (trade && trade_currency === converted.candles_currency) {
+      this.alignCandlesToTradePrices(converted, {
+        instrument_type: trade.instrument_type ?? trade.instrumentType,
+        entry_price: trade.entry_price ?? trade.entryPrice,
+        exit_price: trade.exit_price ?? trade.exitPrice,
+        entry_time: trade.entry_time ?? trade.entryTime ?? trade.entryDate,
+        exit_time: trade.exit_time ?? trade.exitTime ?? trade.exitDate,
+        trade_date: trade.trade_date ?? trade.tradeDate
+      });
+    }
+    return converted;
+  }
+
+  static async getFuturesTradeChartData(userId, trade, resolution, billingEnabled) {
+    const futuresRoot = replayDataService.futuresRootForTrade(trade);
+    if (!futuresRoot) {
+      const error = new Error(`Could not determine the futures contract root for ${trade.symbol}`);
+      error.statusCode = 422;
+      throw error;
+    }
+
+    const providerErrors = [];
+    let transientProviderFailure = false;
+
+    // Databento is the authoritative futures chart provider whenever the
+    // operator configured it. Other providers are only fallbacks when the
+    // Databento request cannot serve the trade.
+    if (databento.isConfigured()) {
+      try {
+        return await replayDataService.getFuturesTradeChartData(trade, resolution);
+      } catch (error) {
+        transientProviderFailure ||= error.isTransientProviderFailure === true;
+        providerErrors.push(`Databento: ${error.message}`);
+        console.warn(`[CHART] Databento futures data unavailable for ${trade.symbol}: ${error.message}`);
+      }
+    }
+
+    // FMP exposes an explicit commodities/futures chart method. Providers
+    // without that capability are skipped rather than receiving an ambiguous
+    // root such as ES or CL.
+    if (finnhub.isConfigured() && typeof finnhub.getFuturesTradeChartData === 'function') {
+      try {
+        const chartData = await finnhub.getFuturesTradeChartData(futuresRoot, trade, userId, resolution);
+        chartData.tick_size = chartData.tick_size ?? trade.tick_size ?? getFuturesTickSize(futuresRoot);
+        chartData.point_value = chartData.point_value ?? trade.point_value ?? getFuturesPointValue(futuresRoot);
+        if (providerErrors.length) {
+          chartData.fallback = true;
+          chartData.fallback_reason = providerErrors.join('; ');
+        }
+        return chartData;
+      } catch (error) {
+        transientProviderFailure ||= error.isTransientProviderFailure === true;
+        providerErrors.push(`${finnhub.displayName}: ${error.message}`);
+        console.warn(`[CHART] ${finnhub.displayName} futures data unavailable for ${trade.symbol}: ${error.message}`);
+      }
+    }
+
+    // Yahoo is deliberately last and self-hosted-only: it provides a no-cost
+    // continuous-contract chart without displacing configured paid providers.
+    if (!billingEnabled && yahooFinance.isEnabled()) {
+      try {
+        const chartData = await yahooFinance.getFuturesTradeChartData(futuresRoot, trade, resolution);
+        if (providerErrors.length) {
+          chartData.fallback = true;
+          chartData.fallback_reason = providerErrors.join('; ');
+        }
+        return chartData;
+      } catch (error) {
+        transientProviderFailure ||= error.isTransientProviderFailure === true;
+        providerErrors.push(`Yahoo Finance: ${error.message}`);
+        console.warn(`[CHART] Yahoo Finance futures data unavailable for ${trade.symbol}: ${error.message}`);
+      }
+    }
+
+    const detail = providerErrors.length ? ` ${providerErrors.join('; ')}` : '';
+    const error = new Error(`No futures chart data provider could serve ${trade.symbol}.${detail}`);
+    error.statusCode = transientProviderFailure || !providerErrors.length ? 503 : 404;
+    throw error;
+  }
+
+  static async getForexTradeChartData(userId, trade, resolution, billingEnabled) {
+    const providerErrors = [];
+    let transientProviderFailure = false;
+
+    if (finnhub.isConfigured() && typeof finnhub.getForexTradeChartData === 'function') {
+      try {
+        return await finnhub.getForexTradeChartData(
+          trade.symbol,
+          trade.entry_time || trade.trade_date,
+          trade.exit_time || null,
+          userId,
+          resolution
+        );
+      } catch (error) {
+        transientProviderFailure ||= error.isTransientProviderFailure === true;
+        providerErrors.push(`${finnhub.displayName}: ${error.message}`);
+        console.warn(`[CHART] ${finnhub.displayName} forex data unavailable for ${trade.symbol}: ${error.message}`);
+      }
+    }
+
+    if (!billingEnabled && yahooFinance.isEnabled() && typeof yahooFinance.getForexTradeChartData === 'function') {
+      try {
+        const chartData = await yahooFinance.getForexTradeChartData(
+          trade.symbol,
+          trade.entry_time || trade.trade_date,
+          trade.exit_time || null,
+          resolution
+        );
+        if (providerErrors.length) {
+          chartData.fallback = true;
+          chartData.fallback_reason = providerErrors.join('; ');
+        }
+        return chartData;
+      } catch (error) {
+        transientProviderFailure ||= error.isTransientProviderFailure === true;
+        providerErrors.push(`Yahoo Finance: ${error.message}`);
+      }
+    }
+
+    const detail = providerErrors.length ? ` ${providerErrors.join('; ')}` : '';
+    const error = new Error(`No forex chart data provider could serve ${trade.symbol}.${detail}`);
+    error.statusCode = transientProviderFailure || !providerErrors.length ? 503 : 404;
+    throw error;
+  }
+
+  static alignCandlesToTradePrices(chartData, trade) {
+    if (!chartData?.candles?.length || !trade) return chartData;
+
+    const instrumentType = String(trade.instrument_type || 'stock').toLowerCase();
+    if (instrumentType !== 'stock') {
+      chartData.price_scale = 1;
+      return chartData;
+    }
+
+    const fills = [];
+    const entryTime = toEpochSeconds(trade.entry_time || trade.trade_date);
+    const entryPrice = asNumber(trade.entry_price ?? trade.price);
+    if (entryTime && entryPrice !== null) fills.push({ time: entryTime, price: entryPrice });
+
+    const exitTime = toEpochSeconds(trade.exit_time);
+    const exitPrice = asNumber(trade.exit_price);
+    if (exitTime && exitPrice !== null) fills.push({ time: exitTime, price: exitPrice });
+
+    const priceScale = resolvePriceScale(chartData.candles, fills);
+    chartData.candles = applyPriceScale(chartData.candles, priceScale);
+    chartData.price_scale = priceScale;
+    return chartData;
+  }
+
   // Get crypto chart data from CoinGecko for a trade's date range
   static async getCryptoTradeChartData(symbol, entryDate, exitDate = null) {
     const symbolUpper = symbol.toUpperCase();
@@ -55,9 +251,10 @@ class ChartService {
   }
 
   // Get chart data for a trade
-  // When billing is enabled (tradetally.io): Finnhub only, Pro users only
+  // When billing is enabled (tradetally.io): Pro users only; configured
+  // provider capabilities are preferred for every instrument type.
   // When billing is disabled (self-hosted): configured market data provider preferred, Alpha Vantage fallback, all users
-  static async getTradeChartData(userId, symbol, entryDate, exitDate = null, hostHeader = null) {
+  static async getTradeChartData(userId, symbol, entryDate, exitDate = null, hostHeader = null, resolution = '1', trade = null) {
     try {
       // Crypto symbols always use CoinGecko regardless of tier/billing
       if (finnhub.isCryptoSymbol(symbol)) {
@@ -69,42 +266,79 @@ class ChartService {
       const userTier = await TierService.getUserTier(userId, hostHeader);
       const isProUser = userTier === 'pro';
       const billingEnabled = await TierService.isBillingEnabled(hostHeader);
+      const isFutures = String(trade?.instrument_type || '').toLowerCase() === 'future';
+      const isForex = String(trade?.instrument_type || '').toLowerCase() === 'forex';
 
       console.log(`Getting chart data for user ${userId}, tier: ${userTier || 'free'}, symbol: ${symbol}, billingEnabled: ${billingEnabled}`);
       console.log('Chart data input:', { entryDate, exitDate });
 
-      // When billing is enabled (tradetally.io): Charts are Pro-only, Finnhub only
-      if (billingEnabled) {
-        if (!isProUser) {
-          const error = new Error('Trade charts are a Pro feature. Upgrade to Pro for high-precision candlestick charts.');
-          error.statusCode = 403;
-          throw error;
-        }
+      if (billingEnabled && !isProUser) {
+        const error = new Error('Trade charts are a Pro feature. Upgrade to Pro for high-precision candlestick charts.');
+        error.statusCode = 403;
+        throw error;
+      }
 
+      // Futures select by provider capability; configured sources are tried
+      // before any no-cost fallback.
+      if (isFutures) {
+        console.log(`[CHART] ${symbol} is a future, selecting the best configured futures provider`);
+        return ChartService.getFuturesTradeChartData(userId, trade, resolution, billingEnabled);
+      }
+
+      if (isForex) {
+        console.log(`[CHART] ${symbol} is forex, selecting a forex-capable provider`);
+        return ChartService.getForexTradeChartData(userId, trade, resolution, billingEnabled);
+      }
+
+      // Hosted stock/option charts use the configured equity provider.
+      if (billingEnabled) {
         if (!finnhub.isConfigured()) {
           throw new Error('Chart service is not configured. Please contact support.');
         }
 
         console.log('Using Finnhub for Pro user chart data (billing enabled)');
-        return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId);
+        return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId, resolution);
       }
 
-      // Self-hosted mode: configured provider preferred with Alpha Vantage fallback
+      // Self-hosted no-cost equity fallback, tried before Alpha Vantage because
+      // it needs no key, serves intraday, and has no daily request quota.
+      const yahooStockFallback = async (fallbackReason) => {
+        if (billingEnabled || !yahooFinance.isEnabled()) return null;
+        try {
+          const chartData = await yahooFinance.getStockTradeChartData(symbol, entryDate, exitDate, resolution);
+          if (fallbackReason) {
+            chartData.fallback = true;
+            chartData.fallback_reason = fallbackReason;
+          }
+          return chartData;
+        } catch (error) {
+          console.warn(`[CHART] Yahoo Finance unavailable for ${symbol}: ${error.message}`);
+          return null;
+        }
+      };
+
+      // Self-hosted mode: configured provider preferred with no-cost fallbacks
       if (isProUser && finnhub.isConfigured()) {
         console.log(`Using ${finnhub.displayName} for chart data (self-hosted)`);
         try {
-          return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId);
+          return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId, resolution);
         } catch (error) {
           console.warn(`${finnhub.displayName} failed for symbol ${symbol}: ${error.message}`);
+
+          const yahooData = await yahooStockFallback(`${finnhub.displayName} unavailable: ${error.message}`);
+          if (yahooData) return yahooData;
 
           // Fall back to Alpha Vantage if configured
           if (alphaVantage.isConfigured()) {
             console.warn(`Falling back to Alpha Vantage due to ${finnhub.displayName} failure (${error.message})`);
             try {
-              const chartData = await alphaVantage.getTradeChartData(symbol, entryDate, exitDate);
+              const chartData = await alphaVantage.getTradeChartData(symbol, entryDate, exitDate, resolution);
               chartData.source = 'alphavantage';
               chartData.fallback = true;
-              chartData.fallbackReason = `${finnhub.displayName} unavailable`;
+              // Carry the provider's own message. Without it a persistently
+              // broken primary provider is indistinguishable from a healthy
+              // one, because every chart still renders from the fallback.
+              chartData.fallback_reason = `${finnhub.displayName} unavailable: ${error.message}`;
               return chartData;
             } catch (avError) {
               console.error(`Alpha Vantage fallback also failed for ${symbol}: ${avError.message}`);
@@ -119,16 +353,20 @@ class ChartService {
         }
       }
 
+      // Self-hosted: no configured provider — Yahoo first, then Alpha Vantage.
+      const yahooOnly = await yahooStockFallback(null);
+      if (yahooOnly) return yahooOnly;
+
       // Self-hosted: Finnhub not configured, use Alpha Vantage
       if (alphaVantage.isConfigured()) {
         console.log('Using Alpha Vantage for chart data (self-hosted)');
-        const chartData = await alphaVantage.getTradeChartData(symbol, entryDate, exitDate);
+        const chartData = await alphaVantage.getTradeChartData(symbol, entryDate, exitDate, resolution);
         chartData.source = 'alphavantage';
         return chartData;
       }
 
-      // Neither service is configured
-      throw new Error(`No chart data provider is configured. Please configure ${finnhub.providerName === 'fmp' ? 'FMP' : 'Finnhub'} or Alpha Vantage API keys.`);
+      // Nothing could serve the chart
+      throw new Error(`No chart data provider could serve ${symbol}. Configure ${finnhub.providerName === 'fmp' ? 'FMP' : 'Finnhub'} or Alpha Vantage API keys, or enable the Yahoo Finance fallback.`);
 
     } catch (error) {
       console.error(`Failed to get chart data for ${symbol}:`, error);
@@ -155,7 +393,15 @@ class ChartService {
     if (!billingEnabled) {
       status.alphaVantage = {
         configured: alphaVantage.isConfigured(),
-        description: 'Alpha Vantage API - Daily chart data (self-hosted fallback)'
+        description: 'Alpha Vantage API - Daily chart data (self-hosted fallback); intraday requires a premium key and ALPHA_VANTAGE_INTRADAY_ENABLED=true'
+      };
+      status.databento = {
+        configured: databento.isConfigured(),
+        description: 'Databento API - configured futures chart fallback using continuous contracts'
+      };
+      status.yahoo_finance = {
+        configured: yahooFinance.isEnabled(),
+        description: 'Yahoo Finance - no-cost self-hosted chart fallback for equities and futures'
       };
     }
 

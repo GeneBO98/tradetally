@@ -1,6 +1,10 @@
-jest.mock('../../src/config/database', () => ({
-  query: jest.fn()
-}));
+jest.mock('../../src/config/database', () => {
+  const query = jest.fn();
+  return {
+    query,
+    withTransaction: jest.fn(async (fn) => fn({ query }))
+  };
+});
 
 jest.mock('../../src/utils/logger', () => ({
   info: jest.fn(),
@@ -49,10 +53,7 @@ describe('health controller normalization', () => {
   });
 
   test('stores legacy heartRate submissions using canonical heart_rate type', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ inserted: true }] })
-      .mockResolvedValueOnce({ rows: [] });
+    db.query.mockResolvedValueOnce({ rows: [{ inserted: true }] });
 
     const req = {
       user: { id: 'user-1' },
@@ -72,9 +73,63 @@ describe('health controller normalization', () => {
     await healthController.submitHealthData(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(db.query.mock.calls[1][1][2]).toBe('heart_rate');
-    expect(JSON.parse(db.query.mock.calls[1][1][4])).toMatchObject({
+    expect(db.query.mock.calls[0][1][2]).toBe('heart_rate');
+    expect(JSON.parse(db.query.mock.calls[0][1][4])).toMatchObject({
       hrv: 39
+    });
+  });
+
+  test('submit health data handler keeps controller context when used by Express', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ inserted: true }] });
+
+    const req = {
+      user: { id: 'user-1' },
+      headers: {},
+      body: {
+        healthData: [{
+          date: '2026-07-07',
+          type: 'sleep',
+          value: 7.2,
+          metadata: { sleep_quality: 88 }
+        }]
+      }
+    };
+    const res = createResponse();
+    const handler = healthController.submitHealthData;
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(db.query.mock.calls[0][1][2]).toBe('sleep');
+    expect(JSON.parse(db.query.mock.calls[0][1][4])).toMatchObject({
+      sleepQuality: 88,
+      sleep_quality: 88
+    });
+  });
+
+  test('correlate trades handler keeps controller context when used by Express', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const req = {
+      user: { id: 'user-1' },
+      body: {},
+      query: {}
+    };
+    const res = createResponse();
+    const handler = healthController.correlateHealthWithTrades;
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(db.query.mock.calls[1][1]).toEqual(['user-1', ['heart_rate', 'heartRate']]);
+    expect(res.payload).toMatchObject({
+      success: true,
+      updatedCount: 0,
+      heartRateSamples: 0,
+      tradesProcessed: 0
     });
   });
 

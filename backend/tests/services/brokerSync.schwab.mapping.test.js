@@ -432,6 +432,62 @@ describe('Schwab parseTransactions (full payload -> trades)', () => {
     expect(totalEntryCommission).toBeCloseTo(1.0, 10);
   });
 
+  test('same-symbol positions and exits are matched within their Schwab account', () => {
+    const trades = schwabService.parseTransactions([
+      schwabEquityTx({
+        orderId: 'ira-open',
+        time: '2026-03-09T14:00:00Z',
+        symbol: 'AAPL',
+        price: 50,
+        amount: 100,
+        positionEffect: 'OPENING',
+        accountIdentifier: '****1111'
+      }),
+      schwabEquityTx({
+        orderId: 'taxable-open',
+        time: '2026-03-09T14:30:00Z',
+        symbol: 'AAPL',
+        price: 100,
+        amount: 25,
+        positionEffect: 'OPENING',
+        accountIdentifier: '****2222'
+      }),
+      schwabEquityTx({
+        orderId: 'taxable-close',
+        time: '2026-03-10T15:00:00Z',
+        symbol: 'AAPL',
+        price: 110,
+        amount: -25,
+        positionEffect: 'CLOSING',
+        accountIdentifier: '****2222'
+      })
+    ]);
+
+    expect(trades).toHaveLength(2);
+
+    const iraTrade = trades.find(trade => trade.accountIdentifier === '****1111');
+    expect(iraTrade).toMatchObject({
+      symbol: 'AAPL',
+      quantity: 100,
+      entryPrice: 50,
+      exitPrice: null,
+      pnl: 0
+    });
+
+    const taxableTrade = trades.find(trade => trade.accountIdentifier === '****2222');
+    expect(taxableTrade).toMatchObject({
+      symbol: 'AAPL',
+      quantity: 25,
+      entryPrice: 100,
+      exitPrice: 110,
+      pnl: 250
+    });
+    expect(taxableTrade.executionData.map(execution => execution.orderId)).toEqual([
+      'taxable-open',
+      'taxable-close'
+    ]);
+  });
+
   test('short round trip: sell-to-open then buy-to-cover produces one short trade with inverted P&L', () => {
     const trades = schwabService.parseTransactions([
       schwabEquityTx({

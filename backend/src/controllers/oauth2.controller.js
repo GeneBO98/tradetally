@@ -46,6 +46,10 @@ function getOAuthPublicKey() {
   }
 }
 
+function validatePkce(codeChallenge, codeChallengeMethod) {
+  return oauth2Service.isValidCodeChallenge(codeChallenge, codeChallengeMethod);
+}
+
 /**
  * GET /oauth/authorize
  * Authorization endpoint - displays consent screen or redirects with code
@@ -93,6 +97,13 @@ const authorize = async (req, res) => {
       return res.status(400).json({ error: 'invalid_request', error_description: 'Invalid redirect_uri' });
     }
 
+    if (!validatePkce(code_challenge, code_challenge_method)) {
+      return res.status(400).json({
+        error: 'invalid_request',
+        error_description: 'PKCE with code_challenge_method S256 is required'
+      });
+    }
+
     // Parse and validate scopes
     const requestedScopes = scope ? (typeof scope === 'string' ? scope : '').split(' ') : ['openid', 'profile', 'email'];
     if (!oauth2Service.validateScopes(client, requestedScopes)) {
@@ -137,7 +148,7 @@ const authorize = async (req, res) => {
       redirectUri: redirect_uri,
       scopes: requestedScopes,
       codeChallenge: code_challenge,
-      codeChallengeMethod: code_challenge_method || 'plain',
+      codeChallengeMethod: code_challenge_method,
       nonce: req.query.nonce  // Store nonce for OIDC
     });
 
@@ -164,7 +175,7 @@ const authorize = async (req, res) => {
     }
   } catch (error) {
     console.error('Authorization error:', error);
-    res.status(500).json({ error: 'server_error', error_description: error.message });
+    res.status(500).json({ error: 'server_error', error_description: 'Authorization request failed' });
   }
 };
 
@@ -196,6 +207,14 @@ const authorizeApprove = async (req, res) => {
 
     if (!oauth2Service.validateRedirectUri(client, redirect_uri)) {
       return res.status(400).json({ error: 'invalid_request', error_description: 'Invalid redirect_uri' });
+    }
+
+
+    if (!validatePkce(code_challenge, code_challenge_method)) {
+      return res.status(400).json({
+        error: 'invalid_request',
+        error_description: 'PKCE with code_challenge_method S256 is required'
+      });
     }
 
     // User denied
@@ -231,7 +250,7 @@ const authorizeApprove = async (req, res) => {
       redirectUri: redirect_uri,
       scopes,
       codeChallenge: code_challenge,
-      codeChallengeMethod: code_challenge_method || 'plain'
+      codeChallengeMethod: code_challenge_method
     });
 
     // Build redirect URL
@@ -253,7 +272,7 @@ const authorizeApprove = async (req, res) => {
     }
   } catch (error) {
     console.error('Authorization approval error:', error);
-    res.status(500).json({ error: 'server_error', error_description: error.message });
+    res.status(500).json({ error: 'server_error', error_description: 'Authorization request failed' });
   }
 };
 
@@ -415,7 +434,7 @@ const token = async (req, res) => {
     }
   } catch (error) {
     console.error('Token error:', error.message);
-    return res.status(400).json({ error: 'invalid_grant', error_description: error.message });
+    return res.status(400).json({ error: 'invalid_grant' });
   }
 };
 
@@ -698,7 +717,7 @@ const openidConfiguration = async (req, res) => {
         'tier',
         'avatar_url'
       ],
-      code_challenge_methods_supported: ['plain', 'S256']
+      code_challenge_methods_supported: ['S256']
     };
 
     res.json(config);

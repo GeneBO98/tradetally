@@ -102,6 +102,10 @@
                     v-else-if="notification.type === 'web_mention_alert'"
                     class="h-5 w-5 text-primary-500"
                   />
+                  <ArrowPathIcon
+                    v-else-if="['broker_reauth_expiring', 'broker_reauth_required'].includes(notification.type)"
+                    class="h-5 w-5 text-amber-500"
+                  />
                   <BellIcon v-else class="h-5 w-5 text-gray-400" />
                 </div>
 
@@ -172,6 +176,7 @@ import {
   ChatBubbleLeftRightIcon,
   TrophyIcon,
   ArrowTrendingUpIcon,
+  ArrowPathIcon,
   XMarkIcon
 } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
@@ -194,6 +199,7 @@ const placementClasses = computed(() => {
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useNotificationCenter } from '@/composables/useNotificationCenter'
 import { useNotification } from '@/composables/useNotification'
+import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -215,9 +221,14 @@ const isOpen = ref(false)
 const notifications = ref([])
 const loading = ref(false)
 const markingAsRead = ref(false)
-const pollInterval = ref(null)
 const pollingDisabled = ref(false)
 const dismissingIds = ref(new Set())
+
+// Poll for unread count every 30 seconds (paused while the tab is hidden)
+const { start: startPolling, stop: stopPolling } = useVisibilityPolling(
+  () => fetchUnreadCount(),
+  30000
+)
 
 // Computed
 const isAuthenticated = computed(() => authStore.isAuthenticated)
@@ -272,13 +283,6 @@ const handleNotificationsUpdated = async (event) => {
       await fetchNotifications()
     }
   }, 250)
-}
-
-const stopPolling = () => {
-  if (pollInterval.value) {
-    clearInterval(pollInterval.value)
-    pollInterval.value = null
-  }
 }
 
 const disablePolling = () => {
@@ -458,6 +462,8 @@ const handleNotificationClick = async (notification) => {
     router.push({ path: '/analysis', query: { tab: 'holdings' } })
   } else if (notification.type === 'web_mention_alert') {
     router.push('/web-mentions')
+  } else if (['broker_reauth_expiring', 'broker_reauth_required'].includes(notification.type)) {
+    router.push('/broker-sync')
   }
   
   closeDropdown()
@@ -483,8 +489,7 @@ onMounted(() => {
   if (isAuthenticated.value) {
     pollingDisabled.value = false
     fetchUnreadCount()
-    // Poll for unread count every 30 seconds
-    pollInterval.value = setInterval(fetchUnreadCount, 30000)
+    startPolling()
   }
 
   window.addEventListener('notifications-updated', handleNotificationsUpdated)
@@ -493,7 +498,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  stopPolling()
   window.removeEventListener('notifications-updated', handleNotificationsUpdated)
   document.removeEventListener('mousedown', handleDocumentClick)
   document.removeEventListener('keydown', handleEscKey)
@@ -505,9 +509,7 @@ watch(isAuthenticated, (newValue) => {
   if (newValue) {
     pollingDisabled.value = false
     fetchUnreadCount()
-    if (!pollInterval.value) {
-      pollInterval.value = setInterval(fetchUnreadCount, 30000)
-    }
+    startPolling()
   } else {
     pollingDisabled.value = false
     stopPolling()

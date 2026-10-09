@@ -31,7 +31,7 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 - **Trade Visualization** - Interactive candlestick charts with entry/exit markers
 
 ### Analytics & Insights
-- **AI-Powered Analytics** - Personalized trading recommendations powered by Google Gemini
+- **AI-Powered Analytics** - Personalized trading recommendations through cloud, local, or authenticated Codex/Claude CLI providers
 - **Advanced Charts** - Performance analysis by hold time, day of week, sector, and more
 - **Behavioral Analytics** - Revenge trading detection and overconfidence tracking (Pro)
 - **Health Tracking** - Correlate sleep, heart rate, and other health metrics with trading performance (Pro)
@@ -68,11 +68,14 @@ Free, open-source deployment with all Pro features included. Perfect for:
 
 **Note**: For full feature access (real-time quotes, advanced charts, sector analysis), a [Finnhub.io Basic plan](https://finnhub.io/pricing) is required. Free tier available with limitations.
 
+**Logo fallbacks**: the logo fallbacks send ticker requests directly from the
+browser to Parqet and FMP.
+
 ## Technology Stack
 
 **Backend**: Node.js, Express, PostgreSQL
 **Frontend**: Vue.js 3, Tailwind CSS, Pinia
-**APIs**: Finnhub, Alpha Vantage, Google Gemini
+**APIs**: Finnhub, Alpha Vantage, configurable AI providers
 **Infrastructure**: Docker, Nginx
 
 ## Getting Started
@@ -81,10 +84,12 @@ For detailed installation and setup instructions, visit the [documentation site]
 
 ### Local Development
 
-TradeTally uses pnpm for dependency management. Install pnpm, then install dependencies from the repository root:
+TradeTally requires Node.js 24.21.0 or newer and uses pnpm for dependency management. Docker and CI use Node.js 24.21.0. If you use nvm, run `nvm install` and `nvm use` from the repository root to select the version pinned in `.nvmrc`.
+
+Install pnpm, then install dependencies from the repository root:
 
 ```bash
-npm install -g pnpm@10.13.1
+npm install -g pnpm@10.34.5
 pnpm install
 pnpm --dir backend run dev
 pnpm --dir frontend run dev
@@ -131,13 +136,7 @@ Comprehensive documentation is available at [docs.tradetally.io](https://docs.tr
 
 ## Star History
 
-<a href="https://star-history.com/#GeneBO98/tradetally&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GeneBO98/tradetally&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=GeneBO98/tradetally&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=GeneBO98/tradetally&type=Date" />
- </picture>
-</a>
+[![TradeTally GitHub star history](.github/assets/star-history.svg)](https://github.com/GeneBO98/tradetally)
 
 ## License
 

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const newsEnrichmentController = require('../controllers/newsEnrichment.controller');
 const { authenticate } = require('../middleware/auth');
+const { validate, schemas } = require('../middleware/validation');
 
 /**
  * @swagger
@@ -56,7 +57,7 @@ router.get('/stats', authenticate, newsEnrichmentController.getStats);
  *       500:
  *         description: Server error
  */
-router.post('/backfill', authenticate, newsEnrichmentController.startBackfill);
+router.post('/backfill', authenticate, validate(schemas.newsBackfill), newsEnrichmentController.startBackfill);
 
 /**
  * @swagger

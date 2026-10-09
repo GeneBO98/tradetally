@@ -6,15 +6,29 @@ jest.mock('../../src/utils/positionGrouping', () => {
     isPositionGroupingEnabled: jest.fn()
   };
 });
+jest.mock('../../src/models/User', () => ({
+  getSettings: jest.fn().mockResolvedValue({
+    breakeven_tolerance_mode: 'ticks',
+    breakeven_tolerance_ticks: 0,
+    breakeven_tolerance_ticks_by_underlying: {}
+  })
+}));
 
 const db = require('../../src/config/database');
 const positionGrouping = require('../../src/utils/positionGrouping');
+const User = require('../../src/models/User');
 const analyticsController = require('../../src/controllers/analytics.controller');
 
 describe('analyticsController.getStrategyStats', () => {
   beforeEach(() => {
     db.query.mockReset();
     positionGrouping.isPositionGroupingEnabled.mockReset();
+    User.getSettings.mockReset();
+    User.getSettings.mockResolvedValue({
+      breakeven_tolerance_mode: 'ticks',
+      breakeven_tolerance_ticks: 0,
+      breakeven_tolerance_ticks_by_underlying: {}
+    });
   });
 
   test('uses detected position-group strategy when grouped analytics are enabled', async () => {
@@ -38,7 +52,7 @@ describe('analyticsController.getStrategyStats', () => {
     await analyticsController.getStrategyStats(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(res.json).toHaveBeenCalledWith({ strategies: rows });
+    expect(res.json).toHaveBeenCalledWith({ strategies: rows, display_currency: 'USD' });
     expect(db.query).toHaveBeenCalledTimes(1);
 
     const [query, params] = db.query.mock.calls[0];
@@ -46,6 +60,26 @@ describe('analyticsController.getStrategyStats', () => {
     expect(query).toContain('LEFT JOIN trade_position_groups tpg ON tpg.id = grouped_legs.position_group_id');
     expect(query).toContain('COALESCE(tpg.detected_strategy, grouped_legs.leg_strategy) as strategy');
     expect(query).toContain('GROUP BY position_group_id');
+  });
+
+  test('uses combined gross P&L for grouped dollar tolerance', async () => {
+    positionGrouping.isPositionGroupingEnabled.mockResolvedValue(true);
+    User.getSettings.mockResolvedValue({
+      breakeven_tolerance_mode: 'dollars',
+      breakeven_tolerance_dollars: 10
+    });
+    db.query.mockResolvedValue({ rows: [] });
+
+    const req = { user: { id: 'user-1' }, query: {} };
+    const res = { json: jest.fn() };
+    const next = jest.fn();
+
+    await analyticsController.getStrategyStats(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    const [query] = db.query.mock.calls[0];
+    expect(query).toContain('SUM(trade_amount_usd(t.pnl, t.original_currency, t.exchange_rate, t.original_entry_price_currency) + COALESCE(trade_amount_usd(t.commission, t.original_currency, t.exchange_rate, t.original_entry_price_currency), 0) + COALESCE(trade_amount_usd(t.fees, t.original_currency, t.exchange_rate, t.original_entry_price_currency), 0)) as gross_pnl');
+    expect(query).toContain('ABS(gross_pnl) <= (10)');
   });
 });
 

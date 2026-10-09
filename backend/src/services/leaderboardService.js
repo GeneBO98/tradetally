@@ -1,5 +1,7 @@
 const db = require('../config/database');
-const BehavioralAnalyticsService = require('./behavioralAnalyticsService');
+// Leaderboards rank users against each other, so every amount has to be in
+// one currency before it is summed or compared.
+const { fxUsd } = require('../utils/tradeFx');
 const TierService = require('./tierService');
 
 class LeaderboardService {
@@ -92,12 +94,12 @@ class LeaderboardService {
     const query = `
       SELECT 
         t.user_id,
-        COALESCE(SUM(t.pnl), 0) as score,
+        COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as score,
         json_build_object(
-          'total_pnl', COALESCE(SUM(t.pnl), 0),
+          'total_pnl', COALESCE(SUM(${fxUsd('pnl', 't')}), 0),
           'trade_count', COUNT(*),
           'win_rate', ROUND(COUNT(CASE WHEN t.pnl > 0 THEN 1 END)::numeric / NULLIF(COUNT(*), 0) * 100, 2),
-          'avg_trade', ROUND(COALESCE(AVG(t.pnl), 0)::numeric, 2)
+          'avg_trade', ROUND(COALESCE(AVG(${fxUsd('pnl', 't')}), 0)::numeric, 2)
         ) as metadata
       FROM trades t
       JOIN users u ON u.id = t.user_id
@@ -123,17 +125,17 @@ class LeaderboardService {
     const query = `
       SELECT 
         t.user_id,
-        MAX(t.pnl) as score,
+        MAX(${fxUsd('pnl', 't')}) as score,
         json_build_object(
-          'best_trade_pnl', MAX(t.pnl),
+          'best_trade_pnl', MAX(${fxUsd('pnl', 't')}),
           'best_trade_symbol', (
             SELECT symbol FROM trades t2 
-            WHERE t2.user_id = t.user_id AND t2.pnl = MAX(t.pnl) 
+            WHERE t2.user_id = t.user_id AND ${fxUsd('pnl', 't2')} = MAX(${fxUsd('pnl', 't')}) 
             LIMIT 1
           ),
           'best_trade_date', (
             SELECT exit_time FROM trades t2 
-            WHERE t2.user_id = t.user_id AND t2.pnl = MAX(t.pnl) 
+            WHERE t2.user_id = t.user_id AND ${fxUsd('pnl', 't2')} = MAX(${fxUsd('pnl', 't')}) 
             LIMIT 1
           )
         ) as metadata
@@ -160,17 +162,17 @@ class LeaderboardService {
     const query = `
       SELECT 
         t.user_id,
-        MIN(t.pnl) as score,
+        MIN(${fxUsd('pnl', 't')}) as score,
         json_build_object(
-          'worst_trade_pnl', MIN(t.pnl),
+          'worst_trade_pnl', MIN(${fxUsd('pnl', 't')}),
           'worst_trade_symbol', (
             SELECT symbol FROM trades t2 
-            WHERE t2.user_id = t.user_id AND t2.pnl = MIN(t.pnl) 
+            WHERE t2.user_id = t.user_id AND ${fxUsd('pnl', 't2')} = MIN(${fxUsd('pnl', 't')}) 
             LIMIT 1
           ),
           'worst_trade_date', (
             SELECT exit_time FROM trades t2 
-            WHERE t2.user_id = t.user_id AND t2.pnl = MIN(t.pnl) 
+            WHERE t2.user_id = t.user_id AND ${fxUsd('pnl', 't2')} = MIN(${fxUsd('pnl', 't')}) 
             LIMIT 1
           )
         ) as metadata
@@ -240,7 +242,7 @@ class LeaderboardService {
         SELECT 
           t.user_id,
           DATE(t.exit_time) as trade_date,
-          SUM(t.pnl) as daily_pnl,
+          SUM(${fxUsd('pnl', 't')}) as daily_pnl,
           COUNT(*) as daily_trades
         FROM trades t
         JOIN users u ON u.id = t.user_id
@@ -404,43 +406,47 @@ class LeaderboardService {
   
   // Save leaderboard entries
   static async saveLeaderboardEntries(leaderboardId, scores) {
-    try {
-      // Begin transaction
-      await db.query('BEGIN');
-      
+    // Always generate anonymous names for leaderboards (privacy protection).
+    // Batch-resolve them in a single query instead of one round-trip per row.
+    const anonymousNames = await this.generateAnonymousNames(scores.map(score => score.user_id));
+
+    await db.withTransaction(async (client) => {
       // Clear existing entries for this period
-      await db.query(
+      await client.query(
         'DELETE FROM leaderboard_entries WHERE leaderboard_id = $1 AND DATE(recorded_at) = CURRENT_DATE',
         [leaderboardId]
       );
-      
-      // Insert new entries with rankings
+
+      if (scores.length === 0) {
+        return;
+      }
+
+      // Insert new entries with rankings in a single multi-row statement
+      const values = [];
+      const params = [];
+      let paramIndex = 1;
+
       for (let i = 0; i < scores.length; i++) {
         const score = scores[i];
         const rank = i + 1;
-        
-        // Always generate anonymous names for leaderboards (privacy protection)
-        const anonymousName = await this.generateAnonymousName(score.user_id);
-        
-        await db.query(`
-          INSERT INTO leaderboard_entries (
-            leaderboard_id, user_id, anonymous_name, score, rank, metadata, recorded_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-        `, [
+
+        values.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, CURRENT_TIMESTAMP)`);
+        params.push(
           leaderboardId,
           score.user_id,
-          anonymousName,
+          anonymousNames.get(score.user_id),
           score.score,
           rank,
           score.metadata
-        ]);
+        );
       }
-      
-      await db.query('COMMIT');
-    } catch (error) {
-      await db.query('ROLLBACK');
-      throw error;
-    }
+
+      await client.query(`
+        INSERT INTO leaderboard_entries (
+          leaderboard_id, user_id, anonymous_name, score, rank, metadata, recorded_at
+        ) VALUES ${values.join(', ')}
+      `, params);
+    });
   }
   
   // Generate anonymous name for user
@@ -450,6 +456,26 @@ class LeaderboardService {
       [userId]
     );
     return result.rows[0].name;
+  }
+
+  // Generate anonymous names for many users in a single query.
+  // Returns a Map of user_id -> anonymous name.
+  static async generateAnonymousNames(userIds) {
+    const names = new Map();
+    if (userIds.length === 0) {
+      return names;
+    }
+
+    const result = await db.query(
+      `SELECT uid AS user_id, generate_anonymous_name(uid) AS name
+       FROM unnest($1::uuid[]) AS uid`,
+      [userIds]
+    );
+
+    for (const row of result.rows) {
+      names.set(row.user_id, row.name);
+    }
+    return names;
   }
   
   // Get leaderboard entries
@@ -596,26 +622,26 @@ class LeaderboardService {
       
       // Volume filters go in HAVING clause (after grouping)
       if (minVolume !== undefined && minVolume !== null) {
-        havingConditions.push(`AVG(ABS(t.quantity * t.entry_price)) >= $${paramIndex}`);
+        havingConditions.push(`AVG(ABS(t.quantity * ${fxUsd('entry_price', 't')})) >= $${paramIndex}`);
         queryParams.push(parseFloat(minVolume));
         paramIndex++;
       }
       
       if (maxVolume !== undefined && maxVolume !== null) {
-        havingConditions.push(`AVG(ABS(t.quantity * t.entry_price)) <= $${paramIndex}`);
+        havingConditions.push(`AVG(ABS(t.quantity * ${fxUsd('entry_price', 't')})) <= $${paramIndex}`);
         queryParams.push(parseFloat(maxVolume));
         paramIndex++;
       }
       
       // P&L filters go in HAVING clause (after grouping)
       if (minPnl !== undefined && minPnl !== null) {
-        havingConditions.push(`AVG(t.pnl) >= $${paramIndex}`);
+        havingConditions.push(`AVG(${fxUsd('pnl', 't')}) >= $${paramIndex}`);
         queryParams.push(parseFloat(minPnl));
         paramIndex++;
       }
       
       if (maxPnl !== undefined && maxPnl !== null) {
-        havingConditions.push(`AVG(t.pnl) <= $${paramIndex}`);
+        havingConditions.push(`AVG(${fxUsd('pnl', 't')}) <= $${paramIndex}`);
         queryParams.push(parseFloat(maxPnl));
         paramIndex++;
       }
@@ -680,26 +706,26 @@ class LeaderboardService {
       
       // Volume filters go in HAVING clause (after grouping)
       if (minVolume !== undefined && minVolume !== null) {
-        havingConditions.push(`AVG(ABS(t.quantity * t.entry_price)) >= $${paramIndex}`);
+        havingConditions.push(`AVG(ABS(t.quantity * ${fxUsd('entry_price', 't')})) >= $${paramIndex}`);
         queryParams.push(parseFloat(minVolume));
         paramIndex++;
       }
       
       if (maxVolume !== undefined && maxVolume !== null) {
-        havingConditions.push(`AVG(ABS(t.quantity * t.entry_price)) <= $${paramIndex}`);
+        havingConditions.push(`AVG(ABS(t.quantity * ${fxUsd('entry_price', 't')})) <= $${paramIndex}`);
         queryParams.push(parseFloat(maxVolume));
         paramIndex++;
       }
       
       // P&L filters go in HAVING clause (after grouping)
       if (minPnl !== undefined && minPnl !== null) {
-        havingConditions.push(`AVG(t.pnl) >= $${paramIndex}`);
+        havingConditions.push(`AVG(${fxUsd('pnl', 't')}) >= $${paramIndex}`);
         queryParams.push(parseFloat(minPnl));
         paramIndex++;
       }
       
       if (maxPnl !== undefined && maxPnl !== null) {
-        havingConditions.push(`AVG(t.pnl) <= $${paramIndex}`);
+        havingConditions.push(`AVG(${fxUsd('pnl', 't')}) <= $${paramIndex}`);
         queryParams.push(parseFloat(maxPnl));
         paramIndex++;
       }
@@ -882,7 +908,7 @@ class LeaderboardService {
         FROM (
           SELECT 
             t.user_id,
-            AVG(t.pnl) as avg_pnl
+            AVG(${fxUsd('pnl', 't')}) as avg_pnl
           FROM trades t
           JOIN users u ON u.id = t.user_id
           WHERE t.user_id IN (
@@ -1004,9 +1030,9 @@ class LeaderboardService {
         SELECT 
           t.user_id,
           COUNT(*) as total_trades,
-          AVG(ABS(t.quantity * t.entry_price)) as avg_volume,
-          AVG(t.pnl) as avg_pnl,
-          STDDEV(t.pnl) as pnl_stddev,
+          AVG(ABS(t.quantity * ${fxUsd('entry_price', 't')})) as avg_volume,
+          AVG(${fxUsd('pnl', 't')}) as avg_pnl,
+          STDDEV(${fxUsd('pnl', 't')}) as pnl_stddev,
           COUNT(CASE WHEN t.pnl > 0 THEN 1 END)::float / NULLIF(COUNT(*), 0) * 100 as win_rate
         FROM trades t
         JOIN users u ON u.id = t.user_id

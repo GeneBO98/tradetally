@@ -226,6 +226,14 @@ export function usePriceAlertNotifications() {
       case 'portfolio_alert':
         handlePortfolioAlert(data.data)
         break
+
+      case 'broker_reauth_required':
+        handleBrokerReauthRequired(data.data)
+        break
+
+      case 'broker_reauth_expiring':
+        handleBrokerReauthExpiring(data.data)
+        break
         
       case 'recent_notifications':
         // Handle recent notifications on connection
@@ -258,6 +266,24 @@ export function usePriceAlertNotifications() {
       case 'xp_update':
         queueCelebrationItem({ type: 'xp_update', payload: data.data })
         break
+
+      case 'challenge_completed': {
+        // Celebrate a finished challenge like an achievement unlock
+        const challenge = data.data?.challenge || {}
+        queueCelebrationItem({
+          type: 'achievement',
+          payload: {
+            achievement: {
+              id: `challenge-${challenge.id}`,
+              name: challenge.name,
+              description: challenge.description || 'Challenge complete',
+              points: challenge.reward_points || 0,
+              kind: 'challenge'
+            }
+          }
+        })
+        break
+      }
     }
   }
   
@@ -316,6 +342,26 @@ export function usePriceAlertNotifications() {
     }
 
     showWarning(`Portfolio Alert: ${alert.symbol}`, alert.message)
+  }
+
+  const handleBrokerReauthRequired = (alert) => {
+    showWarning('Broker reconnect required', alert.message)
+    window.dispatchEvent(new CustomEvent('notifications-updated', {
+      detail: { unreadDelta: 1 }
+    }))
+    window.dispatchEvent(new CustomEvent('broker-reauth-required', {
+      detail: alert
+    }))
+  }
+
+  const handleBrokerReauthExpiring = (alert) => {
+    showWarning('Schwab authorization expires soon', alert.message)
+    window.dispatchEvent(new CustomEvent('notifications-updated', {
+      detail: { unreadDelta: 1 }
+    }))
+    window.dispatchEvent(new CustomEvent('broker-reauth-expiring', {
+      detail: alert
+    }))
   }
 
   const handleCusipResolution = (data) => {

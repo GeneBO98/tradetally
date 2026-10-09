@@ -103,6 +103,10 @@ function normalizeExcursionValue(value, trade, legacyPointUnits = isLegacyFuture
 
 function breakevenToleranceDollars(trade, breakevenConfig) {
   const config = normalizeConfig(breakevenConfig);
+  if (config.mode === 'dollars') {
+    return config.default;
+  }
+
   const underlying = String(trade.underlying_asset || trade.underlyingAsset || '').toUpperCase();
   const toleranceTicks = Object.prototype.hasOwnProperty.call(config.byUnderlying, underlying)
     ? config.byUnderlying[underlying]

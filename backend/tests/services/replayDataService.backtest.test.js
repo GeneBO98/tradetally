@@ -25,6 +25,7 @@ const databento = require('../../src/utils/databento');
 const {
   getBacktestSessionData,
   getTradeReplayData,
+  getFuturesTradeChartData,
   sessionWindowForDate,
   futuresSessionWindowForDate,
   futuresSessionWindowForEntry
@@ -256,5 +257,80 @@ describe('getTradeReplayData futures', () => {
     expect(payload.trade.tick_size).toBe(0.25);
     expect(payload.session.date).toBe('2026-06-15');
     expect(payload.session.from_ts).toBe(Date.UTC(2026, 5, 14, 22, 0, 0) / 1000);
+  });
+});
+
+describe('getFuturesTradeChartData', () => {
+  const futuresTrade = {
+    id: 'trade-chart-1',
+    symbol: 'MNQM6',
+    instrument_type: 'future',
+    underlying_asset: null,
+    entry_time: '2026-06-15T14:00:00Z',
+    exit_time: '2026-06-15T15:00:00Z',
+    entry_price: 21900,
+    exit_price: 21910,
+    tick_size: null,
+    point_value: null
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    databento.isConfigured.mockReturnValue(true);
+  });
+
+  it('aggregates cached one-minute session bars for intraday KLine resolutions', async () => {
+    const firstBar = Date.UTC(2026, 5, 15, 14, 0, 0) / 1000;
+    db.query.mockImplementation(async (sql) => {
+      if (sql.includes('intraday_candle_coverage')) {
+        return { rows: [{ source: 'databento', candle_count: 3 }] };
+      }
+      if (sql.includes('FROM intraday_candles')) {
+        return {
+          rows: [
+            { ts: firstBar, open: 21900, high: 21902, low: 21899, close: 21901, volume: 10 },
+            { ts: firstBar + 60, open: 21901, high: 21904, low: 21900, close: 21903, volume: 20 },
+            { ts: firstBar + 5 * 60, open: 21903, high: 21905, low: 21902, close: 21904, volume: 30 }
+          ]
+        };
+      }
+      return { rows: [] };
+    });
+
+    const payload = await getFuturesTradeChartData(futuresTrade, '5');
+
+    expect(databento.getFuturesCandles).not.toHaveBeenCalled();
+    expect(payload).toMatchObject({
+      interval: '5min',
+      source: 'cache:databento',
+      chart_symbol: 'MNQ.c.0',
+      futures_continuous: true,
+      tick_size: 0.25,
+      point_value: 2,
+      available_resolutions: ['1', '5', '15', '60', 'D']
+    });
+    expect(payload.candles).toEqual([
+      expect.objectContaining({ time: firstBar, open: 21900, high: 21904, low: 21899, close: 21903, volume: 30 }),
+      expect.objectContaining({ time: firstBar + 5 * 60, open: 21903, close: 21904, volume: 30 })
+    ]);
+  });
+
+  it('uses Databento daily candles for the wider daily context window', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+    databento.getFuturesCandles.mockResolvedValue([
+      { time: Date.UTC(2026, 5, 15) / 1000, open: 21800, high: 22000, low: 21750, close: 21950, volume: 1000 }
+    ]);
+
+    const payload = await getFuturesTradeChartData(futuresTrade, 'D');
+
+    expect(databento.getFuturesCandles).toHaveBeenCalledWith(
+      'MNQ',
+      expect.any(Date),
+      expect.any(Date),
+      'day'
+    );
+    expect(payload.type).toBe('daily');
+    expect(payload.interval).toBe('daily');
+    expect(payload.candles).toHaveLength(1);
   });
 });

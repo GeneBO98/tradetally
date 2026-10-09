@@ -1,43 +1,31 @@
-const cron = require('node-cron');
+const CronScheduler = require('./schedulers/CronScheduler');
 const PortfolioService = require('./portfolioService');
 
-class PortfolioSnapshotScheduler {
+class PortfolioSnapshotScheduler extends CronScheduler {
   constructor() {
-    this.job = null;
-  }
-
-  start() {
-    if (this.job) {
-      console.log('[PORTFOLIO-SNAPSHOTS] Scheduler already running');
-      return;
-    }
-
-    const cronExpression = process.env.PORTFOLIO_SNAPSHOT_CRON || '15 20 * * 1-5';
-    if (!cron.validate(cronExpression)) {
-      console.error(`[PORTFOLIO-SNAPSHOTS] Invalid cron expression: ${cronExpression}`);
-      return;
-    }
-
-    this.job = cron.schedule(cronExpression, async () => {
-      try {
-        console.log('[PORTFOLIO-SNAPSHOTS] Creating daily portfolio snapshots...');
-        const summary = await PortfolioService.createDailySnapshotsForAllUsers();
-        console.log(`[PORTFOLIO-SNAPSHOTS] Snapshot run complete for ${summary.usersProcessed} users`);
-      } catch (error) {
-        console.error('[PORTFOLIO-SNAPSHOTS] Snapshot run failed:', error);
+    super({
+      logPrefix: '[PORTFOLIO-SNAPSHOTS]',
+      cronEnvVar: 'PORTFOLIO_SNAPSHOT_CRON',
+      defaultCron: '15 20 * * 1-5',
+      guardRestart: true,
+      getScheduleOptions: () => ({
+        timezone: process.env.TZ || 'UTC'
+      }),
+      messages: {
+        alreadyStarted: '[PORTFOLIO-SNAPSHOTS] Scheduler already running',
+        started: (cronExpression) => `[PORTFOLIO-SNAPSHOTS] Scheduler started (${cronExpression})`,
+        stopped: '[PORTFOLIO-SNAPSHOTS] Scheduler stopped'
       }
-    }, {
-      timezone: process.env.TZ || 'UTC'
     });
-
-    console.log(`[PORTFOLIO-SNAPSHOTS] Scheduler started (${cronExpression})`);
   }
 
-  stop() {
-    if (this.job) {
-      this.job.stop();
-      this.job = null;
-      console.log('[PORTFOLIO-SNAPSHOTS] Scheduler stopped');
+  async onTick() {
+    try {
+      console.log('[PORTFOLIO-SNAPSHOTS] Creating daily portfolio snapshots...');
+      const summary = await PortfolioService.createDailySnapshotsForAllUsers();
+      console.log(`[PORTFOLIO-SNAPSHOTS] Snapshot run complete for ${summary.usersProcessed} users`);
+    } catch (error) {
+      console.error('[PORTFOLIO-SNAPSHOTS] Snapshot run failed:', error);
     }
   }
 

@@ -134,14 +134,19 @@ class AlpacaMarketDataClient {
 
       // Use _positionKey if provided (unique per contract), otherwise fall back to symbol
       const posKey = pos._positionKey || pos.symbol;
-      occToPositionKey[occ] = posKey;
+      // One OCC symbol can belong to SEVERAL positions: positions are split by
+      // the currency their stored values are in, so the same contract held in
+      // two currencies is two positions. Assigning a single key here would
+      // leave all but the last of them without a quote.
+      if (!occToPositionKey[occ]) occToPositionKey[occ] = [];
+      if (!occToPositionKey[occ].includes(posKey)) occToPositionKey[occ].push(posKey);
 
       // Check cache first (2 min TTL)
       const cached = cache.get(`alpaca_option:${occ}`);
       if (cached) {
         results[posKey] = cached;
         console.log(`[ALPACA] Cache hit for ${occ} -> $${cached.price}`);
-      } else {
+      } else if (!uncachedOcc.includes(occ)) {
         uncachedOcc.push(occ);
       }
     }
@@ -168,7 +173,7 @@ class AlpacaMarketDataClient {
 
         for (const occ of batch) {
           const snapshot = snapshots[occ];
-          const posKey = occToPositionKey[occ];
+          const posKeys = occToPositionKey[occ] || [];
 
           if (snapshot) {
             const bid = snapshot.latestQuote?.bp || snapshot.latestQuote?.bidPrice || 0;
@@ -187,7 +192,7 @@ class AlpacaMarketDataClient {
             }
 
             const result = { price, bid, ask };
-            results[posKey] = result;
+            posKeys.forEach(posKey => { results[posKey] = result; });
 
             // Cache for 2 minutes
             cache.set(`alpaca_option:${occ}`, result, 120000);

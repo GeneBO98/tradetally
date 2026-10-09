@@ -16,6 +16,7 @@ jest.mock('../../src/models/Playbook', () => ({
 }));
 
 jest.mock('../../src/utils/positionGrouping', () => ({
+  ...jest.requireActual('../../src/utils/positionGrouping'),
   isPositionGroupingEnabled: jest.fn()
 }));
 
@@ -480,4 +481,41 @@ describe('AISessionService.summarizePositionGroupForClient', () => {
   test('returns null when there is no group', () => {
     expect(AISessionService.summarizePositionGroupForClient(null)).toBeNull();
   });
+});
+
+describe('AISessionService.getUserSessions recovery metadata', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('returns the request ID used to recover a session after a gateway timeout', async () => {
+    db.query.mockResolvedValue({
+      rows: [{
+        id: 'session-1',
+        status: 'active',
+        trade_count: 1,
+        followup_count: 0,
+        max_followups: 5,
+        filters_applied: { request_id: 'request-1' },
+        created_at: '2026-07-22T06:32:13.882Z'
+      }]
+    });
+
+    const sessions = await AISessionService.getUserSessions(USER_ID, 20);
+
+    expect(sessions).toEqual([
+      expect.objectContaining({
+        id: 'session-1',
+        request_id: 'request-1'
+      })
+    ]);
+  });
+});
+
+
+test('AI summaries do not recombine ungrouped trades with known brokerage orders', () => {
+  const trades = [leg({ id: 'a', executions: [{ brokerage_order_id: 'first' }] }),
+    leg({ id: 'b', executions: [{ brokerage_order_id: 'second' }] }),
+    leg({ id: 'c' })];
+  expect(AISessionService.collapsePositionGroups(trades)).toHaveLength(3);
 });

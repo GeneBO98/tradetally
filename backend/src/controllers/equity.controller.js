@@ -1,4 +1,6 @@
 const pool = require('../config/database');
+const settingsCache = require('../services/settingsCache');
+const { convertForDisplay } = require('../utils/displayCurrency');
 
 const equityController = {
   async getEquitySnapshots(req, res) {
@@ -38,10 +40,10 @@ const equityController = {
 
       const result = await pool.query(query, params);
       
-      res.json({
+      res.json(await convertForDisplay(req, {
         success: true,
         data: result.rows
-      });
+      }, { clone: false }));
     } catch (error) {
       console.error('Error fetching equity snapshots:', error);
       res.status(500).json({
@@ -185,6 +187,7 @@ const equityController = {
         'UPDATE user_settings SET account_equity = $1 WHERE user_id = $2',
         [accountEquity, userId]
       );
+      settingsCache.invalidate(userId);
 
       // Also create a snapshot for today
       const today = new Date().toISOString().split('T')[0];

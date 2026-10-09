@@ -27,7 +27,8 @@ describe('ui preferences store', () => {
       data: {
         settings: {
           uiPreferences: {
-            passkey_prompt_dismissed: true
+            passkey_prompt_dismissed: true,
+            trade_chart_default_resolution: '5'
           }
         }
       }
@@ -38,6 +39,7 @@ describe('ui preferences store', () => {
 
     expect(api.get).toHaveBeenCalledTimes(1)
     expect(localStorage.getItem('passkey_prompt_dismissed')).toBe('true')
+    expect(localStorage.getItem('trade_chart_default_resolution')).toBe('5')
     expect(store.initialized).toBe(true)
   })
 
@@ -64,5 +66,44 @@ describe('ui preferences store', () => {
         passkey_prompt_dismissed: true
       }
     })
+  })
+
+  it('flushes the default chart resolution to remote preferences', async () => {
+    const { useUiPreferencesStore } = await import('./uiPreferences')
+    api.get.mockResolvedValueOnce({ data: { settings: { uiPreferences: {} } } })
+    api.put.mockResolvedValueOnce({ data: {} })
+
+    const store = useUiPreferencesStore()
+    await store.init()
+
+    localStorage.setItem('trade_chart_default_resolution', '15')
+    store.notifyChanged('trade_chart_default_resolution', '15')
+    await store.flush()
+
+    expect(api.put).toHaveBeenCalledWith('/settings', {
+      uiPreferences: {
+        trade_chart_default_resolution: '15'
+      }
+    })
+  })
+
+  it('hydrates remembered import preferences from the server', async () => {
+    const { useUiPreferencesStore } = await import('./uiPreferences')
+    api.get.mockResolvedValueOnce({
+      data: {
+        settings: {
+          uiPreferences: {
+            import_strategy_handling: 'Breakout',
+            import_notes_and_descriptions: true
+          }
+        }
+      }
+    })
+
+    const store = useUiPreferencesStore()
+    await store.init()
+
+    expect(localStorage.getItem('import_strategy_handling')).toBe('Breakout')
+    expect(localStorage.getItem('import_notes_and_descriptions')).toBe('true')
   })
 })

@@ -1,8 +1,23 @@
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
+const { convertForDisplay } = require('../utils/displayCurrency');
 const logger = require('../utils/logger');
 const aiService = require('../utils/aiService');
 
 class HealthController {
+  constructor() {
+    [
+      'submitHealthData',
+      'getHealthData',
+      'analyzeCorrelations',
+      'getInsights',
+      'correlateHealthWithTrades',
+      'getHealthInsights'
+    ].forEach((method) => {
+      this[method] = this[method].bind(this);
+    });
+  }
+
   normalizeDataType(type) {
     const normalized = String(type || '').trim();
     const aliases = {
@@ -76,7 +91,7 @@ class HealthController {
       const { healthData } = req.body;
       
       // Enhanced logging for debugging mobile app submissions
-      console.log('\n🔔 HEALTH DATA SUBMISSION RECEIVED FROM MOBILE APP');
+      console.log('\n[INFO] HEALTH DATA SUBMISSION RECEIVED FROM MOBILE APP');
       console.log('  User ID:', userId);
       console.log('  Timestamp:', new Date().toISOString());
       console.log('  Request Headers:', {
@@ -90,7 +105,7 @@ class HealthController {
       });
 
       if (!Array.isArray(healthData)) {
-        console.log('  ❌ ERROR: Health data must be an array');
+        console.log('  [ERROR] Health data must be an array');
         return res.status(400).json({
           success: false,
           message: 'Health data must be an array'
@@ -98,80 +113,77 @@ class HealthController {
       }
 
       logger.info(`Receiving ${healthData.length} health data points for user ${userId}`, 'health');
-      console.log(`  📊 Processing ${healthData.length} health data points...`);
+      console.log(`  [PROCESS] Processing ${healthData.length} health data points...`);
 
       // Debug: Count data types
       const dataTypeCounts = {};
       healthData.forEach(point => {
         dataTypeCounts[point.type] = (dataTypeCounts[point.type] || 0) + 1;
       });
-      console.log(`  📊 Data types received:`, dataTypeCounts);
+      console.log('  [INFO] Data types received:', dataTypeCounts);
       logger.info(`Data types received: ${JSON.stringify(dataTypeCounts)}`, 'health');
-
-      // Begin transaction
-      await db.query('BEGIN');
 
       let insertedCount = 0;
       let updatedCount = 0;
 
-      for (const dataPoint of healthData) {
-        const { date, type, value, timestamp } = dataPoint;
-        const dataType = this.normalizeDataType(type);
-        const metadata = this.normalizeMetadata(dataPoint.metadata || {});
+      await db.withTransaction(async (client) => {
+        for (const dataPoint of healthData) {
+          const { date, type, value, timestamp } = dataPoint;
+          const dataType = this.normalizeDataType(type);
+          const metadata = this.normalizeMetadata(dataPoint.metadata || {});
 
-        // Validate required fields
-        if (!date || !dataType || value === undefined) {
-          logger.warn(`Invalid health data point received (date=${date || 'missing'}, type=${type || 'missing'})`, 'health');
-          continue;
-        }
-
-        // For time-series data (heart rate), use timestamp instead of date for uniqueness
-        if (timestamp && dataType === 'heart_rate') {
-          // Insert individual time-series samples (heart rate at 1-minute intervals)
-          const result = await db.query(`
-            INSERT INTO health_data (user_id, date, data_type, value, metadata, timestamp, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())
-            ON CONFLICT (user_id, data_type, timestamp)
-            WHERE timestamp IS NOT NULL
-            DO UPDATE SET
-              value = EXCLUDED.value,
-              metadata = EXCLUDED.metadata,
-              updated_at = NOW()
-            RETURNING (xmax = 0) AS inserted
-          `, [userId, date, dataType, value, JSON.stringify(metadata), timestamp]);
-
-          if (result.rows[0].inserted) {
-            insertedCount++;
-          } else {
-            updatedCount++;
+          // Validate required fields
+          if (!date || !dataType || value === undefined) {
+            logger.warn(`Invalid health data point received (date=${date || 'missing'}, type=${type || 'missing'})`, 'health');
+            continue;
           }
-        } else {
-          // Daily aggregates (sleep data)
-          const result = await db.query(`
-            INSERT INTO health_data (user_id, date, data_type, value, metadata, updated_at)
-            VALUES ($1, $2, $3, $4, $5, NOW())
-            ON CONFLICT (user_id, data_type, date)
-            WHERE timestamp IS NULL
-            DO UPDATE SET
-              value = EXCLUDED.value,
-              metadata = EXCLUDED.metadata,
-              updated_at = NOW()
-            RETURNING (xmax = 0) AS inserted
-          `, [userId, date, dataType, value, JSON.stringify(metadata)]);
 
-          if (result.rows[0].inserted) {
-            insertedCount++;
+          // For time-series data (heart rate), use timestamp instead of date for uniqueness
+          if (timestamp && dataType === 'heart_rate') {
+            // Insert individual time-series samples (heart rate at 1-minute intervals)
+            const result = await client.query(`
+              INSERT INTO health_data (user_id, date, data_type, value, metadata, timestamp, updated_at)
+              VALUES ($1, $2, $3, $4, $5, $6, NOW())
+              ON CONFLICT (user_id, data_type, timestamp)
+              WHERE timestamp IS NOT NULL
+              DO UPDATE SET
+                value = EXCLUDED.value,
+                metadata = EXCLUDED.metadata,
+                updated_at = NOW()
+              RETURNING (xmax = 0) AS inserted
+            `, [userId, date, dataType, value, JSON.stringify(metadata), timestamp]);
+
+            if (result.rows[0].inserted) {
+              insertedCount++;
+            } else {
+              updatedCount++;
+            }
           } else {
-            updatedCount++;
+            // Daily aggregates (sleep data)
+            const result = await client.query(`
+              INSERT INTO health_data (user_id, date, data_type, value, metadata, updated_at)
+              VALUES ($1, $2, $3, $4, $5, NOW())
+              ON CONFLICT (user_id, data_type, date)
+              WHERE timestamp IS NULL
+              DO UPDATE SET
+                value = EXCLUDED.value,
+                metadata = EXCLUDED.metadata,
+                updated_at = NOW()
+              RETURNING (xmax = 0) AS inserted
+            `, [userId, date, dataType, value, JSON.stringify(metadata)]);
+
+            if (result.rows[0].inserted) {
+              insertedCount++;
+            } else {
+              updatedCount++;
+            }
           }
         }
-      }
-
-      await db.query('COMMIT');
+      });
 
       logger.info(`Health data submitted: ${insertedCount} inserted, ${updatedCount} updated for user ${userId}`, 'health');
       
-      console.log('  ✅ SUCCESS: Health data processed');
+      console.log('  [SUCCESS] Health data processed');
       console.log(`     Inserted: ${insertedCount} new records`);
       console.log(`     Updated: ${updatedCount} existing records`);
       console.log(`     Total processed: ${insertedCount + updatedCount}`);
@@ -188,7 +200,6 @@ class HealthController {
       });
 
     } catch (error) {
-      await db.query('ROLLBACK');
       logger.error(`Error submitting health data: ${error.message}`, 'health');
       res.status(500).json({
         success: false,
@@ -292,9 +303,9 @@ class HealthController {
       const tradesQuery = `
         SELECT 
           DATE(trade_date) as trade_date,
-          SUM(pnl) as total_pnl,
+          SUM(${fxUsd('pnl', '')}) as total_pnl,
           COUNT(*) as total_trades,
-          AVG(pnl) as avg_pnl,
+          AVG(${fxUsd('pnl', '')}) as avg_pnl,
           COUNT(CASE WHEN pnl > 0 THEN 1 END) as wins
         FROM trades 
         WHERE user_id = $1 AND trade_date >= $2 AND trade_date <= $3
@@ -314,7 +325,7 @@ class HealthController {
       // Generate insights
       const insights = await this.generateInsights(userId, correlations);
 
-      res.status(200).json({
+      res.status(200).json(await convertForDisplay(req, {
         success: true,
         data: {
           correlations,
@@ -325,7 +336,7 @@ class HealthController {
             tradingDays: tradeData.rows.length
           }
         }
-      });
+      }, { clone: false }));
 
     } catch (error) {
       logger.error(`Error analyzing health correlations: ${error.message}`, 'health');

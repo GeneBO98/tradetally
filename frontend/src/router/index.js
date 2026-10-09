@@ -17,6 +17,10 @@ const router = createRouter({
       redirect: { name: 'login' }
     },
     {
+      path: '/open-app',
+      redirect: { name: 'login' }
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('@/views/auth/LoginView.vue'),
@@ -120,6 +124,12 @@ const router = createRouter({
       path: '/metrics/edge-report',
       name: 'edge-report',
       component: () => import('@/views/EdgeReportView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/metrics/allocations',
+      name: 'allocation-report',
+      component: () => import('@/views/AllocationReportView.vue'),
       meta: { requiresAuth: true }
     },
     {

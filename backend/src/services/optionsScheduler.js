@@ -1,11 +1,25 @@
+const IntervalScheduler = require('./schedulers/IntervalScheduler');
 const db = require('../config/database');
 const AnalyticsCache = require('./analyticsCache');
 const OptionStrategyGroupingService = require('./optionStrategyGroupingService');
 
-class OptionsScheduler {
+class OptionsScheduler extends IntervalScheduler {
   constructor() {
-    this.interval = null;
-    this.initialRunTimeout = null;
+    super({
+      intervalMs: 60 * 60 * 1000, // 1 hour
+      runOnStart: false,
+      initialDelayMs: 5000, // Wait 5 seconds after startup
+      useUnref: true,
+      useRunningGuard: false,
+      stopLogAlways: false,
+      messages: {
+        startLogs: ['[OPTIONS SCHEDULER] Starting options scheduler...'],
+        initialDelayFired: '[OPTIONS SCHEDULER] Running initial expired options check on startup',
+        tick: '[OPTIONS SCHEDULER] Running scheduled expired options closure',
+        started: '[OPTIONS SCHEDULER] Scheduler started - will run every hour',
+        stopped: '[OPTIONS SCHEDULER] Scheduler stopped'
+      }
+    });
   }
 
   async closeExpiredOptions() {
@@ -102,40 +116,8 @@ class OptionsScheduler {
     }
   }
 
-  start() {
-    console.log('[OPTIONS SCHEDULER] Starting options scheduler...');
-
-    // Run immediately on startup to catch any options that expired while server was down
-    this.initialRunTimeout = setTimeout(async () => {
-      console.log('[OPTIONS SCHEDULER] Running initial expired options check on startup');
-      await this.closeExpiredOptions();
-    }, 5000); // Wait 5 seconds after startup
-    if (typeof this.initialRunTimeout.unref === 'function') {
-      this.initialRunTimeout.unref();
-    }
-
-    // Run every hour to catch newly expired options
-    this.interval = setInterval(async () => {
-      console.log('[OPTIONS SCHEDULER] Running scheduled expired options closure');
-      await this.closeExpiredOptions();
-    }, 60 * 60 * 1000); // 1 hour
-    if (typeof this.interval.unref === 'function') {
-      this.interval.unref();
-    }
-
-    console.log('[OPTIONS SCHEDULER] Scheduler started - will run every hour');
-  }
-
-  stop() {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-      console.log('[OPTIONS SCHEDULER] Scheduler stopped');
-    }
-    if (this.initialRunTimeout) {
-      clearTimeout(this.initialRunTimeout);
-      this.initialRunTimeout = null;
-    }
+  async execute() {
+    return this.closeExpiredOptions();
   }
 
   stopScheduler() {

@@ -1,4 +1,8 @@
-FROM node:20.19.5-alpine3.21 AS frontend-builder
+ARG NODE_VERSION=24.21.0
+
+FROM node:${NODE_VERSION}-alpine3.23 AS frontend-builder
+# Avoid illegal-instruction failures when this stage runs under QEMU for arm64.
+ENV QEMU_CPU=max
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app
@@ -8,7 +12,7 @@ ENV NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ \
     NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
     NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
 
-RUN npm install -g pnpm@10.13.1
+RUN npm install -g pnpm@10.34.5
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY frontend/package.json ./frontend/package.json
@@ -26,7 +30,9 @@ ENV VITE_PROMOTEKIT_ID=${VITE_PROMOTEKIT_ID}
 
 RUN pnpm --dir frontend run build
 
-FROM node:20.19.5-alpine3.21 AS backend-builder
+FROM node:${NODE_VERSION}-alpine3.23 AS backend-builder
+# Avoid illegal-instruction failures when this stage runs under QEMU for arm64.
+ENV QEMU_CPU=max
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app
@@ -48,7 +54,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY backend/package.json ./backend/package.json
 
 # Install pnpm and node-gyp globally for native module builds.
-RUN npm install -g pnpm@10.13.1 node-gyp
+RUN npm install -g pnpm@10.34.5 node-gyp
 
 # Install dependencies
 # Sharp will automatically download prebuilt binaries for Alpine Linux
@@ -59,7 +65,9 @@ RUN pnpm install --filter tradetally-backend --prod --frozen-lockfile
 COPY backend/ ./backend
 RUN pnpm deploy --filter tradetally-backend --prod --legacy /prod/backend
 
-FROM node:20.19.5-alpine3.21
+FROM node:${NODE_VERSION}-alpine3.23
+# Avoid illegal-instruction failures when this stage runs under QEMU for arm64.
+ENV QEMU_CPU=max
 # Update packages to fix vulnerabilities
 # Note: vips is NOT needed here - Sharp uses bundled libvips via SHARP_IGNORE_GLOBAL_LIBVIPS=1
 RUN apk update && apk upgrade --no-cache && \

@@ -45,19 +45,7 @@
 
     <!-- iOS Smart App Banner (renders natively in iOS Safari) -->
     <meta name="apple-itunes-app" content="app-id=6748022992">
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "Organization",
-        "name": "TradeTally",
-        "url": "https://tradetally.io",
-        "logo": "https://tradetally.io/apple-touch-icon.png",
-        "sameAs": [
-          "https://x.com/TradeTallyIO",
-          "https://github.com/GeneBO98/tradetally"
-        ]
-      }
-    </script>
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"TradeTally","url":"https://tradetally.io","logo":"https://tradetally.io/apple-touch-icon.png","sameAs":["https://x.com/TradeTallyIO","https://github.com/GeneBO98/tradetally"]}</script>
 
     <!-- Loader is shown for JS-enabled browsers until Vue mounts -->
     <style>
@@ -86,16 +74,7 @@
       #app-fallback .seo-sections a:hover{text-decoration:underline}
     </style>
     <!-- Mark JS-enabled clients before body paint -->
-    <script>
-      try {
-        document.documentElement.classList.add('tt-js')
-        if (localStorage.getItem('token')) {
-          document.documentElement.classList.add('tt-has-token')
-        }
-      } catch (e) {
-        document.documentElement.classList.add('tt-js')
-      }
-    </script>
+    <script src="/bootstrap.js"></script>
   </head>
   <body>
     <div id="app">

@@ -306,10 +306,10 @@ class EnrichmentCacheService {
       // Apply the cached data to the trade (only update fields that exist in trades table)
       const updateQuery = `
         UPDATE trades SET
-          strategy = COALESCE(strategy, $2),
-          strategy_confidence = COALESCE(strategy_confidence, $3),
-          classification_method = COALESCE(classification_method, $4),
-          classification_metadata = COALESCE(classification_metadata, $5),
+          strategy = CASE WHEN manual_override THEN strategy ELSE COALESCE(strategy, $2) END,
+          strategy_confidence = CASE WHEN manual_override THEN strategy_confidence ELSE COALESCE(strategy_confidence, $3) END,
+          classification_method = CASE WHEN manual_override THEN classification_method ELSE COALESCE(classification_method, $4) END,
+          classification_metadata = CASE WHEN manual_override THEN classification_metadata ELSE COALESCE(classification_metadata, $5) END,
           mae = COALESCE(mae, $6),
           mfe = COALESCE(mfe, $7),
           enrichment_status = CASE 

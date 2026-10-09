@@ -96,4 +96,48 @@ describe('v1 public OpenAPI contract', () => {
     expect(capabilities.data.real_time).toBeUndefined();
     expect(capabilities.platform.websockets).toBeUndefined();
   });
+  test('documents the 2FA login step, analytics, and real response shapes', () => {
+    const spec = buildV1OpenApiSpec('https://api.example.com');
+    const schemas = spec.components.schemas;
+
+    expect(spec.paths['/api/v1/auth/verify-2fa'].post).toBeDefined();
+    expect(spec.paths['/api/v1/analytics/drawdown'].get).toBeDefined();
+
+    // Login may return a 2FA challenge instead of tokens.
+    const loginSchema = spec.paths['/api/v1/auth/login'].post.responses[200].content['application/json'].schema;
+    expect(loginSchema.oneOf.map((s) => s.$ref)).toContain('#/components/schemas/TwoFactorChallenge');
+
+    // Tokens are nested under `tokens`, matching the controller output.
+    expect(schemas.AuthSessionResponse.properties.tokens.$ref).toBe('#/components/schemas/AuthTokens');
+    expect(schemas.AuthSessionResponse.properties.token).toBeUndefined();
+
+    // Trades are returned in snake_case.
+    expect(schemas.Trade.properties.entry_price).toBeDefined();
+    expect(schemas.Trade.properties.entryPrice).toBeUndefined();
+
+    // Rate-limit headers match what express-rate-limit actually sends.
+    const headers = spec.paths['/api/v1/trades'].get.responses[200].headers;
+    expect(headers['RateLimit-Remaining']).toBeDefined();
+    expect(headers['X-Rate-Limit-Remaining']).toBeUndefined();
+
+    // The trade list documents the filters the endpoint honors.
+    const listParams = spec.paths['/api/v1/trades'].get.parameters.map((p) => p.name);
+    expect(listParams).toEqual(expect.arrayContaining(['side', 'status', 'accounts', 'page']));
+
+    expect(spec.paths['/api/v1/trades/bulk'].delete.requestBody.content['application/json'].schema.properties.tradeIds.maxItems).toBe(500);
+  });
+
+  test('every $ref resolves to a defined component', () => {
+    const spec = buildV1OpenApiSpec('https://api.example.com');
+    const refs = new Set();
+    JSON.stringify(spec, (key, value) => {
+      if (key === '$ref') refs.add(value);
+      return value;
+    });
+
+    refs.forEach((ref) => {
+      const [, , section, name] = ref.split('/');
+      expect(spec.components[section][name]).toBeDefined();
+    });
+  });
 });

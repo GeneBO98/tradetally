@@ -105,6 +105,11 @@
                   class="h-5 w-5"
                   :class="getIconColorClass(notification.type)"
                 />
+                <ArrowPathIcon
+                  v-else-if="['broker_reauth_expiring', 'broker_reauth_required'].includes(notification.type)"
+                  class="h-5 w-5"
+                  :class="getIconColorClass(notification.type)"
+                />
                 <BellIcon
                   v-else
                   class="h-5 w-5 text-gray-400"
@@ -210,7 +215,8 @@ import {
   BellSlashIcon, 
   ChatBubbleLeftRightIcon,
   TrophyIcon,
-  ArrowTrendingUpIcon
+  ArrowTrendingUpIcon,
+  ArrowPathIcon
 } from '@heroicons/vue/24/outline'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useNotification } from '@/composables/useNotification'
@@ -354,6 +360,8 @@ const handleNotificationClick = (notification) => {
     router.push({ path: '/analysis', query: { tab: 'holdings' } })
   } else if (notification.type === 'web_mention_alert') {
     router.push('/web-mentions')
+  } else if (['broker_reauth_expiring', 'broker_reauth_required'].includes(notification.type)) {
+    router.push('/broker-sync')
   }
 }
 
@@ -384,6 +392,8 @@ const getTypeLabel = (type) => {
     case 'behavioral_alert': return 'Behavioral'
     case 'portfolio_alert': return 'Portfolio'
     case 'web_mention_alert': return 'Web Mention'
+    case 'broker_reauth_expiring':
+    case 'broker_reauth_required': return 'Broker Sync'
     default: return 'Notification'
   }
 }
@@ -403,6 +413,9 @@ const getTypeBadgeClass = (type) => {
     case 'portfolio_alert':
     case 'web_mention_alert':
       return 'bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-200'
+    case 'broker_reauth_expiring':
+    case 'broker_reauth_required':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200'
     default:
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
   }
@@ -423,6 +436,9 @@ const getIconBgClass = (type) => {
     case 'portfolio_alert':
     case 'web_mention_alert':
       return 'bg-primary-50 dark:bg-primary-900/20'
+    case 'broker_reauth_expiring':
+    case 'broker_reauth_required':
+      return 'bg-amber-50 dark:bg-amber-900/20'
     default:
       return 'bg-gray-50 dark:bg-gray-700'
   }
@@ -443,6 +459,9 @@ const getIconColorClass = (type) => {
     case 'portfolio_alert':
     case 'web_mention_alert':
       return 'text-primary-600 dark:text-primary-300'
+    case 'broker_reauth_expiring':
+    case 'broker_reauth_required':
+      return 'text-amber-600 dark:text-amber-400'
     default:
       return 'text-gray-400'
   }

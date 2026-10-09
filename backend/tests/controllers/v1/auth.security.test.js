@@ -1,0 +1,151 @@
+jest.mock('../../../src/models/User', () => ({
+  findByEmail: jest.fn(),
+  verifyPassword: jest.fn(),
+  getUserCount: jest.fn(),
+  findByUsername: jest.fn(),
+  create: jest.fn(),
+  createSettings: jest.fn(),
+  updateLastLogin: jest.fn()
+}));
+jest.mock('../../../src/services/newUserSetup', () => ({
+  queueVerificationEmail: jest.fn(),
+  applyNewUserTrial: jest.fn(async () => undefined)
+}));
+jest.mock('../../../src/services/refreshToken.service', () => ({
+  generateAccessToken: jest.fn(),
+  generateRefreshToken: jest.fn(),
+  getAccessTokenSeconds: jest.fn(() => 900)
+}));
+jest.mock('../../../src/services/device.service', () => ({}));
+jest.mock('../../../src/services/accountLockoutService', () => ({
+  isLocked: jest.fn(async () => false),
+  recordFailedAttempt: jest.fn(async () => false),
+  recordSuccess: jest.fn(async () => undefined),
+  LOCKED_MESSAGE: 'locked'
+}));
+
+const User = require('../../../src/models/User');
+const refreshTokenService = require('../../../src/services/refreshToken.service');
+const newUserSetup = require('../../../src/services/newUserSetup');
+const controller = require('../../../src/controllers/v1/auth.controller');
+
+function response() {
+  return {
+    statusCode: 200,
+    payload: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.payload = body; return this; }
+  };
+}
+
+describe('v1 auth security policy', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.JWT_SECRET = 'v1-auth-test-secret';
+    process.env.REGISTRATION_MODE = 'open';
+    delete process.env.EMAIL_HOST;
+    delete process.env.EMAIL_USER;
+    delete process.env.EMAIL_PASS;
+  });
+
+  afterAll(() => {
+    delete process.env.REGISTRATION_MODE;
+  });
+
+  test('does not issue access or refresh tokens before 2FA', async () => {
+    User.findByEmail.mockResolvedValue({
+      id: 'user-1', email: 'user@example.com', username: 'user', role: 'user',
+      is_active: true, admin_approved: true, two_factor_enabled: true,
+      session_version: 0
+    });
+    User.verifyPassword.mockResolvedValue(true);
+    const res = response();
+
+    await controller.login({ body: { email: 'user@example.com', password: 'password123' } }, res, jest.fn());
+
+    expect(res.payload.requires2FA).toBe(true);
+    expect(res.payload.tempToken).toEqual(expect.any(String));
+    expect(refreshTokenService.generateAccessToken).not.toHaveBeenCalled();
+    expect(refreshTokenService.generateRefreshToken).not.toHaveBeenCalled();
+  });
+
+  test('enforces approval mode on v1 login', async () => {
+    process.env.REGISTRATION_MODE = 'approval';
+    User.findByEmail.mockResolvedValue({
+      id: 'user-1', email: 'user@example.com', username: 'user', role: 'user',
+      is_active: true, admin_approved: false, two_factor_enabled: false
+    });
+    User.verifyPassword.mockResolvedValue(true);
+    const res = response();
+
+    await controller.login({ body: { email: 'user@example.com', password: 'password123' } }, res, jest.fn());
+
+    expect(res.statusCode).toBe(403);
+    expect(res.payload.requiresApproval).toBe(true);
+    expect(refreshTokenService.generateAccessToken).not.toHaveBeenCalled();
+  });
+
+  test('allows an approved unverified user to log in when email is configured', async () => {
+    process.env.EMAIL_HOST = 'smtp.example.test';
+    process.env.EMAIL_USER = 'mailer';
+    process.env.EMAIL_PASS = 'secret';
+    User.findByEmail.mockResolvedValue({
+      id: 'user-1', email: 'user@example.com', username: 'user', role: 'user',
+      is_active: true, is_verified: false, admin_approved: true, two_factor_enabled: false
+    });
+    User.verifyPassword.mockResolvedValue(true);
+    refreshTokenService.generateAccessToken.mockReturnValue('access-token');
+    refreshTokenService.generateRefreshToken.mockResolvedValue({ token: 'refresh-token' });
+    const res = response();
+
+    await controller.login({ body: { email: 'user@example.com', password: 'password123' } }, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect(res.payload.tokens).toEqual(expect.objectContaining({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token'
+    }));
+  });
+
+  test('automatically signs in an approved unverified registration', async () => {
+    process.env.EMAIL_HOST = 'smtp.example.test';
+    process.env.EMAIL_USER = 'mailer';
+    process.env.EMAIL_PASS = 'secret';
+    User.findByEmail.mockResolvedValue(null);
+    User.getUserCount.mockResolvedValue(1);
+    User.create.mockResolvedValue({
+      id: 'user-2', email: 'new@example.com', username: 'new', role: 'user',
+      full_name: null, avatar_url: null, is_verified: false
+    });
+    refreshTokenService.generateAccessToken.mockReturnValue('access-token');
+    refreshTokenService.generateRefreshToken.mockResolvedValue({ token: 'refresh-token' });
+    const res = response();
+
+    await controller.register({
+      body: { email: 'new@example.com', username: 'new', password: 'password123' },
+      headers: { host: 'tradetally.example' }
+    }, res, jest.fn());
+
+    expect(res.statusCode).toBe(201);
+    expect(res.payload.requiresVerification).toBe(true);
+    expect(res.payload.tokens).toEqual(expect.objectContaining({ accessToken: 'access-token' }));
+    // Parity with the web registration flow.
+    expect(newUserSetup.queueVerificationEmail).toHaveBeenCalledWith('new@example.com', expect.any(String));
+    expect(newUserSetup.applyNewUserTrial).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'user-2' }),
+      { host: 'tradetally.example', isFirstUser: false }
+    );
+    expect(User.updateLastLogin).toHaveBeenCalledWith('user-2');
+  });
+
+  test('enforces disabled registration mode on v1 registration', async () => {
+    process.env.REGISTRATION_MODE = 'disabled';
+    const res = response();
+
+    await controller.register({ body: { email: 'new@example.com', password: 'password123' } }, res, jest.fn());
+
+    expect(res.statusCode).toBe(403);
+    expect(res.payload.registrationMode).toBe('disabled');
+    expect(User.findByEmail).not.toHaveBeenCalled();
+  });
+});

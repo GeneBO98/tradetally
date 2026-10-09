@@ -10,13 +10,7 @@ const pushNotificationService = require('./pushNotificationService');
 const EmailService = require('./emailService');
 const { publish } = require('../events/domainEvents');
 const escapeHtml = require('../utils/escapeHtml');
-
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return '***';
-  const [localPart, domain] = email.split('@');
-  if (localPart.length <= 2) return `**@${domain}`;
-  return `${localPart.slice(0, 2)}***@${domain}`;
-}
+const maskEmail = require('../utils/maskEmail');
 
 class PriceMonitoringService {
   constructor() {
@@ -326,6 +320,7 @@ class PriceMonitoringService {
           pa.current_price as alert_creation_price,
           pa.email_enabled,
           pa.browser_enabled,
+          pa.push_enabled,
           pa.repeat_enabled,
           pa.triggered_at,
           COALESCE(pm.current_price::NUMERIC, 0) AS current_price,
@@ -404,7 +399,7 @@ class PriceMonitoringService {
 
   async triggerAlert(alert) {
     try {
-      const { id, user_id, symbol, alert_type, target_price, change_percent, current_price, email_enabled, browser_enabled, email, user_email_enabled } = alert;
+      const { id, user_id, symbol, alert_type, target_price, change_percent, current_price, email_enabled, browser_enabled, push_enabled, email, user_email_enabled } = alert;
 
       // Check if user has price alerts enabled
       const isNotificationEnabled = await NotificationPreferenceService.isNotificationEnabled(user_id, 'notify_price_alerts');
@@ -445,18 +440,39 @@ class PriceMonitoringService {
 
       // Send iOS push notification. sendPriceAlert re-checks the user's
       // notify_price_alerts preference and silently no-ops if they have no
-      // active iOS devices, so this is safe to always call.
-      try {
-        await pushNotificationService.sendPriceAlert(user_id, {
-          symbol,
-          body: message,
-          currentPrice: Number.isFinite(currentPriceNum) ? currentPriceNum : undefined,
-          targetPrice: Number.isFinite(targetPriceNum) ? targetPriceNum : undefined
-        });
-        await this.logNotification(id, user_id, symbol, 'push', message, alert, 'sent');
-      } catch (pushError) {
-        logger.logError('Error sending push notification for alert:', pushError);
-        await this.logNotification(id, user_id, symbol, 'push', message, alert, 'failed', pushError.message);
+      // active iOS devices. The per-alert toggle is honored here: rows created
+      // before migration 238 default to TRUE, preserving previous behavior.
+      if (push_enabled !== false) {
+        try {
+          const pushResult = await pushNotificationService.sendPriceAlert(user_id, {
+            symbol,
+            body: message,
+            currentPrice: Number.isFinite(currentPriceNum) ? currentPriceNum : undefined,
+            targetPrice: Number.isFinite(targetPriceNum) ? targetPriceNum : undefined
+          });
+          const deliveryStatus = pushResult.success ? 'sent' : 'failed';
+          const errorMessage = pushResult.success
+            ? null
+            : pushResult.reason || pushResult.error || 'push_delivery_failed';
+
+          await this.logNotification(
+            id,
+            user_id,
+            symbol,
+            'push',
+            message,
+            alert,
+            deliveryStatus,
+            errorMessage
+          );
+
+          if (!pushResult.success) {
+            logger.logWarn(`Push notification failed for user ${user_id}: ${errorMessage}`);
+          }
+        } catch (pushError) {
+          logger.logError('Error sending push notification for alert:', pushError);
+          await this.logNotification(id, user_id, symbol, 'push', message, alert, 'failed', pushError.message);
+        }
       }
 
       // If repeat is not enabled, mark as inactive; otherwise update triggered_at timestamp

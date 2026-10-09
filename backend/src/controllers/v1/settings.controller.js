@@ -3,21 +3,11 @@ const settingsController = require('../settings.controller');
 const userController = require('../user.controller');
 const { captureControllerResult } = require('../../utils/legacyControllerAdapter');
 const { sendV1Error, sendV1ErrorFromLegacy, sendV1NotImplemented } = require('../../utils/apiResponse');
-
-function toCamelCaseRecord(record = {}) {
-  const converted = {};
-
-  Object.entries(record || {}).forEach(([key, value]) => {
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-    converted[camelKey] = value;
-  });
-
-  return converted;
-}
+const { keysToCamelCase } = require('../../utils/caseConvert');
 
 async function getSettingsState(userId) {
   const settings = await User.getSettings(userId);
-  return toCamelCaseRecord(settings || {});
+  return keysToCamelCase(settings || {});
 }
 
 const settingsV1Controller = {
@@ -84,7 +74,7 @@ const settingsV1Controller = {
           },
           display: {
             theme: settings.theme || 'light',
-            currency: 'USD',
+            currency: settings.displayCurrency || 'USD',
             dateFormat: 'MM/DD/YYYY',
             timeFormat: '12h'
           }
@@ -168,7 +158,7 @@ const settingsV1Controller = {
       res.json({
         display: {
           theme: settings.theme || 'light',
-          currency: 'USD',
+          currency: settings.displayCurrency || 'USD',
           timezone: req.user.timezone || 'UTC',
           dateFormat: 'MM/DD/YYYY',
           timeFormat: '12h',
@@ -218,7 +208,7 @@ const settingsV1Controller = {
         updated: true,
         display: {
           theme: settings.theme || theme || 'light',
-          currency: 'USD',
+          currency: settings.displayCurrency || 'USD',
           timezone: user.timezone || timezone || 'UTC',
           dateFormat: 'MM/DD/YYYY',
           timeFormat: '12h',

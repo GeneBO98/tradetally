@@ -1,3 +1,4 @@
+const { parseReportDateRange } = require('../utils/reportDateRange');
 const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
@@ -17,6 +18,20 @@ const PRICE_FRESH_MS = 10 * 60 * 1000;
 // fire at once on page load) don't each kick off duplicate Finnhub calls for
 // the same symbol.
 const inFlightPriceSymbols = new Set();
+// The investments page requests overview, positions, rebalance, and alerts in
+// parallel. These endpoints all derive from the same position snapshot, so a
+// per-process single-flight latch prevents duplicate DB scans and quote work.
+const inFlightPortfolioComputations = new Map();
+
+function coalescePortfolio(key, compute) {
+  const existing = inFlightPortfolioComputations.get(key);
+  if (existing) return existing;
+  const promise = Promise.resolve()
+    .then(compute)
+    .finally(() => inFlightPortfolioComputations.delete(key));
+  inFlightPortfolioComputations.set(key, promise);
+  return promise;
+}
 const DEFAULT_PREFERENCES = {
   defaultBenchmarkSymbol: DEFAULT_BENCHMARK,
   driftThresholdPercent: 5,
@@ -256,8 +271,10 @@ class PortfolioService {
     const row = result.rows[0];
     return {
       defaultBenchmarkSymbol: row.default_benchmark_symbol || DEFAULT_PREFERENCES.defaultBenchmarkSymbol,
-      driftThresholdPercent: parseFloat(row.drift_threshold_percent) || DEFAULT_PREFERENCES.driftThresholdPercent,
-      drawdownThresholdPercent: parseFloat(row.drawdown_threshold_percent) || DEFAULT_PREFERENCES.drawdownThresholdPercent,
+      driftThresholdPercent: Number.isFinite(parseFloat(row.drift_threshold_percent))
+        ? parseFloat(row.drift_threshold_percent) : DEFAULT_PREFERENCES.driftThresholdPercent,
+      drawdownThresholdPercent: Number.isFinite(parseFloat(row.drawdown_threshold_percent))
+        ? parseFloat(row.drawdown_threshold_percent) : DEFAULT_PREFERENCES.drawdownThresholdPercent,
       alertsEnabled: row.alerts_enabled ?? DEFAULT_PREFERENCES.alertsEnabled
     };
   }
@@ -332,6 +349,12 @@ class PortfolioService {
   }
 
   static async getPositions(userId, options = {}) {
+    const accounts = normalizeAccounts(options.accounts);
+    const key = `positions:${userId}:${JSON.stringify(accounts)}`;
+    return coalescePortfolio(key, () => this._getPositions(userId, options));
+  }
+
+  static async _getPositions(userId, options = {}) {
     const accounts = normalizeAccounts(options.accounts);
     const [manualPositions, tradePositions, tradeDividendsBySymbol] = await Promise.all([
       this._getManualPositions(userId, accounts),
@@ -453,10 +476,26 @@ class PortfolioService {
   }
 
   static async getPerformance(userId, options = {}) {
+    const accounts = normalizeAccounts(options.accounts);
+    const explicit_range = parseReportDateRange(options);
+    const resolved_range = explicit_range || getPeriodRange(options.period);
+    const key = `performance:${userId}:${JSON.stringify({
+      resolved_range,
+      accounts,
+      benchmark: options.benchmark ? normalizeSymbol(options.benchmark) : 'default',
+      period: String(options.period || DEFAULT_PERIOD).toUpperCase()
+    })}`;
+    return coalescePortfolio(key, () => this._getPerformance(userId, options));
+  }
+
+  static async _getPerformance(userId, options = {}) {
     const preferences = await this.getPreferences(userId);
     const benchmark = normalizeSymbol(options.benchmark || preferences.defaultBenchmarkSymbol);
     const accounts = normalizeAccounts(options.accounts);
-    const { period, startDate, endDate } = getPeriodRange(options.period);
+    const explicit_range = parseReportDateRange(options);
+    const { period, startDate, endDate } = explicit_range
+      ? { period: options.period || 'custom', startDate: explicit_range.start_date, endDate: explicit_range.end_date }
+      : getPeriodRange(options.period);
     const components = await this._getPositionComponents(userId, accounts);
     const symbols = [...new Set(components.map(component => component.symbol))];
 
@@ -465,9 +504,10 @@ class PortfolioService {
       this._getPriceSeriesMap(symbols, startDate, endDate, userId)
     ]);
 
-    const canonicalDates = benchmarkCandles.length > 0
+    const canonicalDates = (benchmarkCandles.length > 0
       ? benchmarkCandles.map(candle => this._toDateString(candle.time))
-      : this._buildDateUnion(priceSeriesMap);
+      : this._buildDateUnion(priceSeriesMap))
+      .filter(date => date >= startDate && date <= endDate);
 
     const priceIndexMap = new Map();
     for (const [symbol, candles] of priceSeriesMap.entries()) {

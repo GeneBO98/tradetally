@@ -118,6 +118,7 @@ class NotificationService {
           challenge: {
             id: challenge.id,
             name: challenge.name,
+            description: challenge.description,
             reward_points: challenge.reward_points
           },
           timestamp: new Date().toISOString()
@@ -218,13 +219,64 @@ class NotificationService {
         `);
       }
       
-      await db.query(`
+      const result = await db.query(`
         INSERT INTO notifications (user_id, type, data)
         VALUES ($1, $2, $3)
+        RETURNING *
       `, [userId, type, data]);
+
+      const saved = result.rows[0] || null;
+      if (saved) await this.sendMobileNotification(userId, type, data, saved.id);
+      return saved;
       
     } catch (error) {
       console.error('Error saving notification:', error);
+      return null;
+    }
+  }
+
+  static async sendMobileNotification(user_id, type, data, notification_id) {
+    try {
+      const push_service = require('./pushNotificationService');
+      return await push_service.sendInboxNotification(user_id, type, data, notification_id);
+    } catch (error) {
+      // APNs availability must not prevent inbox persistence or SSE delivery.
+      console.error('Error sending mobile inbox notification:', error);
+      return { success: false, reason: 'push_delivery_failed' };
+    }
+  }
+
+  static async sendBrokerReauthRequiredNotification(userId, data) {
+    try {
+      const saved = await this.saveNotification(userId, 'broker_reauth_required', data);
+      await this.sendSSENotification(userId, {
+        type: 'broker_reauth_required',
+        data: {
+          ...data,
+          notification_id: saved?.id || null
+        }
+      });
+      return saved;
+    } catch (error) {
+      console.error('Error sending broker reauthorization notification:', error);
+      return null;
+    }
+  }
+
+  static async sendBrokerReauthExpiringNotification(userId, data) {
+    try {
+      const saved = await this.saveNotification(userId, 'broker_reauth_expiring', data);
+      await this.sendSSENotification(userId, {
+        type: 'broker_reauth_expiring',
+        data: {
+          ...data,
+          notification_id: saved?.id || null
+        }
+      });
+      return saved;
+    } catch (error) {
+      console.error('Error sending broker reauthorization reminder:', error);
+      return null;
     }
   }
   

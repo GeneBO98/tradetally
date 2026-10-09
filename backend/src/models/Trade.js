@@ -1,10 +1,15 @@
 const db = require('../config/database');
+const { insertRestTrade } = require('../services/restTradeCreation');
 const AchievementService = require('../services/achievementService');
 const { getUserLocalDate, getUserTimezone } = require('../utils/timezone');
 const { getFuturesPointValue, getFuturesTickSize, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 const { computeTradePnl } = require('../services/pnlEngine');
 const logger = require('../utils/logger');
+const { toSnakeCase } = require('../utils/caseConvert');
+const { buildTradeDateRangeClause } = require('../utils/tradeDateFilter');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
+const { getPublicTradeSqlColumns } = require('../utils/publicTrade');
+const BrokerTradeExclusions = require('../services/brokerTradeExclusions');
 /**
  * Round a numeric value to fit database precision
  * DECIMAL(20, 8) allows up to 12 integer digits and 8 decimal places
@@ -58,27 +63,45 @@ class Trade {
   static async ensureTagsExist(userId, tags) {
     if (!tags || tags.length === 0) return;
 
+    // Trim and dedupe case-insensitively, keeping the first occurrence
+    // (matches the old per-tag LOWER(name) existence check)
+    const seenLower = new Set();
+    const candidates = [];
     for (const tagName of tags) {
       if (!tagName || tagName.trim() === '') continue;
+      const trimmed = tagName.trim();
+      const lower = trimmed.toLowerCase();
+      if (seenLower.has(lower)) continue;
+      seenLower.add(lower);
+      candidates.push(trimmed);
+    }
+    if (candidates.length === 0) return;
 
-      try {
-        // Check if tag exists
-        const checkResult = await db.query(
-          'SELECT id FROM tags WHERE user_id = $1 AND LOWER(name) = LOWER($2)',
-          [userId, tagName.trim()]
-        );
+    try {
+      // The tags unique constraint is case-SENSITIVE (UNIQUE(user_id, name)),
+      // so ON CONFLICT alone cannot dedupe case-insensitively. Pre-filter
+      // against existing tags with a single LOWER(name) lookup instead.
+      const existingResult = await db.query(
+        'SELECT LOWER(name) as lower_name FROM tags WHERE user_id = $1 AND LOWER(name) = ANY($2::text[])',
+        [userId, candidates.map(tag => tag.toLowerCase())]
+      );
+      const existingLower = new Set(existingResult.rows.map(row => row.lower_name));
 
-        // Create tag if it doesn't exist
-        if (checkResult.rows.length === 0) {
-          await db.query(
-            'INSERT INTO tags (user_id, name, color) VALUES ($1, $2, $3) ON CONFLICT (user_id, name) DO NOTHING',
-            [userId, tagName.trim(), '#3B82F6'] // Default blue color
-          );
-          console.log(`[TAGS] Auto-created tag "${tagName}" for user ${userId}`);
-        }
-      } catch (error) {
-        console.warn(`[TAGS] Failed to ensure tag "${tagName}" exists:`, error.message);
+      const newTags = candidates.filter(tag => !existingLower.has(tag.toLowerCase()));
+      if (newTags.length === 0) return;
+
+      await db.query(
+        `INSERT INTO tags (user_id, name, color)
+         SELECT $1, unnest($2::text[]), $3
+         ON CONFLICT (user_id, name) DO NOTHING`,
+        [userId, newTags, '#3B82F6'] // Default blue color
+      );
+
+      for (const tagName of newTags) {
+        console.log(`[TAGS] Auto-created tag "${tagName}" for user ${userId}`);
       }
+    } catch (error) {
+      console.warn(`[TAGS] Failed to ensure tags exist:`, error.message);
     }
   }
 
@@ -246,8 +269,12 @@ class Trade {
     let shouldQueueClassification = false;
 
     if (!strategy || strategy.trim() === '') {
+      if (options.skipStrategyClassification) {
+        finalStrategy = '';
+        classificationMethod = 'none';
+        classificationMetadata = { intentionallyLeftBlank: true };
       // Check if we should skip API calls (e.g., during import)
-      if (options.skipApiCalls) {
+      } else if (options.skipApiCalls) {
         // Use basic time-based classification and queue full classification for later
         const tempTrade = {
           symbol: symbol.toUpperCase(),
@@ -472,23 +499,30 @@ class Trade {
           }
         }
 
-        // Apply default take profit if not provided
-        if (!finalTakeProfit && userSettings?.default_take_profit_percent && userSettings.default_take_profit_percent > 0) {
-          const takeProfitPercent = parseFloat(userSettings.default_take_profit_percent);
+        if (!stopLoss && finalStopLoss != null && !this.isValidStopForEntry(finalStopLoss, entryPrice, side)) {
+          console.warn(`[STOP LOSS] Default stop for ${symbol} does not define a valid price and was omitted`);
+          finalStopLoss = null;
+        }
 
-          // Calculate take profit price based on entry price and side
-          // For long positions: entry price + (entry price * take profit %)
-          // For short positions: entry price - (entry price * take profit %)
-          if (side === 'long' || side === 'buy') {
-            finalTakeProfit = entryPrice * (1 + takeProfitPercent / 100);
-          } else if (side === 'short' || side === 'sell') {
-            finalTakeProfit = entryPrice * (1 - takeProfitPercent / 100);
+        // Apply the active take-profit default after stop loss calculation so
+        // risk/reward mode can use the trade's effective stop distance.
+        if (!finalTakeProfit) {
+          finalTakeProfit = this.calculateDefaultTakeProfitFromSettings({
+            symbol,
+            entry_price: entryPrice,
+            stop_loss: finalStopLoss,
+            side,
+            quantity,
+            instrument_type: instrumentType,
+            contract_size: contractSize,
+            point_value: finalPointValue,
+            underlying_asset: finalUnderlyingAsset
+          }, userSettings);
+
+          if (finalTakeProfit != null) {
+            const takeProfitType = this.getSettingValue(userSettings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
+            console.log(`[TAKE PROFIT] Applied ${takeProfitType} default for ${side} position: $${finalTakeProfit}`);
           }
-
-          // Round to 2 decimal places for stocks, 4 for precise pricing
-          finalTakeProfit = Math.round(finalTakeProfit * 10000) / 10000;
-
-          console.log(`[TAKE PROFIT] Applied default ${takeProfitPercent}% take profit for ${side} position: $${finalTakeProfit}`);
         }
       } catch (error) {
         console.warn('[DEFAULTS] Failed to apply default stop loss/take profit:', error.message);
@@ -605,8 +639,40 @@ class Trade {
       roundToDbPrecision(finalPostExitMfe)
     ];
 
-    const result = await db.query(query, values);
-    const createdTrade = result.rows[0];
+    let createdTrade;
+    if (options.prevent_duplicates) {
+      const result = await insertRestTrade(query, values, {
+        user_id: userId,
+        symbol: symbol.toUpperCase(),
+        account_identifier: finalAccountIdentifier ? String(finalAccountIdentifier).substring(0, 50) : null,
+        broker: broker || null,
+        instrument_type: instrumentType || 'stock',
+        entry_time: finalEntryTime,
+        exit_time: cleanExitTime,
+        entry_price: roundToDbPrecision(computedEntryPrice),
+        exit_price: roundToDbPrecision(computedExitPrice),
+        quantity: roundToDbPrecision(computedQuantity),
+        side,
+        commission: roundToDbPrecision(computedCommission) || 0,
+        fees: roundToDbPrecision(computedFees) || 0,
+        strike_price: roundToDbPrecision(strikePrice),
+        expiration_date: cleanExpirationDate,
+        option_type: optionType || null,
+        contract_size: contractSize || (instrumentType === 'option' ? 100 : null),
+        contract_month: contractMonth || null,
+        contract_year: contractYear || null,
+        point_value: roundToDbPrecision(finalPointValue),
+        original_currency: String(finalOriginalCurrency).toUpperCase(),
+        conid: conid || null,
+        underlying_symbol: normalizeUnderlyingSymbol(underlyingSymbol),
+        underlying_asset: finalUnderlyingAsset || null
+      });
+      if (result.duplicate) return result;
+      createdTrade = result.trade;
+    } else {
+      const result = await db.query(query, values);
+      createdTrade = result.rows[0];
+    }
 
     // Log the strategy and setup assignment for debugging
     console.log(`[TRADE CREATE] Trade ${createdTrade.id}: strategy="${finalStrategy || 'null'}", setup="${setup || 'null'}", confidence=${strategyConfidence}%, method=${classificationMethod}`);
@@ -699,7 +765,7 @@ class Trade {
       await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade creation');
     }
     
-    return createdTrade;
+    return options.prevent_duplicates ? { trade: createdTrade, duplicate: false } : createdTrade;
   }
 
   /**
@@ -958,6 +1024,7 @@ class Trade {
       SELECT t.*,
         u.username,
         u.avatar_url,
+        generate_anonymous_name(u.id) as anonymous_username,
         COALESCE(gp.display_name, u.username) as display_name,
         t.strategy, t.setup,
         (SELECT json_agg(
@@ -998,7 +1065,7 @@ class Trade {
       query += ` AND t.is_public = true`;
     }
 
-    query += ` GROUP BY t.id, u.username, u.avatar_url, gp.display_name, sc.finnhub_industry, sc.company_name`;
+    query += ` GROUP BY t.id, u.id, u.username, u.avatar_url, gp.display_name, sc.finnhub_industry, sc.company_name`;
 
     const result = await db.query(query, values);
     const trade = result.rows[0];
@@ -1105,6 +1172,18 @@ class Trade {
     let paramCount = 2;
     let whereClause = 'WHERE t.user_id = $1 AND t.entry_price IS NOT NULL AND t.exit_price IS NULL';
 
+    if (filters.includeArchived !== true) {
+      whereClause += ` AND NOT EXISTS (
+        SELECT 1
+        FROM user_accounts reporting_account
+        WHERE reporting_account.user_id = t.user_id
+          AND reporting_account.account_identifier IS NOT NULL
+          AND reporting_account.account_identifier != ''
+          AND reporting_account.account_identifier = t.account_identifier
+          AND reporting_account.include_in_reports = false
+      )`;
+    }
+
     if (filters.accounts && filters.accounts.length > 0) {
       console.log('[OPEN_POSITIONS] Applying account filter:', filters.accounts);
       if (filters.accounts.includes('__unsorted__')) {
@@ -1132,7 +1211,17 @@ class Trade {
         t.option_type,
         t.strike_price,
         t.trade_date,
-        t.entry_time
+        t.entry_time,
+        t.stop_loss,
+        t.take_profit,
+        -- Positions can be held in a currency other than the account's. Note
+        -- original_currency names the SOURCE currency, not the currency the
+        -- monetary columns are stored in: an import that converts leaves the
+        -- stored values in USD, and exchange_rate is 1 exactly when it did not.
+        t.original_currency,
+        -- Written only when an import converted the monetary columns to USD;
+        -- that is the marker openPositionGrouping uses, not exchange_rate.
+        t.original_entry_price_currency
       FROM trades t
       ${whereClause}
       ORDER BY t.trade_date DESC, t.entry_time DESC
@@ -1350,16 +1439,32 @@ class Trade {
           }
         }
 
-        // Apply default take profit if not provided
-        if (needsTakeProfitDefault && userSettings?.default_take_profit_percent && userSettings.default_take_profit_percent > 0) {
-          const takeProfitPercent = parseFloat(userSettings.default_take_profit_percent);
-          if (side === 'long' || side === 'buy') {
-            updates.takeProfit = entryPrice * (1 + takeProfitPercent / 100);
+        if (needsStopLossDefault && updates.stopLoss != null &&
+            !this.isValidStopForEntry(updates.stopLoss, entryPrice, side)) {
+          console.warn(`[STOP LOSS UPDATE] Default stop for ${symbol} does not define a valid price and was omitted`);
+          delete updates.stopLoss;
+        }
+
+        // Apply the active take-profit default after any stop-loss default.
+        if (needsTakeProfitDefault) {
+          updates.takeProfit = this.calculateDefaultTakeProfitFromSettings({
+            symbol,
+            entry_price: entryPrice,
+            stop_loss: updates.stopLoss ?? currentTrade.stop_loss,
+            side,
+            quantity: quantityForDefaults,
+            instrument_type: updates.instrumentType ?? currentTrade.instrument_type ?? 'stock',
+            contract_size: updates.contractSize ?? currentTrade.contract_size,
+            point_value: updates.pointValue ?? currentTrade.point_value,
+            underlying_asset: updates.underlyingAsset ?? currentTrade.underlying_asset
+          }, userSettings);
+
+          if (updates.takeProfit != null) {
+            const takeProfitType = this.getSettingValue(userSettings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
+            console.log(`[TAKE PROFIT UPDATE] Applied ${takeProfitType} default for ${side} position: $${updates.takeProfit}`);
           } else {
-            updates.takeProfit = entryPrice * (1 - takeProfitPercent / 100);
+            delete updates.takeProfit;
           }
-          updates.takeProfit = Math.round(updates.takeProfit * 10000) / 10000;
-          console.log(`[TAKE PROFIT UPDATE] Applied ${takeProfitPercent}% take profit for ${side} position: $${updates.takeProfit}`);
         }
       } catch (error) {
         console.warn('[DEFAULTS UPDATE] Failed to apply defaults:', error.message);
@@ -1488,9 +1593,15 @@ class Trade {
 
                 // datetime-local inputs only preserve minute precision. If the edited
                 // value still points at the same minute, keep broker-imported seconds.
-                const incomingMinute = String(incoming).slice(0, 16);
-                const existingMinute = String(existing).slice(0, 16);
-                return incomingMinute === existingMinute ? existing : incoming;
+                // Joi converts validated ISO strings to Date objects, so comparing
+                // String(value) slices mixes Date.toString() with ISO formats and
+                // never matches (issue #385). Compare normalized epoch minutes.
+                const incomingTime = new Date(incoming).getTime();
+                const existingTime = new Date(existing).getTime();
+                const timestampsAreValid = Number.isFinite(incomingTime) && Number.isFinite(existingTime);
+                const sameMinute = timestampsAreValid &&
+                  Math.floor(incomingTime / 60000) === Math.floor(existingTime / 60000);
+                return sameMinute ? existing : incoming;
               };
 
               return {
@@ -1658,7 +1769,7 @@ class Trade {
     Object.entries(updates).forEach(([key, value]) => {
       if (key !== 'id' && key !== 'user_id' && key !== 'created_at') {
         // Convert camelCase to snake_case for database columns
-        const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        const dbKey = toSnakeCase(key);
         fields.push(`${dbKey} = $${paramCount}`);
 
         // Handle JSON/JSONB fields that need serialization
@@ -1819,48 +1930,58 @@ class Trade {
   }
 
   static async delete(id, userId, options = {}) {
+    // Sentinel used to roll back the job deletions when the trade itself is
+    // not found (or belongs to another user), matching the previous behavior.
+    const TRADE_NOT_FOUND = Symbol('trade_not_found');
     try {
-      // Start transaction to ensure both trade and jobs are deleted together
-      await db.query('BEGIN');
-      
-      // First, delete associated jobs to prevent orphaned jobs
-      const jobDeleteQuery = `
-        DELETE FROM job_queue 
-        WHERE data->>'tradeId' = $1
-        OR (data->'tradeIds' ? $1)
-        RETURNING id, type
-      `;
-      
-      const deletedJobs = await db.query(jobDeleteQuery, [id]);
-      
-      if (deletedJobs.rows.length > 0) {
-        console.log(`Deleted ${deletedJobs.rows.length} jobs for trade ${id}`);
-      }
-      
-      // Then delete the trade
-      const tradeDeleteQuery = `
-        DELETE FROM trades
-        WHERE id = $1 AND user_id = $2
-        RETURNING id
-      `;
-      
-      const result = await db.query(tradeDeleteQuery, [id, userId]);
-      
-      if (result.rows.length === 0) {
-        await db.query('ROLLBACK');
-        return null; // Trade not found or doesn't belong to user
-      }
-      
-      await db.query('COMMIT');
+      // Run both deletes in a single transaction on one dedicated client so
+      // the trade and its associated jobs are removed together.
+      const deletedTrade = await db.withTransaction(async (client) => {
+        await BrokerTradeExclusions.recordDeleted(client, userId, [id]);
+        // First, delete associated jobs to prevent orphaned jobs
+        const jobDeleteQuery = `
+          DELETE FROM job_queue
+          WHERE data->>'tradeId' = $1
+          OR (data->'tradeIds' ? $1)
+          RETURNING id, type
+        `;
+
+        const deletedJobs = await client.query(jobDeleteQuery, [id]);
+
+        if (deletedJobs.rows.length > 0) {
+          console.log(`Deleted ${deletedJobs.rows.length} jobs for trade ${id}`);
+        }
+
+        // Then delete the trade
+        const tradeDeleteQuery = `
+          DELETE FROM trades
+          WHERE id = $1 AND user_id = $2
+          RETURNING id
+        `;
+
+        const result = await client.query(tradeDeleteQuery, [id, userId]);
+
+        if (result.rows.length === 0) {
+          // Throw to roll back the job deletions as well
+          const notFound = new Error('Trade not found');
+          notFound.sentinel = TRADE_NOT_FOUND;
+          throw notFound;
+        }
+
+        return result.rows[0];
+      });
+
       console.log(`Successfully deleted trade ${id} and its associated jobs`);
       if (!options.skipOptionGrouping) {
         await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade deletion');
       }
-      
-      return result.rows[0];
-      
+
+      return deletedTrade;
+
     } catch (error) {
-      await db.query('ROLLBACK');
+      if (error.sentinel === TRADE_NOT_FOUND) {
+        return null; // Trade not found or doesn't belong to user
+      }
       console.error(`Failed to delete trade ${id}:`, error.message);
       throw error;
     }
@@ -1917,11 +2038,21 @@ class Trade {
   }
 
   static async getPublicTrades(filters = {}) {
+    const values = [];
+    let paramCount = 1;
+    let ownerProjection = 'false AS is_owner';
+    if (filters.viewerUserId) {
+      ownerProjection = `(t.user_id = $${paramCount}) AS is_owner`;
+      values.push(filters.viewerUserId);
+      paramCount++;
+    }
+
     let query = `
-      SELECT t.*,
+      SELECT ${getPublicTradeSqlColumns('t')},
+        ${ownerProjection},
         generate_anonymous_name(u.id) as username,
-        u.avatar_url,
-        COALESCE(gp.display_name, generate_anonymous_name(u.id)) as display_name,
+        NULL::text as avatar_url,
+        generate_anonymous_name(u.id) as display_name,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
         count(DISTINCT tc.id)::integer as comment_count
       FROM trades t
@@ -1932,9 +2063,6 @@ class Trade {
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       WHERE t.is_public = true AND us.public_profile = true
     `;
-
-    const values = [];
-    let paramCount = 1;
 
     if (filters.symbol) {
       if (filters.symbolExact) {
@@ -2255,6 +2383,72 @@ class Trade {
     return settings[snakeKey] ?? settings[camelKey];
   }
 
+  /**
+   * Calculate a take-profit price from the user's active default mode.
+   * Percentage uses entry price, risk/reward uses the effective stop distance,
+   * and dollar mode converts a gross trade-level profit into a price move using
+   * the same instrument multipliers as P&L calculations.
+   */
+  static calculateDefaultTakeProfitFromSettings(trade, settings) {
+    const takeProfitType = this.getSettingValue(settings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
+    const entryPrice = parseFloat(trade.entry_price ?? trade.entryPrice);
+    const side = trade.side;
+    const isLong = side === 'long' || side === 'buy';
+    const isShort = side === 'short' || side === 'sell';
+
+    if (!isFinite(entryPrice) || entryPrice <= 0 || (!isLong && !isShort)) {
+      return null;
+    }
+
+    let priceMove = null;
+
+    if (takeProfitType === 'percent') {
+      const percent = parseFloat(this.getSettingValue(settings, 'default_take_profit_percent', 'defaultTakeProfitPercent'));
+      if (isFinite(percent) && percent > 0) {
+        priceMove = entryPrice * percent / 100;
+      }
+    } else if (takeProfitType === 'risk_reward') {
+      const rMultiple = parseFloat(this.getSettingValue(settings, 'default_take_profit_r_multiple', 'defaultTakeProfitRMultiple'));
+      const stopLoss = parseFloat(trade.stop_loss ?? trade.stopLoss);
+      if (isFinite(rMultiple) && rMultiple > 0 && isFinite(stopLoss) && stopLoss > 0) {
+        const riskPerUnit = isLong ? entryPrice - stopLoss : stopLoss - entryPrice;
+        if (riskPerUnit > 0) {
+          priceMove = riskPerUnit * rMultiple;
+        }
+      }
+    } else if (takeProfitType === 'dollar') {
+      const dollars = parseFloat(this.getSettingValue(settings, 'default_take_profit_dollars', 'defaultTakeProfitDollars'));
+      const quantity = parseFloat(trade.quantity);
+      const instrumentType = normalizeInstrumentType(trade.instrument_type || trade.instrumentType || 'stock', trade.symbol);
+      let pointValue = trade.point_value ?? trade.pointValue;
+
+      if (instrumentType === 'future') {
+        const parsedPointValue = parseFloat(pointValue);
+        if (!isFinite(parsedPointValue) || parsedPointValue <= 0) {
+          const underlying = trade.underlying_asset || trade.underlyingAsset || extractUnderlyingFromFuturesSymbol(trade.symbol);
+          pointValue = getFuturesPointValue(underlying);
+        }
+      }
+
+      priceMove = this.getDollarStopLossPriceMove(
+        dollars,
+        quantity,
+        instrumentType,
+        trade.contract_size ?? trade.contractSize,
+        pointValue
+      );
+    }
+
+    if (priceMove == null || !isFinite(priceMove) || priceMove <= 0) {
+      return null;
+    }
+
+    const takeProfit = isLong ? entryPrice + priceMove : entryPrice - priceMove;
+    return isFinite(takeProfit) && takeProfit > 0
+      ? Math.round(takeProfit * 10000) / 10000
+      : null;
+  }
+
   static calculateDefaultStopLossFromSettings(trade, settings) {
     const stopLossType = this.getSettingValue(settings, 'default_stop_loss_type', 'defaultStopLossType') || 'percent';
     const entryPrice = parseFloat(trade.entry_price);
@@ -2311,9 +2505,18 @@ class Trade {
       }
     }
 
-    return stopLoss != null && isFinite(stopLoss)
-      ? Math.round(stopLoss * 10000) / 10000
-      : null;
+    if (stopLoss == null || !isFinite(stopLoss)) return null;
+    const roundedStop = Math.round(stopLoss * 10000) / 10000;
+    return this.isValidStopForEntry(roundedStop, entryPrice, side) ? roundedStop : null;
+  }
+
+  static isValidStopForEntry(stopLoss, entryPrice, side) {
+    const stop = Number(stopLoss);
+    const entry = Number(entryPrice);
+    if (!Number.isFinite(stop) || stop <= 0 || !Number.isFinite(entry) || entry <= 0) return false;
+    if (side === 'long' || side === 'buy') return stop < entry;
+    if (side === 'short' || side === 'sell') return stop > entry;
+    return false;
   }
 
   static stopLossMatches(actualStopLoss, expectedStopLoss) {
@@ -2489,28 +2692,33 @@ class Trade {
   }
 
   /**
-   * Apply default take profit to all trades without a take profit
-   * This is called when a user updates their default take profit percentage setting
-   * @param {number} userId - The user ID
-   * @param {number} defaultTakeProfitPercent - The default take profit percentage
-   * @returns {Promise<number>} The number of trades updated
+   * Apply the active take-profit default to trades that do not have a target.
+   * Existing explicit targets are never overwritten.
    */
-  static async applyDefaultTakeProfitToExistingTrades(userId, defaultTakeProfitPercent) {
-    if (!defaultTakeProfitPercent || defaultTakeProfitPercent <= 0) {
-      console.log('[TAKE PROFIT] Invalid default take profit percentage, skipping update');
+  static async applyDefaultTakeProfitToExistingTrades(userId, settings = {}) {
+    const takeProfitType = this.getSettingValue(settings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
+    const configuredValue = takeProfitType === 'risk_reward'
+      ? this.getSettingValue(settings, 'default_take_profit_r_multiple', 'defaultTakeProfitRMultiple')
+      : takeProfitType === 'dollar'
+        ? this.getSettingValue(settings, 'default_take_profit_dollars', 'defaultTakeProfitDollars')
+        : this.getSettingValue(settings, 'default_take_profit_percent', 'defaultTakeProfitPercent');
+
+    if (!['percent', 'risk_reward', 'dollar'].includes(takeProfitType)
+      || !isFinite(parseFloat(configuredValue))
+      || parseFloat(configuredValue) <= 0) {
       return 0;
     }
 
-    console.log(`[TAKE PROFIT] Applying ${defaultTakeProfitPercent}% default take profit to existing trades without take profit for user ${userId}`);
+    console.log(`[TAKE PROFIT] Applying ${takeProfitType} default to existing trades without take profit for user ${userId}`);
 
     // Use a transaction to update all trades at once
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
 
-      // Find all trades without a take profit that have the necessary data
       const tradesQuery = `
-        SELECT id, entry_price, side
+        SELECT id, symbol, entry_price, stop_loss, side, quantity,
+               instrument_type, contract_size, point_value, underlying_asset
         FROM trades
         WHERE user_id = $1
           AND take_profit IS NULL
@@ -2530,23 +2738,9 @@ class Trade {
 
       let updatedCount = 0;
 
-      // Update each trade with the calculated take profit
       for (const trade of trades) {
-        const { id, entry_price, side } = trade;
-
-        // Calculate take profit based on entry price and side
-        let takeProfit;
-        if (side === 'long' || side === 'buy') {
-          takeProfit = entry_price * (1 + defaultTakeProfitPercent / 100);
-        } else if (side === 'short' || side === 'sell') {
-          takeProfit = entry_price * (1 - defaultTakeProfitPercent / 100);
-        } else {
-          console.warn(`[TAKE PROFIT] Unknown side "${side}" for trade ${id}, skipping`);
-          continue;
-        }
-
-        // Round to 4 decimal places
-        takeProfit = Math.round(takeProfit * 10000) / 10000;
+        const takeProfit = this.calculateDefaultTakeProfitFromSettings(trade, settings);
+        if (takeProfit == null) continue;
 
         // Update the trade
         const updateQuery = `
@@ -2555,7 +2749,7 @@ class Trade {
           WHERE id = $2 AND user_id = $3
         `;
 
-        await client.query(updateQuery, [takeProfit, id, userId]);
+        await client.query(updateQuery, [takeProfit, trade.id, userId]);
         updatedCount++;
       }
 
@@ -2572,148 +2766,53 @@ class Trade {
     }
   }
 
+  // Total count for the trade list's pagination. Delegates to the canonical
+  // TradeQueries._buildWhereClause so the count always agrees with the rows
+  // findByUser returns. The previous hand-rolled builder only implemented a
+  // subset of filters (and e.g. ignored pnlType='breakeven' entirely), so the
+  // "total" could wildly disagree with the trades actually listed.
   static async getCountWithFilters(userId, filters = {}) {
-    const { getUserTimezone } = require('../utils/timezone');
-    console.log('[COUNT] getCountWithFilters called with userId:', userId, 'filters:', filters);
-    
-    // Count query with optional join for sectors
-    let needsJoin = (filters.sectors && filters.sectors.length > 0) || filters.sector;
-    
-    let query = needsJoin 
-      ? `SELECT COUNT(DISTINCT t.id) as total FROM trades t LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol WHERE t.user_id = $1`
-      : `SELECT COUNT(*) as total FROM trades WHERE user_id = $1`;
-    
-    const values = [userId];
-    let paramCount = 2;
+    const TradeQueries = require('../services/tradeQueries');
+    const { whereClause, values } = await TradeQueries._buildWhereClause(userId, filters);
 
-    // Only apply the most common filters to avoid SQL errors
-    const tablePrefix = needsJoin ? 't.' : '';
-    
-    if (filters.symbol && filters.symbol.trim()) {
-      if (filters.symbolExact) {
-        query += ` AND UPPER(${tablePrefix}symbol) = $${paramCount}`;
-      } else {
-        query += ` AND ${tablePrefix}symbol ILIKE $${paramCount} || '%'`;
-      }
-      values.push(filters.symbol.toUpperCase().trim());
-      paramCount++;
-    }
-
-    if (filters.startDate && filters.startDate.trim()) {
-      query += ` AND ${tablePrefix}trade_date >= $${paramCount}`;
-      values.push(filters.startDate.trim());
-      paramCount++;
-    }
-
-    if (filters.endDate && filters.endDate.trim()) {
-      query += ` AND ${tablePrefix}trade_date <= $${paramCount}`;
-      values.push(filters.endDate.trim());
-      paramCount++;
-    }
-
-    if (filters.importId && filters.importId.trim()) {
-      query += ` AND ${tablePrefix}import_id = $${paramCount}`;
-      values.push(filters.importId.trim());
-      paramCount++;
-    }
-
-    if (filters.side && filters.side.trim()) {
-      query += ` AND ${tablePrefix}side = $${paramCount}`;
-      values.push(filters.side.trim());
-      paramCount++;
-    }
-
-    if (filters.pnlType === 'profit') {
-      query += ` AND ${tablePrefix}pnl > 0`;
-    } else if (filters.pnlType === 'loss') {
-      query += ` AND ${tablePrefix}pnl < 0`;
-    }
-
-    if (filters.status === 'pending') {
-      query += ` AND ${tablePrefix}entry_price IS NULL`;
-    } else if (filters.status === 'open') {
-      query += ` AND ${tablePrefix}entry_price IS NOT NULL AND ${tablePrefix}exit_price IS NULL`;
-    } else if (filters.status === 'closed') {
-      query += ` AND ${tablePrefix}exit_price IS NOT NULL`;
-    }
-
-    if (filters.hasNews !== undefined && filters.hasNews !== '' && filters.hasNews !== null) {
-      if (filters.hasNews === 'true' || filters.hasNews === true || filters.hasNews === 1 || filters.hasNews === '1') {
-        query += ` AND ${tablePrefix}has_news = true`;
-      } else if (filters.hasNews === 'false' || filters.hasNews === false || filters.hasNews === 0 || filters.hasNews === '0') {
-        query += ` AND (${tablePrefix}has_news = false OR ${tablePrefix}has_news IS NULL)`;
-      }
-    }
-
-    // Multi-select strategies filter for count
-    if (filters.strategies && filters.strategies.length > 0) {
-      const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
-      query += ` AND ${tablePrefix}strategy IN (${placeholders})`;
-      filters.strategies.forEach(strategy => values.push(strategy));
-      paramCount += filters.strategies.length;
-    } else if (filters.strategy && filters.strategy.trim()) {
-      query += ` AND ${tablePrefix}strategy = $${paramCount}`;
-      values.push(filters.strategy.trim());
-      paramCount++;
-    }
-
-    // Multi-select sectors filter for count  
-    if (filters.sectors && filters.sectors.length > 0) {
-      const sectorPlaceholders = filters.sectors.map((_, index) => `$${paramCount + index}`).join(',');
-      query += ` AND sc.finnhub_industry IN (${sectorPlaceholders})`;
-      filters.sectors.forEach(sector => values.push(sector));
-      paramCount += filters.sectors.length;
-    }
-
-    // Single sector filter for count
-    if (filters.sector && filters.sector.trim()) {
-      query += ` AND sc.finnhub_industry = $${paramCount}`;
-      values.push(filters.sector.trim());
-      paramCount++;
-    }
-
-    // Days of week filter for count (timezone-aware)
-    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
-    if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
-      const userTimezone = await getUserTimezone(userId);
-      const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-      query += ` AND extract(dow from (${tablePrefix}entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-      values.push(userTimezone);
-      paramCount += filters.daysOfWeek.length + 1;
-    }
-
-    console.log('[COUNT] Count query:', query);
-    console.log('[COUNT] Count values:', values);
-    
+    const query = `SELECT COUNT(*) as total FROM trades t ${whereClause}`;
     const result = await db.query(query, values);
-    const total = parseInt(result.rows[0].total) || 0;
-    
-    console.log('[COUNT] Count result:', total);
-    return total;
+    return parseInt(result.rows[0].total, 10) || 0;
   }
 
   static async getPartialExitAnalytics(userId, filters = {}) {
     console.log('[PARTIAL-EXIT] Getting partial exit analytics for user:', userId);
 
-    // Build WHERE clause using the same filter pattern as getAnalytics
+    // Build WHERE clause. The date-range predicate is shared with the canonical
+    // TradeQueries._buildWhereClause via buildTradeDateRangeClause so the two
+    // cannot drift. NOTE: the remaining filters below intentionally stay inline
+    // and are NOT identical to the canonical builder (e.g. symbol here is an
+    // exact/prefix match without the CUSIP fallback, single-strategy is plain
+    // equality rather than the hold-time mapping, tags casts to ::text[]). When
+    // adding a NEW trade filter, add it to TradeQueries._buildWhereClause first
+    // and route this method through it rather than growing this block.
     let whereClause = `WHERE t.user_id = $1 AND t.exit_price IS NOT NULL`;
     const values = [userId];
     let paramCount = 2;
 
-    // Date filtering
-    if (filters.startDate && filters.endDate) {
-      whereClause += ` AND ((t.trade_date >= $${paramCount} AND t.trade_date <= $${paramCount + 1}) OR (t.exit_time::date >= $${paramCount} AND t.exit_time::date <= $${paramCount + 1}))`;
-      values.push(filters.startDate, filters.endDate);
-      paramCount += 2;
-    } else if (filters.startDate) {
-      whereClause += ` AND (t.trade_date >= $${paramCount} OR t.exit_time::date >= $${paramCount})`;
-      values.push(filters.startDate);
-      paramCount++;
-    } else if (filters.endDate) {
-      whereClause += ` AND (t.trade_date <= $${paramCount} OR t.exit_time::date <= $${paramCount})`;
-      values.push(filters.endDate);
-      paramCount++;
+    if (filters.includeArchived !== true) {
+      whereClause += ` AND NOT EXISTS (
+        SELECT 1
+        FROM user_accounts reporting_account
+        WHERE reporting_account.user_id = t.user_id
+          AND reporting_account.account_identifier IS NOT NULL
+          AND reporting_account.account_identifier != ''
+          AND reporting_account.account_identifier = t.account_identifier
+          AND reporting_account.include_in_reports = false
+      )`;
+    }
+
+    // Date filtering (shared with the canonical builder)
+    const dateRange = buildTradeDateRangeClause(filters, paramCount);
+    if (dateRange.clause) {
+      whereClause += dateRange.clause;
+      dateRange.params.forEach(v => values.push(v));
+      paramCount += dateRange.params.length;
     }
 
     if (filters.symbol) {
@@ -2984,20 +3083,23 @@ class Trade {
   static async getMonthlyPerformance(userId, year, accounts = null, filters = {}) {
     console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts, 'filters:', filters);
 
-    const { getBreakevenToleranceConfig, breakevenPredicate } = require('../utils/breakeven');
-    const { POSITION_GROUP_KEY, GROUPED_BREAKEVEN, isPositionGroupingEnabled } = require('../utils/positionGrouping');
+    const { getBreakevenToleranceConfig, breakevenPredicate, groupedBreakevenPredicate } = require('../utils/breakeven');
+    const { POSITION_GROUP_KEY, isPositionGroupingEnabled } = require('../utils/positionGrouping');
+const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
     const breakevenConfig = await getBreakevenToleranceConfig(userId);
     // Whole-trade win rate (issue #339): when enabled, collapse multi-leg
     // positions before the monthly aggregation so counts and win rate match
     // the headline analytics. P&L sums are unchanged either way.
     const groupByPosition = await isPositionGroupingEnabled(userId);
-    const be = groupByPosition ? GROUPED_BREAKEVEN : breakevenPredicate({
-      gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
-      tickSize: 'tick_size',
-      pointValue: 'point_value',
-      quantity: 'quantity',
-      underlying: 'underlying_asset'
-    }, breakevenConfig);
+    const be = groupByPosition
+      ? groupedBreakevenPredicate({ gross: 'gross_pnl', net: 'pnl' }, breakevenConfig)
+      : breakevenPredicate({
+          gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+          tickSize: 'tick_size',
+          pointValue: 'point_value',
+          quantity: 'quantity',
+          underlying: 'underlying_asset'
+        }, breakevenConfig);
 
     // Build account + tag + strategy filter conditions. Param index starts at 3
     // because $1=userId and $2=year. We append conditions in the order they're
@@ -3023,11 +3125,22 @@ class Trade {
       params.push(...filters.strategies);
     }
 
+    const reportingAccountCondition = filters.includeArchived === true ? '' : `
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_accounts reporting_account
+            WHERE reporting_account.user_id = trades.user_id
+              AND reporting_account.account_identifier IS NOT NULL
+              AND reporting_account.account_identifier != ''
+              AND reporting_account.account_identifier = trades.account_identifier
+              AND reporting_account.include_in_reports = false
+          )`;
+
     const whereBody = `
         WHERE user_id = $1
           AND EXTRACT(YEAR FROM trade_date) = $2
           AND exit_price IS NOT NULL
-          AND pnl IS NOT NULL${extraFilter}`;
+          AND pnl IS NOT NULL${reportingAccountCondition}${extraFilter}`;
 
     // Grouped mode aggregates legs to positions first; r-value stats then read
     // the position-level sum, gated on any leg having a stop (has_stop).
@@ -3035,7 +3148,8 @@ class Trade {
         SELECT
           MIN(trade_date) as trade_date,
           MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
-          SUM(pnl) as pnl,
+          SUM(${fxUsdTrade('pnl', '')}) as pnl,
+          SUM(COALESCE(${fxUsdTrade('pnl', '')}, 0) + COALESCE(${fxUsdTrade('commission', '')}, 0) + COALESCE(${fxUsdTrade('fees', '')}, 0)) as gross_pnl,
           SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL) as r_value,
           BOOL_OR(stop_loss IS NOT NULL) as has_stop
         FROM trades
@@ -3053,6 +3167,10 @@ class Trade {
       ? 'r_value IS NOT NULL AND has_stop'
       : 'r_value IS NOT NULL AND stop_loss IS NOT NULL';
 
+    // Grouped mode reads USD-normalized pnl from position_trades (wrapped in
+    // the CTE); leg mode reads raw trades rows and must wrap here.
+    const monthlyPnlRef = groupByPosition ? 'pnl' : fxUsdTrade('pnl', '');
+
     const monthlyQuery = `
       WITH ${sourceCte}monthly_trades AS (
         SELECT
@@ -3062,12 +3180,12 @@ class Trade {
           COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::integer as winning_trades,
           COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0)::integer as losing_trades,
           COUNT(*) FILTER (WHERE ${be.is})::integer as breakeven_trades,
-          COALESCE(SUM(pnl), 0)::numeric as total_pnl,
-          COALESCE(AVG(pnl), 0)::numeric as avg_pnl,
-          COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win,
-          COALESCE(AVG(pnl) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss,
-          COALESCE(MAX(pnl), 0)::numeric as best_trade,
-          COALESCE(MIN(pnl), 0)::numeric as worst_trade,
+          COALESCE(SUM(${monthlyPnlRef}), 0)::numeric as total_pnl,
+          COALESCE(AVG(${monthlyPnlRef}), 0)::numeric as avg_pnl,
+          COALESCE(AVG(${monthlyPnlRef}) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win,
+          COALESCE(AVG(${monthlyPnlRef}) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss,
+          COALESCE(MAX(${monthlyPnlRef}), 0)::numeric as best_trade,
+          COALESCE(MIN(${monthlyPnlRef}), 0)::numeric as worst_trade,
           COALESCE(AVG(r_value) FILTER (WHERE ${rValueFilter}), 0)::numeric as avg_r_value,
           COALESCE(SUM(r_value) FILTER (WHERE ${rValueFilter}), 0)::numeric as total_r_value,
           COUNT(DISTINCT symbol)::integer as symbols_traded,
@@ -3269,16 +3387,31 @@ class Trade {
     const query = `
       SELECT DISTINCT account_identifier FROM (
         SELECT account_identifier
-        FROM trades
-        WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+        FROM trades t
+        WHERE t.user_id = $1 AND t.account_identifier IS NOT NULL AND t.account_identifier != ''
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_accounts archived_account
+            WHERE archived_account.user_id = t.user_id
+              AND archived_account.account_identifier = t.account_identifier
+              AND archived_account.is_archived = true
+          )
         UNION
         SELECT account_identifier
         FROM user_accounts
         WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+          AND is_archived = false
         UNION
-        SELECT account_identifier
-        FROM investment_lots
-        WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+        SELECT l.account_identifier
+        FROM investment_lots l
+        WHERE l.user_id = $1 AND l.account_identifier IS NOT NULL AND l.account_identifier != ''
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_accounts archived_account
+            WHERE archived_account.user_id = l.user_id
+              AND archived_account.account_identifier = l.account_identifier
+              AND archived_account.is_archived = true
+          )
       ) combined
       ORDER BY account_identifier
     `;
@@ -3757,7 +3890,7 @@ class Trade {
 
       // Record successful API call for circuit breaker
       try {
-        await cache.set(circuitBreakerKey, { failures: 0, lastSuccess: Date.now() }, 3600); // Reset failures on success
+        await cache.set(circuitBreakerKey, { failures: 0, lastSuccess: Date.now() }, 3600 * 1000); // Reset failures on success
       } catch (cacheError) {
         // Ignore cache errors
       }
@@ -3772,7 +3905,7 @@ class Trade {
         const circuitBreakerData = await cache.get(circuitBreakerKey) || { failures: 0 };
         circuitBreakerData.failures = (circuitBreakerData.failures || 0) + 1;
         circuitBreakerData.lastFailure = Date.now();
-        await cache.set(circuitBreakerKey, circuitBreakerData, 3600); // Store for 1 hour
+        await cache.set(circuitBreakerKey, circuitBreakerData, 3600 * 1000); // Store for 1 hour
         
         if (circuitBreakerData.failures >= 10) {
           console.log(`[ERROR] Circuit breaker OPENED: ${circuitBreakerData.failures} Finnhub failures`);

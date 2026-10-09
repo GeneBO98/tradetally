@@ -79,9 +79,38 @@ export function useNotification() {
       message,
       confirmText: options.confirmText || 'Delete',
       cancelText: options.cancelText || 'Cancel',
+      checkboxLabel: options.checkboxLabel || null,
+      checkboxChecked: options.checkboxChecked === true,
+      asyncConfirmation: options.asyncConfirmation === true,
+      pendingText: options.pendingText || 'Working...',
+      isSubmitting: false,
       onConfirm: () => {
-        clearModalAlert()
-        onConfirm()
+        const checkboxChecked = modalAlert.value?.checkboxChecked === true
+        if (!options.asyncConfirmation) {
+          clearModalAlert()
+          onConfirm(checkboxChecked)
+          return
+        }
+
+        const currentAlert = modalAlert.value
+        if (!currentAlert || currentAlert.isSubmitting) return
+
+        currentAlert.isSubmitting = true
+        Promise.resolve()
+          .then(() => onConfirm(checkboxChecked))
+          .then(result => {
+            if (modalAlert.value !== currentAlert) return
+            if (result === false) {
+              currentAlert.isSubmitting = false
+              return
+            }
+            clearModalAlert()
+          })
+          .catch(() => {
+            if (modalAlert.value === currentAlert) {
+              currentAlert.isSubmitting = false
+            }
+          })
       },
       onCancel: () => {
         clearModalAlert()

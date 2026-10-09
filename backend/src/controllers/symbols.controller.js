@@ -2,6 +2,12 @@ const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
+const yahooFinance = require('../utils/yahooFinance');
+const TierService = require('../services/tierService');
+const { isOptionContractSymbol } = require('../utils/optionSymbol');
+const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
+const { getCryptoAsset, searchCryptoAssets } = require('../utils/cryptoAssets');
 
 const CACHE_TTL = 300000; // 5 minutes
 
@@ -34,6 +40,31 @@ function applyCategoryMetadata(target, category) {
   };
 }
 
+function isSupportedProviderResult(item) {
+  const symbol = String(item?.symbol || '').trim().toUpperCase();
+  if (!symbol || symbol.includes('.') || isOptionContractSymbol(symbol)) {
+    return false;
+  }
+
+  // Finnhub labels search results by instrument class. Price alerts operate on
+  // underlyings, so exclude contracts, warrants, rights, preferred shares, and
+  // other derivative-like instruments from this stock/ETF picker.
+  if (finnhub.isFinnhub) {
+    const type = String(item.type || '').trim().toLowerCase();
+    const supportedTypes = new Set([
+      'common stock',
+      'etp',
+      'adr',
+      'reit',
+      'closed-end fund',
+      'open-end fund'
+    ]);
+    return supportedTypes.has(type);
+  }
+
+  return true;
+}
+
 async function searchSymbols(req, res) {
   try {
     const userId = req.user.id;
@@ -55,19 +86,28 @@ async function searchSymbols(req, res) {
 
     // 1. Search user's traded symbols (highest priority)
     const userTradesQuery = `
-      SELECT DISTINCT t.symbol, sc.company_name, sc.exchange, sc.logo
+      SELECT DISTINCT
+        UPPER(COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol)) AS symbol,
+        sc.company_name,
+        sc.exchange,
+        sc.logo
       FROM trades t
-      LEFT JOIN symbol_categories sc ON UPPER(t.symbol) = UPPER(sc.symbol)
+      LEFT JOIN symbol_categories sc
+        ON UPPER(COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol)) = UPPER(sc.symbol)
       WHERE t.user_id = $1
-        AND UPPER(t.symbol) LIKE $2
-      ORDER BY t.symbol
+        AND UPPER(COALESCE(NULLIF(t.underlying_symbol, ''), t.symbol)) LIKE $2
+        AND (
+          t.instrument_type IS DISTINCT FROM 'option'
+          OR NULLIF(t.underlying_symbol, '') IS NOT NULL
+        )
+      ORDER BY symbol
       LIMIT 10
     `;
     const userTradesResult = await db.query(userTradesQuery, [userId, `${query}%`]);
 
     for (const row of userTradesResult.rows) {
       const sym = row.symbol.toUpperCase();
-      if (!seenSymbols.has(sym)) {
+      if (!isOptionContractSymbol(sym) && !seenSymbols.has(sym)) {
         seenSymbols.add(sym);
         results.push({
           symbol: sym,
@@ -97,7 +137,22 @@ async function searchSymbols(req, res) {
       }
     }
 
-    // 2. Search symbol_categories table
+    // 2. Add supported crypto assets before stock-provider results. Crypto
+    // quotes use CoinGecko, so discovery must not depend on Finnhub/FMP search.
+    for (const asset of searchCryptoAssets(query, 15)) {
+      if (results.length >= 15 || seenSymbols.has(asset.symbol)) continue;
+      seenSymbols.add(asset.symbol);
+      results.push({
+        symbol: asset.symbol,
+        company_name: asset.name,
+        exchange: 'Crypto',
+        logo: null,
+        source: 'crypto',
+        asset_type: 'crypto'
+      });
+    }
+
+    // 3. Search symbol_categories table
     if (results.length < 10) {
       const limit = 10 - results.length;
       const localQuery = `
@@ -114,7 +169,7 @@ async function searchSymbols(req, res) {
 
       for (const row of localResult.rows) {
         const sym = row.symbol.toUpperCase();
-        if (!seenSymbols.has(sym)) {
+        if (!isOptionContractSymbol(sym) && !seenSymbols.has(sym)) {
           seenSymbols.add(sym);
           results.push({
             symbol: sym,
@@ -127,7 +182,7 @@ async function searchSymbols(req, res) {
       }
     }
 
-    // 3. Market data provider fallback - only if few local results and query >= 2 chars
+    // 4. Market data provider fallback - only if few local results and query >= 2 chars
     if (results.length < 5 && query.length >= 2 && finnhub.isConfigured()) {
       try {
         const finnhubResults = await finnhub.symbolSearch(query);
@@ -135,8 +190,7 @@ async function searchSymbols(req, res) {
           for (const item of finnhubResults.result) {
             if (results.length >= 15) break;
             const sym = (item.symbol || '').toUpperCase();
-            // Skip symbols with dots (foreign exchanges) and already-seen
-            if (!sym || sym.includes('.') || seenSymbols.has(sym)) continue;
+            if (!isSupportedProviderResult(item) || seenSymbols.has(sym)) continue;
             seenSymbols.add(sym);
             results.push({
               symbol: sym,
@@ -159,7 +213,37 @@ async function searchSymbols(req, res) {
     return res.json({ results });
   } catch (error) {
     console.error('[SYMBOLS] Search error:', error.message);
-    return res.status(500).json({ error: 'Failed to search symbols' });
+    throw new AppError(500, { error: 'Failed to search symbols' });
+  }
+}
+
+// Self-hosted only, matching the gate the chart fallbacks use.
+async function backfillCompanyNames(metadata, symbols, hostHeader) {
+  if (await TierService.isBillingEnabled(hostHeader)) {
+    return;
+  }
+
+  if (!yahooFinance.isEnabled()) {
+    return;
+  }
+
+  const symbolsMissingName = symbols.filter(
+    symbol => metadata[symbol] && !metadata[symbol].companyName && !isOptionContractSymbol(symbol)
+  );
+
+  // Bounded concurrency: one request per symbol at once would be worse.
+  const chunkSize = 5;
+  for (let i = 0; i < symbolsMissingName.length; i += chunkSize) {
+    const chunk = symbolsMissingName.slice(i, i + chunkSize);
+    const names = await Promise.all(
+      chunk.map(symbol => yahooFinance.getSymbolName(symbol).catch(() => null))
+    );
+
+    chunk.forEach((symbol, index) => {
+      if (names[index]) {
+        metadata[symbol] = { ...metadata[symbol], companyName: names[index] };
+      }
+    });
   }
 }
 
@@ -178,12 +262,16 @@ async function getSymbolMetadata(req, res) {
     }
 
     const metadata = Object.fromEntries(
-      symbols.map(symbol => [symbol, {
-        symbol,
-        companyName: null,
-        exchange: null,
-        logo: null
-      }])
+      symbols.map(symbol => {
+        const crypto_asset = getCryptoAsset(symbol);
+        return [symbol, {
+          symbol,
+          companyName: crypto_asset?.name || null,
+          exchange: crypto_asset ? 'Crypto' : null,
+          logo: null,
+          ...(crypto_asset ? { asset_type: 'crypto' } : {})
+        }];
+      })
     );
 
     const query = `
@@ -211,11 +299,13 @@ async function getSymbolMetadata(req, res) {
     const result = await db.query(query, [symbols]);
 
     for (const row of result.rows) {
+      const crypto_asset = getCryptoAsset(row.symbol);
       metadata[row.symbol] = {
         symbol: row.symbol,
-        companyName: row.company_name || null,
-        exchange: row.exchange || null,
-        logo: row.logo || null
+        companyName: crypto_asset?.name || row.company_name || null,
+        exchange: crypto_asset ? 'Crypto' : row.exchange || null,
+        logo: row.logo || null,
+        ...(crypto_asset ? { asset_type: 'crypto' } : {})
       };
     }
 
@@ -241,16 +331,61 @@ async function getSymbolMetadata(req, res) {
       }
     }
 
+    // Best-effort: a name is a nicety and must not fail the response.
+    try {
+      await backfillCompanyNames(metadata, symbols, req.headers?.host);
+    } catch (fallbackError) {
+      console.warn(`[SYMBOLS] Name fallback skipped: ${fallbackError.message}`);
+    }
+
     cache.set(cacheKey, metadata, CACHE_TTL);
 
     return res.json({ metadata });
   } catch (error) {
     console.error('[SYMBOLS] Metadata error:', error.message);
-    return res.status(500).json({ error: 'Failed to fetch symbol metadata' });
+    throw new AppError(500, { error: 'Failed to fetch symbol metadata' });
   }
 }
 
+async function getSymbolQuote(req, res) {
+  const userId = req.user.id;
+  const symbol = (typeof req.query.symbol === 'string' ? req.query.symbol : '')
+    .trim()
+    .toUpperCase();
+
+  if (!symbol) {
+    throw new AppError(400, { error: 'Symbol is required' });
+  }
+
+  const quote = finnhub.isCryptoSymbol(symbol)
+    ? await finnhub.getCryptoQuote(symbol)
+    : await finnhub.getQuote(symbol, userId);
+  const currentPrice = Number(quote?.c);
+
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+    throw new AppError(404, { error: `Current price unavailable for ${symbol}` });
+  }
+
+  const numberOrNull = value => {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  };
+
+  return res.json({
+    symbol,
+    current_price: currentPrice,
+    previous_close: numberOrNull(quote.pc),
+    change: numberOrNull(quote.d),
+    change_percent: numberOrNull(quote.dp),
+    timestamp: numberOrNull(quote.t)
+  });
+}
+
 module.exports = {
-  searchSymbols,
-  getSymbolMetadata
+  searchSymbols: asyncHandler(searchSymbols),
+  getSymbolMetadata: asyncHandler(getSymbolMetadata),
+  getSymbolQuote: asyncHandler(getSymbolQuote)
 };

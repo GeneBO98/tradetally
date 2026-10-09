@@ -16,6 +16,19 @@ router.get('/jwks.json', oauth2Controller.jwks);
 router.get('/apple-app-site-association', (req, res) => {
     res.set('Content-Type', 'application/json');
     res.json({
+        applinks: {
+            details: [
+                {
+                    appIDs: ['24Q6933PHJ.com.tradetally.ios'],
+                    components: [
+                        {
+                            '/': '/open-app',
+                            comment: 'Open TradeTally from links in email and other apps'
+                        }
+                    ]
+                }
+            ]
+        },
         webcredentials: {
             apps: ['24Q6933PHJ.com.tradetally.ios']
         }

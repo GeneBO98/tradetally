@@ -1,4 +1,5 @@
 const YearWrappedService = require('../services/yearWrappedService');
+const { convertForDisplay } = require('../utils/displayCurrency');
 
 const yearWrappedController = {
 
@@ -20,10 +21,10 @@ const yearWrappedController = {
 
       const data = await YearWrappedService.getYearWrapped(userId, year);
 
-      res.json({
+      res.json(await convertForDisplay(req, {
         success: true,
         data
-      });
+      }, { clone: false }));
     } catch (error) {
       console.error('[YEAR_WRAPPED] Error getting year wrapped:', error);
       next(error);

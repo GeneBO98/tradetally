@@ -181,13 +181,19 @@ class ApiKey {
     for (const row of result.rows) {
       const isValid = await bcrypt.compare(key, row.key_hash);
       if (isValid) {
-        // Update last used timestamp
-        await this.updateLastUsed(row.id);
-        
+        // last_used_at is informational (settings UI display), so don't hold
+        // the request on the write, and only touch the row once per minute
+        // per key to avoid an UPDATE on every API call.
+        if (!row.last_used_at || (Date.now() - new Date(row.last_used_at).getTime()) > 60 * 1000) {
+          this.updateLastUsed(row.id).catch((error) => {
+            console.error('[API_KEY] Failed to update last_used_at:', error.message);
+          });
+        }
+
         return hydrateApiKeyRow(row);
       }
     }
-    
+
     return null;
   }
 

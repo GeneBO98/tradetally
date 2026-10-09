@@ -17,18 +17,6 @@ class Diary {
         market_bias, key_levels, watchlist, linked_trades, followed_plan, lessons_learned
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-      ON CONFLICT (user_id, entry_date, entry_type)
-      DO UPDATE SET
-        title = EXCLUDED.title,
-        content = EXCLUDED.content,
-        tags = EXCLUDED.tags,
-        market_bias = EXCLUDED.market_bias,
-        key_levels = EXCLUDED.key_levels,
-        watchlist = EXCLUDED.watchlist,
-        linked_trades = EXCLUDED.linked_trades,
-        followed_plan = EXCLUDED.followed_plan,
-        lessons_learned = EXCLUDED.lessons_learned,
-        updated_at = CURRENT_TIMESTAMP
       RETURNING *
     `;
 
@@ -179,6 +167,11 @@ class Diary {
   }
 
   static async findByDate(userId, date, entryType = 'diary') {
+    const entries = await this.findAllByDate(userId, date, entryType);
+    return entries[0] || null;
+  }
+
+  static async findAllByDate(userId, date, entryType = 'diary') {
     const query = `
       SELECT de.*,
         json_agg(
@@ -195,16 +188,21 @@ class Diary {
       LEFT JOIN diary_attachments da ON de.id = da.diary_entry_id
       WHERE de.user_id = $1 AND DATE(de.entry_date) = $2 AND de.entry_type = $3
       GROUP BY de.id
+      ORDER BY de.created_at DESC, de.id DESC
     `;
 
     const result = await db.query(query, [userId, date, entryType]);
-    return result.rows[0] || null;
+    return result.rows;
+  }
+
+  static async findTodaysEntries(userId) {
+    const today = await getUserLocalDate(userId);
+    return this.findAllByDate(userId, today, 'diary');
   }
 
   static async findTodaysEntry(userId) {
-    // Get today's date in YYYY-MM-DD format
-    const today = new Date().toISOString().split('T')[0];
-    return this.findByDate(userId, today, 'diary');
+    const entries = await this.findTodaysEntries(userId);
+    return entries[0] || null;
   }
 
   static async findByDateRange(userId, startDate, endDate) {
@@ -236,6 +234,7 @@ class Diary {
   static async update(id, userId, updates) {
     // Map camelCase to snake_case
     const fieldMapping = {
+      entryDate: 'entry_date',
       entryType: 'entry_type',
       marketBias: 'market_bias',
       keyLevels: 'key_levels',
@@ -245,7 +244,7 @@ class Diary {
     };
 
     const allowedFields = [
-      'title', 'content', 'tags', 'entry_type', 'market_bias',
+      'entry_date', 'title', 'content', 'tags', 'entry_type', 'market_bias',
       'key_levels', 'watchlist', 'linked_trades', 'followed_plan', 'lessons_learned'
     ];
 

@@ -600,12 +600,16 @@ class HoldingsService {
 
     // Apply cached prices to holdings
     const uncachedHoldings = [];
+    const persistenceJobs = [];
     for (const holding of holdings) {
       const cached = cachedPrices[holding.symbol];
       if (cached) {
         this._applyPriceToHolding(holding, cached);
         if (holding.source !== 'trades' && !String(holding.id).startsWith('trade-')) {
-          await this.refreshHoldingPrice(userId, holding.id);
+          // Persist the already-resolved cached value directly. Calling
+          // refreshHoldingPrice here would perform a second external quote
+          // request for every holding and serialize the whole response.
+          persistenceJobs.push(this._persistAppliedPrice(userId, holding));
         }
       } else {
         uncachedHoldings.push(holding);
@@ -631,7 +635,7 @@ class HoldingsService {
               if (quote && quote.c) {
                 this._applyPriceToHolding(holding, quote.c);
                 if (holding.source !== 'trades' && !String(holding.id).startsWith('trade-')) {
-                  await this.refreshHoldingPrice(userId, holding.id);
+                  persistenceJobs.push(this._persistAppliedPrice(userId, holding));
                 }
               }
             } catch (error) {
@@ -641,6 +645,8 @@ class HoldingsService {
         );
       }
     }
+
+    await Promise.allSettled(persistenceJobs);
 
     return holdings;
   }
@@ -666,6 +672,31 @@ class HoldingsService {
     holding.unrealizedPnl = unrealizedPnl;
     holding.unrealizedPnlPercent = unrealizedPnlPercent;
     holding.priceUpdatedAt = new Date();
+  }
+
+  static async _persistAppliedPrice(userId, holding) {
+    try {
+      await db.query(`
+        UPDATE investment_holdings
+        SET current_price = $3,
+            current_value = $4,
+            unrealized_pnl = $5,
+            unrealized_pnl_percent = $6,
+            price_updated_at = $7,
+            updated_at = NOW()
+        WHERE id = $1 AND user_id = $2
+      `, [
+        holding.id,
+        userId,
+        holding.currentPrice,
+        holding.currentValue,
+        holding.unrealizedPnl,
+        holding.unrealizedPnlPercent,
+        holding.priceUpdatedAt || new Date()
+      ]);
+    } catch (error) {
+      console.warn(`[HOLDINGS] Failed to persist cached price for ${holding.symbol}: ${error.message}`);
+    }
   }
 
   /**

@@ -22,6 +22,7 @@ const priceAlertsController = {
           pa.is_active,
           pa.email_enabled,
           pa.browser_enabled,
+          pa.push_enabled,
           pa.repeat_enabled,
           pa.triggered_at,
           pa.created_at,
@@ -71,6 +72,7 @@ const priceAlertsController = {
         change_percent,
         email_enabled = true,
         browser_enabled = true,
+        push_enabled = true,
         repeat_enabled = false
       } = req.body;
       
@@ -104,7 +106,7 @@ const priceAlertsController = {
         });
       }
       
-      if (!email_enabled && !browser_enabled) {
+      if (!email_enabled && !browser_enabled && !push_enabled) {
         return res.status(400).json({
           success: false,
           error: 'At least one notification method must be enabled'
@@ -177,16 +179,16 @@ const priceAlertsController = {
       const query = `
         INSERT INTO price_alerts (
           id, user_id, symbol, alert_type, target_price, change_percent,
-          current_price, email_enabled, browser_enabled, repeat_enabled
+          current_price, email_enabled, browser_enabled, push_enabled, repeat_enabled
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING id, symbol, alert_type, target_price, change_percent, current_price,
-                 email_enabled, browser_enabled, repeat_enabled, created_at
+                 email_enabled, browser_enabled, push_enabled, repeat_enabled, created_at
       `;
-      
+
       const result = await db.query(query, [
         alertId, userId, symbolUpper, alert_type, target_price, change_percent,
-        currentPrice, email_enabled, browser_enabled, repeat_enabled
+        currentPrice, email_enabled, browser_enabled, push_enabled, repeat_enabled
       ]);
       
       res.status(201).json({
@@ -209,6 +211,7 @@ const priceAlertsController = {
         change_percent,
         email_enabled,
         browser_enabled,
+        push_enabled,
         repeat_enabled,
         is_active
       } = req.body;
@@ -307,7 +310,12 @@ const priceAlertsController = {
         updates.push(`browser_enabled = $${paramIndex++}`);
         values.push(browser_enabled);
       }
-      
+
+      if (push_enabled !== undefined) {
+        updates.push(`push_enabled = $${paramIndex++}`);
+        values.push(push_enabled);
+      }
+
       if (repeat_enabled !== undefined) {
         updates.push(`repeat_enabled = $${paramIndex++}`);
         values.push(repeat_enabled);
@@ -330,18 +338,20 @@ const priceAlertsController = {
         });
       }
       
-      // Validate that at least one notification method is enabled
-      if ((email_enabled === false || browser_enabled === false) && 
-          (email_enabled !== undefined || browser_enabled !== undefined)) {
+      // Validate that at least one notification method is enabled. Only worth a
+      // round-trip when the request actually turns one of them off.
+      if (email_enabled === false || browser_enabled === false || push_enabled === false) {
         const currentAlert = await db.query(
-          'SELECT email_enabled, browser_enabled FROM price_alerts WHERE id = $1',
-          [id]
+          'SELECT email_enabled, browser_enabled, push_enabled FROM price_alerts WHERE id = $1 AND user_id = $2',
+          [id, userId]
         );
-        
-        const finalEmailEnabled = email_enabled !== undefined ? email_enabled : currentAlert.rows[0].email_enabled;
-        const finalBrowserEnabled = browser_enabled !== undefined ? browser_enabled : currentAlert.rows[0].browser_enabled;
-        
-        if (!finalEmailEnabled && !finalBrowserEnabled) {
+        const current = currentAlert.rows[0] || {};
+
+        const finalEmailEnabled = email_enabled !== undefined ? email_enabled : current.email_enabled;
+        const finalBrowserEnabled = browser_enabled !== undefined ? browser_enabled : current.browser_enabled;
+        const finalPushEnabled = push_enabled !== undefined ? push_enabled : current.push_enabled;
+
+        if (!finalEmailEnabled && !finalBrowserEnabled && !finalPushEnabled) {
           return res.status(400).json({
             success: false,
             error: 'At least one notification method must be enabled'
@@ -356,7 +366,7 @@ const priceAlertsController = {
         SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP
         WHERE id = $${paramIndex++} AND user_id = $${paramIndex++}
         RETURNING id, symbol, alert_type, target_price, change_percent, current_price,
-                 email_enabled, browser_enabled, repeat_enabled, is_active, triggered_at, updated_at
+                 email_enabled, browser_enabled, push_enabled, repeat_enabled, is_active, triggered_at, updated_at
       `;
       
       const result = await db.query(query, values);

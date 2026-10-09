@@ -111,7 +111,8 @@ if ! command_exists psql; then
     MISSING_SERVICES+=("postgresql")
 fi
 
-if ! command_exists node; then
+if ! command_exists node || ! node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 24 || (major === 24 && minor >= 21) ? 0 : 1)'; then
+    print_warning "Node.js 24.21.0 or newer is required"
     MISSING_SERVICES+=("nodejs")
 fi
 
@@ -140,8 +141,8 @@ if [ ${#MISSING_SERVICES[@]} -gt 0 ]; then
         fi
 
         if [[ " ${MISSING_SERVICES[@]} " =~ " nodejs " ]]; then
-            echo "Installing Node.js..."
-            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+            echo "Installing Node.js 24 LTS..."
+            curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
             sudo apt-get install -y nodejs
         fi
 
@@ -158,7 +159,7 @@ if [ ${#MISSING_SERVICES[@]} -gt 0 ]; then
 
         if ! command -v pnpm &> /dev/null; then
             echo "Installing pnpm..."
-            sudo npm install -g pnpm@10.13.1
+            sudo npm install -g pnpm@10.34.5
         fi
     else
         print_error "Required services are not installed. Please install them manually and run this script again."

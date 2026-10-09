@@ -37,8 +37,14 @@ router.get('/connections/:id', brokerSyncController.getConnection);
 // Get sync logs for a specific connection
 router.get('/connections/:id/logs', brokerSyncController.getSyncLogs);
 
+// Get broker accounts available for per-account sync settings
+router.get('/connections/:id/accounts', brokerSyncLimiter, brokerSyncController.getConnectionAccounts);
+
 // Add IBKR connection
 router.post('/connections/ibkr', brokerSyncLimiter, validate(schemas.brokerSyncIbkrConnection), brokerSyncController.addIBKRConnection);
+
+// Add Trading 212 API-key connection
+router.post('/connections/trading212', brokerSyncLimiter, validate(schemas.brokerSyncTrading212Connection), brokerSyncController.addTrading212Connection);
 
 // Initialize Schwab OAuth flow
 router.post('/connections/schwab/init', brokerSyncLimiter, brokerSyncController.initSchwabOAuth);
@@ -66,6 +72,8 @@ router.post('/connections/:id/test', brokerSyncLimiter, brokerSyncController.tes
 
 // Delete all trades from a broker connection
 router.delete('/connections/:id/trades', brokerSyncController.deleteBrokerTrades);
+router.get('/excluded-trades', brokerSyncController.listExcludedTrades);
+router.delete('/excluded-trades/:id', brokerSyncController.restoreExcludedTrade);
 
 // Get sync status
 router.get('/sync/:syncId/status', brokerSyncController.getSyncStatus);

@@ -146,3 +146,21 @@ describe('investments portfolio controller', () => {
     });
   });
 });
+
+
+describe('portfolio explicit reporting dates', () => {
+  beforeEach(() => jest.clearAllMocks());
+  test('passes explicit calendar boundaries with the account filter', async () => {
+    const res = createMockRes();
+    const query = { period: 'last_month', start_date: '2026-08-01', end_date: '2026-08-31', accounts: 'acct-1' };
+    PortfolioService.getPerformance.mockResolvedValue({ series: [] });
+    await investmentsController.getPortfolioPerformance({ user: { id: 'owner' }, query }, res);
+    expect(PortfolioService.getPerformance).toHaveBeenCalledWith('owner', expect.objectContaining(query));
+  });
+  test('rejects partial boundaries without requesting market data', async () => {
+    const res = createMockRes();
+    await investmentsController.getPortfolioPerformance({ user: { id: 'owner' }, query: { start_date: '2026-08-01' } }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(PortfolioService.getPerformance).not.toHaveBeenCalled();
+  });
+});

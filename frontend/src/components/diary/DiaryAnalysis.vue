@@ -49,6 +49,7 @@
             </label>
             <input
               v-model="startDate"
+              @change="selected_preset = ''"
               type="date"
               class="input"
               :max="endDate"
@@ -60,6 +61,7 @@
             </label>
             <input
               v-model="endDate"
+              @change="selected_preset = ''"
               type="date"
               class="input"
               :min="startDate"
@@ -97,7 +99,7 @@
         AI is reviewing your entries from {{ startDate }} to {{ endDate }}...
       </p>
       <div class="mt-4 text-sm text-gray-500 dark:text-gray-400">
-        This may take up to 30 seconds
+        Complex analyses can take several minutes. You can keep this page open while it finishes.
       </div>
     </div>
 
@@ -168,10 +170,12 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
+import { formatLocalDate } from '@/utils/date'
 import { ref, computed } from 'vue'
-import { format, subDays, subWeeks, subMonths, startOfWeek, startOfMonth } from 'date-fns'
+import { subDays, subWeeks, startOfWeek } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
 import { useDiaryStore } from '@/stores/diary'
-import api from '@/services/api'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import {
   SparklesIcon,
@@ -190,7 +194,8 @@ const error = ref(null)
 const entriesAnalyzed = ref(0)
 
 // Date range
-const today = new Date().toISOString().split('T')[0]
+const today = resolveDatePreset('today').end_date
+const selected_preset = ref('')
 const startDate = ref('')
 const endDate = ref(today)
 
@@ -207,42 +212,33 @@ const datePresets = ref([
     end: () => new Date()
   },
   {
-    label: 'Last month',
-    start: () => subMonths(new Date(), 1),
-    end: () => new Date()
-  },
-  {
     label: 'This week',
     start: () => startOfWeek(new Date()),
     end: () => new Date()
   },
-  {
-    label: 'This month',
-    start: () => startOfMonth(new Date()),
-    end: () => new Date()
-  }
+  ...monthPresetOptions.map(option => ({ ...option }))
 ])
 
 // Methods
 const selectDatePreset = (preset) => {
-  startDate.value = preset.start().toISOString().split('T')[0]
-  endDate.value = preset.end().toISOString().split('T')[0]
+  selected_preset.value = preset.value || ''
+  if (selected_preset.value) {
+    const range = resolveDatePreset(selected_preset.value)
+    startDate.value = range.start_date
+    endDate.value = range.end_date
+  } else {
+    startDate.value = formatLocalDate(preset.start())
+    endDate.value = formatLocalDate(preset.end())
+  }
 }
 
 const startAnalysis = async () => {
+  if (selected_preset.value) selectDatePreset({ value: selected_preset.value })
   analyzing.value = true
   error.value = null
   
   try {
-    // Try using the store method first, fallback to direct API call
-    let result
-    if (typeof diaryStore.analyzeEntries === 'function') {
-      result = await diaryStore.analyzeEntries(startDate.value, endDate.value)
-    } else {
-      // Direct API call as fallback
-      const response = await api.get(`/diary/analyze?startDate=${startDate.value}&endDate=${endDate.value}`)
-      result = response.data
-    }
+    const result = await diaryStore.analyzeEntries(startDate.value, endDate.value)
     
     analysis.value = result.analysis
     entriesAnalyzed.value = result.entriesAnalyzed
@@ -272,7 +268,7 @@ const startNewAnalysis = () => {
 }
 
 const formatDate = (dateString) => {
-  return format(new Date(dateString), 'MMM d, yyyy')
+  return formatTradeDate(dateString, 'MMM d, yyyy')
 }
 
 const shareAnalysis = () => {

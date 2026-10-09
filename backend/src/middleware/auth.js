@@ -5,11 +5,17 @@ const { AUTH_COOKIE_NAME, clearAuthCookies } = require('../utils/authCookies');
 
 const TOKEN_PURPOSES = Object.freeze({
   ACCESS: 'access',
-  PRE_2FA: 'pre_2fa'
+  PRE_2FA: 'pre_2fa',
+  BIOMETRIC_LOGIN: 'biometric_login',
+  WIDGET_SNAPSHOT: 'widget_snapshot'
 });
+
+const WIDGET_TOKEN_AUDIENCE = 'tradetally-widget';
+const WIDGET_TOKEN_EXPIRES_IN = '30d';
 
 const authUserCache = new Map();
 const pendingAuthUserLookups = new Map();
+let authUserCacheGeneration = 0;
 
 function getAuthUserCacheTtlMs() {
   const parsed = parseInt(process.env.AUTH_USER_CACHE_TTL_MS || '30000', 10);
@@ -33,9 +39,10 @@ async function findActiveUserForAuth(userId) {
     return pendingAuthUserLookups.get(userId);
   }
 
+  const lookupGeneration = authUserCacheGeneration;
   const lookup = User.findById(userId)
     .then((user) => {
-      if (user && user.is_active && ttlMs > 0) {
+      if (user && user.is_active && ttlMs > 0 && lookupGeneration === authUserCacheGeneration) {
         authUserCache.set(userId, {
           user,
           expiresAt: Date.now() + ttlMs
@@ -53,7 +60,14 @@ async function findActiveUserForAuth(userId) {
   return lookup;
 }
 
-function clearAuthUserCache() {
+function clearAuthUserCache(userId = null) {
+  authUserCacheGeneration += 1;
+  if (userId) {
+    authUserCache.delete(userId);
+    pendingAuthUserLookups.delete(userId);
+    return;
+  }
+
   authUserCache.clear();
   pendingAuthUserLookups.clear();
 }
@@ -77,14 +91,21 @@ class UnauthenticatedError extends Error {
   }
 }
 
-function verifyJwtToken(token, { requiredPurpose = TOKEN_PURPOSES.ACCESS } = {}) {
-  const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+function verifyJwtToken(token, { requiredPurpose = TOKEN_PURPOSES.ACCESS, audience } = {}) {
+  const verifyOptions = { algorithms: ['HS256'] };
+  if (audience) verifyOptions.audience = audience;
+  const decoded = jwt.verify(token, process.env.JWT_SECRET, verifyOptions);
 
   if (requiredPurpose && decoded.purpose !== requiredPurpose) {
     throw new InvalidTokenPurposeError(requiredPurpose, decoded.purpose);
   }
 
   return decoded;
+}
+
+function isTokenSessionValid(decoded, user) {
+  return Number.isInteger(decoded.session_version) &&
+    decoded.session_version === Number(user.session_version || 0);
 }
 
 function extractAccessToken(req) {
@@ -115,6 +136,10 @@ const authenticate = async (req, res, next) => {
 
     if (!user || !user.is_active) {
       throw new UnauthenticatedError('User not found or inactive');
+    }
+
+    if (!isTokenSessionValid(decoded, user)) {
+      throw new UnauthenticatedError('Session has been revoked');
     }
 
     // Add device tracking headers to request
@@ -178,6 +203,61 @@ const authenticate = async (req, res, next) => {
   }
 };
 
+// WidgetKit cannot read the app's keychain, so the widget receives a separate,
+// narrowly-scoped bearer token. This authenticator deliberately ignores auth
+// cookies and accepts only the widget purpose/audience; the token therefore
+// cannot be confused with a normal app session in either direction.
+const authenticateWidget = async (req, res, next) => {
+  try {
+    const authorization = req.header('Authorization') || '';
+    const match = authorization.match(/^Bearer\s+(.+)$/i);
+    if (!match || !match[1].trim()) {
+      throw new UnauthenticatedError('No widget token');
+    }
+
+    const token = match[1].trim();
+    const decoded = verifyJwtToken(token, {
+      requiredPurpose: TOKEN_PURPOSES.WIDGET_SNAPSHOT,
+      audience: WIDGET_TOKEN_AUDIENCE
+    });
+    const user = await findActiveUserForAuth(decoded.id);
+
+    if (!user || !user.is_active || !isTokenSessionValid(decoded, user)) {
+      throw new UnauthenticatedError('Widget session has been revoked');
+    }
+
+    req.user = user;
+    req.token = token;
+    req.authSource = 'widget';
+    next();
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        error: 'Widget token expired',
+        code: 'WIDGET_TOKEN_EXPIRED'
+      });
+    }
+    if (error.name === 'JsonWebTokenError' || error.name === 'InvalidTokenPurposeError') {
+      return res.status(401).json({
+        error: 'Invalid widget token',
+        code: 'INVALID_WIDGET_TOKEN'
+      });
+    }
+    if (error instanceof UnauthenticatedError) {
+      return res.status(401).json({
+        error: 'Please authenticate the widget',
+        code: 'WIDGET_UNAUTHORIZED'
+      });
+    }
+
+    console.error('[WIDGET AUTH] Unexpected error during authentication:', error);
+    return res.status(503).json({
+      error: 'Widget authentication temporarily unavailable',
+      code: 'WIDGET_AUTH_UNAVAILABLE'
+    });
+  }
+};
+
 const optionalAuth = async (req, res, next) => {
   try {
     const { token, source } = extractAccessToken(req);
@@ -186,7 +266,7 @@ const optionalAuth = async (req, res, next) => {
       const decoded = verifyJwtToken(token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
       const user = await findActiveUserForAuth(decoded.id);
 
-      if (user && user.is_active) {
+      if (user && user.is_active && isTokenSessionValid(decoded, user)) {
         req.user = user;
         req.token = token;
         req.authSource = source;
@@ -198,17 +278,8 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
-const requireAdmin = async (req, res, next) => {
+function authorizeAdmin(req, res, next) {
   try {
-    // First authenticate the user
-    await new Promise((resolve, reject) => {
-      authenticate(req, res, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-
-    // Check if user has admin role
     if (!['admin', 'owner'].includes(req.user.role)) {
       if (isV1Request(req)) {
         return sendV1Error(res, 403, 'FORBIDDEN', 'Admin access required');
@@ -225,11 +296,28 @@ const requireAdmin = async (req, res, next) => {
 
     res.status(401).json({ error: 'Please authenticate' });
   }
+}
+
+const requireAdmin = (req, res, next) => {
+  if (req.user) return authorizeAdmin(req, res, next);
+  return authenticate(req, res, (error) => {
+    if (error) return next(error);
+    return authorizeAdmin(req, res, next);
+  });
 };
 
 const generateToken = (user, options = {}) => {
   const purpose = options.purpose || TOKEN_PURPOSES.ACCESS;
   const expiresIn = options.expiresIn || (purpose === TOKEN_PURPOSES.PRE_2FA ? '15m' : (process.env.JWT_EXPIRE || '7d'));
+
+  const purposeClaims = purpose === TOKEN_PURPOSES.BIOMETRIC_LOGIN
+    ? {
+        two_factor_enabled: Boolean(user.two_factor_enabled),
+        two_factor_enabled_at: user.two_factor_enabled_at
+          ? new Date(user.two_factor_enabled_at).toISOString()
+          : null
+      }
+    : {};
 
   return jwt.sign(
     { 
@@ -237,7 +325,9 @@ const generateToken = (user, options = {}) => {
       email: user.email,
       username: user.username,
       role: user.role,
-      purpose
+      purpose,
+      session_version: Number(user.session_version || 0),
+      ...purposeClaims
     },
     process.env.JWT_SECRET,
     {
@@ -247,14 +337,31 @@ const generateToken = (user, options = {}) => {
   );
 };
 
+const generateWidgetToken = (user) => jwt.sign(
+  {
+    id: user.id,
+    purpose: TOKEN_PURPOSES.WIDGET_SNAPSHOT,
+    session_version: Number(user.session_version || 0)
+  },
+  process.env.JWT_SECRET,
+  {
+    expiresIn: WIDGET_TOKEN_EXPIRES_IN,
+    algorithm: 'HS256',
+    audience: WIDGET_TOKEN_AUDIENCE
+  }
+);
+
 module.exports = {
   TOKEN_PURPOSES,
   authenticate,
+  authenticateWidget,
   extractAccessToken,
   optionalAuth,
   requireAdmin,
   generateToken,
+  generateWidgetToken,
   verifyJwtToken,
+  isTokenSessionValid,
   clearAuthUserCache,
   findActiveUserForAuth
 };

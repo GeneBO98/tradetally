@@ -1,5 +1,7 @@
 const db = require('../config/database');
 const TierService = require('./tierService');
+const tierCache = require('./tierCache');
+const settingsCache = require('./settingsCache');
 const User = require('../models/User');
 const EmailService = require('./emailService');
 const invoiceNinjaSyncService = require('./invoiceNinjaSyncService');
@@ -23,6 +25,7 @@ class BillingService {
     `;
 
     const result = await db.query(deleteQuery, [userId]);
+    tierCache.invalidate(userId);
     return result.rowCount;
   }
 
@@ -346,6 +349,65 @@ class BillingService {
     };
   }
 
+  /**
+   * Stop Stripe billing before permanently deleting an account.
+   *
+   * This intentionally fails closed: if a Stripe subscription exists and we
+   * cannot prove that Stripe stopped (or no longer has) it, account deletion
+   * must not remove the local row that lets support identify the subscription.
+   */
+  static async cancelSubscriptionForAccountDeletion(userId) {
+    const subscription = await User.getSubscription(userId);
+    if (!subscription?.stripe_subscription_id) {
+      return { canceled: false, reason: 'no_stripe_subscription' };
+    }
+
+    const terminalStatuses = new Set(['canceled', 'incomplete_expired']);
+    if (terminalStatuses.has(subscription.status)) {
+      return { canceled: false, reason: 'already_inactive' };
+    }
+
+    const billingAvailable = await this.isBillingAvailable();
+    if (!billingAvailable) {
+      const error = new Error('Stripe billing is unavailable; the subscription could not be canceled');
+      error.code = 'ACCOUNT_DELETION_BILLING_CANCELLATION_FAILED';
+      throw error;
+    }
+
+    const stripeClient = this.getStripe();
+    let canceledSubscription;
+
+    try {
+      canceledSubscription = await stripeClient.subscriptions.cancel(
+        subscription.stripe_subscription_id
+      );
+    } catch (error) {
+      // Even resource_missing fails closed: it can mean the server is using
+      // credentials for the wrong Stripe account while the real subscription
+      // is still billable elsewhere.
+      const cancellationError = new Error('Stripe subscription cancellation failed');
+      cancellationError.code = 'ACCOUNT_DELETION_BILLING_CANCELLATION_FAILED';
+      cancellationError.cause = error;
+      throw cancellationError;
+    }
+
+    const canceledAt = canceledSubscription.canceled_at
+      ? new Date(canceledSubscription.canceled_at * 1000)
+      : new Date();
+
+    await this.createOrUpdateSubscription(userId, {
+      stripe_subscription_id: subscription.stripe_subscription_id,
+      status: 'canceled',
+      cancel_at_period_end: false,
+      canceled_at: canceledAt
+    });
+
+    return {
+      canceled: true,
+      subscriptionId: subscription.stripe_subscription_id
+    };
+  }
+
   // Reactivate a subscription that was set to cancel at period end
   static async reactivateSubscription(userId) {
     const billingAvailable = await this.isBillingAvailable();
@@ -615,6 +677,7 @@ class BillingService {
           `UPDATE user_settings SET pro_onboarding_step = 1 WHERE user_id = $1 AND pro_onboarding_step = 0`,
           [userId]
         );
+        settingsCache.invalidate(userId);
       } catch (onboardErr) {
         console.log('[BILLING] Pro onboarding trigger failed (non-blocking):', onboardErr.message);
       }
@@ -644,17 +707,18 @@ class BillingService {
 
   // Handle subscription deleted
   static async handleSubscriptionDeleted(subscription) {
-    await TierService.handleSubscriptionUpdate(subscription.id, 'canceled');
-    
+    const userId = await TierService.handleSubscriptionUpdate(subscription.id, 'canceled');
+
     // Update subscription status in database
     const updateQuery = `
-      UPDATE subscriptions 
-      SET status = 'canceled', 
+      UPDATE subscriptions
+      SET status = 'canceled',
           canceled_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
       WHERE stripe_subscription_id = $1
     `;
     await db.query(updateQuery, [subscription.id]);
+    tierCache.invalidate(userId);
   }
 
   // Handle successful payment
@@ -804,6 +868,7 @@ class BillingService {
     ];
 
     const result = await db.query(query, values);
+    tierCache.invalidate(userId);
     return result.rows[0];
   }
 

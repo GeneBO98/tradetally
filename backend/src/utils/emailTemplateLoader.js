@@ -10,6 +10,12 @@ const EXAMPLE_TEMPLATES_DIR = path.join(__dirname, '..', 'email-templates.exampl
  * @returns {string|null} The template contents, or null if not found in either location
  */
 function loadTemplate(templateName) {
+  // Template names are bare filenames; reject anything that could escape the
+  // template directories (path separators, "..", absolute paths).
+  if (typeof templateName !== 'string' || templateName !== path.basename(templateName) || templateName.startsWith('.')) {
+    return null;
+  }
+
   const customPath = path.join(TEMPLATES_DIR, templateName);
   if (fs.existsSync(customPath)) {
     return fs.readFileSync(customPath, 'utf8');

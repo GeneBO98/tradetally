@@ -4,7 +4,7 @@
       <div>
         <h1 class="heading-page">Import Trades</h1>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Import your trades from CSV files exported from major brokers.
+          Import your trades from files exported from major brokers.
         </p>
       </div>
       <router-link to="/broker-sync" class="mt-1 btn-secondary inline-flex items-center gap-2">
@@ -42,7 +42,7 @@
                 ]"
                 tabindex="0"
                 role="button"
-                aria-label="Upload a broker CSV file"
+                aria-label="Upload a broker trade export file"
                 @dragover.prevent="handleDragOver"
                 @dragleave.prevent="handleDragLeave"
                 @drop.prevent="handleDrop"
@@ -56,7 +56,7 @@
                 </div>
                 <div v-else class="space-y-2 text-center">
                   <ArrowUpTrayIcon class="mx-auto h-16 w-16 text-gray-400" />
-                  <p class="text-base font-medium text-gray-900 dark:text-white">Drop your broker CSV here</p>
+                  <p class="text-base font-medium text-gray-900 dark:text-white">Drop your broker export here</p>
                   <div class="flex text-sm text-gray-600 dark:text-gray-400">
                     <label
                       for="file-upload"
@@ -69,13 +69,14 @@
                         ref="fileInput"
                         name="file-upload"
                         type="file"
+                        accept=".csv,.txt,.data,text/csv,text/plain,application/octet-stream"
                         class="sr-only"
                         @change="handleFileSelect"
                       />
                     </label>
                     <p class="pl-1">or drag and drop</p>
                   </div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">CSV files only (up to 50MB)</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">CSV, TXT, or Sierra Chart DATA files (up to 50MB)</p>
                 </div>
               </div>
               <div v-if="selectedFile" class="mt-2 flex items-center justify-between">
@@ -161,24 +162,37 @@
               <label for="account" class="label">Trading Account</label>
               <BaseSelect id="account" v-model="selectedAccountId" :options="accountOptions" />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Select a trading account to associate with this import, or choose "None" if importing from a different broker.
+                Leave on "Automatically detect from file" to use the account embedded in the export, or pick a specific account to override it.
                 <router-link to="/accounts" class="text-primary-600 hover:text-primary-500">Manage accounts</router-link>
               </p>
             </div>
 
             <div>
-              <label for="import-strategy" class="label">Strategy (optional)</label>
+              <label for="import-strategy" class="label">Strategy handling</label>
               <BaseSelect
                 id="import-strategy"
                 v-model="selectedImportStrategy"
                 noun="strategies"
-                placeholder="Auto-detect from trade data"
                 :options="importStrategyOptions"
               />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Leave unset to classify each trade automatically. Choose a strategy to apply it to every trade in this import.
+                Automatically classify, intentionally leave blank, or apply one strategy to every imported trade.
               </p>
             </div>
+
+            <label class="flex items-start gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
+              <input
+                v-model="includeImportedNotes"
+                type="checkbox"
+                class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
+              />
+              <span>
+                <span class="block text-sm font-medium text-gray-900 dark:text-white">Import notes and descriptions</span>
+                <span class="mt-0.5 block text-sm text-gray-500 dark:text-gray-400">
+                  Leave off to keep journal notes empty. Existing notes are never erased when an import updates a trade.
+                </span>
+              </span>
+            </label>
 
             <div v-if="selectedFile" class="rounded-2xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/50">
               <div class="flex flex-col gap-1">
@@ -217,6 +231,7 @@
                   <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Account</p>
                   <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ accountReadinessLabel }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ accountReadinessMessage }}</p>
+                  <p v-if="accountDetectionWarning" class="mt-1 text-xs text-yellow-600 dark:text-yellow-400">{{ accountDetectionWarning }}</p>
                 </div>
               </div>
 
@@ -306,7 +321,11 @@
                 />
                 <span>Select All</span>
               </label>
-              <button @click="fetchLogs" class="btn-secondary text-sm">
+              <button
+                v-if="authStore.user?.role === 'admin' || authStore.user?.role === 'owner'"
+                @click="fetchLogs()"
+                class="btn-secondary text-sm"
+              >
                 View Logs
               </button>
             </div>
@@ -753,6 +772,34 @@
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
                 <strong>Required columns:</strong> Contract, Product, B/S, Filled Qty (or filledQty), Avg Fill Price (or avgPrice), Fill Time. Optional: Order ID, Status, Product Description.
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">NinjaTrader</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export the Executions or Trade Performance grid from NinjaTrader. Futures contracts, account identifiers, commissions, and exchange fees are imported automatically.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Trade number,Instrument,Account,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Profit,Commission,Clearing Fee,Exchange Fee,IP Fee,NFA Fee<br>
+                1,MES 09-26,SIM101,Short,1,7427.50,7423.50,7/28/2026 9:45:17 AM,7/28/2026 9:46:05 AM,$20.00,$0.00,$0.00,$0.00,$0.00,$0.00
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Trade Performance:</strong> Instrument, Market pos., Qty, Entry/Exit price, and Entry/Exit time. <strong>Executions:</strong> Instrument, Action, Quantity, Price, Time, and E/X or Order ID.
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">Sierra Chart</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export Trade Activity Log with File &gt; Export, or upload its raw UTC .data file. Fill executions are reconstructed into flat-to-flat futures trades.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                ActivityType, DateTime, Symbol, Quantity, BuySell, FillPrice, TradeAccount<br>
+                Fills, 2026-09-08 14:02:58, MESU6.CME, 1, Buy, 768850, Sim1
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Important:</strong> Do not use Save Log As; that format uses the display timezone. Configure Sierra Chart under Broker Fees if commissions are not present in the activity log.
               </p>
             </div>
 
@@ -1219,7 +1266,7 @@
 </template>
 
 <script setup>
-import { ref, defineAsyncComponent, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
+import { ref, defineAsyncComponent, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
@@ -1227,6 +1274,7 @@ import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
+import { debounce } from '@/utils/debounce'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon, DocumentTextIcon } from '@heroicons/vue/24/outline'
 import { useAnalytics } from '@/composables/useAnalytics'
@@ -1247,7 +1295,10 @@ import BaseSelect from '@/components/common/BaseSelect.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 import { useStrategyOrder } from '@/composables/useStrategyOrder'
-import { parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
+import { useImportPreferences } from '@/composables/useImportPreferences'
+import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
+import { isSierraChartBinaryFile, parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
+import { collectAccountIdentifiersFromSamples, extractFilenameAccount } from '@/utils/importAccountDetection'
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
@@ -1269,7 +1320,9 @@ const fileAnalysis = ref({
   rowCount: null,
   headers: [],
   formatDetected: false,
-  detectedBroker: ''
+  detectedBroker: '',
+  accountIdentifiers: [],
+  accountSource: null
 })
 const showCurrencyProModal = ref(false)
 
@@ -1281,8 +1334,13 @@ const startingTrial = ref(false)
 // Account selection for imports
 const accounts = ref([])
 const requiresAccountSelection = ref(false)
-const selectedAccountId = ref(null)
-const selectedImportStrategy = ref('')
+const selectedAccountId = ref('auto')
+const {
+  strategy: selectedImportStrategy,
+  includeNotes: includeImportedNotes,
+  refresh: refreshImportPreferences,
+  persist: persistImportPreferences
+} = useImportPreferences()
 const importStrategiesList = ref([])
 const { orderNames: orderImportStrategyNames, refresh: refreshStrategyOrder } = useStrategyOrder()
 const currencyProMessage = ref('')
@@ -1374,6 +1432,8 @@ const brokerFormatOptions = computed(() => {
         { value: 'tradingview', label: 'TradingView' },
         { value: 'avatrade', label: 'AvaTrade' },
         { value: 'tradovate', label: 'Tradovate' },
+        { value: 'sierrachart', label: 'Sierra Chart' },
+        { value: 'ninjatrader', label: 'NinjaTrader' },
         { value: 'questrade', label: 'Questrade' },
         { value: 'tradestation', label: 'TradeStation' },
         { value: 'tastytrade', label: 'Tastytrade' }
@@ -1508,6 +1568,26 @@ const brokerGuides = {
     ],
     warning: 'Position summaries are not enough. Use fills or execution history so each trade can be reconstructed.'
   },
+  sierrachart: {
+    title: 'Sierra Chart',
+    badge: 'Supported',
+    steps: [
+      'Open Trade Activity Log and choose File > Export for a tab-delimited text file.',
+      'You can also upload the raw UTC .data file from the TradeActivityLogs folder.',
+      'Keep the original ActivityType, FillPrice, FilledQuantity, and TradeAccount fields.'
+    ],
+    warning: 'Use File > Export, not Save Log As. Save Log As uses the display timezone and cannot be imported reliably.'
+  },
+  ninjatrader: {
+    title: 'NinjaTrader',
+    badge: 'Supported',
+    steps: [
+      'Open the Executions or Trade Performance grid in NinjaTrader.',
+      'Right-click the grid, choose Export, and save it as CSV.',
+      'Upload the original file; both execution rows and completed Trade Performance rows are supported.'
+    ],
+    warning: 'Export the grid itself rather than an account summary. Keep the original Entry/Exit or Action/Price headers intact.'
+  },
   tradingview: {
     title: 'TradingView',
     badge: 'Supported',
@@ -1633,22 +1713,59 @@ const brokerRecommendation = computed(() => {
   return 'Selected format matches the file we inspected.'
 })
 
+const detectedAccountIdentifiers = computed(() => fileAnalysis.value.accountIdentifiers || [])
+
+const matchedDetectedAccounts = computed(() => {
+  const byIdentifier = new Map()
+  for (const account of accounts.value) {
+    if (account.identifier) byIdentifier.set(String(account.identifier).trim(), account)
+  }
+  return detectedAccountIdentifiers.value.map(identifier => ({
+    identifier,
+    account: byIdentifier.get(String(identifier).trim()) || null
+  }))
+})
+
+const unmatchedDetectedAccounts = computed(() => matchedDetectedAccounts.value.filter(match => !match.account))
+
+const detectedAccountSummary = computed(() => {
+  const detected = matchedDetectedAccounts.value
+  if (detected.length === 0) return 'No account identifier found in the file.'
+  const labels = detected.map(({ identifier, account }) =>
+    account ? `${account.name} (${redactAccountId(identifier)})` : redactAccountId(identifier)
+  )
+  if (detected.length === 1) return `Detected from file: ${labels[0]}.`
+  return `Detected ${detected.length} accounts in the file: ${labels.join(', ')}.`
+})
+
+const accountDetectionWarning = computed(() => {
+  if (selectedAccountId.value !== 'auto') return ''
+  const unmatched = unmatchedDetectedAccounts.value
+  if (unmatched.length === 0) return ''
+  const list = unmatched.map(match => redactAccountId(match.identifier)).join(', ')
+  return `${list} not found in your accounts. New account(s) will be created automatically for those identifiers.`
+})
+
 const accountReadinessLabel = computed(() => {
-  if (!requiresAccountSelection.value) return 'Optional'
+  if (selectedAccountId.value === 'auto') {
+    return detectedAccountIdentifiers.value.length > 0 ? 'Auto-detected' : 'Auto-detect'
+  }
   if (selectedAccountId.value === 'none') return 'No account'
   if (selectedAccountId.value !== null) return 'Assigned'
+  if (!requiresAccountSelection.value) return 'Optional'
   return 'Needs selection'
 })
 
 const accountReadinessMessage = computed(() => {
-  if (!requiresAccountSelection.value) return 'This import can continue without selecting an account.'
+  if (selectedAccountId.value === 'auto') return detectedAccountSummary.value
   if (selectedAccountId.value === 'none') return 'Trades will be imported without linking to an existing account.'
   if (selectedAccountId.value !== null) return 'Trades will be attached to your selected account.'
+  if (!requiresAccountSelection.value) return 'This import can continue without selecting an account.'
   return 'Pick an account before starting import.'
 })
 
 const accountOptions = computed(() => {
-  const opts = [{ value: null, label: 'Select account...' }]
+  const opts = [{ value: 'auto', label: 'Automatically detect from file' }]
   for (const account of accounts.value) {
     const identifier = account.identifier ? ` (${redactAccountId(account.identifier)})` : ''
     const broker = account.broker ? ` - ${formatBrokerName(account.broker)}` : ''
@@ -1659,23 +1776,46 @@ const accountOptions = computed(() => {
 })
 
 const fileReadinessMessage = computed(() => {
-  if (!selectedFile.value) return 'Upload a CSV file to start.'
+  if (!selectedFile.value) return 'Upload a broker export file to start.'
   if (isAnalyzingFile.value) return 'Analyzing your file before import.'
   if (!fileAnalysis.value.headers.length) return 'We could not read headers from this file yet.'
   if (!fileAnalysis.value.formatDetected) return 'This file may need Generic CSV or column mapping.'
   return `This file looks import-ready${fileAnalysis.value.detectedBroker ? ` for ${formatBrokerName(fileAnalysis.value.detectedBroker)}` : ''}.`
 })
 
-const importStrategyOptions = computed(() =>
-  orderImportStrategyNames(importStrategiesList.value).map((strategy) => ({
+const importStrategyOptions = computed(() => [
+  { value: '__auto__', label: 'Automatically classify' },
+  { value: '__blank__', label: 'Leave blank' },
+  ...orderImportStrategyNames(importStrategiesList.value).map((strategy) => ({
     value: strategy,
     label: strategy.replace(/_/g, ' ')
   }))
-)
+])
 
 function resolveImportStrategyParam() {
   const value = selectedImportStrategy.value?.trim()
-  return value || null
+  return value && !value.startsWith('__') ? value : null
+}
+
+function resolveImportOptions() {
+  return {
+    strategy_mode: selectedImportStrategy.value === '__blank__' ? 'blank' : 'auto',
+    include_notes: includeImportedNotes.value,
+    account_mode: resolveAccountMode()
+  }
+}
+
+function resolveAccountMode() {
+  const value = selectedAccountId.value
+  if (value === 'none') return 'none'
+  if (value === 'auto' || !value) return 'auto'
+  return 'override'
+}
+
+function resolveAccountIdToSend() {
+  const value = selectedAccountId.value
+  if (!value || value === 'none' || value === 'auto') return null
+  return value
 }
 
 async function fetchImportStrategies() {
@@ -1767,6 +1907,8 @@ function formatBrokerName(broker) {
     tradervue: 'TraderVue',
     avatrade: 'AvaTrade',
     tradovate: 'Tradovate',
+    sierrachart: 'Sierra Chart',
+    ninjatrader: 'NinjaTrader',
     questrade: 'Questrade',
     tradestation: 'TradeStation',
     tastytrade: 'Tastytrade',
@@ -1787,7 +1929,9 @@ function resetFileAnalysis() {
     rowCount: null,
     headers: [],
     formatDetected: false,
-    detectedBroker: ''
+    detectedBroker: '',
+    accountIdentifiers: [],
+    accountSource: null
   }
 }
 
@@ -1871,6 +2015,8 @@ function getStatusText(status) {
 
 // Count CSV rows (excluding header)
 async function countCSVRows(file) {
+  if (isSierraChartBinaryFile(file)) return 0
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -1894,6 +2040,13 @@ function detectBrokerFromHeaders(headers) {
 
   const lowerHeaders = headers.map(h => h.toLowerCase())
   const headersStr = lowerHeaders.join(',')
+
+  if (headersStr.includes('activitytype') && headersStr.includes('datetime') &&
+      headersStr.includes('transdatetime') && headersStr.includes('fillprice') &&
+      headersStr.includes('filledquantity') && headersStr.includes('fillexecutionserviceid') &&
+      headersStr.includes('positionquantity')) {
+    return 'sierrachart'
+  }
 
   // ThinkorSwim detection
   if (headersStr.includes('date') && headersStr.includes('time') && headersStr.includes('type') &&
@@ -1937,7 +2090,7 @@ function detectBrokerFromHeaders(headers) {
     return 'schwab'
   }
 
-  // IBKR detection (two formats)
+  // IBKR detection (three formats)
   if (headersStr.includes('underlyingsymbol') && headersStr.includes('strike') &&
       headersStr.includes('expiry') && headersStr.includes('put/call') &&
       headersStr.includes('multiplier') && headersStr.includes('buy/sell')) {
@@ -1947,6 +2100,12 @@ function detectBrokerFromHeaders(headers) {
       (headersStr.includes('date/time') || headersStr.includes('datetime')) &&
       headersStr.includes('quantity') && headersStr.includes('price') &&
       !headersStr.includes('action')) {
+    return 'ibkr'
+  }
+  if (headersStr.includes('clientaccountid') && headersStr.includes('symbol') &&
+      headersStr.includes('buy/sell') && headersStr.includes('quantity') &&
+      headersStr.includes('price') && headersStr.includes('tradedate') &&
+      headersStr.includes('currencyprimary') && headersStr.includes('assetclass')) {
     return 'ibkr'
   }
 
@@ -1963,7 +2122,15 @@ function detectBrokerFromHeaders(headers) {
     return 'firstrade'
   }
 
-  // ProjectX detection
+  // ProjectX order-history detection (ProjectX-powered platforms)
+  if (headersStr.includes('contractname') && headersStr.includes('status') &&
+      headersStr.includes('size') && headersStr.includes('side') &&
+      headersStr.includes('filledat') && headersStr.includes('executeprice') &&
+      headersStr.includes('positiondisposition')) {
+    return 'projectx'
+  }
+
+  // ProjectX completed-trades detection
   if (headersStr.includes('contractname') && headersStr.includes('enteredat') &&
       headersStr.includes('exitedat') && headersStr.includes('pnl') &&
       headersStr.includes('tradeduration')) {
@@ -1986,11 +2153,26 @@ function detectBrokerFromHeaders(headers) {
     return 'tradovate'
   }
 
-  // NinjaTrader grid export (semicolon-delimited, European decimals in price)
-  if (headersStr.includes('instrument') && headersStr.includes('action') &&
-      headersStr.includes('quantity') && headersStr.includes('price') &&
-      (headersStr.includes('e/x') || headersStr.includes('order id'))) {
-    return 'generic'
+  // NinjaTrader execution and Trade Performance grid exports
+  const isNinjaTraderExecutionGrid =
+    headersStr.includes('instrument') &&
+    headersStr.includes('action') &&
+    headersStr.includes('quantity') &&
+    headersStr.includes('price') &&
+    (headersStr.includes('e/x') || headersStr.includes('order id'))
+  const isNinjaTraderTradePerformanceGrid =
+    headersStr.includes('trade number') &&
+    headersStr.includes('instrument') &&
+    headersStr.includes('market pos.') &&
+    headersStr.includes('qty') &&
+    headersStr.includes('entry price') &&
+    headersStr.includes('exit price') &&
+    headersStr.includes('entry time') &&
+    headersStr.includes('exit time') &&
+    headersStr.includes('profit')
+
+  if (isNinjaTraderExecutionGrid || isNinjaTraderTradePerformanceGrid) {
+    return 'ninjatrader'
   }
 
   // Questrade detection
@@ -2040,6 +2222,34 @@ function detectKnownFormat(headers) {
   return !!detectBrokerFromHeaders(headers)
 }
 
+async function detectFileAccounts(file, headers) {
+  if (isSierraChartBinaryFile(file)) {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await api.post('/trades/import/analyze-accounts', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      const identifiers = Array.isArray(response.data?.accountIdentifiers)
+        ? response.data.accountIdentifiers
+        : []
+      return { accountIdentifiers: identifiers, accountSource: response.data?.source || null }
+    } catch (err) {
+      console.warn('[IMPORT] Account analysis failed, using filename fallback:', err?.message)
+      const fromName = extractFilenameAccount(file.name)
+      return { accountIdentifiers: fromName ? [fromName] : [], accountSource: fromName ? 'filename' : null }
+    }
+  }
+
+  const sampleRows = await parseCSVSampleRows(file, headers, { sampleCount: 50 })
+  const identifiers = collectAccountIdentifiersFromSamples(headers, sampleRows)
+  if (identifiers.length > 0) {
+    return { accountIdentifiers: identifiers, accountSource: 'record' }
+  }
+  const fromName = extractFilenameAccount(file.name)
+  return { accountIdentifiers: fromName ? [fromName] : [], accountSource: fromName ? 'filename' : null }
+}
+
 async function analyzeSelectedFile(file) {
   if (!file) {
     resetFileAnalysis()
@@ -2050,11 +2260,33 @@ async function analyzeSelectedFile(file) {
   isAnalyzingFile.value = true
 
   try {
+    if (isSierraChartBinaryFile(file)) {
+      const accountInfo = await detectFileAccounts(file, ['Binary Trade Activity Log'])
+      if (analysisId !== activeFileAnalysisId) {
+        return
+      }
+      fileAnalysis.value = {
+        rowCount: 0,
+        headers: ['Binary Trade Activity Log'],
+        formatDetected: true,
+        detectedBroker: 'sierrachart',
+        ...accountInfo
+      }
+      track('import_file_analyzed', {
+        broker_selected: selectedBroker.value,
+        detected_broker: 'sierrachart',
+        row_count: 0,
+        header_count: 1
+      })
+      return
+    }
+
     const [rowCount, headers] = await Promise.all([
       countCSVRows(file),
       parseCSVHeaders(file)
     ])
     const detectedBroker = detectBrokerFromHeaders(headers)
+    const accountInfo = await detectFileAccounts(file, headers)
 
     if (analysisId !== activeFileAnalysisId) {
       return
@@ -2064,7 +2296,8 @@ async function analyzeSelectedFile(file) {
       rowCount,
       headers,
       formatDetected: !!detectedBroker,
-      detectedBroker
+      detectedBroker,
+      ...accountInfo
     }
 
     track('import_file_analyzed', {
@@ -2097,7 +2330,8 @@ function clearSelectedFile() {
 }
 
 async function setSelectedFile(file, source = 'picker') {
-  if (file && (file.type === 'text/csv' || file.type === 'application/csv' || file.name.toLowerCase().endsWith('.csv'))) {
+  const supportedExtension = file && /\.(csv|txt|data)$/i.test(file.name)
+  if (file && (file.type === 'text/csv' || file.type === 'application/csv' || supportedExtension)) {
     selectedFile.value = file
     error.value = null
     console.log('File accepted:', file.name)
@@ -2108,10 +2342,10 @@ async function setSelectedFile(file, source = 'picker') {
     })
     await analyzeSelectedFile(file)
   } else {
-    error.value = 'Please select a valid CSV file'
+    error.value = 'Please select a valid CSV, TXT, or Sierra Chart DATA file'
     selectedFile.value = null
     resetFileAnalysis()
-    console.log('File rejected - not CSV')
+    console.log('File rejected - unsupported trade export')
     trackImportValidationFailed('invalid_file_type', {
       file_name: file?.name || '',
       file_size: file?.size || 0
@@ -2136,8 +2370,8 @@ async function handleImport() {
     return
   }
 
-  // Convert "none" to null for the API
-  const accountIdToSend = selectedAccountId.value === 'none' ? null : selectedAccountId.value
+  // "auto" and "none" both send no override so each record's account wins.
+  const accountIdToSend = resolveAccountIdToSend()
 
   console.log('Starting import with:', {
     fileName: selectedFile.value.name,
@@ -2229,7 +2463,10 @@ async function handleImport() {
     }
 
     // Pre-check: Try to detect format if using auto-detect or generic (and no custom mapping)
-    if ((selectedBroker.value === 'auto' || selectedBroker.value === 'generic') && !mappingId) {
+    // Sierra Chart .data files are binary. They are recognized during file
+    // analysis and decoded by the backend, so CSV header mapping does not apply.
+    if ((selectedBroker.value === 'auto' || selectedBroker.value === 'generic') &&
+        !mappingId && !isSierraChartBinaryFile(selectedFile.value)) {
       const headers = await parseCSVHeaders(selectedFile.value)
       console.log(`[IMPORT] Parsed headers:`, headers)
 
@@ -2270,7 +2507,8 @@ async function handleImport() {
       broker,
       mappingId,
       accountIdToSend,
-      resolveImportStrategyParam()
+      resolveImportStrategyParam(),
+      resolveImportOptions()
     )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
@@ -2286,6 +2524,8 @@ async function handleImport() {
     // Save broker preference to localStorage
     localStorage.setItem('lastSelectedBroker', selectedBroker.value)
     uiPreferencesStore.notifyChanged('lastSelectedBroker', selectedBroker.value)
+
+    persistImportPreferences()
 
     // Reset form (but keep broker selection)
     selectedFile.value = null
@@ -2420,18 +2660,16 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
       broker = 'generic'
     }
 
-    // Get account to send
-    let accountIdToSend = null
-    if (requiresAccountSelection.value && selectedAccountId.value !== null && selectedAccountId.value !== 'none') {
-      accountIdToSend = selectedAccountId.value
-    }
+    // Get account to send ("auto" and "none" send no override)
+    const accountIdToSend = resolveAccountIdToSend()
 
     const result = await tradesStore.importTrades(
       selectedFile.value,
       broker,
       mappingId,
       accountIdToSend,
-      resolveImportStrategyParam()
+      resolveImportStrategyParam(),
+      resolveImportOptions()
     )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
@@ -2447,6 +2685,8 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
     // Save broker preference to localStorage
     localStorage.setItem('lastSelectedBroker', selectedBroker.value)
     uiPreferencesStore.notifyChanged('lastSelectedBroker', selectedBroker.value)
+
+    persistImportPreferences()
 
     // Reset form (but keep broker selection)
     selectedFile.value = null
@@ -2695,18 +2935,12 @@ function hasActiveImportHistory(imports = importHistory.value) {
   return imports.some(importLog => ['pending', 'processing'].includes(importLog.status))
 }
 
-function startImportHistoryPolling() {
-  if (importHistoryInterval) return
-  importHistoryInterval = window.setInterval(() => {
-    fetchImportHistory()
-  }, 5000)
-}
-
-function stopImportHistoryPolling() {
-  if (!importHistoryInterval) return
-  clearInterval(importHistoryInterval)
-  importHistoryInterval = null
-}
+// Poll import history every 5 seconds while an import is pending/processing.
+// Visibility-gated: pauses while the tab is hidden, refreshes on refocus.
+const {
+  start: startImportHistoryPolling,
+  stop: stopImportHistoryPolling
+} = useVisibilityPolling(() => fetchImportHistory(), 5000)
 
 function syncImportHistoryPolling(imports = importHistory.value) {
   if (hasActiveImportHistory(imports)) {
@@ -2884,21 +3118,12 @@ const highlightedLogContent = computed(() => {
 })
 
 // Search logs function - debounced server-side search
-let searchTimeout = null
-function searchLogs() {
-  // Clear existing timeout
-  if (searchTimeout) {
-    clearTimeout(searchTimeout)
+const searchLogs = debounce(() => {
+  if (selectedLogFile.value) {
+    // Reload log file with search query
+    loadLogFile(selectedLogFile.value, 1, logPagination.value.showAll, logSearchQuery.value)
   }
-  
-  // Debounce the search to avoid too many requests
-  searchTimeout = setTimeout(() => {
-    if (selectedLogFile.value) {
-      // Reload log file with search query
-      loadLogFile(selectedLogFile.value, 1, logPagination.value.showAll, logSearchQuery.value)
-    }
-  }, 300) // 300ms debounce
-}
+}, 300) // 300ms debounce
 
 // Clear search
 function clearSearch() {
@@ -3227,7 +3452,7 @@ function pollImportStatus(importId) {
               ? `Try using Auto-Detect instead of the "${brokerName}" format`
               : 'Try selecting your specific broker format instead of Auto-Detect',
             'Make sure your file contains actual trade data, not just an account summary or positions',
-            'Verify the file is a .csv file (not .xlsx or .xls)',
+            'Verify the file is CSV, TXT, or a Sierra Chart DATA export (not .xlsx or .xls)',
             'Check that the file was exported from the correct section of your broker platform'
           ]
           showImportantWarning(
@@ -3344,11 +3569,6 @@ async function fetchImportRequirements() {
       requiresAccountSelection: requiresAccountSelection.value,
       accountCount: accounts.value.length
     })
-    // Pre-select primary account if exists
-    const primary = accounts.value.find(a => a.isPrimary)
-    if (primary) {
-      selectedAccountId.value = primary.id
-    }
   } catch (err) {
     console.error('Error fetching import requirements:', err)
   }
@@ -3443,14 +3663,15 @@ async function handleMappingSaved(mapping) {
   importStage.value = 'Uploading and processing with custom mapping...'
 
   try {
-    // Import with the mapping ID (convert "none" to null)
-    const accountIdToSend = selectedAccountId.value === 'none' ? null : selectedAccountId.value
+    // Import with the mapping ID ("auto" and "none" send no override)
+    const accountIdToSend = resolveAccountIdToSend()
     const result = await tradesStore.importTrades(
       currentMappingFile.value,
       'generic',
       mapping.id,
       accountIdToSend,
-      resolveImportStrategyParam()
+      resolveImportStrategyParam(),
+      resolveImportOptions()
     )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
@@ -3465,6 +3686,8 @@ async function handleMappingSaved(mapping) {
     // Save broker preference
     localStorage.setItem('lastSelectedBroker', 'generic')
     uiPreferencesStore.notifyChanged('lastSelectedBroker', 'generic')
+
+    persistImportPreferences()
 
     // Clear the file reference
     currentMappingFile.value = null
@@ -3568,9 +3791,7 @@ watch(selectedImportIds, (ids) => {
   }
 }, { deep: true })
 
-let importHistoryInterval = null
-
-onMounted(() => {
+onMounted(async () => {
   track('import_page_viewed', {
     onboarding_step: authStore.onboardingStep || null,
     has_existing_imports: importHistory.value.length > 0
@@ -3578,6 +3799,9 @@ onMounted(() => {
 
   refreshStrategyOrder()
   runWhenIdle(() => fetchImportStrategies())
+
+  await uiPreferencesStore.init()
+  refreshImportPreferences()
 
   // Load saved broker preference
   const savedBroker = localStorage.getItem('lastSelectedBroker')
@@ -3606,9 +3830,5 @@ watch(selectedBroker, (broker, previousBroker) => {
     has_file_selected: !!selectedFile.value,
     detected_broker: fileAnalysis.value.detectedBroker || 'unknown'
   })
-})
-
-onBeforeUnmount(() => {
-  stopImportHistoryPolling()
 })
 </script>

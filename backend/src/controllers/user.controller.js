@@ -8,6 +8,9 @@ const db = require('../config/database');
 const path = require('path');
 const fs = require('fs').promises;
 const imageProcessor = require('../utils/imageProcessor');
+const refreshTokenService = require('../services/refreshToken.service');
+const BillingService = require('../services/billingService');
+const { clearAuthUserCache } = require('../middleware/auth');
 
 const PROTECTED_EMAIL = (process.env.DEMO_EMAIL || 'demo@example.com').toLowerCase();
 
@@ -39,6 +42,16 @@ function getAvatarPathFromUrl(avatarUrl) {
   }
 
   return path.join(getAvatarUploadsDir(), filename);
+}
+
+function handleAccountDeletionError(error, res, next) {
+  if (error?.code === 'ACCOUNT_DELETION_BILLING_CANCELLATION_FAILED') {
+    return res.status(503).json({
+      error: 'Account deletion is temporarily unavailable because billing could not be stopped. Please try again or contact support.'
+    });
+  }
+
+  return next(error);
 }
 
 const userController = {
@@ -277,6 +290,9 @@ const userController = {
       }
 
       await User.update(req.user.id, { password: newPassword });
+      await User.revokeSessions(req.user.id);
+      await refreshTokenService.revokeUserTokens(req.user.id, 'password_change');
+      clearAuthUserCache(req.user.id);
       
       res.json({ message: 'Password changed successfully' });
     } catch (error) {
@@ -499,10 +515,15 @@ const userController = {
         }
       }
 
-      await User.deleteUser(userId, { deletionType: 'admin', deletedByAdminId: req.user.id });
+      await BillingService.cancelSubscriptionForAccountDeletion(userId);
+      const deleted = await User.deleteUser(userId, { deletionType: 'admin', deletedByAdminId: req.user.id });
+      if (!deleted) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      clearAuthUserCache(userId);
       res.json({ message: `User ${targetUser.username} has been permanently deleted` });
     } catch (error) {
-      next(error);
+      handleAccountDeletionError(error, res, next);
     }
   },
 
@@ -712,14 +733,21 @@ const userController = {
       const tradeQualityService = require('../services/tradeQuality.service');
       const profilesMeta = tradeQualityService.getQualityProfilesMeta();
 
-      // Resolve each profile's effective weights (custom or default)
+      // Resolve each profile's effective weights (custom or default). The
+      // per-profile lookups are independent queries, so run them all at once.
+      const profileTypes = Object.keys(profilesMeta);
+      const resolved = await Promise.all(profileTypes.map(async (profileType) => {
+        const [decimalWeights, coverage] = await Promise.all([
+          tradeQualityService.getUserQualityWeights(req.user.id, profileType),
+          tradeQualityService.getUserMinimumCoverage(req.user.id, profileType)
+        ]);
+        return { profileType, decimalWeights, coverage };
+      }));
+
       const profiles = {};
       const minimumCoverage = {};
-      for (const profileType of Object.keys(profilesMeta)) {
-        const decimalWeights = await tradeQualityService.getUserQualityWeights(req.user.id, profileType);
-        minimumCoverage[profileType] = Math.round(
-          (await tradeQualityService.getUserMinimumCoverage(req.user.id, profileType)) * 100
-        );
+      for (const { profileType, decimalWeights, coverage } of resolved) {
+        minimumCoverage[profileType] = Math.round(coverage * 100);
         const meta = profilesMeta[profileType];
         const out = {};
         // Map internal metric keys back to API keys as integer percentages
@@ -911,15 +939,24 @@ const userController = {
         }
       }
 
+      // Stop any Stripe billing before removing the local subscription record.
+      // If Stripe cannot confirm cancellation, fail closed and leave the
+      // account intact so support can still identify the subscription.
+      await BillingService.cancelSubscriptionForAccountDeletion(userId);
+
       // Delete the user account (self-deletion)
-      await User.deleteUser(userId, { deletionType: 'self', deletedByAdminId: null });
+      const deleted = await User.deleteUser(userId, { deletionType: 'self', deletedByAdminId: null });
+      if (!deleted) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      clearAuthUserCache(userId);
 
       console.log(`[INFO] User ${user.username} (ID: ${userId}) deleted their own account`);
 
       res.json({ message: 'Account deleted successfully' });
     } catch (error) {
       console.error('[ERROR] Failed to delete own account:', error.message);
-      next(error);
+      handleAccountDeletionError(error, res, next);
     }
   }
 };

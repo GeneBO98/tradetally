@@ -6,10 +6,8 @@
 
 <script setup>
 import { onMounted, ref, watch } from 'vue'
-import { Chart, registerables } from 'chart.js'
+import { Chart } from '@/lib/chartSetup'
 import { formatTradeDate } from '@/utils/date'
-
-Chart.register(...registerables)
 
 const props = defineProps({
   data: {

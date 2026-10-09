@@ -4,13 +4,7 @@ const unsubscribeService = require('./unsubscribeService');
 const escapeHtml = require('../utils/escapeHtml');
 const { loadTemplate, renderTemplate } = require('../utils/emailTemplateLoader');
 const db = require('../config/database');
-
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return '***';
-  const [localPart, domain] = email.split('@');
-  if (localPart.length <= 2) return `**@${domain}`;
-  return `${localPart.slice(0, 2)}***@${domain}`;
-}
+const maskEmail = require('../utils/maskEmail');
 
 function getEmailProvider() {
   return (process.env.EMAIL_PROVIDER || 'smtp').trim().toLowerCase();
@@ -479,6 +473,106 @@ class EmailService {
       console.error('Failed to send email change verification email:', error);
       await this.logEmail({ recipient: email, subject: mailOptions.subject || 'email-change-verification', emailType: 'email_change', htmlBody: mailOptions.html || null, textBody: mailOptions.text, status: 'failed', errorMessage: error.message });
       throw error;
+    }
+  }
+
+  static async sendBrokerReconnectRequiredEmail({
+    email,
+    displayName,
+    brokerName,
+    userId,
+    connectionId,
+    expiringSoon = false,
+    expiresAt = null
+  }) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping broker reconnect email');
+      return;
+    }
+
+    const baseUrl = (process.env.FRONTEND_URL || process.env.APP_URL || process.env.INSTANCE_URL || 'http://localhost:5173')
+      .replace(/\/$/, '');
+    const reconnectUrl = `${baseUrl}/broker-sync`;
+    const safeDisplayName = escapeHtml(displayName || 'Trader');
+    const safeBrokerName = escapeHtml(brokerName || 'Broker');
+    const subject = expiringSoon
+      ? `Reauthorize ${brokerName} before syncing is interrupted`
+      : `Reconnect ${brokerName} to resume TradeTally sync`;
+    const headline = expiringSoon
+      ? `Reauthorize ${safeBrokerName}`
+      : `Reconnect ${safeBrokerName}`;
+    const body = expiringSoon
+      ? `Your ${safeBrokerName} authorization expires within 24 hours. Reauthorize now to keep TradeTally syncing without interruption. Your existing trades and sync settings will remain unchanged.`
+      : `Your ${safeBrokerName} authorization expired, so TradeTally can no longer sync new trades. Your existing trades are safe. Reconnect the account to resume syncing without deleting or re-importing anything.`;
+    const actionLabel = expiringSoon ? `Reauthorize ${safeBrokerName}` : `Reconnect ${safeBrokerName}`;
+    const content = `
+      <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        ${headline}
+      </h1>
+      <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Hi ${safeDisplayName},
+      </p>
+      <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        ${body}
+      </p>
+      <div style="text-align: center; margin: 0 0 24px 0;">
+        <a href="${reconnectUrl}" style="${this.getButtonStyle()}">
+          ${actionLabel}
+        </a>
+      </div>
+      <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        This authorization step is required by the broker and cannot be completed automatically by TradeTally.
+      </p>
+    `;
+    const mailOptions = {
+      from: {
+        name: 'TradeTally',
+        address: this.getTransactionalFromAddress()
+      },
+      to: email,
+      subject,
+      html: this.getBaseTemplate(subject, content),
+      text: expiringSoon
+        ? `Your ${brokerName} authorization expires within 24 hours. Reauthorize now to prevent a sync interruption: ${reconnectUrl}`
+        : `Your ${brokerName} authorization expired, so TradeTally can no longer sync new trades. Your existing trades are safe. Reconnect at ${reconnectUrl}.`,
+      headers: {
+        'X-Entity-Ref-ID': `broker-reauth-${connectionId}`,
+        'Message-ID': `<broker-reauth-${connectionId}-${Date.now()}@tradetally.io>`
+      }
+    };
+
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log(`[BROKER-SYNC] Reconnect email sent for ${brokerName}`);
+      await this.logEmail({
+        recipient: email,
+        subject,
+        emailType: expiringSoon ? 'broker_reauth_expiring' : 'broker_reauth_required',
+        htmlBody: mailOptions.html,
+        textBody: mailOptions.text,
+        status: 'sent',
+        userId,
+        metadata: {
+          broker: brokerName,
+          connection_id: connectionId,
+          expiring_soon: expiringSoon,
+          expires_at: expiresAt ? new Date(expiresAt).toISOString() : null
+        }
+      });
+    } catch (error) {
+      console.error('[BROKER-SYNC] Failed to send reconnect email:', error.message);
+      await this.logEmail({
+        recipient: email,
+        subject,
+        emailType: expiringSoon ? 'broker_reauth_expiring' : 'broker_reauth_required',
+        htmlBody: mailOptions.html,
+        textBody: mailOptions.text,
+        status: 'failed',
+        errorMessage: error.message,
+        userId,
+        metadata: { broker: brokerName, connection_id: connectionId }
+      });
     }
   }
 

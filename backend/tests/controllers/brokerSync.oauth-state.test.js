@@ -8,6 +8,7 @@ jest.mock('../../src/config/database', () => ({
 jest.mock('../../src/models/BrokerConnection', () => ({
   create: jest.fn().mockResolvedValue({ id: 'connection-1' }),
   updateStatus: jest.fn().mockResolvedValue(),
+  updateBrokerMetadata: jest.fn().mockResolvedValue(),
   findById: jest.fn().mockResolvedValue({ id: 'connection-1', brokerType: 'tradestation' })
 }));
 jest.mock('axios', () => ({
@@ -19,6 +20,7 @@ const db = require('../../src/config/database');
 const BrokerConnection = require('../../src/models/BrokerConnection');
 const axios = require('axios');
 const brokerSyncController = require('../../src/controllers/brokerSync.controller');
+const schwabService = require('../../src/services/brokerSync/schwabService');
 const tradestationService = require('../../src/services/brokerSync/tradestationService');
 
 function createRes() {
@@ -61,6 +63,7 @@ describe('Schwab OAuth state — server-side binding', () => {
     expect(params[1]).toBe('user-123');
     expect(params[2]).toBe('schwab');
     expect(params[3]).toBeInstanceOf(Date);
+    expect(JSON.parse(params[4])).toEqual({ platform: 'web' });
 
     // authUrl must include the state as-is (no client-readable base64 payload)
     const stateParam = new URL(res.payload.authUrl).searchParams.get('state');
@@ -68,7 +71,9 @@ describe('Schwab OAuth state — server-side binding', () => {
   });
 
   test('handleSchwabCallback rejects a state that does not match any row', async () => {
-    // UPDATE ... RETURNING * returns no rows -> invalid/expired/reused state
+    // UPDATE ... RETURNING * returns no rows -> invalid/expired/reused state.
+    // Follow-up context SELECT also returns no rows, so this falls back to web.
+    db.query.mockResolvedValueOnce({ rows: [] });
     db.query.mockResolvedValueOnce({ rows: [] });
 
     const req = { query: { code: 'auth-code', state: 'deadbeef' } };
@@ -83,7 +88,7 @@ describe('Schwab OAuth state — server-side binding', () => {
   });
 
   test('handleSchwabCallback derives userId from the DB row, never from the client state', async () => {
-    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'real-user-from-db' }] });
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'real-user-from-db', context: { platform: 'web' } }] });
     axios.post.mockResolvedValueOnce({
       data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600 }
     });
@@ -105,11 +110,14 @@ describe('Schwab OAuth state — server-side binding', () => {
     await brokerSyncController.handleSchwabCallback(req, res, next);
 
     expect(BrokerConnection.create).toHaveBeenCalledTimes(1);
-    const [userId] = BrokerConnection.create.mock.calls[0];
+    const [userId, connectionData] = BrokerConnection.create.mock.calls[0];
     expect(userId).toBe('real-user-from-db');
+    expect(connectionData.schwabRefreshTokenExpiresAt).toBeInstanceOf(Date);
+    expect(connectionData.schwabRefreshTokenExpiresAt.getTime()).toBeGreaterThan(Date.now() + (6 * 24 * 60 * 60 * 1000));
   });
 
   test('the state lookup UPDATE requires consumed_at IS NULL (no replay)', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
     db.query.mockResolvedValueOnce({ rows: [] });
 
     const req = { query: { code: 'x', state: 'y' } };
@@ -124,13 +132,31 @@ describe('Schwab OAuth state — server-side binding', () => {
     expect(sql).toMatch(/SET consumed_at = NOW\(\)/);
   });
 
+  test('handleSchwabCallback redirects iOS flows back to the app URL scheme', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'real-user-from-db', context: { platform: 'ios' } }] });
+    axios.post.mockResolvedValueOnce({
+      data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600 }
+    });
+    axios.get.mockResolvedValueOnce({
+      data: [{ securitiesAccount: { accountNumber: '12345678' } }]
+    });
+
+    const req = { query: { code: 'auth-code', state: 'ios-state-token' } };
+    const res = createRes();
+    const next = jest.fn();
+
+    await brokerSyncController.handleSchwabCallback(req, res, next);
+
+    expect(res.redirectedTo).toBe('tradetally://broker-sync?success=schwab');
+  });
+
   test('initBrokerOAuth INSERTs state for direct OAuth brokers', async () => {
     db.query.mockResolvedValueOnce({ rows: [] });
 
     const req = {
       user: { id: 'user-123' },
       params: { broker: 'tradestation' },
-      body: {}
+      body: { platform: 'ios' }
     };
     const res = createRes();
     const next = jest.fn();
@@ -142,11 +168,12 @@ describe('Schwab OAuth state — server-side binding', () => {
     expect(sql).toMatch(/INSERT INTO oauth_pending_states/);
     expect(params[1]).toBe('user-123');
     expect(params[2]).toBe('tradestation');
+    expect(JSON.parse(params[4])).toMatchObject({ environment: null, platform: 'ios' });
     expect(new URL(res.payload.authUrl).searchParams.get('state')).toBe(params[0]);
   });
 
   test('handleBrokerOAuthCallback derives userId from state row for direct OAuth brokers', async () => {
-    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'real-user-from-db', context: {} }] });
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'real-user-from-db', context: { platform: 'ios' } }] });
     axios.post.mockResolvedValueOnce({
       data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600, scope: 'ReadAccount' }
     });
@@ -172,6 +199,90 @@ describe('Schwab OAuth state — server-side binding', () => {
         externalAccountId: 'TS1234'
       })
     );
-    expect(res.redirectedTo).toBe('https://example.com/settings/broker-sync?success=tradestation');
+    expect(res.redirectedTo).toBe('tradetally://broker-sync?success=tradestation');
+  });
+});
+
+describe('Schwab account exclusions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('returns only redacted account identifiers and marks excluded accounts', async () => {
+    BrokerConnection.findById.mockResolvedValueOnce({
+      id: 'connection-1',
+      userId: 'user-1',
+      brokerType: 'schwab',
+      excluded_account_identifiers: ['****1111']
+    });
+    const ensureTokenSpy = jest.spyOn(schwabService, 'ensureValidToken')
+      .mockResolvedValue({ accessToken: 'access-token', needsReauth: false });
+    const accountsSpy = jest.spyOn(schwabService, 'getAccountNumbers')
+      .mockResolvedValue([
+        { accountNumber: '11111111', hashValue: 'hash-1' },
+        { accountNumber: '22222222', hashValue: 'hash-2' }
+      ]);
+    const req = { user: { id: 'user-1' }, params: { id: 'connection-1' } };
+    const res = createRes();
+    const next = jest.fn();
+
+    try {
+      await brokerSyncController.getConnectionAccounts(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.payload.data).toEqual({
+        accounts: [
+          { account_identifier: '****1111', excluded: true },
+          { account_identifier: '****2222', excluded: false }
+        ],
+        excluded_account_identifiers: ['****1111']
+      });
+      expect(JSON.stringify(res.payload)).not.toContain('11111111');
+      expect(JSON.stringify(res.payload)).not.toContain('hash-1');
+      expect(BrokerConnection.updateBrokerMetadata).toHaveBeenCalledWith(
+        'connection-1',
+        {
+          schwab_accounts: [
+            { account_identifier: '****1111' },
+            { account_identifier: '****2222' }
+          ]
+        }
+      );
+    } finally {
+      ensureTokenSpy.mockRestore();
+      accountsSpy.mockRestore();
+    }
+  });
+
+  test('normalizes and saves exclusions without changing unrelated settings', async () => {
+    BrokerConnection.findById
+      .mockResolvedValueOnce({
+        id: 'connection-1',
+        userId: 'user-1',
+        brokerType: 'schwab',
+        excluded_account_identifiers: []
+      })
+      .mockResolvedValueOnce({
+        id: 'connection-1',
+        userId: 'user-1',
+        brokerType: 'schwab',
+        excluded_account_identifiers: ['****1111']
+      });
+    const req = {
+      user: { id: 'user-1' },
+      params: { id: 'connection-1' },
+      body: { excluded_account_identifiers: [' ****1111 ', '****1111', ''] }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await brokerSyncController.updateConnection(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(BrokerConnection.updateBrokerMetadata).toHaveBeenCalledWith(
+      'connection-1',
+      { excluded_account_identifiers: ['****1111'] }
+    );
+    expect(res.payload.data.excluded_account_identifiers).toEqual(['****1111']);
   });
 });

@@ -168,8 +168,11 @@ const brokerNames = {
   avatrade: 'AvaTrade',
   tradingview: 'TradingView',
   tradovate: 'Tradovate',
+  sierrachart: 'Sierra Chart',
+  ninjatrader: 'NinjaTrader',
   questrade: 'Questrade',
-  projectx: 'ProjectX'
+  projectx: 'ProjectX',
+  projectx_orders: 'ProjectX'
 }
 
 function formatBrokerName(broker) {

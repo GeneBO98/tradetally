@@ -129,6 +129,9 @@
 
         <!-- Tab Content -->
         <div class="content-wrapper py-8">
+            <!-- Challenges Tab -->
+            <ChallengesPanel v-if="activeTab === 'challenges'" />
+
             <!-- Overview Tab -->
             <div v-if="activeTab === 'overview'">
                 <!-- Quick Stats -->
@@ -1063,6 +1066,7 @@ import { useRoute, useRouter } from "vue-router";
 import api from "@/services/api";
 import MdiIcon from "@/components/MdiIcon.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
+import ChallengesPanel from "@/components/gamification/ChallengesPanel.vue";
 import { useNotification } from "@/composables/useNotification";
 import {
     usePriceAlertNotifications,
@@ -1084,6 +1088,7 @@ import {
     mdiFilter,
     mdiCheckCircle,
     mdiLock,
+    mdiFlagCheckered,
 } from "@mdi/js";
 
 export default {
@@ -1091,6 +1096,7 @@ export default {
     components: {
         MdiIcon,
         BaseSelect,
+        ChallengesPanel,
     },
     setup() {
         const { showSuccess, showError, showWarning } = useNotification();
@@ -1109,6 +1115,7 @@ export default {
         const validTabs = new Set([
             "overview",
             "achievements",
+            "challenges",
             "leaderboards",
         ]);
         const queryTab = Array.isArray(route.query.tab)
@@ -1123,6 +1130,7 @@ export default {
         const tabs = [
             { key: "overview", name: "Overview", icon: mdiChartBox },
             { key: "achievements", name: "Achievements", icon: mdiTrophy },
+            { key: "challenges", name: "Challenges", icon: mdiFlagCheckered },
             { key: "leaderboards", name: "Rankings", icon: mdiTrendingUp },
         ];
 

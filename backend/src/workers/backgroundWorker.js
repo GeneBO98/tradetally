@@ -36,9 +36,10 @@ class BackgroundWorker {
       parallelJobQueue.startParallelProcessing();
       logger.logImport('[SUCCESS] Parallel job queue processing started');
       
-      // Also start sequential processing as fallback for other job types
+      // Start sequential processing for the job types the parallel queue
+      // does not own (see utils/jobQueueConfig.js for ownership)
       jobQueue.startProcessing();
-      logger.logImport('[SUCCESS] Sequential job queue also running as fallback');
+      logger.logImport('[SUCCESS] Sequential job queue running for non-parallel job types');
       
       // Verify parallel job queue is actually processing
       const parallelStatus = parallelJobQueue.getStatus();
@@ -118,15 +119,22 @@ class BackgroundWorker {
   async processStuckJobs() {
     try {
       const db = require('../config/database');
-      
-      // Find jobs that have been processing for more than 30 seconds (VERY aggressive)
+
+      // A processing row is a lease. It must outlive the provider timeout and
+      // normal batch work; resetting it after 30 seconds lets the same API job
+      // run twice while its original promise is still active. Keep this
+      // configurable for deployments with unusually long provider calls.
+      const configuredStuckMinutes = Number(process.env.BACKGROUND_JOB_STUCK_MINUTES || 15);
+      const stuckMinutes = Number.isFinite(configuredStuckMinutes)
+        ? Math.max(1, configuredStuckMinutes)
+        : 15;
       const stuckJobs = await db.query(`
         UPDATE job_queue 
         SET status = 'pending', started_at = NULL, retry_count = COALESCE(retry_count, 0) + 1
         WHERE status = 'processing' 
-        AND started_at < NOW() - INTERVAL '30 seconds'
+        AND started_at < NOW() - ($1 * INTERVAL '1 minute')
         RETURNING id, type, retry_count
-      `);
+      `, [stuckMinutes]);
       
       if (stuckJobs.rows.length > 0) {
         logger.info(`Reset ${stuckJobs.rows.length} stuck jobs back to pending`, 'import');

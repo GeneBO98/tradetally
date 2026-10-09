@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const db = require('../config/database');
+const tierCache = require('./tierCache');
 const { getTierLimits, hasReachedLimit, getRemainingQuota, PRICING, BROKER_SYNC_ACCESS } = require('../config/tierLimits');
 
 class TierService {
@@ -50,38 +51,60 @@ class TierService {
     // Auto-disable billing for non-tradetally.io domains (self-hosted)
     const frontendUrl = process.env.FRONTEND_URL || '';
 
-    // Check host header if provided (for runtime domain detection)
+    // The configured frontend URL decides first. The Host header is client
+    // controlled, so it is only consulted when FRONTEND_URL is not set;
+    // otherwise a spoofed Host could switch billing off on tradetally.io.
     // Only ENABLE for tradetally.io, disable for everything else (including localhost for self-hosted)
-    if (hostHeader && !hostHeader.includes('tradetally.io')) {
+    if (frontendUrl) {
+      if (!frontendUrl.includes('tradetally.io')) {
+        console.log(`[BILLING] Disabled for frontend URL: ${frontendUrl} (not tradetally.io)`);
+        return false;
+      }
+    } else if (hostHeader && !hostHeader.includes('tradetally.io')) {
       console.log(`[BILLING] Disabled for host: ${hostHeader} (not tradetally.io)`);
       return false;
     }
 
-    // Check frontend URL if no host header provided
-    // Only ENABLE for tradetally.io, disable for everything else
-    if (!hostHeader && frontendUrl && !frontendUrl.includes('tradetally.io')) {
-      console.log(`[BILLING] Disabled for frontend URL: ${frontendUrl} (not tradetally.io)`);
-      return false;
+    // Fallback to database config. instance_config.billing_enabled is set at
+    // install time and never written by application code, so memoize the read
+    // briefly - this is called inside getUserTier/hasFeatureAccess and was
+    // issuing a SELECT per call on SaaS deployments with no env override.
+    const now = Date.now();
+    if (this._billingDbCache && this._billingDbCache.expiresAt > now) {
+      return this._billingDbCache.value;
     }
 
-    // Fallback to database config
     const query = `SELECT value FROM instance_config WHERE key = 'billing_enabled'`;
     const result = await db.query(query);
 
-    if (!result.rows[0]) return false;
-    const value = result.rows[0].value;
+    const value = result.rows[0] ? result.rows[0].value : undefined;
 
     // Handle JSONB, string, and boolean values
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'string') return value === 'true';
-    if (value === null || value === undefined) return false;
+    let enabled;
+    if (typeof value === 'boolean') enabled = value;
+    else if (typeof value === 'string') enabled = value === 'true';
+    else if (value === null || value === undefined) enabled = false;
+    else enabled = value === true || value === 'true'; // JSONB stored as object
 
-    // For JSONB stored as object
-    return value === true || value === 'true';
+    this._billingDbCache = { value: enabled, expiresAt: now + 60 * 1000 };
+    return enabled;
   }
 
-  // Get effective tier for a user (optimized: single query when possible)
+  // Get effective tier for a user. Results are memoized briefly (see
+  // services/tierCache.js) because this runs on nearly every market-data
+  // request; tier-changing writes call invalidateTierCache below.
   static async getUserTier(userId, hostHeader = null) {
+    return tierCache.getOrLoad(userId, hostHeader, () => this._fetchUserTier(userId, hostHeader));
+  }
+
+  // Drop memoized tier entries for a user after any tier-changing write
+  // (users.tier, tier_overrides, subscriptions).
+  static invalidateTierCache(userId) {
+    tierCache.invalidate(userId);
+  }
+
+  // Uncached tier lookup (optimized: single query when possible)
+  static async _fetchUserTier(userId, hostHeader = null) {
     // If billing is disabled (self-hosted), always return 'pro'
     const billingEnabled = await this.isBillingEnabled(hostHeader);
     if (!billingEnabled) {
@@ -145,16 +168,17 @@ class TierService {
       return true;
     }
 
-    // Get feature requirements
-    const query = `SELECT required_tier FROM features WHERE feature_key = $1 AND is_active = true`;
-    const result = await db.query(query, [featureKey]);
-    
+    // Get feature requirements from the memoized features table (tiny,
+    // near-static; invalidated on upsert/toggle and self-healing via TTL)
+    const features = await this._getFeatureMap();
+    const feature = features.get(featureKey);
+
     // If feature doesn't exist or is inactive, deny access
-    if (!result.rows[0]) {
+    if (!feature || !feature.is_active) {
       return false;
     }
 
-    const requiredTier = result.rows[0].required_tier;
+    const requiredTier = feature.required_tier;
     
     // If feature is free tier, everyone has access
     if (requiredTier === 'free') {
@@ -166,15 +190,32 @@ class TierService {
     return userTier === 'pro';
   }
 
-  // Get all available features
+  // Get all available features (memoized - the table is tiny and only
+  // changes through upsertFeature/toggleFeature, which invalidate)
   static async getAllFeatures() {
+    const now = Date.now();
+    if (this._featuresCache && this._featuresCache.expiresAt > now) {
+      return this._featuresCache.rows;
+    }
+
     const query = `
       SELECT feature_key, feature_name, description, required_tier, is_active
       FROM features
       ORDER BY required_tier, feature_name
     `;
     const result = await db.query(query);
+    this._featuresCache = { rows: result.rows, expiresAt: now + 60 * 1000 };
     return result.rows;
+  }
+
+  // Features keyed by feature_key, built on the same memo as getAllFeatures
+  static async _getFeatureMap() {
+    const rows = await this.getAllFeatures();
+    return new Map(rows.map(row => [row.feature_key, row]));
+  }
+
+  static invalidateFeaturesCache() {
+    this._featuresCache = null;
   }
 
   // Create or update a feature
@@ -196,6 +237,7 @@ class TierService {
     
     const values = [featureKey, featureName, description, requiredTier, isActive];
     const result = await db.query(query, values);
+    this.invalidateFeaturesCache();
     return result.rows[0];
   }
 
@@ -209,6 +251,7 @@ class TierService {
     `;
     
     const result = await db.query(query, [isActive, featureKey]);
+    this.invalidateFeaturesCache();
     return result.rows[0];
   }
 
@@ -262,6 +305,9 @@ class TierService {
         await User.updateTier(userId, 'free');
       }
     }
+
+    // Subscription status feeds directly into getUserTier - drop memoized entries
+    this.invalidateTierCache(userId);
 
     return userId;
   }
@@ -495,11 +541,52 @@ class TierService {
    * Set a user's tier directly (used by Apple IAP verification).
    * Updates the base tier and creates/updates a tier override.
    */
-  static async setUserTier(userId, tier, reason) {
+  static async setUserTier(userId, tier, reason, dbClient = null) {
+    if (dbClient) {
+      await dbClient.query(
+        'UPDATE users SET tier = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        [tier, userId]
+      );
+      await dbClient.query(`
+        INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
+        VALUES ($1, $2, $3, NULL, NULL)
+        ON CONFLICT (user_id) DO UPDATE SET
+          tier = EXCLUDED.tier,
+          reason = EXCLUDED.reason,
+          expires_at = NULL,
+          created_by = NULL,
+          updated_at = CURRENT_TIMESTAMP
+      `, [userId, tier, reason]);
+      return;
+    }
+
     await User.updateTier(userId, tier);
     // Create a permanent tier override (no expiry) so getUserTier picks it up
     await User.createTierOverride(userId, tier, reason, null, null);
-    console.log(`✅ TierService: Set user ${userId} to tier '${tier}' (${reason})`);
+    this.invalidateTierCache(userId);
+    console.log(`[SUCCESS] TierService: Set user ${userId} to tier '${tier}' (${reason})`);
+  }
+
+  /**
+   * Grant a tier only through a specified entitlement expiration. Unlike an
+   * administrative override, this intentionally does not change users.tier.
+   */
+  static async setUserTierUntil(userId, tier, reason, expiresAt, dbClient = null) {
+    const client = dbClient || db;
+    await client.query(`
+      INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
+      VALUES ($1, $2, $3, $4, NULL)
+      ON CONFLICT (user_id) DO UPDATE SET
+        tier = EXCLUDED.tier,
+        reason = EXCLUDED.reason,
+        expires_at = EXCLUDED.expires_at,
+        created_by = NULL,
+        updated_at = CURRENT_TIMESTAMP
+    `, [userId, tier, reason, expiresAt]);
+
+    if (!dbClient) {
+      this.invalidateTierCache(userId);
+    }
   }
 }
 

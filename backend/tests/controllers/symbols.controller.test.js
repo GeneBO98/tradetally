@@ -4,7 +4,12 @@ const mockDb = {
 
 const mockFinnhub = {
   isConfigured: jest.fn(() => true),
-  symbolSearch: jest.fn()
+  symbolSearch: jest.fn(),
+  getQuote: jest.fn(),
+  getCryptoQuote: jest.fn(),
+  isCryptoSymbol: jest.fn(() => false),
+  isFinnhub: true,
+  providerName: 'finnhub'
 };
 
 const mockCache = {
@@ -35,6 +40,7 @@ describe('symbols controller', () => {
     jest.clearAllMocks();
     mockCache.get.mockReturnValue(null);
     mockSymbolCategories.getSymbolCategories.mockResolvedValue(new Map());
+    mockFinnhub.isCryptoSymbol.mockReturnValue(false);
   });
 
   test('getSymbolMetadata hydrates missing metadata from symbol categories on demand', async () => {
@@ -114,6 +120,130 @@ describe('symbols controller', () => {
           exchange: 'NASDAQ',
           logo: 'https://logo.test/amd.png',
           source: 'user_trades'
+        }
+      ]
+    });
+  });
+
+  test('getSymbolQuote returns a normalized current quote', async () => {
+    mockFinnhub.getQuote.mockResolvedValue({
+      c: 213.55,
+      pc: 211.22,
+      d: 2.33,
+      dp: 1.1031,
+      t: 1783708200
+    });
+
+    const req = {
+      user: { id: 'user-1' },
+      query: { symbol: ' aapl ' }
+    };
+    const res = createRes();
+
+    await symbolsController.getSymbolQuote(req, res);
+
+    expect(mockFinnhub.getQuote).toHaveBeenCalledWith('AAPL', 'user-1');
+    expect(res.json).toHaveBeenCalledWith({
+      symbol: 'AAPL',
+      current_price: 213.55,
+      previous_close: 211.22,
+      change: 2.33,
+      change_percent: 1.1031,
+      timestamp: 1783708200
+    });
+  });
+
+  test('searchSymbols includes supported crypto without relying on stock-provider search', async () => {
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockFinnhub.symbolSearch.mockResolvedValue({ result: [] });
+
+    const req = {
+      user: { id: 'user-1' },
+      query: { q: 'bitcoin' }
+    };
+    const res = createRes();
+
+    await symbolsController.searchSymbols(req, res);
+
+    const response = res.json.mock.calls[0][0];
+    expect(response.results[0]).toEqual({
+      symbol: 'BTC',
+      company_name: 'Bitcoin',
+      exchange: 'Crypto',
+      logo: null,
+      source: 'crypto',
+      asset_type: 'crypto'
+    });
+  });
+
+  test('getSymbolQuote routes crypto symbols to the crypto quote provider', async () => {
+    mockFinnhub.isCryptoSymbol.mockReturnValue(true);
+    mockFinnhub.getCryptoQuote.mockResolvedValue({
+      c: 118250.25,
+      pc: 116900,
+      d: 1350.25,
+      dp: 1.155,
+      t: 1787778000
+    });
+
+    const req = {
+      user: { id: 'user-1' },
+      query: { symbol: ' btc ' }
+    };
+    const res = createRes();
+
+    await symbolsController.getSymbolQuote(req, res);
+
+    expect(mockFinnhub.getCryptoQuote).toHaveBeenCalledWith('BTC');
+    expect(mockFinnhub.getQuote).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({
+      symbol: 'BTC',
+      current_price: 118250.25,
+      previous_close: 116900,
+      change: 1350.25,
+      change_percent: 1.155,
+      timestamp: 1787778000
+    });
+  });
+
+  test('searchSymbols excludes option contracts and non-equity provider results', async () => {
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockFinnhub.symbolSearch.mockResolvedValue({
+      result: [
+        { symbol: 'AAPL', description: 'Apple Inc', type: 'Common Stock' },
+        { symbol: 'AAPL260117C00200000', description: 'AAPL call', type: 'Option' },
+        { symbol: 'AAPLW', description: 'Apple warrant', type: 'Warrant' },
+        { symbol: 'AAXJ', description: 'iShares MSCI All Country Asia ETF', type: 'ETP' }
+      ]
+    });
+
+    const req = {
+      user: { id: 'user-1' },
+      query: { q: 'AA' }
+    };
+    const res = createRes();
+
+    await symbolsController.searchSymbols(req, res);
+
+    expect(res.json).toHaveBeenCalledWith({
+      results: [
+        {
+          symbol: 'AAPL',
+          company_name: 'Apple Inc',
+          exchange: null,
+          logo: null,
+          source: 'finnhub'
+        },
+        {
+          symbol: 'AAXJ',
+          company_name: 'iShares MSCI All Country Asia ETF',
+          exchange: null,
+          logo: null,
+          source: 'finnhub'
         }
       ]
     });

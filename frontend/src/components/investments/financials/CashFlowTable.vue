@@ -139,12 +139,20 @@
 </template>
 
 <script setup>
-defineProps({
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const props = defineProps({
   data: {
     type: Array,
     required: true
+  },
+  currency: {
+    type: String,
+    default: ''
   }
 })
+
+const { symbolFor } = useCurrencyFormatter()
 
 function formatLargeNumber(value) {
   if (value === null || value === undefined) return '-'
@@ -152,18 +160,19 @@ function formatLargeNumber(value) {
   const isNegative = value < 0
   const prefix = isNegative ? '(' : ''
   const suffix = isNegative ? ')' : ''
+  const sym = symbolFor(props.currency)
 
-  if (absValue >= 1e12) return `${prefix}$${(absValue / 1e12).toFixed(2)}T${suffix}`
-  if (absValue >= 1e9) return `${prefix}$${(absValue / 1e9).toFixed(2)}B${suffix}`
-  if (absValue >= 1e6) return `${prefix}$${(absValue / 1e6).toFixed(2)}M${suffix}`
-  if (absValue >= 1e3) return `${prefix}$${(absValue / 1e3).toFixed(2)}K${suffix}`
-  return `${prefix}$${absValue.toFixed(0)}${suffix}`
+  if (absValue >= 1e12) return `${prefix}${sym}${(absValue / 1e12).toFixed(2)}T${suffix}`
+  if (absValue >= 1e9) return `${prefix}${sym}${(absValue / 1e9).toFixed(2)}B${suffix}`
+  if (absValue >= 1e6) return `${prefix}${sym}${(absValue / 1e6).toFixed(2)}M${suffix}`
+  if (absValue >= 1e3) return `${prefix}${sym}${(absValue / 1e3).toFixed(2)}K${suffix}`
+  return `${prefix}${sym}${absValue.toFixed(0)}${suffix}`
 }
 
 function formatCapex(value) {
   if (value === null || value === undefined) return '-'
   // CapEx is typically shown as negative (cash outflow)
-  return `($${formatNumber(Math.abs(value))})`
+  return `(${symbolFor(props.currency)}${formatNumber(Math.abs(value))})`
 }
 
 function formatNumber(value) {

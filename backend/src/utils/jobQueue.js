@@ -1,16 +1,26 @@
 const db = require('../config/database');
 const logger = require('./logger');
 const marketData = require('./finnhub');
+const { PARALLEL_JOB_TYPES } = require('./jobQueueConfig');
 
 class JobQueue {
   constructor() {
     this.isProcessing = false;
-    this.processingInterval = null;
+    this.pollTimer = null;
+    this.pollInFlight = false;
+    // Idle backoff: after idleThreshold consecutive empty polls the interval
+    // doubles per empty poll up to maxPollIntervalMs; any claimed job (or an
+    // in-process enqueue) resets it to basePollIntervalMs.
+    this.basePollIntervalMs = 5000;
+    this.maxPollIntervalMs = 30000;
+    this.idleThreshold = 6;
+    this.consecutiveEmptyPolls = 0;
+    this.currentPollIntervalMs = this.basePollIntervalMs;
   }
 
   /**
    * Add a job to the queue
-   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, mae_recalc, verification_email, password_reset_email, account_lockout_email, support_request_email)
+   * @param {string} type - Job type (cusip_resolution, strategy_classification, news_enrichment, news_backfill, quality_backfill, mae_recalc, leaderboard_update, revenge_analysis, verification_email, password_reset_email, account_lockout_email, support_request_email)
    * @param {object} data - Job data
    * @param {number} priority - Priority (1=highest, 5=lowest)
    * @param {string} userId - User ID for the job
@@ -33,10 +43,12 @@ class JobQueue {
       }
       const result = await db.query(query, [type, serializedData, priority, userId]);
       logger.logImport(`Added job ${result.rows[0].id} of type ${type} to queue`);
-      
+
       // Start processing if not already running
       this.startProcessing();
-      
+      // Wake the owning poller back up to its fast interval
+      this.notifyJobEnqueued([type]);
+
       return result.rows[0].id;
     } catch (error) {
       logger.logError(`Failed to add job to queue: ${error.message}`);
@@ -68,10 +80,12 @@ class JobQueue {
     try {
       const result = await db.query(query, values);
       logger.logImport(`Added ${result.rows.length} jobs to queue`);
-      
+
       // Start processing if not already running
       this.startProcessing();
-      
+      // Wake the owning pollers back up to their fast interval
+      this.notifyJobEnqueued([...new Set(result.rows.map(row => row.type))]);
+
       return result.rows;
     } catch (error) {
       logger.logError(`Failed to add batch jobs to queue: ${error.message}`);
@@ -80,16 +94,60 @@ class JobQueue {
   }
 
   /**
-   * Get next job to process
+   * Notify pollers that new jobs were enqueued in-process so backoff resets
+   * and the next poll happens at the fast interval. Types owned by the
+   * parallel queue nudge that queue's worker instead of this one.
+   */
+  notifyJobEnqueued(types = []) {
+    try {
+      const parallelTypes = types.filter(type => PARALLEL_JOB_TYPES.includes(type));
+      const sequentialTypes = types.filter(type => !PARALLEL_JOB_TYPES.includes(type));
+
+      if (sequentialTypes.length > 0) {
+        this.resetBackoff();
+      }
+      if (parallelTypes.length > 0) {
+        // Lazy require to avoid a module cycle (parallelJobQueue requires
+        // this module inside its job processor)
+        const parallelJobQueue = require('./parallelJobQueue');
+        for (const type of parallelTypes) {
+          parallelJobQueue.nudge(type);
+        }
+      }
+    } catch (error) {
+      logger.logError(`Failed to notify pollers of enqueued jobs: ${error.message}`);
+    }
+  }
+
+  /**
+   * Reset idle backoff to the fast polling interval
+   */
+  resetBackoff() {
+    this.consecutiveEmptyPolls = 0;
+    const wasSlow = this.currentPollIntervalMs !== this.basePollIntervalMs;
+    this.currentPollIntervalMs = this.basePollIntervalMs;
+    // If a slow poll is already scheduled, pull it forward. When a poll is
+    // in flight its completion handler reschedules using the (now reset)
+    // interval, which also covers processMAERecalc re-enqueueing itself.
+    if (this.isProcessing && wasSlow && !this.pollInFlight) {
+      this.scheduleNextPoll(this.currentPollIntervalMs);
+    }
+  }
+
+  /**
+   * Get next job to process. Job types owned by the parallel queue
+   * (see utils/jobQueueConfig.js) are excluded so each type has exactly
+   * one owner.
    */
   async getNextJob() {
     const query = `
-      UPDATE job_queue 
+      UPDATE job_queue
       SET status = 'processing', started_at = CURRENT_TIMESTAMP
       WHERE id = (
-        SELECT id FROM job_queue 
-        WHERE status = 'pending' 
-        ORDER BY priority ASC, created_at ASC 
+        SELECT id FROM job_queue
+        WHERE status = 'pending'
+          AND NOT (type = ANY($1))
+        ORDER BY priority ASC, created_at ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
@@ -97,7 +155,7 @@ class JobQueue {
     `;
 
     try {
-      const result = await db.query(query);
+      const result = await db.query(query, [PARALLEL_JOB_TYPES]);
       
       if (result.rows[0]) {
         logger.logImport(`Claimed job ${result.rows[0].id} of type ${result.rows[0].type}`);
@@ -176,45 +234,75 @@ class JobQueue {
   }
 
   /**
-   * Start processing jobs
+   * Start processing jobs (self-scheduling poll loop with idle backoff)
    */
   startProcessing() {
     if (this.isProcessing) {
-      logger.logImport('Job queue processing already started');
       return;
     }
 
     this.isProcessing = true;
+    this.consecutiveEmptyPolls = 0;
+    this.currentPollIntervalMs = this.basePollIntervalMs;
     logger.logImport('[START] Starting job queue processing');
 
-    // Process jobs every 5 seconds
-    this.processingInterval = setInterval(async () => {
-      try {
-        const processed = await this.processNextJob();
-        // Only log when we actually process a job or there's an issue
-        if (processed === null) {
-          // Job processing failed, already logged in processNextJob
-        }
-        // Don't log when processed === false (no jobs found) - this is normal
-      } catch (error) {
-        logger.logError(`[ERROR] Error in job processing: ${error.message}`);
-        logger.logError(`Stack trace: ${error.stack}`);
-      }
-    }, 5000);
-    if (typeof this.processingInterval.unref === 'function') {
-      this.processingInterval.unref();
+    this.scheduleNextPoll(this.currentPollIntervalMs);
+
+    logger.logImport(`[SUCCESS] Job queue polling started (base ${this.basePollIntervalMs}ms, idle backoff up to ${this.maxPollIntervalMs}ms)`);
+  }
+
+  /**
+   * Schedule the next poll, replacing any pending timer
+   */
+  scheduleNextPoll(delayMs) {
+    if (!this.isProcessing) return;
+
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
     }
-    
-    logger.logImport('[SUCCESS] Job queue processing interval started (every 5 seconds)');
+    this.pollTimer = setTimeout(() => this.pollOnce(), delayMs);
+    if (typeof this.pollTimer.unref === 'function') {
+      this.pollTimer.unref();
+    }
+  }
+
+  /**
+   * Run a single poll, adjust backoff based on the outcome, reschedule
+   */
+  async pollOnce() {
+    if (!this.isProcessing) return;
+
+    this.pollInFlight = true;
+    let processed = false;
+    try {
+      processed = await this.processNextJob();
+    } catch (error) {
+      logger.logError(`[ERROR] Error in job processing: ${error.message}`);
+      logger.logError(`Stack trace: ${error.stack}`);
+    } finally {
+      this.pollInFlight = false;
+    }
+
+    if (processed) {
+      this.consecutiveEmptyPolls = 0;
+      this.currentPollIntervalMs = this.basePollIntervalMs;
+    } else {
+      this.consecutiveEmptyPolls++;
+      if (this.consecutiveEmptyPolls >= this.idleThreshold) {
+        this.currentPollIntervalMs = Math.min(this.currentPollIntervalMs * 2, this.maxPollIntervalMs);
+      }
+    }
+
+    this.scheduleNextPoll(this.currentPollIntervalMs);
   }
 
   /**
    * Stop processing jobs
    */
   stopProcessing() {
-    if (this.processingInterval) {
-      clearInterval(this.processingInterval);
-      this.processingInterval = null;
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
     }
     this.isProcessing = false;
     logger.logImport('Stopped job queue processing');
@@ -270,6 +358,15 @@ class JobQueue {
           break;
         case 'mae_recalc':
           result = await this.processMAERecalc(data);
+          break;
+        case 'r_value_backfill':
+          result = await this.processRValueBackfill(data);
+          break;
+        case 'leaderboard_update':
+          result = await this.processLeaderboardUpdate(data);
+          break;
+        case 'revenge_analysis':
+          result = await this.processRevengeAnalysis(data);
           break;
         case 'verification_email':
           result = await this.processVerificationEmail(data);
@@ -358,7 +455,12 @@ class JobQueue {
           trade = await Trade.findById(tradeData.tradeId);
         }
         
-        if (trade && (!trade.strategy || trade.strategy === 'day_trading' || 
+        // Current-state check: never reclassify trades the user manually
+        // controls. Jobs carrying stale trade snapshots (built before a
+        // manual bulk edit) lack manual_override, so they fall through to
+        // the UPDATE below, whose `manual_override = false` write condition
+        // is the authoritative guard.
+        if (trade && !trade.manual_override && (!trade.strategy || trade.strategy === 'day_trading' ||
             (trade.classification_metadata && JSON.parse(trade.classification_metadata).needsFullClassification))) {
           
           const classification = await Trade.classifyTradeStrategyWithAnalysis(trade);
@@ -367,7 +469,7 @@ class JobQueue {
             await db.query(`
               UPDATE trades 
               SET strategy = $1, strategy_confidence = $2, classification_method = $3, classification_metadata = $4
-              WHERE id = $5
+              WHERE id = $5 AND manual_override = false
             `, [
               classification.strategy,
               Math.round((classification.confidence || 0.5) * 100),
@@ -572,6 +674,7 @@ class JobQueue {
     const tradeQualityService = require('../services/tradeQuality.service');
     const { userId, batchSize = 10, maxTrades = null } = data;
     const staleQualityCondition = tradeQualityService.getStaleQualityCondition();
+    const tradeLimit = parseInt(maxTrades, 10);
 
     logger.logImport(`Starting quality backfill for user ${userId}`);
 
@@ -584,7 +687,7 @@ class JobQueue {
         AND ${staleQualityCondition}
         AND (instrument_type IS NULL OR instrument_type != 'future')
       ORDER BY trade_date DESC
-      ${maxTrades ? `LIMIT ${maxTrades}` : ''}
+      ${Number.isInteger(tradeLimit) && tradeLimit > 0 ? `LIMIT ${tradeLimit}` : ''}
     `;
 
     const result = await db.query(tradesQuery, [userId]);
@@ -650,6 +753,24 @@ class JobQueue {
   }
 
   /**
+   * Restore missing persisted R values using the same net calculation as a
+   * normal trade update. A cursor ensures invalid rows cannot cause retries
+   * to loop on the same batch.
+   */
+  async processRValueBackfill(data) {
+    if (!data?.userId) throw new Error('R-value backfill requires a user ID');
+    const result = await require('../services/rValueBackfillService')
+      .runBatch(data.userId, data.afterId);
+    if (result.next_after) {
+      await this.addJob('r_value_backfill', {
+        userId: data.userId,
+        afterId: result.next_after
+      }, 4, data.userId);
+    }
+    return result;
+  }
+
+  /**
    * Recalculate persisted MAE/MFE for a user's trades where the fields are
    * NULL. NULL is the system's "needs recalculation" marker, so data-fix
    * migrations invalidate derived values by nulling them and enqueue one of
@@ -660,32 +781,68 @@ class JobQueue {
    * chain so trades whose candle data simply doesn't exist (delisted or
    * too-old symbols) can't cause an infinite requeue loop.
    */
+  /**
+   * Enqueue an MAE/MFE recalculation for a user, skipping the insert when a
+   * pending mae_recalc job for that user already exists (the job sweeps ALL
+   * of the user's trades with NULL mae/mfe, so one pending job covers any
+   * number of newly created/imported trades).
+   */
+  async enqueueMAERecalc(userId, { batchSize = 5, maxTrades = 50, importId = null, includePostExit = false } = {}) {
+    // Only the generic user-wide sweep dedupes; import-scoped jobs (importId /
+    // includePostExit) cover different work and always insert.
+    if (!importId && !includePostExit) {
+      const existing = await db.query(
+        `SELECT 1 FROM job_queue
+         WHERE type = 'mae_recalc' AND user_id = $1 AND status = 'pending'
+         LIMIT 1`,
+        [userId]
+      );
+      if (existing.rows.length > 0) {
+        return null;
+      }
+    }
+    return this.addJob('mae_recalc', { userId, batchSize, maxTrades, importId, includePostExit }, 4, userId);
+  }
+
   async processMAERecalc(data) {
     const MAEEstimator = require('./maeEstimator');
     const AnalyticsCache = require('../services/analyticsCache');
-    const { userId, batchSize = 5, maxTrades = 50 } = data;
+    const { resolvePostExitWindow } = require('./postExitWindow');
+    const { userId, batchSize = 5, maxTrades = 50, importId = null, includePostExit = false } = data;
 
-    const pendingCondition = `
+    // Post-exit windows are only computed when the enqueue site asks for them
+    // (import backfill scoped by importId). A user-wide post-exit sweep would
+    // fire candle-API calls for every historical trade that predates the
+    // post-exit feature, so the default sweep stays mae/mfe-only.
+    const params = [userId];
+    let pendingCondition = `
       user_id = $1
-      AND mae IS NULL AND mfe IS NULL
       AND entry_time IS NOT NULL AND exit_time IS NOT NULL
       AND entry_price IS NOT NULL AND exit_price IS NOT NULL
       AND pnl IS NOT NULL
     `;
+    if (importId) {
+      params.push(importId);
+      pendingCondition += ` AND import_id = $${params.length}`;
+    }
+    pendingCondition += includePostExit
+      ? ` AND (mae IS NULL OR mfe IS NULL OR post_exit_mae IS NULL OR post_exit_mfe IS NULL)`
+      : ` AND (mae IS NULL AND mfe IS NULL)`;
 
     const result = await db.query(
       `SELECT id, symbol, entry_time, exit_time, entry_price, exit_price, side,
               pnl, commission, fees, quantity, instrument_type, point_value,
-              underlying_asset, contract_size
+              underlying_asset, contract_size, mae, mfe,
+              post_exit_mae, post_exit_mfe, post_exit_window_override_minutes
        FROM trades
        WHERE ${pendingCondition}
        ORDER BY entry_time DESC
        LIMIT ${parseInt(maxTrades, 10) || 50}`,
-      [userId]
+      params
     );
     const trades = result.rows;
 
-    logger.logImport(`MAE recalc: found ${trades.length} trades needing MAE/MFE for user ${userId}`);
+    logger.logImport(`MAE recalc: found ${trades.length} trades needing MAE/MFE for user ${userId}${importId ? ` (import ${importId})` : ''}`);
 
     let updated = 0;
     let skipped = 0;
@@ -699,9 +856,34 @@ class JobQueue {
           continue;
         }
         try {
-          const { mae, mfe } = await MAEEstimator.calculateFromCandleData(trade);
-          await db.query('UPDATE trades SET mae = $1, mfe = $2 WHERE id = $3', [mae, mfe, trade.id]);
-          updated++;
+          let progressed = false;
+
+          if (trade.mae == null || trade.mfe == null) {
+            const { mae, mfe } = await MAEEstimator.calculateFromCandleData(trade);
+            await db.query('UPDATE trades SET mae = $1, mfe = $2 WHERE id = $3', [mae, mfe, trade.id]);
+            progressed = true;
+          }
+
+          if (includePostExit && (trade.post_exit_mae == null || trade.post_exit_mfe == null)) {
+            const window = await resolvePostExitWindow(userId, trade);
+            if (window) {
+              const { post_exit_mae, post_exit_mfe } = await MAEEstimator.calculatePostExitFromCandleData(trade, window.end);
+              await db.query(
+                `UPDATE trades
+                 SET post_exit_mae = $1, post_exit_mfe = $2, post_exit_window_minutes = $3,
+                     post_exit_window_source = $4, post_exit_window_end = $5, post_exit_calculated_at = NOW()
+                 WHERE id = $6`,
+                [post_exit_mae, post_exit_mfe, window.minutes, window.source, window.end, trade.id]
+              );
+              progressed = true;
+            }
+          }
+
+          if (progressed) {
+            updated++;
+          } else {
+            skipped++;
+          }
         } catch (error) {
           logger.logError(`MAE recalc failed for trade ${trade.id} (${trade.symbol}): ${error.message}`);
           skipped++;
@@ -722,16 +904,48 @@ class JobQueue {
     if (updated > 0) {
       const remaining = await db.query(
         `SELECT COUNT(*)::int AS n FROM trades WHERE ${pendingCondition}`,
-        [userId]
+        params
       );
       if (remaining.rows[0].n > 0) {
-        await this.addJob('mae_recalc', { userId, batchSize, maxTrades }, 4, userId);
+        await this.addJob('mae_recalc', { userId, batchSize, maxTrades, importId, includePostExit }, 4, userId);
         logger.logImport(`MAE recalc: ${remaining.rows[0].n} trades remaining for user ${userId}, re-enqueued`);
       }
     }
 
     logger.logImport(`MAE recalc completed for user ${userId}: ${updated} updated, ${skipped} skipped`);
     return { message: `MAE recalc completed: ${updated} updated, ${skipped} skipped` };
+  }
+
+  /**
+   * Rebuild all active leaderboards. Enqueued (debounced) by
+   * achievementService when achievements are awarded, instead of running the
+   * full rebuild inline on the award path.
+   */
+  // Full-history revenge analysis queued by AchievementService after trade
+  // changes, followed by an achievement check so no-revenge badges are
+  // judged on fresh detection. Keeps the user's real-time behavioral alerts.
+  async processRevengeAnalysis(data) {
+    const BehavioralAnalyticsServiceV2 = require('../services/behavioralAnalyticsServiceV2');
+    const AchievementService = require('../services/achievementService');
+    const { userId } = data;
+
+    const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId, {}, { keepAlerts: true });
+    const awarded = await AchievementService.checkAndAwardAchievements(userId, { skipRevengeAnalysis: true });
+
+    return {
+      tradesAnalyzed: analysis.tradesAnalyzed,
+      revengeEventsCreated: analysis.revengeEventsCreated,
+      achievementsAwarded: awarded.length
+    };
+  }
+
+  async processLeaderboardUpdate() {
+    const LeaderboardService = require('../services/leaderboardService');
+
+    logger.logImport('Processing leaderboard update job');
+    await LeaderboardService.updateLeaderboards();
+
+    return { message: 'Leaderboards updated' };
   }
 
   /**

@@ -725,6 +725,8 @@
                             </div>
                         </div>
 
+                        <SymbolCurrentPrice :symbol="alertForm.symbol" />
+
                         <div
                             class="mb-4"
                             v-if="alertForm.alert_type !== 'change_percent'"
@@ -853,7 +855,9 @@ import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhoo
 import { mdiBell, mdiRepeat, mdiEmailOutline } from "@mdi/js";
 import { getMarketStatus } from "@/utils/marketStatus";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
+import SymbolCurrentPrice from "@/components/price-alerts/SymbolCurrentPrice.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
+import { useVisibilityPolling } from "@/composables/useVisibilityPolling";
 
 const route = useRoute();
 const router = useRouter();
@@ -907,10 +911,12 @@ const alertForm = ref({
     repeat_enabled: false,
 });
 
-// Update market status every minute
-setInterval(() => {
+// Update market status every minute - paused while the tab is hidden
+// (stops automatically when the component unmounts)
+const marketStatusPoller = useVisibilityPolling(() => {
     marketStatus.value = getMarketStatus();
 }, 60000);
+marketStatusPoller.start();
 
 const isProUser = computed(() => {
     if (authStore.user?.billingEnabled === false) {

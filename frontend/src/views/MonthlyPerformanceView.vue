@@ -655,14 +655,13 @@
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import { useTradesStore } from "@/stores/trades";
 import { useUiPreferencesStore } from "@/stores/uiPreferences";
-import { Chart, registerables } from "chart.js";
+import { Chart } from "@/lib/chartSetup";
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
+import { formatPercent as formatPercentBase } from "@/utils/formatters";
 import api from "@/services/api";
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import TagManagement from "@/components/trades/TagManagement.vue";
-
-Chart.register(...registerables);
 
 const tradesStore = useTradesStore();
 const uiPreferencesStore = useUiPreferencesStore();
@@ -1031,10 +1030,7 @@ const createWinRateChart = () => {
 };
 
 // Formatting helpers
-const formatPercentage = (value) => {
-    if (value === null || value === undefined) return "-";
-    return `${value.toFixed(1)}%`;
-};
+const formatPercentage = (value) => formatPercentBase(value, { digits: 1 });
 
 const formatNumber = (value, decimals = 2) => {
     if (value === null || value === undefined) return "-";

@@ -20,13 +20,20 @@
     <div v-else-if="trade" class="space-y-8">
       <!-- Header -->
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 class="heading-page">
-            {{ trade.symbol }} Trade
-          </h1>
-          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            {{ formatDate(trade.trade_date) }} • {{ trade.side }}
-          </p>
+        <div class="flex items-center gap-3">
+          <StockLogo
+            :symbol="trade.symbol"
+            size-class="w-11 h-11"
+            fallback-text-class="text-sm font-semibold"
+          />
+          <div class="min-w-0">
+            <h1 class="heading-page">
+              {{ trade.symbol }} Trade
+            </h1>
+            <p class="mt-1 truncate text-sm text-gray-600 dark:text-gray-400">
+              <span v-if="symbolCompanyName">{{ symbolCompanyName }} • </span>{{ formatDate(trade.trade_date) }} • {{ trade.side }}
+            </p>
+          </div>
         </div>
         <div v-if="isOwner" class="flex flex-wrap gap-3 sm:justify-end">
           <button
@@ -54,6 +61,15 @@
           <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-secondary">
             Manage
           </router-link>
+          <button
+            v-if="allocationEnabled"
+            type="button"
+            class="btn-secondary inline-flex items-center gap-2"
+            @click="showAllocationModal = true"
+          >
+            <ChartPieIcon class="h-4 w-4" />
+            Allocate
+          </button>
           <router-link :to="{ path: `/trades/${trade.id}/edit`, query: { from: 'trade-detail' } }" class="btn-secondary">
             Edit
           </router-link>
@@ -65,6 +81,48 @@
 
       <!-- Shareable trade card generator -->
       <TradeShareCard v-if="trade" v-model="showShareCard" :trade="trade" @made-public="trade.is_public = true" />
+
+      <TradeAllocationModal
+        v-if="allocationEnabled"
+        :open="showAllocationModal"
+        :trade="trade"
+        :groups="allocationModalGroups"
+        @close="showAllocationModal = false"
+        @saved="handleAllocationSaved"
+      />
+
+      <div
+        v-if="allocationEnabled && tradeAllocations.length > 0"
+        class="card"
+      >
+        <div class="card-body">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Trade allocation</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">A private proportional accounting split. Tags remain unchanged.</p>
+            </div>
+            <router-link to="/metrics/allocations" class="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400">
+              View allocation report
+            </router-link>
+          </div>
+          <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div
+              v-for="allocation in tradeAllocations"
+              :key="allocation.allocation_group_id"
+              class="rounded-lg border border-gray-200 px-4 py-3 dark:border-gray-700"
+            >
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full" :style="{ backgroundColor: allocation.allocation_group_color }"></span>
+                <span class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ allocation.allocation_group_name }}</span>
+                <span class="ml-auto text-sm text-gray-500 dark:text-gray-400">{{ formatAllocationPercent(allocation.allocation_ratio) }}</span>
+              </div>
+              <div v-if="trade.pnl !== null && trade.pnl !== undefined" class="mt-2 text-sm font-semibold" :class="Number(trade.pnl) >= 0 ? 'text-green-600' : 'text-red-600'">
+                {{ formatTradeCurrency(Number(trade.pnl) * Number(allocation.allocation_ratio)) }} P&amp;L
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Stored AI Analyses -->
       <div v-if="storedAIResponseCount > 0" class="rounded-lg border border-primary-200 bg-primary-50/60 dark:border-primary-900/50 dark:bg-primary-900/10">
@@ -145,6 +203,12 @@
                   </button>
                 </div>
               </div>
+              <div v-if="analysis.ai_metadata?.image_context" class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                <p>Screenshots included: {{ analysis.ai_metadata.image_context.included_count }}. Skipped: {{ analysis.ai_metadata.image_context.skipped_count }}.</p>
+                <ul v-if="analysis.ai_metadata.image_context.skipped_images?.length" class="mt-1 list-disc pl-5">
+                  <li v-for="(image, index) in analysis.ai_metadata.image_context.skipped_images" :key="image.attachment_id || index">{{ image.file_name }}: {{ image.reason }}</li>
+                </ul>
+              </div>
               <div class="space-y-4">
                 <div
                   v-for="response in analysis.responses"
@@ -174,7 +238,6 @@
           empty-description="Start a focused AI review of this trade to diagnose what went wrong, evaluate the technical setup, and turn the available chart, image, news, sector, and execution data into specific next steps."
           start-label="Analyze This Trade"
           loading-text="Analyzing this trade..."
-          auto-start
           @session-created="loadStoredAIAnalyses"
         />
       </div>
@@ -1242,7 +1305,10 @@
           </div>
 
           <!-- Trade Chart Visualization (Collapsible) -->
-          <div v-if="trade.exit_price && trade.exit_time" class="card">
+          <!-- Open trades chart too: the endpoint returns candles up to the
+               present for them, and KLineTradeChart already renders an entry
+               marker with no exit. -->
+          <div v-if="trade.entry_time || trade.trade_date" class="card">
             <div class="card-body">
               <button
                 @click="toggleChartSection"
@@ -1599,26 +1665,35 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, reactive } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
-import { DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon } from '@heroicons/vue/24/outline'
-import TradeShareCard from '@/components/trades/TradeShareCard.vue'
+import { ChartPieIcon, DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon } from '@heroicons/vue/24/outline'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+import StockLogo from '@/components/common/StockLogo.vue'
+import { useSymbolMetadata } from '@/composables/useSymbolMetadata'
 import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
 import TradeImages from '@/components/trades/TradeImages.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
-import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
-import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAIStore } from '@/stores/ai'
 import { getTradeDateOnlyParts } from '@/utils/date'
+import {
+  consumeReloadScrollPosition,
+  saveReloadScrollPosition,
+} from '@/utils/reloadScrollPosition'
+
+// Heavy, conditionally rendered components: load lazily to keep them out of the route chunk
+const TradeShareCard = defineAsyncComponent(() => import('@/components/trades/TradeShareCard.vue'))
+const TradeAllocationModal = defineAsyncComponent(() => import('@/components/trades/TradeAllocationModal.vue'))
+const AIConversationPanel = defineAsyncComponent(() => import('@/components/ai/AIConversationPanel.vue'))
+const AIReportRenderer = defineAsyncComponent(() => import('@/components/ai/AIReportRenderer.vue'))
 
 const route = useRoute()
 const router = useRouter()
@@ -1629,8 +1704,33 @@ const { showSuccess, showError, showConfirmation, showDangerConfirmation } = use
 const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
 
+function reloadScrollStorageKey() {
+  return `trade_detail_scroll:${route.params.id}`
+}
+
+function saveTradeDetailScroll(event) {
+  if (event?.persisted) return
+  saveReloadScrollPosition(
+    window.sessionStorage,
+    reloadScrollStorageKey(),
+    window.scrollY
+  )
+}
+
+async function restoreTradeDetailScroll(scroll_y) {
+  if (!Number.isFinite(scroll_y)) return
+  await nextTick()
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: scroll_y, left: 0, behavior: 'auto' })
+    })
+  })
+}
+
 function getTradeCurrency() {
-  return (trade.value?.original_currency || trade.value?.originalCurrency || 'USD').toUpperCase()
+  // Server converts detail amounts to the display currency (see list view);
+  // rows it could not convert keep their own effective_currency.
+  return (trade.value?.effective_currency || tradesStore.tradesCurrency || 'USD').toUpperCase()
 }
 
 function formatTradeCurrency(value, options = {}) {
@@ -1678,9 +1778,61 @@ function hasLegacyFuturesExcursionUnits(currentTrade, captured, scale) {
 
 const loading = ref(true)
 const trade = ref(null)
+const allocationEnabled = ref(false)
+const allocationGroups = ref([])
+const tradeAllocations = ref([])
+const showAllocationModal = ref(false)
+
+const { metadataBySymbol, normalizeSymbol } = useSymbolMetadata(computed(() => trade.value?.symbol || ''))
+const symbolCompanyName = computed(() => {
+  const symbol = normalizeSymbol(trade.value?.symbol || '')
+  return symbol ? (metadataBySymbol[symbol]?.companyName || null) : null
+})
+
 // True only for the trade's owner. Guests/other users viewing a public trade get
 // a read-only view: owner actions and owner-only data fetches are skipped.
 const isOwner = computed(() => !!authStore.user && !!trade.value && trade.value.user_id === authStore.user.id)
+const allocationModalGroups = computed(() => {
+  const byId = new Map(allocationGroups.value.map((group) => [group.id, group]))
+  for (const allocation of tradeAllocations.value) {
+    if (!byId.has(allocation.allocation_group_id)) {
+      byId.set(allocation.allocation_group_id, {
+        id: allocation.allocation_group_id,
+        name: `${allocation.allocation_group_name} (archived)`,
+        color: allocation.allocation_group_color,
+        archived: true
+      })
+    }
+  }
+  return Array.from(byId.values())
+})
+
+function formatAllocationPercent(ratio) {
+  return `${(Number(ratio || 0) * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`
+}
+
+async function loadTradeAllocationFeature() {
+  if (!isOwner.value) return
+  try {
+    const settingsResponse = await api.get('/settings')
+    allocationEnabled.value = settingsResponse.data?.settings?.tradeAllocationsEnabled === true
+    if (!allocationEnabled.value) return
+
+    const [groupsResponse, allocationsResponse] = await Promise.all([
+      api.get('/trade-allocations/groups'),
+      api.get(`/trade-allocations/trades/${trade.value.id}`)
+    ])
+    allocationGroups.value = groupsResponse.data.groups || []
+    tradeAllocations.value = allocationsResponse.data.allocations || []
+  } catch (error) {
+    console.error('Failed to load trade allocations:', error)
+  }
+}
+
+function handleAllocationSaved(result) {
+  tradeAllocations.value = result.allocations || []
+  showSuccess('Success', tradeAllocations.value.length > 0 ? 'Trade allocation saved' : 'Trade allocation cleared')
+}
 const calculatingQuality = ref(false)
 const splittingTrade = ref(false)
 const splitMode = ref(false)
@@ -2148,7 +2300,10 @@ const processedExecutions = computed(() => {
 
     if (isGroupedFormat) {
       const entryPrice = parseFloat(execution.entryPrice ?? execution.entry_price) || 0
-      const rawExit = execution.exitPrice ?? execution.exit_price
+      const executionExitTime = execution.exitTime ?? execution.exit_time
+      const rawExit = execution.exitPrice
+        ?? execution.exit_price
+        ?? (executionExitTime && Number(trade.value.exit_price) === 0 ? 0 : null)
       const exitPrice = rawExit != null ? parseFloat(rawExit) : null
       const grossPnl = (exitPrice != null && quantity > 0)
         ? (tradeSide === 'short' ? (entryPrice - exitPrice) * quantity * valueMultiplier : (exitPrice - entryPrice) * quantity * valueMultiplier)
@@ -2168,7 +2323,7 @@ const processedExecutions = computed(() => {
         entryPrice,
         exitPrice,
         entryTime: execution.entryTime ?? execution.entry_time,
-        exitTime: execution.exitTime ?? execution.exit_time,
+        exitTime: executionExitTime,
         grossPnl,
         netPnl: realizedPnl ?? (grossPnl != null ? grossPnl - commission - fees : null),
         pnl: realizedPnl ?? (grossPnl != null ? grossPnl - commission - fees : null)
@@ -2792,6 +2947,7 @@ async function loadTrade() {
       loadComments()
       loadStoredAIAnalyses()
       fetchQualityWeights()
+      loadTradeAllocationFeature()
     }
   } catch (error) {
     // A guest hitting a private/non-existent trade gets a 404; send them to login
@@ -2892,10 +3048,18 @@ async function copyChartUrl() {
   }
 }
 
-onMounted(() => {
-  // Scroll to top when the page loads
-  window.scrollTo(0, 0)
+onMounted(async () => {
+  const saved_scroll_y = consumeReloadScrollPosition(
+    window.sessionStorage,
+    reloadScrollStorageKey()
+  )
+  window.addEventListener('pagehide', saveTradeDetailScroll)
 
-  loadTrade()
+  await loadTrade()
+  if (trade.value) await restoreTradeDetailScroll(saved_scroll_y)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', saveTradeDetailScroll)
 })
 </script>

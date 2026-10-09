@@ -71,6 +71,7 @@ const { currencySymbol } = useCurrencyFormatter()
 const chartContainer = ref(null)
 let chart = null
 let candleSeries = null
+let candleMarkers = null
 let indicatorSeries = {} // key -> lightweight-charts series
 let indicatorData = null // key -> array aligned with props.candles
 let renderedCursor = -1
@@ -181,7 +182,9 @@ function createChart() {
       precision: Math.min(8, Math.max(2, Math.ceil(-Math.log10(tickSize))))
     }
   }
-  candleSeries = chart.addCandlestickSeries(seriesOptions)
+  candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, seriesOptions)
+  // Held rather than recreated: playback re-sets markers as fills come into view.
+  candleMarkers = LightweightCharts.createSeriesMarkers(candleSeries)
 
   // Only draw stop/target lines when they sit near the data — a level far
   // outside the bar range (mismatched fill/data spaces) would squash the
@@ -231,7 +234,7 @@ function createChart() {
   indicatorSeries = {}
   for (const key of ['vwap', 'ema9', 'ema20']) {
     if (props.indicators[key]) {
-      indicatorSeries[key] = chart.addLineSeries({
+      indicatorSeries[key] = chart.addSeries(LightweightCharts.LineSeries, {
         color: INDICATOR_STYLES[key].color,
         lineWidth: 1,
         title: INDICATOR_STYLES[key].title,
@@ -242,7 +245,7 @@ function createChart() {
     }
   }
   if (props.indicators.volume) {
-    indicatorSeries.volume = chart.addHistogramSeries({
+    indicatorSeries.volume = chart.addSeries(LightweightCharts.HistogramSeries, {
       priceScaleId: 'volume',
       priceFormat: { type: 'volume' },
       priceLineVisible: false,
@@ -278,6 +281,7 @@ function destroyChart() {
     }
     chart = null
     candleSeries = null
+    candleMarkers = null
     indicatorSeries = {}
     indicatorData = null
   }
@@ -343,7 +347,7 @@ function render(force = false) {
 
   if (force || props.executedFills.length !== renderedFillCount) {
     const visible = props.candles.slice(0, cursor + 1).map(shiftBar)
-    candleSeries.setMarkers(buildMarkers(visible))
+    candleMarkers?.setMarkers(buildMarkers(visible))
     renderedFillCount = props.executedFills.length
   }
 }

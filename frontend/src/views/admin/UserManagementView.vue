@@ -462,6 +462,7 @@ import { useAuthStore } from "@/stores/auth";
 import MdiIcon from "@/components/MdiIcon.vue";
 import AdminNav from "@/components/admin/AdminNav.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
+import { debounce } from "@/utils/debounce";
 import { mdiCheckCircle, mdiCloseCircle } from "@mdi/js";
 
 const { showError, showSuccess } = useNotification();
@@ -487,7 +488,6 @@ const totalPages = ref(1);
 const totalUsers = ref(0);
 const usersPerPage = ref(25);
 const searchQuery = ref("");
-const searchTimeout = ref(null);
 
 const filters = ref({
     role: "all",
@@ -754,15 +754,9 @@ async function fetchUsers(page = 1) {
     }
 }
 
-function handleSearch() {
-    if (searchTimeout.value) {
-        clearTimeout(searchTimeout.value);
-    }
-
-    searchTimeout.value = setTimeout(() => {
-        fetchUsers(1);
-    }, 300);
-}
+const handleSearch = debounce(() => {
+    fetchUsers(1);
+}, 300);
 
 function clearSearch() {
     searchQuery.value = "";

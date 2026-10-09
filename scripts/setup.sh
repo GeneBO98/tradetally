@@ -5,7 +5,7 @@
 echo "[SETUP] Setting up TradeTally..."
 
 if ! command -v pnpm >/dev/null 2>&1; then
-    echo "[ERROR] pnpm is required. Install it with: npm install -g pnpm@10.13.1"
+    echo "[ERROR] pnpm is required. Install it with: npm install -g pnpm@10.34.5"
     exit 1
 fi
 

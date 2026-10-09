@@ -407,16 +407,19 @@ const brokerNames = {
   tradingview_performance: 'TradingView',
   tradingview_paper: 'TradingView',
   tradovate: 'Tradovate',
+  sierrachart: 'Sierra Chart',
+  ninjatrader: 'NinjaTrader',
   questrade: 'Questrade',
   projectx: 'ProjectX',
+  projectx_orders: 'ProjectX',
   tradestation: 'TradeStation',
   tastytrade: 'Tastytrade'
 }
 
 const supportedBrokers = [
   'lightspeed', 'schwab', 'thinkorswim', 'ibkr', 'ibkr_trade_confirmation', 'captrader',
-  'webull', 'etrade', 'papermoney', 'tradervue', 'avatrade', 'tradingview', 'tradovate', 'questrade',
-  'projectx', 'tradestation', 'tastytrade'
+  'webull', 'etrade', 'papermoney', 'tradervue', 'avatrade', 'tradingview', 'tradovate', 'ninjatrader', 'questrade',
+  'projectx', 'projectx_orders', 'tradestation', 'tastytrade'
 ]
 
 function formatBrokerName(broker) {

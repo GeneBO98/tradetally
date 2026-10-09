@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
@@ -43,6 +44,7 @@ const diaryTemplateRoutes = require('./routes/diaryTemplate.routes');
 const healthRoutes = require('./routes/health.routes');
 const oauth2Routes = require('./routes/oauth2.routes');
 const tagsRoutes = require('./routes/tags.routes');
+const tradeAllocationsRoutes = require('./routes/tradeAllocations.routes');
 const backupRoutes = require('./routes/backup.routes');
 const brokerSyncRoutes = require('./routes/brokerSync.routes');
 const yearWrappedRoutes = require('./routes/yearWrapped.routes');
@@ -66,6 +68,7 @@ const replayRoutes = require('./routes/replay.routes');
 const backtestRoutes = require('./routes/backtest.routes');
 const propFirmRoutes = require('./routes/propFirm.routes');
 const marketRiskRoutes = require('./routes/marketRisk.routes');
+const widgetRoutes = require('./routes/widget.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -79,6 +82,7 @@ const brokerSyncScheduler = require('./services/brokerSync/brokerSyncScheduler')
 const plaidFundingScheduler = require('./services/plaid/plaidFundingScheduler');
 const dividendScheduler = require('./services/dividendScheduler');
 const newsScheduler = require('./services/newsScheduler');
+const dashboardCacheWarmer = require('./services/dashboardCacheWarmer');
 const earningsScheduler = require('./services/earningsScheduler');
 const symbolCategoryScheduler = require('./services/symbolCategoryScheduler');
 const portfolioSnapshotScheduler = require('./services/portfolioSnapshotScheduler');
@@ -103,6 +107,7 @@ const { isV1Request, sendV1Error } = require('./utils/apiResponse');
 const { ensureCsrfCookie, requireCsrf } = require('./middleware/csrf');
 const { createRateLimiter } = require('./utils/rateLimit');
 const { isBackgroundJobsDisabled } = require('./utils/runtimeScope');
+const { requireAdmin } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -138,9 +143,6 @@ const rateLimitEnabled = process.env.RATE_LIMIT_ENABLED !== 'false';
 const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX) || 1000;
 const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
 
-// Custom key generator to properly identify clients behind proxies
-const { getClientIp } = require('./utils/clientIp');
-
 const limiter = createRateLimiter({
   windowMs: rateLimitWindowMs,
   max: rateLimitMax,
@@ -163,6 +165,16 @@ const skipRateLimit = (req, res, next) => {
 // Apply security middleware (CSP, anti-clickjacking, etc.)
 app.use(securityMiddleware());
 app.use(requestIdMiddleware);
+
+// HTTP response compression (must never buffer Server-Sent Events)
+app.use(compression({
+  filter: (req, res) => {
+    if (req.headers.accept === 'text/event-stream') return false;
+    const contentType = res.getHeader('Content-Type');
+    if (typeof contentType === 'string' && contentType.includes('text/event-stream')) return false;
+    return compression.filter(req, res);
+  }
+}));
 
 // Optimized CORS configuration
 const allowedOrigins = [
@@ -201,13 +213,16 @@ const corsOptions = {
       callback(null, true);
     } else {
       logger.warn(`Origin ${origin} not allowed. Allowed origins: ${allowedOrigins.join(', ')}`, 'cors');
-      callback(new Error('Not allowed by CORS'));
+      const error = new Error('Origin is not allowed by CORS');
+      error.status = 403;
+      error.code = 'CORS_ORIGIN_DENIED';
+      callback(error);
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-API-Key', 'X-Device-ID', 'X-App-Version', 'X-Platform', 'X-Request-ID', 'X-CSRF-Token'],
-  exposedHeaders: ['X-API-Version', 'X-Rate-Limit-Remaining', 'X-Rate-Limit-Reset', 'X-Request-ID'],
+  exposedHeaders: ['X-API-Version', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset', 'Retry-After', 'X-Request-ID', 'X-Idempotency-Replayed'],
   optionsSuccessStatus: 200
 };
 
@@ -281,6 +296,7 @@ app.use('/api/diary', diaryRoutes);
 app.use('/api/diary-templates', diaryTemplateRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/tags', tagsRoutes);
+app.use('/api/trade-allocations', tradeAllocationsRoutes);
 app.use('/api/admin/backup', backupRoutes);
 app.use('/api/broker-sync', brokerSyncRoutes);
 app.use('/api/year-wrapped', yearWrappedRoutes);
@@ -302,6 +318,7 @@ app.use('/api/replay', replayRoutes);
 app.use('/api/backtest', backtestRoutes);
 app.use('/api/prop-firm', propFirmRoutes);
 app.use('/api/market-risk', marketRiskRoutes);
+app.use('/api/widgets', widgetRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);
@@ -315,11 +332,12 @@ app.use('/og', ogRoutes);
 
 // Swagger API Documentation
 if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
-  app.get('/api-docs.json', (req, res) => {
+  const docsAuth = process.env.NODE_ENV === 'production' ? [requireAdmin] : [];
+  app.get('/api-docs.json', ...docsAuth, (req, res) => {
     res.json(buildSwaggerSpec(getApiDocsOrigin(req)));
   });
 
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(null, {
+  app.use('/api-docs', ...docsAuth, swaggerUi.serve, swaggerUi.setup(null, {
     explorer: true,
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: 'TradeTally API Documentation',
@@ -330,10 +348,21 @@ if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'tru
   logger.info('📚 Swagger documentation available at /api-docs');
 }
 
-// Health endpoint with database connection check and background worker status
+// Public liveness endpoint intentionally exposes no topology, filesystem, version,
+// capacity, or backup details. Operators can use the admin endpoint below.
 app.get('/api/health', async (req, res) => {
+  try {
+    const db = require('./config/database');
+    await db.query('SELECT 1');
+    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  } catch (_) {
+    res.status(503).json({ status: 'DEGRADED', timestamp: new Date().toISOString() });
+  }
+});
+
+app.get('/api/admin/system-health', requireAdmin, async (req, res) => {
   const health = await buildHealthStatus();
-  res.json(health);
+  res.status(health.status === 'OK' ? 200 : 503).json(health);
 });
 
 // Readiness probe for load-balancer failover. Returns 200 only when this node's
@@ -344,11 +373,11 @@ app.get('/api/ready', async (req, res) => {
     const db = require('./config/database');
     const { rows } = await db.query('SELECT pg_is_in_recovery() AS in_recovery');
     if (rows[0] && rows[0].in_recovery === true) {
-      return res.status(503).json({ ready: false, db_role: 'standby' });
+      return res.status(503).json({ ready: false });
     }
-    return res.status(200).json({ ready: true, db_role: 'primary' });
+    return res.status(200).json({ ready: true });
   } catch (err) {
-    return res.status(503).json({ ready: false, error: 'db_unreachable' });
+    return res.status(503).json({ ready: false });
   }
 });
 
@@ -368,7 +397,6 @@ app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (r
 });
 
 // Admin endpoint to check enrichment status
-const { requireAdmin } = require('./middleware/auth');
 app.get('/api/admin/enrichment-status', requireAdmin, async (req, res) => {
   try {
     const db = require('./config/database');
@@ -614,6 +642,19 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
     console.log('Broker sync scheduler disabled (ENABLE_BROKER_SYNC_SCHEDULER=false)');
   }
 
+  // FX rate warm-up is a cache prefetch (persisted to fx_daily_rates), not a
+  // background job - run it even when workers are disabled so display
+  // currency conversion never blocks on the FX API.
+  defer('fx-rates-warm', async () => {
+    const currencyConverter = require('./utils/currencyConverter');
+    try {
+      const summary = await currencyConverter.refreshCurrentRates();
+      console.log(`[SUCCESS] Warmed FX daily rates for ${summary.rateDate} (${summary.currencies} currencies)`);
+    } catch (error) {
+      console.warn(`[WARNING] FX rate warm-up failed (will fetch lazily): ${error.message}`);
+    }
+  });
+
   if (backgroundJobsDisabled) {
     console.log('Plaid funding scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
   } else if (process.env.ENABLE_PLAID_SYNC_SCHEDULER !== 'false') {
@@ -648,6 +689,18 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
     });
   } else {
     console.log('News scheduler disabled (ENABLE_NEWS_SCHEDULER=false)');
+  }
+
+  if (backgroundJobsDisabled) {
+    console.log('Dashboard cache warmer disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_DASHBOARD_CACHE_WARMER !== 'false') {
+    defer('dashboard-cache-warmer', () => {
+      console.log('Starting dashboard cache warmer...');
+      dashboardCacheWarmer.start();
+      console.log('[SUCCESS] Dashboard cache warmer started');
+    });
+  } else {
+    console.log('Dashboard cache warmer disabled (ENABLE_DASHBOARD_CACHE_WARMER=false)');
   }
 
   if (backgroundJobsDisabled) {
@@ -921,6 +974,7 @@ process.on('SIGTERM', async () => {
   brokerSyncScheduler.stop();
   plaidFundingScheduler.stop();
   newsScheduler.stop();
+  dashboardCacheWarmer.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
   portfolioSnapshotScheduler.stop();
@@ -947,6 +1001,7 @@ process.on('SIGINT', async () => {
   brokerSyncScheduler.stop();
   plaidFundingScheduler.stop();
   newsScheduler.stop();
+  dashboardCacheWarmer.stop();
   earningsScheduler.stop();
   symbolCategoryScheduler.stop();
   portfolioSnapshotScheduler.stop();

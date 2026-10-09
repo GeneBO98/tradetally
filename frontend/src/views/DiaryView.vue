@@ -131,13 +131,18 @@
 
         <!-- Date Range Filter -->
         <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Period</label>
+          <BaseSelect v-model="selected_date_preset" :options="[{ value: 'custom', label: 'Custom Range' }, ...monthPresetOptions]" @change="applyFilters" />
+        </div>
+        <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Start Date
           </label>
           <input
             type="date"
             v-model="filters.startDate"
-            @change="applyFilters"
+            @input="selected_date_preset = 'custom'"
+            @change="selected_date_preset = 'custom'; applyFilters()"
             class="input text-sm"
           />
         </div>
@@ -149,7 +154,8 @@
           <input
             type="date"
             v-model="filters.endDate"
-            @change="applyFilters"
+            @input="selected_date_preset = 'custom'"
+            @change="selected_date_preset = 'custom'; applyFilters()"
             class="input text-sm"
           />
         </div>
@@ -234,13 +240,21 @@
         <div
           v-for="entry in entries"
           :key="entry.id"
-          class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow"
+          :style="getDateCardStyle(entry.entry_date)"
+          class="date-group-card p-6 rounded-lg shadow-sm border hover:shadow-md transition-all"
         >
           <div class="flex items-start justify-between mb-4">
             <div class="flex-1">
               <div class="flex items-center space-x-3 mb-2">
                 <span class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ formatDate(entry.entry_date) }}
+                </span>
+
+                <span
+                  v-if="getEntryCountForDate(entry.entry_date) > 1"
+                  class="text-xs font-medium text-gray-500 dark:text-gray-400"
+                >
+                  {{ getEntryCountForDate(entry.entry_date) }} entries this day
                 </span>
                 
                 <span
@@ -592,12 +606,15 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useDiaryStore } from '@/stores/diary'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
+import { debounce } from '@/utils/debounce'
 import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
 import DiaryAnalysis from '@/components/diary/DiaryAnalysis.vue'
 import GeneralNotes from '@/components/diary/GeneralNotes.vue'
@@ -631,7 +648,6 @@ const savedView = localStorage.getItem('diaryView')
 const currentView = ref(savedView || 'list')
 const savedSearchQuery = localStorage.getItem('diarySearchQuery')
 const searchQuery = ref(savedSearchQuery || '')
-const searchTimeout = ref(null)
 const showDeleteModal = ref(false)
 const entryToDelete = ref(null)
 const deleting = ref(false)
@@ -658,6 +674,14 @@ const error = computed(() => diaryStore.error)
 // Full-page spinner only on first load; refetches keep content mounted.
 const initialLoading = ref(true)
 const pagination = computed(() => diaryStore.pagination)
+
+const entryCountsByDate = computed(() => {
+  return entries.value.reduce((counts, entry) => {
+    const dateKey = getEntryDateKey(entry.entry_date)
+    counts[dateKey] = (counts[dateKey] || 0) + 1
+    return counts
+  }, {})
+})
 
 const hasActiveFilters = computed(() => {
   return Object.values(filters.value).some(value => value !== '') || searchQuery.value !== ''
@@ -704,10 +728,25 @@ const calendarDays = computed(() => {
 
 // Methods
 const formatDate = (dateString) => {
-  // Parse as local date to avoid timezone shifts
-  const [year, month, day] = dateString.split('T')[0].split('-')
-  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-  return format(date, 'MMM d, yyyy')
+  // formatTradeDate parses date-only values locally to avoid timezone shifts
+  return formatTradeDate(dateString, 'MMM d, yyyy')
+}
+
+const getEntryDateKey = (dateString) => dateString?.split('T')[0] || ''
+
+const getDateCardStyle = (dateString) => {
+  const pastelHues = [345, 24, 48, 142, 188, 224, 268]
+  const dateKey = getEntryDateKey(dateString)
+  const toneIndex = [...dateKey].reduce(
+    (total, character) => total + character.charCodeAt(0),
+    0
+  ) % pastelHues.length
+
+  return { '--date-pastel-hue': pastelHues[toneIndex] }
+}
+
+const getEntryCountForDate = (dateString) => {
+  return entryCountsByDate.value[getEntryDateKey(dateString)] || 0
 }
 
 const splitContent = (content) => {
@@ -734,7 +773,10 @@ const truncateHtml = (html, maxLength) => {
   return truncateHtmlUtil(html, maxLength)
 }
 
+const selected_date_preset = ref(localStorage.getItem('diaryDatePreset') || 'custom')
+
 const applyFilters = async () => {
+  localStorage.setItem('diaryDatePreset', selected_date_preset.value)
   // Save filters to localStorage
   localStorage.setItem('diaryFilters', JSON.stringify(filters.value))
   uiPreferencesStore.notifyChanged('diaryFilters', filters.value)
@@ -743,6 +785,8 @@ const applyFilters = async () => {
 }
 
 const clearFilters = async () => {
+  selected_date_preset.value = 'custom'
+  localStorage.removeItem('diaryDatePreset')
   filters.value = {
     entryType: '',
     marketBias: '',
@@ -776,15 +820,16 @@ const debounceSearch = () => {
     uiPreferencesStore.notifyChanged('diarySearchQuery', null)
   }
 
-  clearTimeout(searchTimeout.value)
-  searchTimeout.value = setTimeout(async () => {
-    if (searchQuery.value.trim().length >= 2) {
-      await diaryStore.searchEntries(searchQuery.value, filters.value)
-    } else if (searchQuery.value.trim().length === 0) {
-      await loadEntries()
-    }
-  }, 300)
+  debouncedRunSearch()
 }
+
+const debouncedRunSearch = debounce(async () => {
+  if (searchQuery.value.trim().length >= 2) {
+    await diaryStore.searchEntries(searchQuery.value, filters.value)
+  } else if (searchQuery.value.trim().length === 0) {
+    await loadEntries()
+  }
+}, 300)
 
 const selectTag = (tag) => {
   // Replace everything after the last # with the selected tag
@@ -839,6 +884,7 @@ const goToEntry = (entry) => {
 const showDayEntries = (date) => {
   // Switch to list view and filter by the selected date
   const dateString = format(date, 'yyyy-MM-dd')
+  selected_date_preset.value = 'custom'
   filters.value.startDate = dateString
   filters.value.endDate = dateString
   currentView.value = 'list'
@@ -891,6 +937,14 @@ const getEntryTooltip = (entry) => {
 }
 
 const loadEntries = async () => {
+  if (selected_date_preset.value !== 'custom') {
+    const range = resolveDatePreset(selected_date_preset.value)
+    if (filters.value.startDate !== range.start_date || filters.value.endDate !== range.end_date) {
+      filters.value.startDate = range.start_date
+      filters.value.endDate = range.end_date
+    }
+    diaryStore.updateFilters(filters.value)
+  }
   try {
     await diaryStore.fetchEntries({ page: 1 })
   } catch (error) {
@@ -942,8 +996,7 @@ const handleAlertCreated = (symbol) => {
 }
 
 const handleApplyTemplate = (template) => {
-  // Navigate to new entry form (template will be shown there)
-  router.push('/diary/new')
+  router.push({ path: '/diary/new', query: { template_id: template.id } })
 }
 
 // Image handling
@@ -978,6 +1031,24 @@ watch(currentView, (newView) => {
 </script>
 
 <style scoped>
+.date-group-card {
+  background-color: hsl(var(--date-pastel-hue) 78% 91% / 0.28);
+  border-color: hsl(var(--date-pastel-hue) 38% 62% / 0.9);
+}
+
+.date-group-card:hover {
+  border-color: hsl(var(--date-pastel-hue) 42% 52% / 0.95);
+}
+
+:global(.dark) .date-group-card {
+  background-color: hsl(var(--date-pastel-hue) 42% 30% / 0.14);
+  border-color: hsl(var(--date-pastel-hue) 38% 58% / 0.8);
+}
+
+:global(.dark) .date-group-card:hover {
+  border-color: hsl(var(--date-pastel-hue) 46% 68% / 0.9);
+}
+
 .prose {
   max-width: none;
 }

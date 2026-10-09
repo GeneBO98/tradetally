@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 const { uuidv4 } = require('../utils/uuid');
+const { TOKEN_PURPOSES } = require('../middleware/auth');
 
 class RefreshTokenService {
   constructor() {
@@ -18,7 +19,9 @@ class RefreshTokenService {
         id: user.id,
         email: user.email,
         username: user.username,
-        role: user.role
+        role: user.role,
+        purpose: TOKEN_PURPOSES.ACCESS,
+        session_version: Number(user.session_version || 0)
       },
       process.env.JWT_SECRET,
       { expiresIn: this.ACCESS_TOKEN_EXPIRE, algorithm: 'HS256' }
@@ -38,9 +41,11 @@ class RefreshTokenService {
 
     // Store hashed token in database
     const result = await db.query(`
-      INSERT INTO refresh_tokens (user_id, device_id, token_hash, family_id, expires_at)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, family_id, expires_at
+      INSERT INTO refresh_tokens (user_id, device_id, token_hash, family_id, expires_at, session_version)
+      SELECT $1, $2, $3, $4, $5, session_version
+      FROM users
+      WHERE id = $1
+      RETURNING id, family_id, expires_at, session_version
     `, [userId, deviceId, tokenHash, familyId, expiresAt]);
 
     return {
@@ -60,7 +65,9 @@ class RefreshTokenService {
     // Find the refresh token
     const result = await db.query(`
       SELECT rt.id, rt.user_id, rt.device_id, rt.family_id, rt.expires_at, rt.revoked_at,
-             u.id as user_id, u.email, u.username, u.role, u.is_active, u.is_verified
+             rt.session_version AS token_session_version,
+             u.id as user_id, u.email, u.username, u.role, u.is_active, u.is_verified,
+             u.session_version
       FROM refresh_tokens rt
       JOIN users u ON rt.user_id = u.id
       WHERE rt.token_hash = $1 AND rt.revoked_at IS NULL
@@ -84,6 +91,11 @@ class RefreshTokenService {
       throw new Error('User account is inactive');
     }
 
+    if (tokenData.token_session_version !== tokenData.session_version) {
+      await this.revokeTokenFamily(tokenData.family_id, 'session_revoked');
+      throw new Error('Invalid or expired refresh token');
+    }
+
     // Check device match if device tracking is enabled
     if (deviceId && tokenData.device_id && tokenData.device_id !== deviceId) {
       // Potential token theft - revoke entire family
@@ -103,7 +115,8 @@ class RefreshTokenService {
       id: tokenData.user_id,
       email: tokenData.email,
       username: tokenData.username,
-      role: tokenData.role
+      role: tokenData.role,
+      session_version: tokenData.session_version
     };
 
     const accessToken = this.generateAccessToken(user);

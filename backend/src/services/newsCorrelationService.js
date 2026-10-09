@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
 const TierService = require('./tierService');
 const logger = require('../utils/logger');
 
@@ -84,10 +85,10 @@ class NewsCorrelationService {
           COUNT(*) as trade_count,
           COUNT(*) FILTER (WHERE pnl > 0) as profitable_trades,
           ROUND((AVG(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) * 100)::numeric, 2) as win_rate,
-          ROUND(AVG(pnl)::numeric, 2) as avg_pnl,
-          ROUND(SUM(pnl)::numeric, 2) as total_pnl,
+          ROUND(AVG(${fxUsd('pnl', 't')})::numeric, 2) as avg_pnl,
+          ROUND(SUM(${fxUsd('pnl', 't')})::numeric, 2) as total_pnl,
           ROUND(AVG(pnl_percent)::numeric, 2) as avg_return_pct,
-          ROUND(AVG(ABS(pnl))::numeric, 2) as avg_absolute_pnl
+          ROUND(AVG(ABS(${fxUsd('pnl', 't')}))::numeric, 2) as avg_absolute_pnl
         FROM trades t
         ${whereClause}
         GROUP BY news_sentiment, side
@@ -163,15 +164,15 @@ class NewsCorrelationService {
           side,
           symbol,
           COUNT(*) as trade_count,
-          ROUND(AVG(pnl)::numeric, 2) as avg_pnl,
-          ROUND(SUM(pnl)::numeric, 2) as total_pnl,
+          ROUND(AVG(${fxUsd('pnl', 't')})::numeric, 2) as avg_pnl,
+          ROUND(SUM(${fxUsd('pnl', 't')})::numeric, 2) as total_pnl,
           ROUND(AVG(pnl_percent)::numeric, 2) as avg_return_pct,
           ROUND((AVG(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) * 100)::numeric, 2) as win_rate
         FROM trades t
         ${whereClause}
         GROUP BY news_sentiment, side, symbol
         HAVING COUNT(*) >= 3  -- Only include symbols with 3+ trades
-          AND SUM(pnl) > 100  -- Only include combinations with meaningful profit (>$100)
+          AND SUM(${fxUsd('pnl', 't')}) > 100  -- Only include combinations with meaningful profit (>$100 USD)
         ORDER BY total_pnl DESC
         LIMIT 20
       `;
@@ -403,7 +404,7 @@ class NewsCorrelationService {
         SELECT 
           COUNT(*) as total_trades_with_news,
           ROUND((AVG(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) * 100)::numeric, 2) as overall_win_rate,
-          ROUND(AVG(pnl)::numeric, 2) as avg_pnl,
+          ROUND(AVG(${fxUsd('pnl', '')})::numeric, 2) as avg_pnl,
           COUNT(*) FILTER (WHERE news_sentiment = 'positive') as positive_news_trades,
           COUNT(*) FILTER (WHERE news_sentiment = 'negative') as negative_news_trades,
           COUNT(*) FILTER (WHERE news_sentiment = 'neutral') as neutral_news_trades,

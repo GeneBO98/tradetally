@@ -36,6 +36,16 @@
       </div>
     </div>
 
+    <p v-if="tradeId && !aiStore.hasActiveSession" class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+      Attached screenshots will be sent to your configured AI provider for visual analysis when using Gemini, OpenAI, or Claude. Up to five recent screenshots are included. Other providers use text and attachment references.
+    </p>
+    <div v-if="screenshot_context" class="text-sm text-gray-600 dark:text-gray-400 mb-4" role="status">
+      <p>Screenshots included: {{ screenshot_context.included_count }}. Skipped: {{ screenshot_context.skipped_count }}.</p>
+      <ul v-if="screenshot_context.skipped_images?.length" class="mt-1 list-disc pl-5">
+        <li v-for="(image, index) in screenshot_context.skipped_images" :key="image.attachment_id || index">{{ image.file_name }}: {{ image.reason }}</li>
+      </ul>
+    </div>
+
     <!-- No Session State - Start Button -->
     <div v-if="!aiStore.hasActiveSession && !aiStore.loading" class="text-center py-8">
       <div class="max-w-md mx-auto">
@@ -224,6 +234,8 @@ const props = defineProps({
     default: false
   }
 })
+
+const screenshot_context = computed(() => aiStore.currentSession?.image_context || aiStore.currentSession?.ai_metadata?.last_followup_image_context || aiStore.currentSession?.ai_metadata?.image_context || aiStore.currentSession?.trade_summary?.ai_metadata?.image_context)
 
 const followupMessage = ref('')
 const messagesContainer = ref(null)

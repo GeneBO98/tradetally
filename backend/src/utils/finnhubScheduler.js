@@ -5,8 +5,22 @@ const FinnhubPriority = Object.freeze({
   ACTIVE_CANDLE: 1,
   ACTIVE_OTHER: 3,
   BACKGROUND_PRICE: 6,
+  BACKGROUND_ENRICHMENT: 7,
   BACKGROUND_MAINTENANCE: 9
 });
+
+// Send below the configured provider limit so window misalignment between our
+// sliding window and the provider's counter never produces a 429.
+const DEFAULT_SAFETY_FACTOR = 0.9;
+
+// How long background jobs wait in the queue by default. Background work is
+// trickled out under the rate limit rather than dropped; callers that prefer
+// skip-and-retry-next-cycle semantics pass maxQueueWaitMs explicitly.
+const DEFAULT_BACKGROUND_QUEUE_WAIT_MS = 15 * 60 * 1000;
+const DEFAULT_ACTIVE_QUEUE_WAIT_MS = 10000;
+
+// Pause after an upstream 429 when the provider doesn't send Retry-After.
+const DEFAULT_COOLDOWN_MS = 10000;
 
 class FinnhubSchedulerError extends Error {
   constructor(message, code, details = {}) {
@@ -22,8 +36,14 @@ class FinnhubRequestScheduler {
     // Provider label for logs - the scheduler is shared by Finnhub and FMP, so
     // hardcoding "Finnhub" in log output is misleading when running on FMP
     this.label = options.label || 'MARKET-DATA';
-    this.maxCallsPerMinute = Math.max(1, parseInt(options.maxCallsPerMinute, 10) || 60);
-    this.maxCallsPerSecond = Math.max(1, parseInt(options.maxCallsPerSecond, 10) || 1);
+    const safetyFactor = Number.isFinite(options.safetyFactor) && options.safetyFactor > 0 && options.safetyFactor <= 1
+      ? options.safetyFactor
+      : DEFAULT_SAFETY_FACTOR;
+    this.safetyFactor = safetyFactor;
+    this.configuredCallsPerMinute = Math.max(1, parseInt(options.maxCallsPerMinute, 10) || 60);
+    this.configuredCallsPerSecond = Math.max(1, parseInt(options.maxCallsPerSecond, 10) || 1);
+    this.maxCallsPerMinute = Math.max(1, Math.floor(this.configuredCallsPerMinute * safetyFactor));
+    this.maxCallsPerSecond = Math.max(1, Math.floor(this.configuredCallsPerSecond * safetyFactor));
     this.activeReservePerMinute = Math.max(
       0,
       Math.min(
@@ -38,6 +58,13 @@ class FinnhubRequestScheduler {
     this.queue = [];
     this.sequence = 0;
     this.processTimer = null;
+    // After an upstream 429, hold all sends until this timestamp.
+    this.cooldownUntil = 0;
+
+    console.log(
+      `[${this.label}-SCHEDULER] Effective send rate: ${this.maxCallsPerMinute}/min, ${this.maxCallsPerSecond}/sec ` +
+      `(configured ${this.configuredCallsPerMinute}/min, ${this.configuredCallsPerSecond}/sec, safety factor ${safetyFactor})`
+    );
 
     this.stats = {
       recentWaits: [],
@@ -49,10 +76,12 @@ class FinnhubRequestScheduler {
 
   updateLimits({ maxCallsPerMinute, maxCallsPerSecond, activeReservePerMinute } = {}) {
     if (maxCallsPerMinute) {
-      this.maxCallsPerMinute = Math.max(1, parseInt(maxCallsPerMinute, 10));
+      this.configuredCallsPerMinute = Math.max(1, parseInt(maxCallsPerMinute, 10));
+      this.maxCallsPerMinute = Math.max(1, Math.floor(this.configuredCallsPerMinute * this.safetyFactor));
     }
     if (maxCallsPerSecond) {
-      this.maxCallsPerSecond = Math.max(1, parseInt(maxCallsPerSecond, 10));
+      this.configuredCallsPerSecond = Math.max(1, parseInt(maxCallsPerSecond, 10));
+      this.maxCallsPerSecond = Math.max(1, Math.floor(this.configuredCallsPerSecond * this.safetyFactor));
     }
     if (activeReservePerMinute !== undefined) {
       this.activeReservePerMinute = Math.max(
@@ -65,7 +94,8 @@ class FinnhubRequestScheduler {
   async schedule(requestFn, context = {}) {
     const priority = Number.isFinite(context.priority) ? context.priority : DEFAULT_PRIORITY;
     const background = Boolean(context.background) || priority >= FinnhubPriority.BACKGROUND_PRICE;
-    const maxQueueWaitMs = context.maxQueueWaitMs ?? (background ? 0 : 10000);
+    const maxQueueWaitMs = context.maxQueueWaitMs
+      ?? (background ? DEFAULT_BACKGROUND_QUEUE_WAIT_MS : DEFAULT_ACTIVE_QUEUE_WAIT_MS);
     const queuedAt = Date.now();
 
     return new Promise((resolve, reject) => {
@@ -140,6 +170,10 @@ class FinnhubRequestScheduler {
   }
 
   hasCapacity(job) {
+    if (Date.now() < this.cooldownUntil) {
+      return false;
+    }
+
     if (this.secondTimestamps.length >= this.maxCallsPerSecond) {
       return false;
     }
@@ -169,12 +203,32 @@ class FinnhubRequestScheduler {
     Promise.resolve()
       .then(job.requestFn)
       .then(job.resolve)
-      .catch(job.reject)
+      .catch((error) => {
+        if (error?.response?.status === 429) {
+          this.notifyRateLimited(error);
+        }
+        job.reject(error);
+      })
       .finally(() => {
         if (this.queue.length > 0 && this.autoProcess) {
           this.processQueue();
         }
       });
+  }
+
+  // Upstream said no: stop sending entirely until the provider's window
+  // clears. Honors Retry-After when present.
+  notifyRateLimited(error) {
+    const retryAfterHeader = error?.response?.headers?.['retry-after'];
+    const retryAfterSeconds = parseInt(retryAfterHeader, 10);
+    const cooldownMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? Math.min(retryAfterSeconds * 1000, 60000)
+      : DEFAULT_COOLDOWN_MS;
+    const until = Date.now() + cooldownMs;
+    if (until > this.cooldownUntil) {
+      this.cooldownUntil = until;
+      console.warn(`[${this.label}-SCHEDULER] Upstream 429 — pausing all sends for ${cooldownMs}ms`);
+    }
   }
 
   removeJob(job) {
@@ -198,9 +252,11 @@ class FinnhubRequestScheduler {
     const oldestMinuteCall = this.callTimestamps[0];
     const secondDelay = oldestSecondCall ? Math.max(0, 1000 - (now - oldestSecondCall) + 10) : 0;
     const minuteDelay = oldestMinuteCall ? Math.max(0, 60000 - (now - oldestMinuteCall) + 10) : 0;
-    const delay = this.secondTimestamps.length >= this.maxCallsPerSecond
+    const cooldownDelay = Math.max(0, this.cooldownUntil - now + 10);
+    const rateDelay = this.secondTimestamps.length >= this.maxCallsPerSecond
       ? secondDelay
       : minuteDelay || 1000;
+    const delay = Math.max(rateDelay, cooldownDelay);
 
     this.processTimer = setTimeout(() => this.processQueue(), delay);
     if (typeof this.processTimer.unref === 'function') {
@@ -244,6 +300,10 @@ class FinnhubRequestScheduler {
     return {
       maxCallsPerMinute: this.maxCallsPerMinute,
       maxCallsPerSecond: this.maxCallsPerSecond,
+      configuredCallsPerMinute: this.configuredCallsPerMinute,
+      configuredCallsPerSecond: this.configuredCallsPerSecond,
+      cooldownRemainingMs: Math.max(0, this.cooldownUntil - Date.now()),
+      queueDepth: this.queue.length,
       activeReservePerMinute: this.activeReservePerMinute,
       recentCalls: this.callTimestamps.length,
       lastMinuteCalls: this.callTimestamps.length,

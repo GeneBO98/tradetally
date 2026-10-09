@@ -6,8 +6,66 @@ const TradingPersonalityService = require('../services/tradingPersonalityService
 const RevengeTradeDetector = require('../services/revengeTradeDetector');
 const TierService = require('../services/tierService');
 const TickDataService = require('../services/tickDataService');
+const SessionTimelineService = require('../services/sessionTimelineService');
 const db = require('../config/database');
 const ensureString = require('../utils/ensureString');
+const { fxUsd } = require('../utils/tradeFx');
+const { resolveDisplayCurrency, getRatesToDisplay } = require('../utils/displayCurrency');
+
+/**
+ * Convert one USD amount into the user's display currency. Used where an
+ * amount ends up inside a rendered sentence rather than as a JSON number,
+ * which is the one place the response-level money walker cannot reach.
+ */
+async function toDisplayAmount(userId, usdAmount) {
+  try {
+    const currency = await resolveDisplayCurrency(userId);
+    if (currency === 'USD') return { amount: usdAmount, currency };
+    const rates = await getRatesToDisplay(['USD'], currency);
+    return rates.USD
+      ? { amount: usdAmount * rates.USD, currency }
+      : { amount: usdAmount, currency: 'USD' };
+  } catch (error) {
+    console.warn(`[BEHAVIORAL] Display conversion unavailable, reporting USD: ${error.message}`);
+    return { amount: usdAmount, currency: 'USD' };
+  }
+}
+
+function formatDisplayAmount(amount, currency) {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0
+    }).format(amount);
+  } catch {
+    return `${currency} ${Math.round(amount)}`;
+  }
+}
+
+// Shared catch-block handler: Pro-tier feature errors surface as a 403
+// upgrade prompt; everything else goes to the standard error middleware.
+function handleAnalyticsError(error, res, next) {
+  if (error.message && error.message.includes('requires Pro tier')) {
+    return res.status(403).json({
+      error: 'Pro tier required',
+      message: error.message,
+      upgradeRequired: true
+    });
+  }
+  next(error);
+}
+
+// Parse the common startDate/endDate/accounts query params into the
+// dateFilter spec consumed by the behavioral analytics services.
+function parseDateFilter(query) {
+  const { startDate, endDate, accounts } = query;
+  const dateFilter = {};
+  if (startDate) dateFilter.startDate = startDate;
+  if (endDate) dateFilter.endDate = endDate;
+  if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+  return dateFilter;
+}
 
 const behavioralAnalyticsController = {
   
@@ -15,12 +73,7 @@ const behavioralAnalyticsController = {
   async getOverview(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, accounts } = req.query;
-
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const overview = await BehavioralAnalyticsService.getBehavioralOverview(userId, dateFilter);
       
@@ -29,14 +82,7 @@ const behavioralAnalyticsController = {
         data: overview
       });
     } catch (error) {
-      if (error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -44,12 +90,9 @@ const behavioralAnalyticsController = {
   async getRevengeTradeAnalysis(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, page, limit, accounts } = req.query;
+      const { page, limit } = req.query;
 
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const paginationOptions = {
         page: parseInt(page) || 1,
@@ -63,14 +106,27 @@ const behavioralAnalyticsController = {
         data: analysis
       });
     } catch (error) {
-      if (error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
+    }
+  },
+
+  // Get a personal session activity timeline for behavioral review.
+  async getSessionTimeline(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const accounts = req.query.accounts
+        ? ensureString(req.query.accounts).split(',').filter(Boolean)
+        : [];
+      const timeline = await SessionTimelineService.getSessionTimeline(userId, {
+        session_date: req.query.session_date,
+        start_date: req.query.start_date,
+        end_date: req.query.end_date,
+        accounts
+      });
+      res.json({ success: true, data: timeline });
+    } catch (error) {
+      if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -236,13 +292,8 @@ const behavioralAnalyticsController = {
   async getInsights(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, accounts } = req.query;
+      const dateFilter = parseDateFilter(req.query);
 
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
-      
       // Get recent patterns and statistics
       const overview = await BehavioralAnalyticsService.getBehavioralOverview(userId, dateFilter);
       const revengeAnalysis = await BehavioralAnalyticsService.getRevengeTradeAnalysis(userId, dateFilter);
@@ -255,14 +306,7 @@ const behavioralAnalyticsController = {
         data: insights
       });
     } catch (error) {
-      if (error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -394,14 +438,7 @@ const behavioralAnalyticsController = {
         }
       });
     } catch (error) {
-      if (error.message && error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -434,14 +471,19 @@ const behavioralAnalyticsController = {
     const ctx = await db.query(`
       WITH closed AS (
         SELECT
-          t.id, t.trade_date, t.entry_time, t.exit_time, t.pnl, t.quantity, t.side,
+          -- Amounts are normalized to USD here, once, so every signal below
+          -- (streak P&L, average loss, notional sizing) compares like with
+          -- like even when some rows are still in their original currency.
+          t.id, t.trade_date, t.entry_time, t.exit_time,
+          ${fxUsd('pnl', 't')} AS pnl,
+          t.quantity, t.side,
           t.symbol, t.strategy,
           -- Notional size proxy: weight raw quantity by contract multiplier so
           -- comparisons stay coherent across instrument types. Futures use
           -- point_value (ES=50, MES=5), stocks/options fall back to entry_price.
           -- Without this, 1 ES contract reads as a "sizing down" vs 7 MES even
           -- though ES is 10x the notional. See GitHub issue #330.
-          (t.quantity * COALESCE(NULLIF(t.point_value, 0), t.entry_price, 1))::numeric AS notional
+          (t.quantity * COALESCE(NULLIF(t.point_value, 0), ${fxUsd('entry_price', 't')}, 1))::numeric AS notional
         FROM trades t
         ${userWhere}
           AND t.exit_price IS NOT NULL
@@ -715,8 +757,12 @@ const behavioralAnalyticsController = {
     if (snapshotCount > 0) {
       const wr = snapshotCount > 0 ? (snapshotWins / snapshotCount) * 100 : null;
       const wrLabel = wr !== null ? `${wr.toFixed(0)}% win rate` : '';
-      const pnlSign = snapshotPnl >= 0 ? '+' : '';
-      const pnlLabel = `${pnlSign}$${snapshotPnl.toFixed(0)}`;
+      // The amount is baked into display text, so it has to be converted and
+      // symbolled here - the response walker cannot reach inside a string.
+      const { amount: snapshotAmount, currency: snapshotCurrency } =
+        await toDisplayAmount(userId, snapshotPnl);
+      const pnlSign = snapshotAmount >= 0 ? '+' : '';
+      const pnlLabel = `${pnlSign}${formatDisplayAmount(snapshotAmount, snapshotCurrency)}`;
       const streakLabel = streakKind === 'W' && streak > 0 ? `, ${streak}W streak`
         : streakKind === 'L' && streak > 0 ? `, ${streak}L streak`
         : '';
@@ -923,8 +969,7 @@ const behavioralAnalyticsController = {
   async analyzeHistoricalTrades(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, accounts } = req.query;
-      
+
       // Check if user has access to behavioral analytics
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
       if (!hasAccess) {
@@ -936,10 +981,7 @@ const behavioralAnalyticsController = {
       }
 
       // Use the improved V2 version for proper revenge trade aggregation
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId, dateFilter);
       
@@ -950,14 +992,7 @@ const behavioralAnalyticsController = {
       });
     } catch (error) {
       console.error('Error analyzing historical trades:', error);
-      if (error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -1109,8 +1144,7 @@ const behavioralAnalyticsController = {
   async reRunHistoricalAnalysis(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, accounts } = req.query;
-      
+
       // Check if user has access to behavioral analytics
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
       if (!hasAccess) {
@@ -1122,10 +1156,7 @@ const behavioralAnalyticsController = {
       }
 
       // Use the improved V2 version with proper loss thresholds
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId, dateFilter);
       
@@ -1136,14 +1167,7 @@ const behavioralAnalyticsController = {
       });
     } catch (error) {
       console.error('Error re-running historical analysis:', error);
-      if (error.message.includes('requires Pro tier')) {
-        return res.status(403).json({
-          error: 'Pro tier required',
-          message: error.message,
-          upgradeRequired: true
-        });
-      }
-      next(error);
+      return handleAnalyticsError(error, res, next);
     }
   },
 
@@ -1203,14 +1227,11 @@ const behavioralAnalyticsController = {
   async getOverconfidenceAnalysis(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, page, limit, accounts } = req.query;
+      const { startDate, endDate, page, limit } = req.query;
 
       console.log(`[OVERCONFIDENCE] GET analysis request - userId: ${userId}, startDate: ${startDate}, endDate: ${endDate}, page: ${page}, limit: ${limit}`);
 
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const paginationOptions = {
         page: parseInt(page) || 1,
@@ -1252,7 +1273,7 @@ const behavioralAnalyticsController = {
   async analyzeOverconfidenceHistoricalTrades(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, accounts } = req.query;
+      const { startDate, endDate } = req.query;
 
       console.log(`[OVERCONFIDENCE] Analyzing trades for user ${userId}, date range: ${startDate || 'all'} to ${endDate || 'now'}`);
 
@@ -1266,10 +1287,7 @@ const behavioralAnalyticsController = {
         });
       }
 
-      const dateFilter = {};
-      if (startDate) dateFilter.startDate = startDate;
-      if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
+      const dateFilter = parseDateFilter(req.query);
 
       const analysis = await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId, dateFilter);
 

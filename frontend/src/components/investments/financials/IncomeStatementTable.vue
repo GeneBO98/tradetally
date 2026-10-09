@@ -169,7 +169,7 @@
             class="px-4 py-3 text-sm text-right whitespace-nowrap"
             :class="getEpsValue(period) >= 0 ? 'text-gray-700 dark:text-gray-300' : 'text-red-600 dark:text-red-400'"
           >
-            {{ formatCurrency(getEpsValue(period)) }}
+            {{ formatCurrency(getEpsValue(period), { currency }) }}
           </td>
         </tr>
         <tr v-if="hasEpsDiluted">
@@ -181,7 +181,7 @@
             :key="period.year + '-epsdiluted'"
             class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
           >
-            {{ formatCurrency(period.epsDiluted) }}
+            {{ formatCurrency(period.epsDiluted, { currency }) }}
           </td>
         </tr>
       </tbody>
@@ -191,11 +191,18 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency, symbolFor } = useCurrencyFormatter()
 
 const props = defineProps({
   data: {
     type: Array,
     required: true
+  },
+  currency: {
+    type: String,
+    default: ''
   }
 })
 
@@ -213,26 +220,18 @@ function formatLargeNumber(value) {
   const isNegative = value < 0
   const prefix = isNegative ? '(' : ''
   const suffix = isNegative ? ')' : ''
+  const sym = symbolFor(props.currency)
 
-  if (absValue >= 1e12) return `${prefix}$${(absValue / 1e12).toFixed(2)}T${suffix}`
-  if (absValue >= 1e9) return `${prefix}$${(absValue / 1e9).toFixed(2)}B${suffix}`
-  if (absValue >= 1e6) return `${prefix}$${(absValue / 1e6).toFixed(2)}M${suffix}`
-  if (absValue >= 1e3) return `${prefix}$${(absValue / 1e3).toFixed(2)}K${suffix}`
-  return `${prefix}$${absValue.toFixed(0)}${suffix}`
+  if (absValue >= 1e12) return `${prefix}${sym}${(absValue / 1e12).toFixed(2)}T${suffix}`
+  if (absValue >= 1e9) return `${prefix}${sym}${(absValue / 1e9).toFixed(2)}B${suffix}`
+  if (absValue >= 1e6) return `${prefix}${sym}${(absValue / 1e6).toFixed(2)}M${suffix}`
+  if (absValue >= 1e3) return `${prefix}${sym}${(absValue / 1e3).toFixed(2)}K${suffix}`
+  return `${prefix}${sym}${absValue.toFixed(0)}${suffix}`
 }
 
 function formatPercent(numerator, denominator) {
   if (!numerator || !denominator) return '-'
   return ((numerator / denominator) * 100).toFixed(1) + '%'
-}
-
-function formatCurrency(value) {
-  if (value === null || value === undefined || isNaN(value)) return '-'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(value)
 }
 
 function formatGrowth(current, previous) {

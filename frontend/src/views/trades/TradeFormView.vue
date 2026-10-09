@@ -95,7 +95,7 @@
               <label for="instrumentType" class="label">Instrument Type *</label>
               <BaseSelect
                 v-model="form.instrumentType"
-                :options="[{ value: 'stock', label: 'Stock' }, { value: 'option', label: 'Option' }, { value: 'future', label: 'Future' }, { value: 'crypto', label: 'Crypto' }]"
+                :options="[{ value: 'stock', label: 'Stock' }, { value: 'option', label: 'Option' }, { value: 'future', label: 'Future' }, { value: 'crypto', label: 'Crypto' }, { value: 'forex', label: 'Forex' }]"
               />
             </div>
 
@@ -718,7 +718,7 @@
             </div>
           </div>
 
-          <div class="relative">
+          <div class="relative" data-trade-account-field>
             <label for="account_identifier" class="label">Account</label>
             <div class="relative">
               <input
@@ -1246,6 +1246,17 @@
           </ul>
         </div>
 
+        <p
+          v-if="!form.account_identifier?.trim()"
+          role="status"
+          class="text-sm text-gray-600 dark:text-gray-400"
+        >
+          This trade will be saved without an account. It will appear under All Accounts and Unsorted, but not in an individual account's trades or P&amp;L.
+          <button type="button" class="text-primary-600 hover:text-primary-700 dark:text-primary-400 underline" @click="showAccountField">
+            Select an account
+          </button>
+        </p>
+
         <div class="flex justify-end space-x-3">
           <button type="button" @click="handleCancel" class="btn-secondary">
             Cancel
@@ -1508,6 +1519,8 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
+import { useAccountsStore } from '@/stores/accounts'
+import { useGlobalAccountFilter, UNSORTED_ACCOUNT } from '@/composables/useGlobalAccountFilter'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { useAnalytics } from '@/composables/useAnalytics'
@@ -1525,6 +1538,7 @@ import { useHiddenDropdownItems } from '@/composables/useHiddenDropdownItems'
 import { useStrategyOrder } from '@/composables/useStrategyOrder'
 import { useSetupOrder } from '@/composables/useSetupOrder'
 import { CURRENCY_OPTIONS } from '@/composables/useCurrencyFormatter'
+import { parseNullableNumber } from '@/utils/numbers'
 
 // Load section preferences from localStorage
 const defaultSectionPrefs = {
@@ -1613,6 +1627,7 @@ const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
+const { selectedAccount } = useGlobalAccountFilter()
 const { showSuccess, showError, showConfirmation } = useNotification()
 const { trackTradeAction } = useAnalytics()
 const { toLocalInput, toUTC, getCurrentTimeLocal, timezoneLabel } = useUserTimezone()
@@ -1838,7 +1853,10 @@ const form = ref({
   postExitMfe: null,
   postExitWindowOverrideMinutes: null,
   broker: '',
-  account_identifier: '',
+  // Snapshot the filter on creation; later filter changes must not reassign a draft.
+  account_identifier: !isEdit.value && selectedAccount.value !== UNSORTED_ACCOUNT
+    ? selectedAccount.value || ''
+    : '',
   strategy: '',
   setup: '',
   notes: '',
@@ -2028,7 +2046,7 @@ async function loadTrade() {
 
   try {
     loading.value = true
-    trade.value = await tradesStore.fetchTrade(route.params.id)
+    trade.value = await tradesStore.fetchTrade(route.params.id, { raw: true })
 
     // Create local reference for easier access
     const tradeData = trade.value
@@ -2182,7 +2200,13 @@ async function loadTrade() {
                 side: execSideValue,
                 quantity: exec.quantity != null ? Number(exec.quantity) : '',
                 entryPrice: exec.entryPrice != null ? Number(exec.entryPrice) : '',
-                exitPrice: exec.exitPrice != null ? Number(exec.exitPrice) : null,
+                exitPrice: (() => {
+                  const value = exec.exitPrice ?? exec.exit_price
+                  if (value != null) return Number(value)
+
+                  const hasExitTime = exec.exitTime ?? exec.exit_time
+                  return hasExitTime && Number(tradeData.exit_price) === 0 ? 0 : null
+                })(),
                 entryTime: exec.entryTime ? formatDateTimeLocal(exec.entryTime) : (exec.entry_time ? formatDateTimeLocal(exec.entry_time) : (tradeData.entry_time ? formatDateTimeLocal(tradeData.entry_time) : '')),
                 exitTime: exec.exitTime ? formatDateTimeLocal(exec.exitTime) : null,
                 commission: execCommission,
@@ -2384,7 +2408,7 @@ async function handleSubmit(opts = {}) {
     let calculatedEntryTime = form.value.entryTime
     let calculatedExitTime = form.value.exitTime
     let calculatedEntryPrice = parseFloat(form.value.entryPrice) || 0
-    let calculatedExitPrice = form.value.exitPrice ? parseFloat(form.value.exitPrice) : null
+    let calculatedExitPrice = parseNullableNumber(form.value.exitPrice)
     // Commission/fees: positive = fee paid, negative = rebate received
     let calculatedCommission = (parseFloat(form.value.entryCommission) || 0) + (parseFloat(form.value.exitCommission) || 0)
     let calculatedFees = parseFloat(form.value.fees) || 0
@@ -2403,7 +2427,7 @@ async function handleSubmit(opts = {}) {
               side: execSideValue,
               quantity: parseFloat(exec.quantity),
               entryPrice: parseFloat(exec.entryPrice),
-              exitPrice: exec.exitPrice ? parseFloat(exec.exitPrice) : null,
+              exitPrice: parseNullableNumber(exec.exitPrice),
               entryTime: toUTC(exec.entryTime),
               exitTime: exec.exitTime ? toUTC(exec.exitTime) : null,
               commission: parseFloat(exec.commission) || 0,  // Can be negative for rebates
@@ -3049,6 +3073,13 @@ function handleBrokerInputBlur() {
   showBrokerInput.value = false
 }
 
+async function showAccountField() {
+  showAdditionalFields.value = true
+  await nextTick()
+  document.querySelector('[data-trade-account-field]')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  document.querySelector('[data-trade-account-field] button, [data-trade-account-field] input')?.focus({ preventScroll: true })
+}
+
 function startAddAccount() {
   form.value.account_identifier = ''
   showAccountInput.value = true
@@ -3060,15 +3091,18 @@ function startAddAccount() {
 
 async function createAccountRecord(identifier) {
   try {
-    // Check if an account with this identifier already exists
-    const existing = await api.get('/accounts')
-    const accounts = existing.data.data || []
+    const accountsStore = useAccountsStore()
+
+    // Check if an account with this identifier already exists (forced fetch so
+    // the check never runs against a stale cached list)
+    const accounts = (await accountsStore.fetchAccounts({ force: true })) || []
     if (accounts.some(a => a.accountIdentifier === identifier)) {
       console.log('[TRADE FORM] Account record already exists for:', identifier)
       return
     }
 
-    await api.post('/accounts', {
+    // Store action refreshes the shared accounts cache after creation
+    await accountsStore.createAccount({
       accountName: identifier,
       accountIdentifier: identifier,
       broker: form.value.broker || null,

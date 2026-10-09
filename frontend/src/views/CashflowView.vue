@@ -21,10 +21,18 @@
         <div class="card">
           <div class="card-body">
             <div class="flex flex-wrap items-end gap-4">
+              <div class="min-w-[160px]">
+                <label class="label" for="cashflow-period">Period</label>
+                <select id="cashflow-period" v-model="selected_date_preset" class="input" @change="applyDateFilter">
+                  <option value="custom">Custom Range</option>
+                  <option v-for="option in monthPresetOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+              </div>
               <div class="flex-1 min-w-[140px]">
                 <label class="label">Start Date</label>
                 <input
                   v-model="startDate"
+                  @change="selected_date_preset = 'custom'"
                   type="date"
                   class="input w-full"
                 />
@@ -33,6 +41,7 @@
                 <label class="label">End Date</label>
                 <input
                   v-model="endDate"
+                  @change="selected_date_preset = 'custom'"
                   type="date"
                   class="input w-full"
                 />
@@ -474,10 +483,13 @@
 </template>
 
 <script setup>
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useAccountsStore } from '@/stores/accounts'
+import { useTradesStore } from '@/stores/trades'
 import { usePlaidFundingStore } from '@/stores/plaidFunding'
 import { useNotification } from '@/composables/useNotification'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import AccountModal from '@/components/accounts/AccountModal.vue'
 import BalanceEquityCurve from '@/components/cashflow/BalanceEquityCurve.vue'
 import PlaidFundingPanel from '@/components/accounts/PlaidFundingPanel.vue'
@@ -488,8 +500,10 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 const { formatCurrency, formatSignedCurrency, currencySymbol } = useCurrencyFormatter()
 
 const store = useAccountsStore()
+const tradesStore = useTradesStore()
 const plaidStore = usePlaidFundingStore()
-const { showSuccess, showError, showDangerConfirmation } = useNotification()
+const { showSuccess, showError, showWarning, showDangerConfirmation } = useNotification()
+const { selectedAccount, clearAccount, fetchAccounts: refreshGlobalAccounts } = useGlobalAccountFilter()
 
 // State
 const selectedAccountId = ref('')
@@ -499,6 +513,7 @@ const editingAccount = ref(null)
 const submitting = ref(false)
 
 // Date filter state
+const selected_date_preset = ref('custom')
 const startDate = ref('')
 const endDate = ref('')
 
@@ -682,12 +697,18 @@ function applyDateFilter() {
 }
 
 function resetDateFilter() {
+  selected_date_preset.value = 'custom'
   startDate.value = ''
   endDate.value = ''
   loadCashflow()
 }
 
 async function loadCashflow() {
+  if (selected_date_preset.value !== 'custom') {
+    const range = resolveDatePreset(selected_date_preset.value)
+    startDate.value = range.start_date
+    endDate.value = range.end_date
+  }
   if (!selectedAccountId.value) {
     await plaidStore.fetchReviewQueue('')
     return
@@ -747,21 +768,78 @@ async function saveAccount(accountData) {
 function confirmDeleteAccount(account) {
   showDangerConfirmation(
     'Delete Account',
-    `Are you sure you want to delete "${account.accountName}"? This will not delete associated trades, only the account configuration and any deposit/withdrawal transactions.`,
-    async () => {
+    `Are you sure you want to delete "${account.accountName}"? The account configuration and cashflow transactions will be removed. Investment holdings will remain.`,
+    async (deleteTrades) => {
+      let result
       try {
-        await store.deleteAccount(account.id)
-        showSuccess('Success', 'Account deleted successfully')
-        if (selectedAccountId.value === account.id) {
-          selectedAccountId.value = ''
-          store.clearCashflow()
-          await plaidStore.fetchReviewQueue('')
-        }
+        result = await store.deleteAccount(account.id, { delete_trades: deleteTrades })
       } catch (error) {
         showError('Error', 'Failed to delete account')
+        return false
       }
+
+      // Deletion succeeded from here on; refresh failures are non-fatal.
+      showSuccess('Success', 'Account deleted successfully')
+
+      const wasSelected = selectedAccountId.value === account.id
+      if (wasSelected) {
+        selectedAccountId.value = ''
+        store.clearCashflow()
+      }
+      if (selectedAccount.value === account.accountIdentifier) {
+        clearAccount()
+      }
+
+      try {
+        await refreshAfterAccountDelete(account, {
+          wasSelected,
+          accountRefreshFailed: result?.refreshFailed === true
+        })
+      } catch (error) {
+        console.error('Failed to refresh after account deletion:', error)
+        offerDataRefresh(account, wasSelected)
+      }
+
+      return true
+    },
+    {
+      checkboxLabel: account.accountIdentifier
+        ? 'Also permanently delete all trades associated with this account.'
+        : null,
+      asyncConfirmation: true,
+      pendingText: 'Deleting...'
     }
   )
+}
+
+async function refreshAfterAccountDelete(account, { wasSelected = false, accountRefreshFailed = false } = {}) {
+  const tasks = [
+    refreshGlobalAccounts({ force: true }),
+    tradesStore.fetchTrades(),
+    tradesStore.fetchAnalytics()
+  ]
+  if (wasSelected) {
+    tasks.push(plaidStore.fetchReviewQueue(''))
+  }
+
+  const results = await Promise.allSettled(tasks)
+  if (accountRefreshFailed || results.some(result => result.status === 'rejected')) {
+    offerDataRefresh(account, wasSelected)
+  }
+}
+
+function offerDataRefresh(account, wasSelected = false) {
+  showWarning('Account deleted', 'Some related data could not be refreshed.', {
+    actions: [
+      {
+        label: 'Refresh',
+        style: 'primary',
+        onClick: () => {
+          refreshAfterAccountDelete(account, { wasSelected }).catch(() => offerDataRefresh(account, wasSelected))
+        }
+      }
+    ]
+  })
 }
 
 async function submitTransaction() {
@@ -811,7 +889,7 @@ async function removeTransaction(transactionId) {
 
 async function refreshPlaidConnections() {
   await Promise.all([
-    store.fetchAccounts(),
+    store.fetchAccounts({ force: true }),
     plaidStore.fetchConnections()
   ])
 

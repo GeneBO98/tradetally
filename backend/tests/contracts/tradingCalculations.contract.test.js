@@ -25,6 +25,7 @@ const { applyBrokerFeeSettingsToTrades } = require('../../src/services/brokerFee
 const TradeQueries = require('../../src/services/tradeQueries');
 const Trade = require('../../src/models/Trade');
 const TargetHitAnalysisService = require('../../src/services/targetHitAnalysisService');
+const { isBreakevenGrossPnl } = require('../../src/utils/breakeven');
 
 function expectClose(actual, expected, precision = 8) {
   if (expected === null) {
@@ -56,6 +57,10 @@ describe('trading calculation contract fixtures', () => {
 
     expected.realized_pnl.forEach((expectedValue, index) => {
       expectClose(result.annotatedExecutions[index].realized_pnl, expectedValue);
+    });
+
+    expected.gross_realized_pnl?.forEach((expectedValue, index) => {
+      expectClose(result.annotatedExecutions[index].gross_realized_pnl, expectedValue);
     });
   });
 
@@ -124,6 +129,11 @@ describe('trading calculation contract fixtures', () => {
     expectClose(analytics.summary.totalGrossPnL, expected.total_gross_pnl);
     expectClose(analytics.summary.winRate, expected.win_rate);
     expectClose(analytics.summary.winRateExcludingBreakeven, expected.win_rate_excluding_breakeven);
+  });
+
+  test.each(contracts.dollar_breakeven_tolerance.cases)('$id', ({ gross_pnl, is_breakeven }) => {
+    expect(isBreakevenGrossPnl(gross_pnl, contracts.dollar_breakeven_tolerance.config))
+      .toBe(is_breakeven);
   });
 
   test('documented R-value weighted target fixture stays stable', () => {

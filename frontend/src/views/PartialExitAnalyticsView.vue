@@ -216,6 +216,7 @@
 </template>
 
 <script setup>
+import { resolveMonthlyFilterParams } from '@/utils/datePresets'
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/services/api'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
@@ -261,7 +262,7 @@ const loadData = async () => {
   loading.value = true
   error.value = null
   try {
-    const params = { ...filters.value }
+    const params = resolveMonthlyFilterParams(filters.value)
     if (selectedAccount.value) {
       params.accounts = selectedAccount.value
     }

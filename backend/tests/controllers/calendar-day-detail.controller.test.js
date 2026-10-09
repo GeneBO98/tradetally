@@ -87,6 +87,7 @@ describe('analyticsController.getCalendarDayDetail', () => {
       is_partial: false
     }));
     expect(payload.contributions[0].pnl).toBeCloseTo(333.18, 2);
+    expect(payload.contributions[0].gross_pnl).toBeCloseTo(336, 2);
   });
 
   test('keeps partial exits split by day when executions span multiple dates', async () => {
@@ -161,6 +162,7 @@ describe('analyticsController.getCalendarDayDetail', () => {
       is_partial: true
     }));
     expect(payload.contributions[0].pnl).toBeCloseTo(118.68, 2);
+    expect(payload.contributions[0].gross_pnl).toBeCloseTo(120, 2);
   });
 
   test('credits partial-close P&L on an open short option position when trade.pnl is null', async () => {
@@ -381,5 +383,6 @@ describe('analyticsController.getCalendarData', () => {
       risk_trade_count: 1
     }));
     expect(payload.calendar[0].daily_pnl).toBeCloseTo(333.18, 2);
+    expect(payload.calendar[0].daily_gross_pnl).toBeCloseTo(336, 2);
   });
 });

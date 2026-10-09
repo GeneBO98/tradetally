@@ -14,6 +14,7 @@
 // All fields use snake_case (project standard for stored/API data).
 
 const db = require('../config/database');
+const { fxUsd } = require('../utils/tradeFx');
 
 const PROFILE_COLUMNS = `
   id, user_id, account_identifier, label, account_size,
@@ -301,7 +302,7 @@ class PropFirmService {
   // trades for the profile's account since its start date.
   static async getStatusForProfile(userId, profile) {
     const result = await db.query(
-      `SELECT trade_date, SUM(pnl) AS daily_pnl
+      `SELECT trade_date, SUM(${fxUsd('pnl', '')}) AS daily_pnl
        FROM trades
        WHERE user_id = $1
          AND account_identifier = $2

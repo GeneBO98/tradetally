@@ -1,3 +1,4 @@
+const { normalizeAnalysisInstructions } = require('../utils/aiAnalysisInstructions');
 const User = require('../models/User');
 const db = require('../config/database');
 const adminSettingsService = require('../services/adminSettings');
@@ -5,12 +6,25 @@ const { validateAiProviderUrl } = require('../utils/urlSecurity');
 const encryptionService = require('../services/brokerSync/encryptionService');
 const { computeTradePnl } = require('../services/pnlEngine');
 const { getUserTimezone } = require('../utils/timezone');
+const { toCamelCase, toSnakeCase, keysToCamelCase, keysToSnakeCase } = require('../utils/caseConvert');
 const AnalyticsCache = require('../services/analyticsCache');
+const settingsCache = require('../services/settingsCache');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const Trade = require('../models/Trade');
+const FeeProfileService = require('../services/feeProfileService');
+const { restoreAccountAssignments } = require('../services/feeProfileBackupService');
 
-const VALID_AI_PROVIDERS = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'ollama', 'lmstudio', 'perplexity', 'local'];
-const LOCAL_AI_PROVIDERS = ['local', 'ollama', 'lmstudio'];
+const VALID_AI_PROVIDERS = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'codex_cli', 'claude_cli', 'ollama', 'lmstudio', 'perplexity', 'local', 'custom'];
+const URL_REQUIRED_AI_PROVIDERS = ['local', 'ollama', 'lmstudio', 'custom'];
+const HOST_CLI_AI_PROVIDERS = ['codex_cli', 'claude_cli'];
+
+function providerRequiresApiKey(provider) {
+  return !URL_REQUIRED_AI_PROVIDERS.includes(provider) && !HOST_CLI_AI_PROVIDERS.includes(provider);
+}
+
+function canConfigureHostCliProvider(user) {
+  return ['admin', 'owner'].includes(user?.role);
+}
 
 function recomputeImportedTradePnl(trade, timezone) {
   const executions = trade.executions || trade.executionData || trade.execution_data;
@@ -70,33 +84,6 @@ function encryptKeyIfPresent(value) {
   }
 }
 
-// Helper function to convert snake_case to camelCase
-function toCamelCase(obj) {
-  if (!obj) return obj;
-
-  const result = {};
-  for (const [key, value] of Object.entries(obj)) {
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-    result[camelKey] = value;
-  }
-  return result;
-}
-
-// Helper function to convert camelCase to snake_case
-function toSnakeCase(str) {
-  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-}
-
-// Helper to convert all keys of an object from camelCase to snake_case
-function keysToSnakeCase(obj) {
-  if (!obj) return obj;
-  const result = {};
-  for (const [key, value] of Object.entries(obj)) {
-    result[toSnakeCase(key)] = value;
-  }
-  return result;
-}
-
 function hasAnyOwnProperty(obj, keys) {
   return keys.some(key => Object.prototype.hasOwnProperty.call(obj, key));
 }
@@ -119,6 +106,19 @@ function shouldSyncDefaultStopLosses(body, currentSettings) {
   return currentSettings?.default_stop_loss_type === 'dollar'
     && parseFloat(currentSettings.default_stop_loss_dollars) > 0
     && parseFloat(currentSettings.default_stop_loss_percent) > 0;
+}
+
+function shouldApplyDefaultTakeProfit(body) {
+  return hasAnyOwnProperty(body, [
+    'defaultTakeProfitType',
+    'default_take_profit_type',
+    'defaultTakeProfitPercent',
+    'default_take_profit_percent',
+    'defaultTakeProfitRMultiple',
+    'default_take_profit_r_multiple',
+    'defaultTakeProfitDollars',
+    'default_take_profit_dollars'
+  ]);
 }
 
 // Cache for table columns (populated per import session)
@@ -151,6 +151,24 @@ function clearTableColumnsCache() {
 }
 
 const settingsController = {
+  async getAIAnalysisSettings(req, res, next) {
+    try {
+      const settings = await User.getSettings(req.user.id);
+      res.json({ ai_analysis_instructions: settings?.ai_analysis_instructions || '' });
+    } catch (error) { next(error); }
+  },
+
+  async updateAIAnalysisSettings(req, res, next) {
+    try {
+      const ai_analysis_instructions = normalizeAnalysisInstructions(req.body?.ai_analysis_instructions);
+      if (!(await User.getSettings(req.user.id))) await User.createSettings(req.user.id);
+      await User.updateSettings(req.user.id, { ai_analysis_instructions });
+      res.json({ ai_analysis_instructions });
+    } catch (error) {
+      if (error.status === 400) return res.status(400).json({ error: error.message });
+      next(error);
+    }
+  },
   async getSettings(req, res, next) {
     try {
       let settings = await User.getSettings(req.user.id);
@@ -168,7 +186,11 @@ const settingsController = {
         : settings;
 
       // Convert snake_case to camelCase for frontend
-      const camelCaseSettings = toCamelCase(safeSettings);
+      const camelCaseSettings = keysToCamelCase(safeSettings);
+      if (safeSettings?.ai_analysis_instructions !== undefined) {
+        delete camelCaseSettings.aiAnalysisInstructions;
+        camelCaseSettings.ai_analysis_instructions = safeSettings.ai_analysis_instructions;
+      }
 
       res.json({ settings: camelCaseSettings });
     } catch (error) {
@@ -193,6 +215,10 @@ const settingsController = {
         await Trade.syncDefaultStopLossToExistingTrades(req.user.id, previousSettings, settings);
       }
 
+      if (shouldApplyDefaultTakeProfit(body)) {
+        await Trade.applyDefaultTakeProfitToExistingTrades(req.user.id, settings);
+      }
+
       // Settings like breakeven tolerance and statistics calculation change
       // analytics outputs, so drop this user's cached analytics on any update.
       try {
@@ -210,7 +236,11 @@ const settingsController = {
         : settings;
 
       // Convert snake_case to camelCase for frontend
-      const camelCaseSettings = toCamelCase(safeSettings);
+      const camelCaseSettings = keysToCamelCase(safeSettings);
+      if (safeSettings?.ai_analysis_instructions !== undefined) {
+        delete camelCaseSettings.aiAnalysisInstructions;
+        camelCaseSettings.ai_analysis_instructions = safeSettings.ai_analysis_instructions;
+      }
       res.json({ settings: camelCaseSettings });
     } catch (error) {
       next(error);
@@ -361,6 +391,12 @@ const settingsController = {
         });
       }
 
+      if (HOST_CLI_AI_PROVIDERS.includes(normalizedProvider) && !canConfigureHostCliProvider(req.user)) {
+        return res.status(403).json({
+          error: 'CLI AI providers use backend host authentication and can only be configured by an admin or owner'
+        });
+      }
+
       if (!normalizedProvider) {
         const settings = await User.updateSettings(req.user.id, {
           ai_provider: null,
@@ -379,16 +415,20 @@ const settingsController = {
       }
 
       // Validate required fields
-      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiKey) {
+      if (providerRequiresApiKey(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({ 
           error: 'API key is required for ' + normalizedProvider 
         });
       }
 
-      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
+      if (URL_REQUIRED_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
         return res.status(400).json({ 
           error: 'API URL is required for ' + normalizedProvider 
         });
+      }
+
+      if (normalizedProvider === 'custom' && !String(aiModel || '').trim()) {
+        return res.status(400).json({ error: 'Model is required for custom' });
       }
 
       if (aiApiUrl) {
@@ -482,17 +522,27 @@ const settingsController = {
         });
       }
 
+      if (HOST_CLI_AI_PROVIDERS.includes(normalizedProvider) && !canConfigureHostCliProvider(req.user)) {
+        return res.status(403).json({
+          error: 'CLI AI providers use backend host authentication and can only be configured by an admin or owner'
+        });
+      }
+
       // Validate required fields based on provider type
-      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiKey) {
+      if (providerRequiresApiKey(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
           error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
+      if (URL_REQUIRED_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });
+      }
+
+      if (normalizedProvider === 'custom' && !String(cusipAiModel || '').trim()) {
+        return res.status(400).json({ error: 'Model is required for custom' });
       }
 
       if (cusipAiApiUrl) {
@@ -751,6 +801,14 @@ const settingsController = {
         console.warn('[EXPORT] Unable to fetch broker fee settings:', error.message);
       }
 
+      let feeProfiles = [];
+      try {
+        feeProfiles = await FeeProfileService.getProfiles(userId);
+        console.log(`[EXPORT] Exporting ${feeProfiles.length} fee profiles`);
+      } catch (error) {
+        console.warn('[EXPORT] Unable to fetch fee profiles:', error.message);
+      }
+
       // Get trade charts (TradingView links)
       let tradeCharts = [];
       try {
@@ -795,7 +853,7 @@ const settingsController = {
           for (const [key, value] of Object.entries(row)) {
             if (excludeSet.has(key)) continue;
             if (addOriginalId && key === 'id') continue;
-            const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+            const camelKey = key === 'ai_analysis_instructions' ? key : toCamelCase(key);
             converted[camelKey] = value;
           }
           return converted;
@@ -818,7 +876,8 @@ const settingsController = {
 
       // Fetch additional user-owned tables
       const [watchlists, watchlistItems, priceAlerts, instrumentTemplates,
-             generalNotes, customCsvMappings, behavioralSettings, healthData] = await Promise.all([
+             generalNotes, customCsvMappings, behavioralSettings, healthData,
+             allocationGroups, tradeAllocations] = await Promise.all([
         fetchUserTable('watchlists'),
         // watchlist_items needs a join to get items for the user's watchlists
         (async () => {
@@ -841,7 +900,25 @@ const settingsController = {
         fetchUserTable('general_notes'),
         fetchUserTable('custom_csv_mappings'),
         fetchUserTable('behavioral_settings', 'user_id'),
-        fetchUserTable('health_data', 'date')
+        fetchUserTable('health_data', 'date'),
+        fetchUserTable('allocation_groups', 'sort_order'),
+        (async () => {
+          try {
+            const result = await db.query(
+              `SELECT ta.*
+               FROM trade_allocations ta
+               JOIN trades t ON t.id = ta.trade_id
+               JOIN allocation_groups ag ON ag.id = ta.allocation_group_id
+               WHERE t.user_id = $1 AND ag.user_id = $1
+               ORDER BY ta.created_at`,
+              [userId]
+            );
+            return result.rows;
+          } catch (error) {
+            console.warn('[EXPORT] Unable to fetch trade allocations:', error.message);
+            return [];
+          }
+        })()
       ]);
 
       // Settings: exclude internal fields, convert all remaining dynamically
@@ -861,7 +938,7 @@ const settingsController = {
         const profileConverted = {};
         for (const [key, value] of Object.entries(settings)) {
           if (SETTINGS_EXCLUDE.includes(key)) continue;
-          const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+          const camelKey = key === 'ai_analysis_instructions' ? key : toCamelCase(key);
           if (TRADING_PROFILE_FIELDS.has(key)) {
             profileConverted[camelKey] = value;
           } else {
@@ -874,12 +951,22 @@ const settingsController = {
 
       // Build trade charts with trade_id remapped to originalTradeId
       const tradeChartsExport = tradeCharts.map(chart => {
-        const converted = toCamelCase(chart);
+        const converted = keysToCamelCase(chart);
         converted.originalTradeId = chart.trade_id;
         delete converted.tradeId;
         delete converted.id;
         return converted;
       });
+
+      const tradeAllocationsExport = tradeAllocations.map(allocation => ({
+        originalTradeId: allocation.trade_id,
+        originalAllocationGroupId: allocation.allocation_group_id,
+        allocationRatio: allocation.allocation_ratio,
+        inputMethod: allocation.input_method,
+        originalQuantitySnapshot: allocation.original_quantity_snapshot,
+        createdAt: allocation.created_at,
+        updatedAt: allocation.updated_at
+      }));
 
       // Create export data - Version 3.0 with dynamic field mapping
       const nameParts = (user.full_name || '').trim().split(/\s+/);
@@ -913,6 +1000,15 @@ const settingsController = {
         diaryTemplates: convertRows(diaryTemplates),
         // Broker fee settings: auto-convert
         brokerFeeSettings: convertRows(brokerFeeSettings),
+        // Named fee profiles use account identifiers instead of database IDs
+        // so assignments remain portable across installations.
+        feeProfiles: feeProfiles.map(profile => ({
+          name: profile.name,
+          notes: profile.notes,
+          isZeroFee: profile.isZeroFee,
+          rates: profile.rates,
+          accountIdentifiers: profile.accounts.map(account => account.accountIdentifier).filter(Boolean)
+        })),
         // Trade charts with originalTradeId for remapping
         tradeCharts: tradeChartsExport,
         // Additional user-owned tables (NEW in v3.0)
@@ -924,6 +1020,8 @@ const settingsController = {
         customCsvMappings: convertRows(customCsvMappings),
         behavioralSettings: convertRows(behavioralSettings),
         healthData: convertRows(healthData),
+        allocationGroups: convertRows(allocationGroups, { addOriginalId: true }),
+        tradeAllocations: tradeAllocationsExport,
         // Admin settings (only included for admin exports)
         adminSettings: adminSettings
       };
@@ -932,6 +1030,7 @@ const settingsController = {
                   'Diary entries:', diaryEntries.length,
                   'Templates:', diaryTemplates.length,
                   'Broker fees:', brokerFeeSettings.length,
+                  'Fee profiles:', feeProfiles.length,
                   'Trade charts:', tradeCharts.length,
                   'Watchlists:', watchlists.length,
                   'Admin settings:', adminSettings ? Object.keys(adminSettings).length : 0);
@@ -969,6 +1068,7 @@ const settingsController = {
         console.log('[IMPORT] Number of diary entries in file:', importData.diaryEntries?.length || 0);
         console.log('[IMPORT] Number of templates in file:', importData.diaryTemplates?.length || 0);
         console.log('[IMPORT] Number of broker fees in file:', importData.brokerFeeSettings?.length || 0);
+        console.log('[IMPORT] Number of fee profiles in file:', importData.feeProfiles?.length || 0);
       } catch (error) {
         console.error('[IMPORT] JSON parse error:', error);
         return res.status(400).json({ error: 'Invalid JSON file' });
@@ -1035,12 +1135,16 @@ const settingsController = {
       let templatesSkipped = 0;
       let brokerFeesAdded = 0;
       let brokerFeesSkipped = 0;
+      let feeProfilesAdded = 0;
+      let feeProfilesSkipped = 0;
       let additionalTablesImported = {};
 
       // Map old trade IDs to new trade IDs for diary entry linked_trades
       const tradeIdMap = new Map();
       // Map old watchlist IDs to new IDs for watchlist_items
       const watchlistIdMap = new Map();
+      // Map old allocation group IDs to restored IDs for trade allocations.
+      const allocationGroupIdMap = new Map();
 
       // ============================================
       // Dynamic insert helper for v3.0+
@@ -1271,6 +1375,86 @@ const settingsController = {
         }
 
         // ============================================
+        // 2a. Import optional allocation groups and proportional splits
+        // ============================================
+        if (isV3 && importData.allocationGroups && importData.allocationGroups.length > 0) {
+          let groupsAdded = 0;
+          for (const group of importData.allocationGroups) {
+            const name = String(group.name || '').trim();
+            if (!name) continue;
+            const existing = await client.query(
+              `SELECT id FROM allocation_groups
+               WHERE user_id = $1 AND LOWER(name) = LOWER($2) AND archived_at IS NULL`,
+              [userId, name]
+            );
+            let newGroupId = existing.rows[0]?.id;
+            if (!newGroupId) {
+              const inserted = await dynamicInsert(client, 'allocation_groups', group, { user_id: userId });
+              newGroupId = inserted?.id;
+              if (newGroupId) groupsAdded++;
+            }
+            if (group.originalId && newGroupId) {
+              allocationGroupIdMap.set(group.originalId, newGroupId);
+            }
+          }
+          additionalTablesImported.allocationGroups = groupsAdded;
+        }
+
+        if (isV3 && importData.tradeAllocations && importData.tradeAllocations.length > 0) {
+          let allocationsAdded = 0;
+          const resolvedByTrade = new Map();
+          for (const allocation of importData.tradeAllocations) {
+            const oldTradeId = allocation.originalTradeId ?? allocation.original_trade_id;
+            const oldGroupId = allocation.originalAllocationGroupId ?? allocation.original_allocation_group_id;
+            const tradeId = tradeIdMap.get(oldTradeId);
+            const groupId = allocationGroupIdMap.get(oldGroupId);
+            const ratio = Number(allocation.allocationRatio ?? allocation.allocation_ratio);
+            if (!tradeId || !groupId || !Number.isFinite(ratio) || ratio <= 0 || ratio > 1) continue;
+
+            if (!resolvedByTrade.has(tradeId)) resolvedByTrade.set(tradeId, []);
+            resolvedByTrade.get(tradeId).push({ allocation, groupId, ratio });
+          }
+
+          for (const [tradeId, resolvedAllocations] of resolvedByTrade) {
+            const uniqueGroupIds = new Set(resolvedAllocations.map((item) => item.groupId));
+            const ratioTotal = resolvedAllocations.reduce((sum, item) => sum + item.ratio, 0);
+            if (
+              resolvedAllocations.length < 2 ||
+              uniqueGroupIds.size !== resolvedAllocations.length ||
+              Math.abs(ratioTotal - 1) > 0.000001
+            ) {
+              console.warn(`[IMPORT] Skipping invalid allocation split for trade ${tradeId}`);
+              continue;
+            }
+
+            for (const { allocation, groupId, ratio } of resolvedAllocations) {
+              await client.query(
+                `INSERT INTO trade_allocations (
+                   trade_id, allocation_group_id, allocation_ratio,
+                   input_method, original_quantity_snapshot, created_at, updated_at
+                 ) VALUES ($1, $2, $3, $4, $5, COALESCE($6, CURRENT_TIMESTAMP), COALESCE($7, CURRENT_TIMESTAMP))
+                 ON CONFLICT (trade_id, allocation_group_id) DO UPDATE SET
+                   allocation_ratio = EXCLUDED.allocation_ratio,
+                   input_method = EXCLUDED.input_method,
+                   original_quantity_snapshot = EXCLUDED.original_quantity_snapshot,
+                   updated_at = CURRENT_TIMESTAMP`,
+                [
+                  tradeId,
+                  groupId,
+                  ratio,
+                  allocation.inputMethod === 'quantity' || allocation.input_method === 'quantity' ? 'quantity' : 'percentage',
+                  allocation.originalQuantitySnapshot ?? allocation.original_quantity_snapshot ?? null,
+                  allocation.createdAt ?? allocation.created_at ?? null,
+                  allocation.updatedAt ?? allocation.updated_at ?? null
+                ]
+              );
+              allocationsAdded++;
+            }
+          }
+          additionalTablesImported.tradeAllocations = allocationsAdded;
+        }
+
+        // ============================================
         // 3. Import/Update user settings
         // ============================================
         if (importData.settings || importData.tradingProfile) {
@@ -1280,7 +1464,12 @@ const settingsController = {
             [userId]
           );
 
-          const s = importData.settings || {};
+          const s = { ...(importData.settings || {}) };
+          const imported_instructions = s.ai_analysis_instructions ?? s.aiAnalysisInstructions;
+          if (imported_instructions !== undefined) {
+            s.ai_analysis_instructions = normalizeAnalysisInstructions(imported_instructions);
+            delete s.aiAnalysisInstructions;
+          }
           const tp = importData.tradingProfile || {};
 
           if (isV3) {
@@ -1366,8 +1555,11 @@ const settingsController = {
                   experience_level, average_position_size, trading_goals, preferred_sectors,
                   enable_trade_grouping, trade_grouping_time_gap_minutes,
                   default_broker, ai_provider, ai_api_key, ai_api_url, ai_model,
-                  default_stop_loss_percent, default_stop_loss_type, default_stop_loss_dollars, default_take_profit_percent, analytics_chart_layout, auto_close_expired_options
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)`,
+                  default_stop_loss_percent, default_stop_loss_type, default_stop_loss_dollars,
+                  default_take_profit_type, default_take_profit_percent,
+                  default_take_profit_r_multiple, default_take_profit_dollars,
+                  analytics_chart_layout, auto_close_expired_options
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)`,
                 [
                   userId,
                   s.emailNotifications ?? true,
@@ -1392,7 +1584,10 @@ const settingsController = {
                   s.defaultStopLossPercent || null,
                   s.defaultStopLossType || 'percent',
                   s.defaultStopLossDollars ?? null,
+                  s.defaultTakeProfitType || 'percent',
                   s.defaultTakeProfitPercent || null,
+                  s.defaultTakeProfitRMultiple ?? null,
+                  s.defaultTakeProfitDollars ?? null,
                   s.analyticsChartLayout ? JSON.stringify(s.analyticsChartLayout) : null,
                   s.autoCloseExpiredOptions ?? false
                 ]
@@ -1421,7 +1616,10 @@ const settingsController = {
               if (s.defaultStopLossPercent !== undefined) { updates.push(`default_stop_loss_percent = $${paramCount++}`); values.push(s.defaultStopLossPercent); }
               if (s.defaultStopLossType !== undefined) { updates.push(`default_stop_loss_type = $${paramCount++}`); values.push(s.defaultStopLossType); }
               if (s.defaultStopLossDollars !== undefined) { updates.push(`default_stop_loss_dollars = $${paramCount++}`); values.push(s.defaultStopLossDollars); }
+              if (s.defaultTakeProfitType !== undefined) { updates.push(`default_take_profit_type = $${paramCount++}`); values.push(s.defaultTakeProfitType); }
               if (s.defaultTakeProfitPercent !== undefined) { updates.push(`default_take_profit_percent = $${paramCount++}`); values.push(s.defaultTakeProfitPercent); }
+              if (s.defaultTakeProfitRMultiple !== undefined) { updates.push(`default_take_profit_r_multiple = $${paramCount++}`); values.push(s.defaultTakeProfitRMultiple); }
+              if (s.defaultTakeProfitDollars !== undefined) { updates.push(`default_take_profit_dollars = $${paramCount++}`); values.push(s.defaultTakeProfitDollars); }
               if (s.analyticsChartLayout) { updates.push(`analytics_chart_layout = $${paramCount++}`); values.push(JSON.stringify(s.analyticsChartLayout)); }
               if (s.autoCloseExpiredOptions !== undefined) { updates.push(`auto_close_expired_options = $${paramCount++}`); values.push(s.autoCloseExpiredOptions); }
               if (tp.tradingStrategies) { updates.push(`trading_strategies = $${paramCount++}`); values.push(tp.tradingStrategies); }
@@ -1443,6 +1641,12 @@ const settingsController = {
               }
             }
           }
+        }
+
+        // Legacy backups can also carry the new preference using snake_case.
+        if (!isV3 && importData.settings?.ai_analysis_instructions !== undefined) {
+          await client.query('UPDATE user_settings SET ai_analysis_instructions = $1 WHERE user_id = $2',
+            [normalizeAnalysisInstructions(importData.settings.ai_analysis_instructions), userId]);
         }
 
         // ============================================
@@ -1523,7 +1727,66 @@ const settingsController = {
         }
 
         // ============================================
-        // 5. Import diary templates
+        // 5. Import named fee profiles and portable account assignments
+        // ============================================
+        if (Array.isArray(importData.feeProfiles) && importData.feeProfiles.length > 0) {
+          console.log(`[IMPORT] Processing ${importData.feeProfiles.length} fee profiles...`);
+          for (const profile of importData.feeProfiles) {
+            await client.query('SAVEPOINT restore_fee_profile');
+            try {
+              const normalized = FeeProfileService.normalizeProfilePayload({
+                name: profile.name,
+                notes: profile.notes,
+                is_zero_fee: profile.is_zero_fee ?? profile.isZeroFee,
+                rates: profile.rates || []
+              });
+              const profileResult = await client.query(
+                `INSERT INTO fee_profiles (user_id, name, notes, is_zero_fee)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (user_id, name) DO UPDATE SET
+                   notes = EXCLUDED.notes,
+                   is_zero_fee = EXCLUDED.is_zero_fee,
+                   updated_at = CURRENT_TIMESTAMP
+                 RETURNING id`,
+                [userId, normalized.name, normalized.notes, normalized.is_zero_fee]
+              );
+              const profileId = profileResult.rows[0].id;
+
+              await client.query('DELETE FROM fee_profile_rates WHERE fee_profile_id = $1', [profileId]);
+              for (const rate of normalized.rates) {
+                await client.query(
+                  `INSERT INTO fee_profile_rates (
+                    fee_profile_id, broker, instrument,
+                    commission_per_contract, commission_per_side,
+                    exchange_fee_per_contract, nfa_fee_per_contract,
+                    clearing_fee_per_contract, platform_fee_per_contract, notes
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                  [
+                    profileId, rate.broker, rate.instrument,
+                    rate.commission_per_contract, rate.commission_per_side,
+                    rate.exchange_fee_per_contract, rate.nfa_fee_per_contract,
+                    rate.clearing_fee_per_contract, rate.platform_fee_per_contract,
+                    rate.notes
+                  ]
+                );
+              }
+
+              await restoreAccountAssignments(client, userId, profileId,
+                profile.account_identifiers ?? profile.accountIdentifiers ?? []);
+              await client.query('RELEASE SAVEPOINT restore_fee_profile');
+              feeProfilesAdded++;
+            } catch (profileError) {
+              await client.query('ROLLBACK TO SAVEPOINT restore_fee_profile');
+              await client.query('RELEASE SAVEPOINT restore_fee_profile');
+              feeProfilesSkipped++;
+              console.error('[IMPORT] Error processing fee profile:', profileError.message);
+            }
+          }
+          console.log(`[IMPORT] Fee profiles: ${feeProfilesAdded} imported, ${feeProfilesSkipped} skipped`);
+        }
+
+        // ============================================
+        // 6. Import diary templates
         // ============================================
         if (importData.diaryTemplates && importData.diaryTemplates.length > 0) {
           console.log(`[IMPORT] Processing ${importData.diaryTemplates.length} diary templates...`);
@@ -1798,6 +2061,7 @@ const settingsController = {
 
         await client.query('COMMIT');
         console.log('[IMPORT] Transaction committed successfully');
+        settingsCache.invalidate(userId);
 
         if (tradesAdded > 0) {
           try {
@@ -1825,11 +2089,13 @@ const settingsController = {
           templatesSkipped,
           brokerFeesAdded,
           brokerFeesSkipped,
+          feeProfilesAdded,
+          feeProfilesSkipped,
           chartsAdded,
           chartsSkipped,
           adminSettingsUpdated,
           additionalTablesImported,
-          message: `Successfully imported: ${tradesAdded} trades, ${tagsAdded} tags, ${equityAdded} equity records, ${diaryAdded} diary entries, ${templatesAdded} templates, ${brokerFeesAdded} broker fee settings, ${chartsAdded} trade charts, ${adminSettingsUpdated} admin settings${additionalMsg ? ', ' + additionalMsg : ''}. Skipped: ${tradesSkipped} trades, ${diarySkipped} diary entries, ${templatesSkipped} templates, ${brokerFeesSkipped} broker fees, ${chartsSkipped} charts.`
+          message: `Successfully imported: ${tradesAdded} trades, ${tagsAdded} tags, ${equityAdded} equity records, ${diaryAdded} diary entries, ${templatesAdded} templates, ${brokerFeesAdded} broker fee settings, ${feeProfilesAdded} fee profiles, ${chartsAdded} trade charts, ${adminSettingsUpdated} admin settings${additionalMsg ? ', ' + additionalMsg : ''}. Skipped: ${tradesSkipped} trades, ${diarySkipped} diary entries, ${templatesSkipped} templates, ${brokerFeesSkipped} broker fees, ${feeProfilesSkipped} fee profiles, ${chartsSkipped} charts.`
         });
       } catch (error) {
         await client.query('ROLLBACK');
@@ -1841,7 +2107,7 @@ const settingsController = {
     } catch (error) {
       console.error('[IMPORT] Import error:', error);
       console.error('[IMPORT] Stack trace:', error.stack);
-      res.status(500).json({ error: 'Import failed', message: error.message });
+      res.status(error.status || 500).json({ error: 'Import failed', message: error.message });
     }
   },
 
@@ -1940,16 +2206,20 @@ const settingsController = {
       }
 
       // Validate required fields
-      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiKey) {
+      if (providerRequiresApiKey(normalizedProvider) && !aiApiKey) {
         return res.status(400).json({ 
           error: 'API key is required for ' + normalizedProvider 
         });
       }
 
-      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
+      if (URL_REQUIRED_AI_PROVIDERS.includes(normalizedProvider) && !aiApiUrl) {
         return res.status(400).json({ 
           error: 'API URL is required for ' + normalizedProvider 
         });
+      }
+
+      if (normalizedProvider === 'custom' && !String(aiModel || '').trim()) {
+        return res.status(400).json({ error: 'Model is required for custom' });
       }
 
       if (aiApiUrl) {
@@ -1967,7 +2237,7 @@ const settingsController = {
         const classifierUsesMainProvider = effectiveClassifierProvider === normalizedProvider;
         if (
           !classifierUsesMainProvider &&
-          !LOCAL_AI_PROVIDERS.includes(effectiveClassifierProvider) &&
+          providerRequiresApiKey(effectiveClassifierProvider) &&
           !aiClassifierApiKey
         ) {
           return res.status(400).json({
@@ -1977,11 +2247,19 @@ const settingsController = {
 
         if (
           !classifierUsesMainProvider &&
-          LOCAL_AI_PROVIDERS.includes(effectiveClassifierProvider) &&
+          URL_REQUIRED_AI_PROVIDERS.includes(effectiveClassifierProvider) &&
           !aiClassifierApiUrl
         ) {
           return res.status(400).json({
             error: 'API URL is required for the AI checking provider'
+          });
+        }
+
+        const effectiveClassifierModel = aiClassifierModel ||
+          (classifierUsesMainProvider ? aiModel : '');
+        if (effectiveClassifierProvider === 'custom' && !String(effectiveClassifierModel || '').trim()) {
+          return res.status(400).json({
+            error: 'Model is required for the custom AI checking provider'
           });
         }
 
@@ -2058,6 +2336,7 @@ const settingsController = {
 
       const { cusipAiProvider, cusipAiApiKey, cusipAiApiUrl, cusipAiModel, useMainProvider } = req.body;
       const normalizedProvider = cusipAiProvider ? String(cusipAiProvider).trim() : '';
+      const apiKeyUpdate = cusipAiApiKey === '***' ? undefined : cusipAiApiKey;
 
       // If useMainProvider is true, clear CUSIP-specific settings
       if (useMainProvider || !normalizedProvider) {
@@ -2087,16 +2366,20 @@ const settingsController = {
       }
 
       // Validate required fields based on provider type
-      if (!LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiKey) {
+      if (providerRequiresApiKey(normalizedProvider) && !cusipAiApiKey) {
         return res.status(400).json({
           error: 'API key is required for ' + normalizedProvider
         });
       }
 
-      if (LOCAL_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
+      if (URL_REQUIRED_AI_PROVIDERS.includes(normalizedProvider) && !cusipAiApiUrl) {
         return res.status(400).json({
           error: 'API URL is required for ' + normalizedProvider
         });
+      }
+
+      if (normalizedProvider === 'custom' && !String(cusipAiModel || '').trim()) {
+        return res.status(400).json({ error: 'Model is required for custom' });
       }
 
       if (cusipAiApiUrl) {
@@ -2105,7 +2388,7 @@ const settingsController = {
 
       const success = await adminSettingsService.updateDefaultCusipAISettings({
         provider: normalizedProvider,
-        apiKey: cusipAiApiKey,
+        apiKey: apiKeyUpdate,
         apiUrl: cusipAiApiUrl,
         model: cusipAiModel
       });
@@ -2154,7 +2437,55 @@ const settingsController = {
     }
   },
 
-  // Broker Fee Settings
+  // Named fee profiles
+  async getFeeProfiles(req, res, next) {
+    try {
+      res.json({ success: true, data: await FeeProfileService.getProfiles(req.user.id) });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async createFeeProfile(req, res, next) {
+    try {
+      const profile = await FeeProfileService.createProfile(req.user.id, req.body || {});
+      res.status(201).json({ success: true, data: profile });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateFeeProfile(req, res, next) {
+    try {
+      const profile = await FeeProfileService.updateProfile(req.user.id, req.params.id, req.body || {});
+      res.json({ success: true, data: profile });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async deleteFeeProfile(req, res, next) {
+    try {
+      await FeeProfileService.deleteProfile(req.user.id, req.params.id);
+      res.json({ success: true, message: 'Fee profile deleted' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async setFeeProfileAccounts(req, res, next) {
+    try {
+      const accountIds = req.body?.account_ids ?? req.body?.accountIds;
+      const result = await FeeProfileService.setProfileAccounts(req.user.id, req.params.id, accountIds);
+      await AnalyticsCache.invalidate(req.user.id);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Legacy Broker Fee Settings. Kept for existing API clients and import
+  // fallback compatibility while named profiles become the preferred UI.
   async getBrokerFeeSettings(req, res, next) {
     try {
       const query = `

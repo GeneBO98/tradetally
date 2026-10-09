@@ -1,12 +1,6 @@
 const db = require('../config/database');
 const EmailService = require('./emailService');
-
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return '***';
-  const [localPart, domain] = email.split('@');
-  if (localPart.length <= 2) return `**@${domain}`;
-  return `${localPart.slice(0, 2)}***@${domain}`;
-}
+const maskEmail = require('../utils/maskEmail');
 
 class TrialScheduler {
   

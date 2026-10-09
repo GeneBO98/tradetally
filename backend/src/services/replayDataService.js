@@ -19,6 +19,8 @@ const db = require('../config/database');
 const marketData = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
 const databento = require('../utils/databento');
+const yahooFinance = require('../utils/yahooFinance');
+const { resolvePriceScale, applyPriceScale } = require('../utils/candlePriceScale');
 const {
   getFuturesPointValue,
   getFuturesTickSize,
@@ -39,6 +41,13 @@ const FUTURES_SESSION_END_HOUR = 17;
 // Don't persist bars for a session until this long after it ends, so a
 // partially-complete day is never recorded as covered.
 const SESSION_CLOSE_BUFFER_SECONDS = 30 * 60;
+const CHART_RESOLUTIONS = {
+  '1': { interval: INTERVAL, bucket_seconds: 60 },
+  '5': { interval: '5min', bucket_seconds: 5 * 60 },
+  '15': { interval: '15min', bucket_seconds: 15 * 60 },
+  '60': { interval: '1hour', bucket_seconds: 60 * 60 },
+  D: { interval: 'daily', bucket_seconds: null }
+};
 
 function wallClockPartsInZone(epochMs, timeZone) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -76,23 +85,6 @@ function tzOffsetMs(epochMs, timeZone) {
 function zonedEpochSeconds(year, month, day, hour, minute, second, timeZone) {
   const guess = Date.UTC(year, month - 1, day, hour, minute, second);
   return Math.floor((guess - tzOffsetMs(guess, timeZone)) / 1000);
-}
-
-// FMP intraday rows carry Eastern-time wall-clock strings with no offset, and
-// fmpClient parses them with `new Date(...)`, i.e. in the SERVER's local
-// timezone. Recover the original wall clock via local getters and reinterpret
-// it as Eastern time to get a true UTC epoch, whatever the server TZ is.
-function fmpBarTimeToUtcSeconds(storedSeconds) {
-  const d = new Date(storedSeconds * 1000);
-  return zonedEpochSeconds(
-    d.getFullYear(),
-    d.getMonth() + 1,
-    d.getDate(),
-    d.getHours(),
-    d.getMinutes(),
-    d.getSeconds(),
-    NY_TZ
-  );
 }
 
 function toEpochSeconds(value) {
@@ -326,20 +318,76 @@ function dedupeSortBars(bars) {
   return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
 }
 
+function aggregateBars(bars, bucketSeconds) {
+  if (!bucketSeconds || bucketSeconds === 60) return dedupeSortBars(bars);
+
+  const buckets = new Map();
+  for (const bar of dedupeSortBars(bars)) {
+    const bucketTime = Math.floor(bar.time / bucketSeconds) * bucketSeconds;
+    const current = buckets.get(bucketTime);
+    if (!current) {
+      buckets.set(bucketTime, {
+        time: bucketTime,
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        volume: bar.volume === null || bar.volume === undefined ? null : Number(bar.volume)
+      });
+      continue;
+    }
+
+    current.high = Math.max(current.high, bar.high);
+    current.low = Math.min(current.low, bar.low);
+    current.close = bar.close;
+    if (current.volume !== null || (bar.volume !== null && bar.volume !== undefined)) {
+      current.volume = (current.volume || 0) + (Number(bar.volume) || 0);
+    }
+  }
+
+  return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
+}
+
+function futuresRootForTrade(trade) {
+  const storedUnderlying = String(trade?.underlying_asset || '').trim().toUpperCase();
+  if (storedUnderlying) return storedUnderlying;
+
+  const symbol = String(trade?.symbol || '').trim().toUpperCase();
+  const extracted = extractUnderlyingFromFuturesSymbol(symbol);
+  if (extracted) return extracted;
+
+  // A bare root is unambiguous once the trade is explicitly typed as a future.
+  return /^[A-Z][A-Z0-9]{0,5}$/.test(symbol) ? symbol : null;
+}
+
 /**
  * Fetch 1-min bars from the configured provider for the session window,
  * normalized to true UTC epochs. Throws if the provider has no intraday data
  * (paywalled key, delisted symbol, too-old session).
  */
 async function fetchIntradayBars(symbol, fromTs, toTs, userId) {
-  const rawBars = await marketData.getStockCandles(symbol, '1', fromTs, toTs, userId, { source: 'replay' });
-  const bars = rawBars.map((bar) => ({
-    ...bar,
-    time: marketData.isFmp ? fmpBarTimeToUtcSeconds(bar.time) : bar.time
-  }));
+  let rawBars;
+  let source = marketData.providerName;
+
+  try {
+    rawBars = await marketData.getStockCandles(symbol, '1', fromTs, toTs, userId, { source: 'replay' });
+  } catch (providerError) {
+    // Yahoo serves minute bars without a key for recent sessions.
+    if (!yahooFinance.isEnabled()) throw providerError;
+
+    console.warn(`[REPLAY] ${marketData.displayName || 'Market data'} minute bars unavailable for ${symbol}: ${providerError.message}`);
+    rawBars = await yahooFinance.getCandlesInWindow(symbol, fromTs, toTs, '1');
+    source = 'yahoo';
+  }
+
+  const bars = rawBars.map((bar) => ({ ...bar }));
   // Providers are queried by date, so responses can spill past the session
   // window; keep only bars inside it.
-  return dedupeSortBars(bars).filter((bar) => bar.time >= fromTs && bar.time <= toTs);
+  const filtered = dedupeSortBars(bars).filter((bar) => bar.time >= fromTs && bar.time <= toTs);
+
+  // The source travels with the bars so a session is cached under whoever
+  // actually served it.
+  return { bars: filtered, source };
 }
 
 /**
@@ -354,6 +402,15 @@ async function fetchDailyBars(symbol, entryEpochSeconds, exitEpochSeconds, userI
     const bars = await marketData.getStockCandles(symbol, 'D', fromTs, toTs, userId, { source: 'replay' });
     return { bars: dedupeSortBars(bars), source: marketData.providerName };
   } catch (providerError) {
+    if (yahooFinance.isEnabled()) {
+      try {
+        const bars = await yahooFinance.getCandlesInWindow(symbol, fromTs, toTs, 'D');
+        return { bars: dedupeSortBars(bars), source: 'yahoo' };
+      } catch (yahooError) {
+        console.warn(`[REPLAY] Yahoo Finance daily bars unavailable for ${symbol}: ${yahooError.message}`);
+      }
+    }
+
     if (!alphaVantage.isConfigured()) throw providerError;
     const entryIso = new Date(entryEpochSeconds * 1000).toISOString();
     const exitIso = exitEpochSeconds ? new Date(exitEpochSeconds * 1000).toISOString() : null;
@@ -381,17 +438,20 @@ async function loadBarsWithCache(cacheSymbol, session, fetchFn, sourceName) {
     }
   }
 
-  const candles = await fetchFn();
+  const fetched = await fetchFn();
+  // A fetcher may report who answered; otherwise the caller's source stands.
+  const candles = Array.isArray(fetched) ? fetched : (fetched?.bars || fetched?.candles || []);
+  const resolvedSource = (!Array.isArray(fetched) && fetched?.source) || sourceName;
   const nowSeconds = Math.floor(Date.now() / 1000);
   const sessionClosed = session.toTs + SESSION_CLOSE_BUFFER_SECONDS < nowSeconds;
   if (sessionClosed && candles.length > 0) {
     try {
-      await storeBars(cacheSymbol, session.date, session.fromTs, session.toTs, candles, sourceName);
+      await storeBars(cacheSymbol, session.date, session.fromTs, session.toTs, candles, resolvedSource);
     } catch (cacheError) {
       console.warn(`[REPLAY] Failed to cache bars for ${cacheSymbol} ${session.date}: ${cacheError.message}`);
     }
   }
-  return { candles, source: sourceName };
+  return { candles, source: resolvedSource };
 }
 
 /**
@@ -430,65 +490,91 @@ function loadFuturesSessionBars(root, session) {
   );
 }
 
-function closeAtTime(candles, time) {
-  let candidate = candles[0];
-  for (const bar of candles) {
-    if (bar.time > time) break;
-    candidate = bar;
-  }
-  return candidate ? Number(candidate.close) : null;
-}
-
 /**
- * Detect split-adjustment mismatch between provider bars and the trade's
- * fills. Providers serve TODAY'S split-adjusted view of a past session, while
- * fills carry the raw prices from trade time — after a 1:25 reverse split the
- * bars sit 25x above the fills (SQQQ-style ETFs do this constantly, and
- * provider "nonadjusted" flags only partially undo stacked splits).
- *
- * Split factors are clean ratios, so: take the median bar/fill price ratio at
- * fill time and, when it lands within 10% of an integer (or an integer
- * reciprocal for forward splits), rescale the bars into the fill's price
- * space. Ordinary venue/data noise (ratio near 1) is left untouched.
- *
- * @returns {number} factor to DIVIDE bar prices by (1 = no adjustment)
+ * Build KLine-compatible chart data for a futures trade. Intraday requests
+ * reuse the replay cache's immutable 1-minute Globex session and aggregate it
+ * locally. Daily requests use Databento's daily schema to provide the same
+ * wider context window as stock charts without storing image snapshots.
  */
-function resolvePriceScale(candles, fills) {
-  if (candles.length === 0 || fills.length === 0) return 1;
-  const ratios = fills
-    .map((fill) => {
-      const barClose = closeAtTime(candles, fill.time);
-      return barClose && fill.price > 0 ? barClose / fill.price : null;
-    })
-    .filter((r) => r !== null && Number.isFinite(r))
-    .sort((a, b) => a - b);
-  if (ratios.length === 0) return 1;
-  const median = ratios[Math.floor(ratios.length / 2)];
-
-  if (median >= 1.5) {
-    const rounded = Math.round(median);
-    if (rounded >= 2 && Math.abs(median - rounded) / rounded <= 0.1) return rounded;
-  } else if (median <= 0.67 && median > 0) {
-    const inverse = Math.round(1 / median);
-    if (inverse >= 2 && Math.abs(1 / median - inverse) / inverse <= 0.1) return 1 / inverse;
+async function getFuturesTradeChartData(trade, requestedResolution = '1') {
+  if (!databento.isConfigured()) {
+    const error = new Error('Databento API key not configured for futures charts. Set DATABENTO_API_KEY in the backend environment.');
+    error.statusCode = 503;
+    throw error;
   }
-  return 1;
-}
 
-function applyPriceScale(candles, scale) {
-  if (scale === 1) return candles;
-  return candles.map((bar) => ({
-    ...bar,
-    open: Number(bar.open) / scale,
-    high: Number(bar.high) / scale,
-    low: Number(bar.low) / scale,
-    close: Number(bar.close) / scale,
-    // Adjusted volume shrinks by the split factor; scale it back up so
-    // share counts are in the same raw space as the prices
-    volume: bar.volume === null || bar.volume === undefined
-      ? null
-      : Number(bar.volume) * scale
-  }));
+  const entryTs = toEpochSeconds(trade?.entry_time || trade?.trade_date);
+  if (!entryTs) {
+    const error = new Error('Trade is missing entry time information');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const futuresRoot = futuresRootForTrade(trade);
+  if (!futuresRoot) {
+    const error = new Error(`Could not determine the futures contract root for ${trade?.symbol || 'this trade'}`);
+    error.statusCode = 422;
+    throw error;
+  }
+
+  const resolution = Object.hasOwn(CHART_RESOLUTIONS, requestedResolution)
+    ? requestedResolution
+    : '1';
+  const resolutionConfig = CHART_RESOLUTIONS[resolution];
+  const chartSymbol = databento.getContinuousSymbol(futuresRoot);
+  let candles;
+  let source;
+  let session = null;
+
+  try {
+    if (resolution === 'D') {
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      const entryTime = new Date(entryTs * 1000);
+      const exitTs = toEpochSeconds(trade?.exit_time) || entryTs;
+      const contextEndMs = Math.min(Date.now(), exitTs * 1000 + 10 * oneDayMs);
+      candles = dedupeSortBars(await databento.getFuturesCandles(
+        futuresRoot,
+        new Date(entryTime.getTime() - 30 * oneDayMs),
+        new Date(contextEndMs),
+        'day'
+      ));
+      source = 'databento';
+    } else {
+      session = futuresSessionWindowForEntry(entryTs);
+      const loaded = await loadFuturesSessionBars(futuresRoot, session);
+      candles = aggregateBars(loaded.candles, resolutionConfig.bucket_seconds);
+      source = loaded.source;
+    }
+  } catch (providerError) {
+    const error = new Error(`No futures chart data available for ${futuresRoot}: ${providerError.message}`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!candles.length) {
+    const error = new Error(`No futures chart data available for ${futuresRoot}`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return {
+    type: resolution === 'D' ? 'daily' : 'intraday',
+    interval: resolutionConfig.interval,
+    candles,
+    source,
+    symbol: trade.symbol,
+    chart_symbol: chartSymbol,
+    futures_continuous: true,
+    tick_size: asNumber(trade.tick_size) ?? getFuturesTickSize(futuresRoot),
+    point_value: asNumber(trade.point_value) ?? getFuturesPointValue(futuresRoot),
+    session: session ? {
+      date: session.date,
+      from_ts: session.fromTs,
+      to_ts: session.toTs,
+      timezone: NY_TZ
+    } : null,
+    available_resolutions: Object.keys(CHART_RESOLUTIONS)
+  };
 }
 
 /**
@@ -527,9 +613,7 @@ async function getTradeReplayData(trade, userId) {
       error.statusCode = 422;
       throw error;
     }
-    futuresRoot = String(
-      trade.underlying_asset || extractUnderlyingFromFuturesSymbol(trade.symbol) || ''
-    ).toUpperCase();
+    futuresRoot = futuresRootForTrade(trade);
     if (!futuresRoot) {
       const error = new Error(`Could not determine the futures contract root for ${trade.symbol}`);
       error.statusCode = 422;
@@ -776,6 +860,7 @@ async function recordReplayUsage(userId, tradeId) {
 
 module.exports = {
   getTradeReplayData,
+  getFuturesTradeChartData,
   getBacktestSessionData,
   countReplayedTrades,
   hasReplayedTrade,
@@ -786,6 +871,7 @@ module.exports = {
   sessionWindowForDate,
   futuresSessionWindowForEntry,
   futuresSessionWindowForDate,
-  fmpBarTimeToUtcSeconds,
-  toEpochSeconds
+  toEpochSeconds,
+  aggregateBars,
+  futuresRootForTrade
 };

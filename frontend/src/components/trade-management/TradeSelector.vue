@@ -170,7 +170,8 @@
 </template>
 
 <script setup>
-import { format } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
+import { formatPercent as formatPercentBase } from '@/utils/formatters'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
@@ -204,11 +205,7 @@ function selectTrade(trade) {
 
 function formatDate(dateString) {
   if (!dateString) return ''
-  try {
-    return format(new Date(dateString), 'MMM d, yyyy')
-  } catch {
-    return dateString
-  }
+  return formatTradeDate(dateString, 'MMM d, yyyy')
 }
 
 /** Date and time using last execution time (exit_time), fallback to entry_time */
@@ -223,9 +220,7 @@ function formatDateWithTime(trade) {
 }
 
 function formatPercent(value) {
-  if (value === null || value === undefined) return '-'
-  const num = parseFloat(value)
-  return `${num >= 0 ? '+' : ''}${num.toFixed(2)}%`
+  return formatPercentBase(value, { showSign: true })
 }
 
 function formatInstrumentType(type) {

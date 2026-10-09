@@ -52,10 +52,9 @@ class OAuth2Service {
    * Generate PKCE code challenge
    */
   generateCodeChallenge(codeVerifier, method = 'S256') {
-    if (method === 'plain') {
-      return codeVerifier;
+    if (method !== 'S256') {
+      throw new Error('Unsupported PKCE code challenge method');
     }
-    // S256
     return crypto
       .createHash('sha256')
       .update(codeVerifier)
@@ -69,8 +68,21 @@ class OAuth2Service {
    * Verify PKCE code challenge
    */
   verifyCodeChallenge(codeVerifier, codeChallenge, method = 'S256') {
+    if (!this.isValidCodeVerifier(codeVerifier) || !this.isValidCodeChallenge(codeChallenge, method)) {
+      return false;
+    }
     const computedChallenge = this.generateCodeChallenge(codeVerifier, method);
-    return computedChallenge === codeChallenge;
+    return crypto.timingSafeEqual(Buffer.from(computedChallenge), Buffer.from(codeChallenge));
+  }
+
+  isValidCodeVerifier(codeVerifier) {
+    return typeof codeVerifier === 'string' &&
+      /^[A-Za-z0-9._~-]{43,128}$/.test(codeVerifier);
+  }
+
+  isValidCodeChallenge(codeChallenge, method) {
+    return method === 'S256' && typeof codeChallenge === 'string' &&
+      /^[A-Za-z0-9_-]{43}$/.test(codeChallenge);
   }
 
   /**
@@ -151,6 +163,10 @@ class OAuth2Service {
    * Create authorization code
    */
   async createAuthorizationCode(data) {
+    if (!this.isValidCodeChallenge(data.codeChallenge, data.codeChallengeMethod)) {
+      throw new Error('PKCE S256 code challenge required');
+    }
+
     const code = this.generateSecureToken(32);
     const expiresAt = new Date(Date.now() + this.AUTHORIZATION_CODE_EXPIRE);
 
@@ -169,8 +185,8 @@ class OAuth2Service {
       data.userId,
       data.redirectUri,
       data.scopes,
-      data.codeChallenge || null,
-      data.codeChallengeMethod || null,
+      data.codeChallenge,
+      data.codeChallengeMethod,
       data.nonce || null,
       expiresAt
     ]);
@@ -208,14 +224,11 @@ class OAuth2Service {
       throw new Error('Redirect URI mismatch');
     }
 
-    // Verify PKCE if code_challenge was provided
-    if (authCode.code_challenge) {
-      if (!codeVerifier) {
-        throw new Error('Code verifier required');
-      }
-      if (!this.verifyCodeChallenge(codeVerifier, authCode.code_challenge, authCode.code_challenge_method)) {
-        throw new Error('Invalid code verifier');
-      }
+    // PKCE is mandatory. This intentionally rejects legacy unconsumed codes
+    // that were issued without an S256 challenge.
+    if (!this.isValidCodeChallenge(authCode.code_challenge, authCode.code_challenge_method) ||
+        !this.verifyCodeChallenge(codeVerifier, authCode.code_challenge, authCode.code_challenge_method)) {
+      throw new Error('Invalid authorization code');
     }
 
     // Mark code as used
@@ -279,7 +292,7 @@ class OAuth2Service {
       RETURNING id
     `;
 
-    await db.query(query, [
+    const result = await db.query(query, [
       tokenHash,
       data.accessTokenId,
       data.clientId,
@@ -357,7 +370,7 @@ class OAuth2Service {
 
       const directResult = await db.query(
         `
-          SELECT rt.*, c.client_id
+          SELECT rt.*, c.client_id AS public_client_id
           FROM oauth_refresh_tokens rt
           JOIN oauth_clients c ON rt.client_id = c.id
           WHERE rt.id = $1
@@ -394,7 +407,7 @@ class OAuth2Service {
     }
 
     const query = `
-      SELECT rt.*, c.client_id
+      SELECT rt.*, c.client_id AS public_client_id
       FROM oauth_refresh_tokens rt
       JOIN oauth_clients c ON rt.client_id = c.id
       WHERE c.client_id = $1

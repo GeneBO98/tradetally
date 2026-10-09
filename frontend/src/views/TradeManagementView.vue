@@ -183,14 +183,17 @@
 </template>
 
 <script setup>
+import { resolveMonthlyFilterParams } from '@/utils/datePresets'
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { FunnelIcon, ChevronDownIcon } from "@heroicons/vue/24/outline";
 import api from "@/services/api";
 import OnboardingCard from "@/components/onboarding/OnboardingCard.vue";
 import { useAuthStore } from "@/stores/auth";
+import { useTradesStore } from "@/stores/trades";
 
 const authStore = useAuthStore();
+const tradesStore = useTradesStore();
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import TradeFilters from "@/components/trades/TradeFilters.vue";
 import TradeSelector from "@/components/trade-management/TradeSelector.vue";
@@ -280,7 +283,7 @@ function updateUrlParams() {
 // filter always wins for the `accounts` param.
 function buildTradeParams(extra = {}) {
     const params = { ...extra };
-    const f = filters.value || {};
+    const f = resolveMonthlyFilterParams(filters.value || {});
     for (const [key, value] of Object.entries(f)) {
         if (value === null || value === undefined || value === "" || value === false) continue;
         if (Array.isArray(value)) {
@@ -341,7 +344,7 @@ async function loadMoreTrades() {
 
 function handleFilter(newFilters) {
     // TradeFilters only emits non-empty values, so their count is the badge.
-    activeFilterCount.value = Object.values(newFilters || {}).filter(
+    activeFilterCount.value = Object.entries(newFilters || {}).filter(([key]) => key !== 'date_preset').map(([, value]) => value).filter(
         (v) =>
             v !== "" &&
             v !== null &&
@@ -426,6 +429,16 @@ async function onLevelsSaved(updatedTrade) {
     // Re-fetch analysis with new levels
     await fetchAnalysis(updatedTrade.id);
     updateTradeInList(updatedTrade);
+    await refreshSharedTradeData();
+}
+
+async function refreshSharedTradeData() {
+    try {
+        await tradesStore.fetchTrades();
+        await tradesStore.fetchAnalytics();
+    } catch (err) {
+        console.warn("[TRADE-MGMT] Failed to refresh shared trade data:", err.message);
+    }
 }
 
 async function refreshAnalysisOnly(tradeId) {
@@ -459,6 +472,7 @@ async function onLevelsUpdated(updatedTrade) {
     // Refresh analysis without replacing selectedTrade
     await refreshAnalysisOnly(updatedTrade.id);
     updateTradeInList(updatedTrade);
+    await refreshSharedTradeData();
 }
 
 async function onTargetHitUpdated(data) {
@@ -475,6 +489,7 @@ async function onTargetHitUpdated(data) {
     }
     // Trigger refresh of the R-Performance chart to reflect updated management R values
     rPerfRefreshTrigger.value++;
+    await refreshSharedTradeData();
 }
 
 function onChartDeleted(chartId) {

@@ -199,6 +199,54 @@ describe('csvParser timezone handling', () => {
     expect(result.trades[0].executions).toHaveLength(2);
   });
 
+  test('matches issue 383 rows in auto-detect and custom mapping modes', async () => {
+    // The source export is newest-first. Without combining Execution Time with
+    // the mapped Trade Date, all rows receive the same fallback timestamp and
+    // the sell is incorrectly treated as the opening side of a short trade.
+    const csv = [
+      'Symbol,Trade Date,Execution Time,Price,Qty,Side,Commission Amount',
+      'UPC,2026-07-31,16:58:11,6.94,10,Sell,0',
+      'UPC,2026-07-31,16:53:35,6.23,4,Buy,0',
+      'UPC,2026-07-31,16:49:03,6.31,6,Buy,0'
+    ].join('\n');
+
+    const autoResult = await parseCSV(Buffer.from(csv), 'auto', {
+      tradeGroupingSettings: { enabled: false }
+    });
+    const customResult = await parseCSV(Buffer.from(csv), 'generic', {
+      customMapping: {
+        mapping_name: 'Issue 383 Separate Date and Time',
+        symbol_column: 'Symbol',
+        quantity_column: 'Qty',
+        entry_price_column: 'Price',
+        entry_date_column: 'Trade Date',
+        side_column: 'Side',
+        commission_column: 'Commission Amount'
+      },
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expect(autoResult.diagnostics.detectedBroker).toBe('generic');
+    for (const result of [autoResult, customResult]) {
+      expect(result.trades).toHaveLength(1);
+      expect(result.trades[0]).toEqual(expect.objectContaining({
+        symbol: 'UPC',
+        side: 'long',
+        quantity: 10,
+        entryTime: '2026-07-31T16:49:03',
+        exitTime: '2026-07-31T16:58:11',
+        exitPrice: 6.94
+      }));
+      expect(result.trades[0].entryPrice).toBeCloseTo(6.278, 5);
+      expect(result.trades[0].pnl).toBeCloseTo(6.62, 5);
+      expect(result.trades[0].executions.map(execution => execution.datetime)).toEqual([
+        '2026-07-31T16:49:03',
+        '2026-07-31T16:53:35',
+        '2026-07-31T16:58:11'
+      ]);
+    }
+  });
+
   test('parses Tradovate rows that are incorrectly quoted as entire CSV records', async () => {
     const csv = [
       'orderId,Account,Order ID,B/S,Contract,Product,Product Description,avgPrice,filledQty,Fill Time,lastCommandId,Status,_priceFormat,_priceFormatType,_tickSize,spreadDefinitionId,Version ID,Timestamp,Date,Quantity,Text,Type,Limit Price,Stop Price,decimalLimit,decimalStop,Filled Qty,Avg Fill Price,decimalFillAvg,Venue,Notional Value,Currency',
