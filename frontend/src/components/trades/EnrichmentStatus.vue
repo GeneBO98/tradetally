@@ -1,103 +1,81 @@
 <template>
-  <div v-if="showStatus" class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-4 mb-6">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center space-x-3">
-        <div class="flex-shrink-0">
-          <svg v-if="isEnriching" class="animate-spin h-5 w-5 text-primary-600" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <svg v-else class="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-        </div>
-        <div>
-          <h3 class="text-sm font-medium text-primary-900 dark:text-primary-100">
-            {{ isEnriching ? 'Enriching Trade Data' : 'Trade Data Enrichment Complete' }}
-          </h3>
-          <p class="text-sm text-primary-700 dark:text-primary-300">
-            {{ statusMessage }}
-          </p>
+  <div
+    v-if="showStatus"
+    class="mb-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm"
+    role="status"
+    aria-live="polite"
+  >
+    <div class="flex items-center gap-3 px-4 py-3">
+      <div class="animate-spin h-4 w-4 flex-shrink-0 rounded-full border-2 border-primary-600 border-t-transparent"></div>
+
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-baseline gap-x-2">
+          <span class="text-sm font-medium text-gray-900 dark:text-white">Enriching trades</span>
+          <span class="text-sm text-gray-500 dark:text-gray-400">{{ statusMessage }}</span>
         </div>
       </div>
-      <button
-        @click="dismiss"
-        class="text-primary-400 hover:text-primary-600 transition-colors"
-        aria-label="Dismiss"
-      >
-        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-        </svg>
-      </button>
+
+      <div class="flex flex-shrink-0 items-center gap-1">
+        <button
+          v-if="!enrichmentStatus?.unresolvedCusips"
+          @click="syncEnrichmentStatus"
+          class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white transition-colors"
+          title="Sync enrichment status with completed jobs"
+        >
+          <ArrowPathIcon class="h-3.5 w-3.5" />
+          Sync
+        </button>
+        <button
+          @click="forceCompleteEnrichment"
+          class="rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+          title="Mark all pending enrichment jobs as complete"
+        >
+          Force complete
+        </button>
+        <button
+          @click="dismiss"
+          class="ml-1 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition-colors"
+          aria-label="Dismiss"
+        >
+          <XMarkIcon class="h-4 w-4" />
+        </button>
+      </div>
     </div>
-    
-    <!-- Show CUSIP errors if available -->
-    <div v-if="enrichmentStatus && enrichmentStatus.cusipErrors && enrichmentStatus.cusipErrors.length > 0" class="mt-3 mb-2">
-      <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3">
-        <div class="flex">
-          <svg class="h-4 w-4 text-yellow-400 mt-0.5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 15.5c-.77.833.192 2.5 1.732 2.5z"></path>
-          </svg>
-          <div class="flex-1">
-            <p class="text-sm text-yellow-800 dark:text-yellow-200 font-medium">
-              CUSIP Resolution Issues:
-            </p>
-            <ul class="text-sm text-yellow-700 dark:text-yellow-300 mt-1 space-y-1">
-              <li v-for="error in enrichmentStatus.cusipErrors" :key="error.error_message" class="flex justify-between">
-                <span>{{ error.error_message }}</span>
-                <span class="text-yellow-600 dark:text-yellow-400">({{ error.count }} CUSIPs)</span>
-              </li>
-            </ul>
-          </div>
+
+    <!-- Progress -->
+    <div class="px-4 pb-3">
+      <div class="flex items-center gap-3">
+        <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
+          <div
+            class="h-full rounded-full bg-primary-600 transition-all duration-500"
+            :style="{ width: `${progress}%` }"
+          ></div>
+        </div>
+        <span class="w-9 text-right text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ Math.round(progress) }}%</span>
+      </div>
+    </div>
+
+    <!-- CUSIP resolution issues -->
+    <div
+      v-if="enrichmentStatus?.cusipErrors?.length > 0"
+      class="border-t border-gray-200 dark:border-gray-700 px-4 py-3"
+    >
+      <div class="flex items-start gap-2">
+        <ExclamationTriangleIcon class="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+        <div class="min-w-0 flex-1">
+          <p class="text-xs font-medium text-gray-700 dark:text-gray-300">Some CUSIPs could not be resolved</p>
+          <ul class="mt-1 space-y-0.5">
+            <li
+              v-for="error in enrichmentStatus.cusipErrors"
+              :key="error.error_message"
+              class="flex justify-between gap-4 text-xs text-gray-500 dark:text-gray-400"
+            >
+              <span class="truncate">{{ error.error_message }}</span>
+              <span class="flex-shrink-0 tabular-nums">{{ error.count }} CUSIP{{ error.count == 1 ? '' : 's' }}</span>
+            </li>
+          </ul>
         </div>
       </div>
-    </div>
-    
-    <!-- Show force complete button if there are unresolved CUSIPs -->
-    <div v-if="enrichmentStatus && enrichmentStatus.unresolvedCusips > 0" class="mt-3 space-x-2">
-      <!-- NUCLEAR OPTION for stuck jobs -->
-      <button
-        @click="forceCompleteEnrichment"
-        class="inline-flex items-center text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors"
-        title="Nuclear option: Force complete ALL enrichment jobs immediately"
-      >
-        <ExclamationTriangleIcon class="h-4 w-4 mr-1" />
-        FORCE COMPLETE ALL
-      </button>
-    </div>
-    
-    <!-- Show nuclear button if there are pending jobs for too long -->
-    <div v-if="isEnriching && !enrichmentStatus?.unresolvedCusips" class="mt-3 space-x-2">
-      <button
-        @click="syncEnrichmentStatus"
-        class="inline-flex items-center text-sm bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700 transition-colors"
-        title="Sync enrichment status with completed jobs"
-      >
-        <ArrowPathIcon class="h-4 w-4 mr-1" />
-        SYNC STATUS
-      </button>
-      
-      <button
-        @click="forceCompleteEnrichment"
-        class="inline-flex items-center text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors"
-        title="Nuclear option: Force complete ALL enrichment jobs immediately"
-      >
-        <ExclamationTriangleIcon class="h-4 w-4 mr-1" />
-        FORCE COMPLETE ALL
-      </button>
-    </div>
-    
-    <!-- Progress bar -->
-    <div v-if="isEnriching && progress > 0" class="mt-3">
-      <div class="bg-primary-200 dark:bg-primary-800 rounded-full h-2">
-        <div
-          class="bg-primary-600 h-2 rounded-full transition-all duration-300"
-          :style="{ width: `${progress}%` }"
-        ></div>
-      </div>
-      <p class="text-xs text-primary-600 dark:text-primary-400 mt-1">
-        {{ Math.round(progress) }}% complete
-      </p>
     </div>
   </div>
 </template>
@@ -107,7 +85,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
 import { useEnrichmentStatus } from '@/composables/usePriceAlertNotifications'
 import { useNotification } from '@/composables/useNotification'
-import { ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/vue/24/outline'
+import { ExclamationTriangleIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 
 const { showSuccess, showError, showWarning, showConfirmation } = useNotification()
 
@@ -178,21 +156,24 @@ const progress = computed(() => {
   return Math.min(progressValue, 100)
 })
 
+function countFor(status) {
+  const statuses = currentEnrichmentStatus.value?.tradeEnrichment || []
+  return parseInt(statuses.find(s => s.enrichment_status === status)?.count || 0)
+}
+
 const statusMessage = computed(() => {
   if (!currentEnrichmentStatus.value) return ''
-  
-  if (isEnriching.value) {
-    const pending = currentEnrichmentStatus.value.tradeEnrichment?.find(s => s.enrichment_status === 'pending')?.count || 0
-    const processing = currentEnrichmentStatus.value.tradeEnrichment?.find(s => s.enrichment_status === 'processing')?.count || 0
-    
-    if (processing > 0) {
-      return `Processing ${processing} trades for strategy classification, symbol data, and price analysis...`
-    } else if (pending > 0) {
-      return `${pending} trades queued for enrichment with market data and analysis...`
-    }
-  }
-  
-  return 'Your trades have been enriched with strategy classifications, company data, and price analysis.'
+
+  const statuses = currentEnrichmentStatus.value.tradeEnrichment || []
+  const total = statuses.reduce((sum, s) => sum + parseInt(s.count), 0)
+  const completed = countFor('completed')
+  const processing = countFor('processing')
+  const pending = countFor('pending')
+
+  const parts = [`${completed.toLocaleString()} of ${total.toLocaleString()} done`]
+  if (processing > 0) parts.push(`${processing.toLocaleString()} processing`)
+  if (pending > 0) parts.push(`${pending.toLocaleString()} queued`)
+  return parts.join(' \u00b7 ')
 })
 
 const lastUpdateTime = ref(Date.now())
