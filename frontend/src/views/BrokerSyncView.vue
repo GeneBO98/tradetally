@@ -404,7 +404,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBrokerSyncStore } from '@/stores/brokerSync'
 import { useTradesStore } from '@/stores/trades'
@@ -476,6 +476,20 @@ const brokerConnecting = ref({
 })
 const SCHWAB_PENDING_STORAGE_KEY = 'broker_sync_schwab_pending'
 const BROKER_PENDING_STORAGE_KEY = 'broker_sync_pending'
+
+function reset_oauth_connecting_state() {
+  schwabConnecting.value = false
+  Object.keys(brokerConnecting.value).forEach(key => {
+    brokerConnecting.value[key] = false
+  })
+  // Clear markers left by older versions after an abandoned authorization.
+  window.sessionStorage.removeItem(SCHWAB_PENDING_STORAGE_KEY)
+  window.sessionStorage.removeItem(BROKER_PENDING_STORAGE_KEY)
+}
+
+function handle_oauth_page_show(event) {
+  if (event.persisted) reset_oauth_connecting_state()
+}
 
 const trading212Environments = computed(() =>
   store.trading212Connections.map(connection => connection.brokerEnvironment || 'live')
@@ -559,27 +573,11 @@ async function consumeOAuthCallbackState(query) {
   const hasCallbackState = supportedSuccess.includes(query.success) || Boolean(query.error)
 
   if (!hasCallbackState) {
-    if (typeof window !== 'undefined' && window.sessionStorage.getItem(SCHWAB_PENDING_STORAGE_KEY) === 'true') {
-      schwabConnecting.value = true
-    }
-    if (typeof window !== 'undefined') {
-      const pending = window.sessionStorage.getItem(BROKER_PENDING_STORAGE_KEY)
-      if (pending && brokerConnecting.value[pending] !== undefined) {
-        brokerConnecting.value[pending] = true
-      }
-    }
+    reset_oauth_connecting_state()
     return
   }
 
-  schwabConnecting.value = false
-  Object.keys(brokerConnecting.value).forEach(key => {
-    brokerConnecting.value[key] = false
-  })
-
-  if (typeof window !== 'undefined') {
-    window.sessionStorage.removeItem(SCHWAB_PENDING_STORAGE_KEY)
-    window.sessionStorage.removeItem(BROKER_PENDING_STORAGE_KEY)
-  }
+  reset_oauth_connecting_state()
 
   await Promise.all([
     store.fetchConnections(),
@@ -614,12 +612,18 @@ async function consumeOAuthCallbackState(query) {
 }
 
 onMounted(async () => {
+  reset_oauth_connecting_state()
+  window.addEventListener('pageshow', handle_oauth_page_show)
   await Promise.all([
     store.fetchConnections(),
     store.fetchSyncLogs(),
     fetchExcludedTrades()
   ])
   await consumeOAuthCallbackState(route.query)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('pageshow', handle_oauth_page_show)
 })
 
 // Watch for route changes (OAuth callback)
@@ -700,9 +704,6 @@ async function handleTrading212Save(connection) {
 async function handleSchwabConnect() {
   try {
     schwabConnecting.value = true
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem(SCHWAB_PENDING_STORAGE_KEY, 'true')
-    }
     const authUrl = await store.initSchwabOAuth()
     // Redirect to Schwab OAuth
     window.location.href = authUrl
@@ -724,9 +725,6 @@ async function handleBrokerOAuthConnect(broker, options = {}) {
   const key = pendingKeyFor(broker, options)
   try {
     brokerConnecting.value[key] = true
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem(BROKER_PENDING_STORAGE_KEY, key)
-    }
     const authUrl = await store.initBrokerOAuth(broker, options)
     window.location.href = authUrl
   } catch (error) {

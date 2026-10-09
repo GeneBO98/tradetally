@@ -1,10 +1,11 @@
 const axios = require('axios');
 const OAuthBrokerBase = require('./oauthBrokerBase');
+const { create_signed_headers } = require('./webullSignature');
 
 // Webull Connect API (https://developer.webull.com/apis/docs/connect-api/about-connect-api/)
-// OAuth login + data calls share the same host; data endpoints live under /oauth-openapi.
+// OAuth login uses Webull Passport; data endpoints live under /oauth-openapi.
 const PROD_BASE = 'https://us-oauth-open-api.webull.com';
-const UAT_BASE = 'https://us-oauth-open-api.uat.webullbroker.com';
+const UAT_BASE = 'https://oauth-open-api.sandbox.webull.com';
 
 // Order history supports a maximum look-back of 2 years.
 const MAX_LOOKBACK_DAYS = 730;
@@ -45,13 +46,60 @@ class WebullService extends OAuthBrokerBase {
       clientId: process.env.WEBULL_CLIENT_ID,
       clientSecret: process.env.WEBULL_CLIENT_SECRET,
       redirectUri: process.env.WEBULL_REDIRECT_URI,
-      authorizationUrl: `${baseUrl}/oauth2/authenticate/login`,
-      tokenUrl: `${baseUrl}/openapi/oauth2/token`,
+      authorizationUrl: baseUrl === UAT_BASE
+        ? 'https://passport.webull.com/oauth2/sandbox/authenticate/login'
+        : 'https://passport.webull.com/oauth2/authenticate/login',
+      tokenUrl: `${baseUrl}/oauth2/tokens/create`,
       // Scope is issued per app during Webull's manual registration; override
       // via env if your app was granted a different scope string.
       scope: process.env.WEBULL_SCOPE || 'user:trade:wr',
       apiBase: `${baseUrl}/oauth-openapi`
     });
+    this.app_key = process.env.WEBULL_APP_KEY;
+    this.app_secret = process.env.WEBULL_APP_SECRET;
+  }
+
+  isConfigured() {
+    return super.isConfigured() && Boolean(this.app_key && this.app_secret);
+  }
+
+  signed_headers(url, params = {}, body = '') {
+    return create_signed_headers({ url, params, body, app_key: this.app_key, app_secret: this.app_secret });
+  }
+
+  async request_token(body_params, fallback_refresh_token = null) {
+    const body = new URLSearchParams(body_params).toString();
+    try {
+      const response = await axios.post(this.config.tokenUrl, body, {
+        headers: {
+          ...this.signed_headers(this.config.tokenUrl, {}, body),
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json'
+        },
+        timeout: 15000
+      });
+      return this.normalizeTokenResponse(response.data, fallback_refresh_token);
+    } catch (error) {
+      const error_code = error.response?.data?.error_code;
+      if (typeof error_code === 'string' && /^[A-Z0-9_]+$/.test(error_code)) {
+        error.message = `Webull token request rejected: ${error_code}`;
+      }
+      throw error;
+    }
+  }
+
+  async exchangeCodeForTokens(code) {
+    return this.request_token({
+      grant_type: 'authorization_code', code, redirect_uri: this.config.redirectUri,
+      client_id: this.config.clientId, client_secret: this.config.clientSecret
+    });
+  }
+
+  async refreshAccessToken(refresh_token) {
+    return this.request_token({
+      grant_type: 'refresh_token', refresh_token,
+      client_id: this.config.clientId, client_secret: this.config.clientSecret
+    }, refresh_token);
   }
 
   // Webull returns rt_expires_in (refresh token TTL in seconds, as a string)
@@ -87,8 +135,10 @@ class WebullService extends OAuthBrokerBase {
   }
 
   async getAccounts(accessToken) {
-    const response = await axios.get(`${this.config.apiBase}/account/list`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
+    const url = `${this.config.apiBase}/account/list`;
+    const response = await axios.get(url, {
+      headers: { ...this.signed_headers(url), Authorization: `Bearer ${accessToken}` },
+      timeout: 15000
     });
     const data = response.data;
     if (Array.isArray(data)) return data;
@@ -116,9 +166,11 @@ class WebullService extends OAuthBrokerBase {
         if (end) params.end_date = end;
         if (cursor) params.last_client_order_id = cursor;
 
-        const response = await axios.get(`${this.config.apiBase}/trade/order/history`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          params
+        const url = `${this.config.apiBase}/trade/order/history`;
+        const response = await axios.get(url, {
+          headers: { ...this.signed_headers(url, params), Authorization: `Bearer ${accessToken}` },
+          params,
+          timeout: 15000
         });
 
         const wrappers = Array.isArray(response.data)

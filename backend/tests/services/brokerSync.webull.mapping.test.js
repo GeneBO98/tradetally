@@ -10,6 +10,8 @@
  */
 
 process.env.WEBULL_REQUEST_SPACING_MS = '0';
+process.env.WEBULL_APP_KEY = 'test-app-key';
+process.env.WEBULL_APP_SECRET = 'test-app-secret';
 
 jest.mock('axios', () => ({
   get: jest.fn(),
@@ -42,6 +44,72 @@ jest.mock('../../src/config/database', () => ({
 
 const axios = require('axios');
 const webullService = require('../../src/services/brokerSync/webullService');
+
+describe('Webull token requests', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('signs code exchange on the current sandbox endpoint', async () => {
+    const previous_environment = process.env.WEBULL_ENVIRONMENT;
+    try {
+      process.env.WEBULL_ENVIRONMENT = 'uat';
+      const service = new webullService.constructor();
+      service.config.clientId = 'test-client';
+      service.config.clientSecret = 'test-client-secret';
+      service.config.redirectUri = 'https://example.com/callback';
+      axios.post.mockResolvedValueOnce({ data: { access_token: 'access', refresh_token: 'refresh', expires_in: '1800' } });
+      await expect(service.exchangeCodeForTokens('test-code')).resolves.toMatchObject({ accessToken: 'access' });
+      const [url, body, options] = axios.post.mock.calls[0];
+      expect(url).toBe('https://oauth-open-api.sandbox.webull.com/oauth2/tokens/create');
+      expect(new URLSearchParams(body).get('code')).toBe('test-code');
+      expect(options.headers).toMatchObject({ 'x-app-key': 'test-app-key', 'x-signature-algorithm': 'HMAC-SHA1' });
+      expect(options.headers['x-signature']).toBeTruthy();
+      expect(options.headers).not.toHaveProperty('x-app-secret');
+    } finally {
+      if (previous_environment === undefined) delete process.env.WEBULL_ENVIRONMENT;
+      else process.env.WEBULL_ENVIRONMENT = previous_environment;
+    }
+  });
+
+  test('also signs refresh and retains the refresh token if Webull omits it', async () => {
+    axios.post.mockResolvedValueOnce({ data: { access_token: 'new-access', expires_in: '1800' } });
+    await expect(webullService.refreshAccessToken('existing-refresh')).resolves.toMatchObject({ refreshToken: 'existing-refresh' });
+    const [, body, options] = axios.post.mock.calls[0];
+    expect(new URLSearchParams(body).get('grant_type')).toBe('refresh_token');
+    expect(options.headers['x-signature']).toBeTruthy();
+  });
+
+  test('reports the provider error code without copying its response into the error', async () => {
+    axios.post.mockRejectedValueOnce({ message: 'Request failed with status code 401', response: {
+      status: 401, data: { error_code: 'UNAUTHORIZED', message: 'sensitive response text' }
+    } });
+    await expect(webullService.exchangeCodeForTokens('test-code')).rejects.toMatchObject({
+      message: 'Webull token request rejected: UNAUTHORIZED'
+    });
+  });
+});
+
+describe('Webull authorization', () => {
+  test.each([
+    ['uat', '/oauth2/sandbox/authenticate/login'],
+    ['prod', '/oauth2/authenticate/login']
+  ])('uses the Passport login route for %s', (environment, expected_path) => {
+    const previous_environment = process.env.WEBULL_ENVIRONMENT;
+    try {
+      process.env.WEBULL_ENVIRONMENT = environment;
+      const service = new webullService.constructor();
+      service.config.clientId = 'test-client';
+      service.config.redirectUri = 'https://example.com/callback';
+      const url = new URL(service.getAuthorizationUrl('test-state'));
+      expect(url.hostname).toBe('passport.webull.com');
+      expect(url.pathname).toBe(expected_path);
+      expect(url.searchParams.get('state')).toBe('test-state');
+      expect(url.searchParams.get('redirect_uri')).toBe('https://example.com/callback');
+    } finally {
+      if (previous_environment === undefined) delete process.env.WEBULL_ENVIRONMENT;
+      else process.env.WEBULL_ENVIRONMENT = previous_environment;
+    }
+  });
+});
 
 /** Builds a Webull order the way fetchExecutions emits them. */
 function wbOrder(order, accountNumber = 'A123456789') {
