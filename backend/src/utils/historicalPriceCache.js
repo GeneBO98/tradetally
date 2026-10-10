@@ -95,7 +95,7 @@ async function insertCandles(symbol, candles, dataSource) {
       candle.high,
       candle.low,
       candle.close,
-      // FMP occasionally reports fractional volumes; the column is BIGINT
+      // volume is a bigint column; some providers return fractional volume, so round it
       Math.round(Number(candle.volume) || 0),
       dataSource
     );
@@ -144,9 +144,56 @@ async function upsertToday(symbol, priceData, dataSource) {
   );
 }
 
+/**
+ * Symbols confirmed to have no daily candles from any provider, last checked within
+ * `recheckDays`. Returned as an uppercased Set so callers can skip them. Falls back to
+ * an empty Set if the table doesn't exist yet (migration not applied).
+ * @param {number} recheckDays - re-attempt symbols older than this many days
+ * @returns {Promise<Set<string>>}
+ */
+async function getUnavailableSymbols(recheckDays = 30) {
+  try {
+    const result = await db.query(
+      `SELECT symbol
+         FROM price_unavailable_symbols
+        WHERE last_checked_at > (CURRENT_TIMESTAMP - ($1 || ' days')::interval)`,
+      [String(recheckDays)]
+    );
+    return new Set(result.rows.map(row => row.symbol.toUpperCase()));
+  } catch (error) {
+    return new Set();
+  }
+}
+
+/**
+ * Record that a symbol returned no daily candles (increments fail_count, refreshes
+ * last_checked_at). Used by the nightly backfill to stop retrying dead symbols.
+ */
+async function markUnavailable(symbol, reason = 'no_candles') {
+  await db.query(
+    `INSERT INTO price_unavailable_symbols (symbol, reason)
+     VALUES ($1, $2)
+     ON CONFLICT (symbol) DO UPDATE SET
+       fail_count = price_unavailable_symbols.fail_count + 1,
+       reason = EXCLUDED.reason,
+       last_checked_at = CURRENT_TIMESTAMP`,
+    [symbol.toUpperCase(), reason]
+  );
+}
+
+/**
+ * Clear any unavailable marker for a symbol (e.g. it now returns data).
+ */
+async function clearUnavailable(symbol) {
+  await db.query('DELETE FROM price_unavailable_symbols WHERE symbol = $1', [symbol.toUpperCase()]);
+}
+
 module.exports = {
   getRange,
   hasRange,
   insertCandles,
-  upsertToday
+  upsertToday,
+  getUnavailableSymbols,
+  markUnavailable,
+  clearUnavailable
 };

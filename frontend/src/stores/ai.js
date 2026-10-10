@@ -18,9 +18,18 @@ function delay(ms) {
 }
 
 function isRecoverableGatewayError(err) {
+  if (err.response?.data?.code === 'AI_UNAVAILABLE') return false
   const status = err.response?.status
   return !err.response || [408, 499, 502, 503, 504, 520, 521, 522, 523, 524].includes(status) ||
     ['ECONNABORTED', 'ERR_NETWORK', 'ETIMEDOUT'].includes(err.code)
+}
+
+function analysisErrorMessage(err) {
+  const status = err.response?.status
+  if ([400, 401, 402, 403, 404, 410, 429].includes(status)) {
+    return err.response?.data?.message || 'Unable to complete this AI request. Please try again.'
+  }
+  return 'AI analysis is temporarily unavailable. Please try again shortly.'
 }
 
 /**
@@ -155,7 +164,7 @@ export const useAIStore = defineStore('ai', () => {
         }
       }
 
-      error.value = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to start AI session'
+      error.value = analysisErrorMessage(err)
       throw err
     } finally {
       loading.value = false
@@ -214,7 +223,7 @@ export const useAIStore = defineStore('ai', () => {
       await delay(Math.min(AI_SESSION_RECOVERY_POLL_MS, Math.max(0, deadline - Date.now())))
     }
 
-    throw new Error('The AI analysis did not finish within 10 minutes. It may still appear in your recent sessions when the provider completes.')
+    throw new Error('The AI analysis did not finish within 10 minutes. It may still appear in your recent sessions once it finishes.')
   }
 
   /**
@@ -281,7 +290,7 @@ export const useAIStore = defineStore('ai', () => {
 
       // Remove the user message if the request failed
       messages.value.pop()
-      error.value = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to send follow-up'
+      error.value = analysisErrorMessage(err)
       throw err
     } finally {
       generating.value = false
@@ -330,7 +339,7 @@ export const useAIStore = defineStore('ai', () => {
       await delay(Math.min(AI_SESSION_RECOVERY_POLL_MS, Math.max(0, deadline - Date.now())))
     }
 
-    throw new Error('The AI follow-up did not finish within 10 minutes. Please check the session again after the provider completes.')
+    throw new Error('The AI follow-up did not finish within 10 minutes. Please check the session again later.')
   }
 
   /**

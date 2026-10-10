@@ -4,6 +4,7 @@ const adminSettingsService = require('../services/adminSettings');
 const { validateAiProviderUrl, fetchAiProviderUrl } = require('./urlSecurity');
 const { sanitizeErrorForLogging, summarizeUrlForLogging } = require('./logSanitizer');
 const AIProvider = require('./aiProvider');
+const { userAISettings, coalesceSettingsBundle } = require('./aiSettings');
 
 const hasOwn = (object, property) => Object.prototype.hasOwnProperty.call(object, property);
 
@@ -39,26 +40,7 @@ class AIService {
   }
 
   coalesceSettingsBundle(primary = {}, fallback = {}) {
-    const primaryProvider = primary?.provider || null;
-    const fallbackProvider = fallback?.provider || null;
-
-    if (!primaryProvider) {
-      return {
-        provider: fallbackProvider || '',
-        apiKey: fallback?.apiKey || '',
-        apiUrl: fallback?.apiUrl || '',
-        model: fallback?.model || ''
-      };
-    }
-
-    const sameProviderFallback = fallbackProvider && fallbackProvider === primaryProvider;
-
-    return {
-      provider: primaryProvider,
-      apiKey: primary?.apiKey || (sameProviderFallback ? (fallback?.apiKey || '') : ''),
-      apiUrl: primary?.apiUrl || (sameProviderFallback ? (fallback?.apiUrl || '') : ''),
-      model: primary?.model || (sameProviderFallback ? (fallback?.model || '') : '')
-    };
+    return coalesceSettingsBundle(primary, fallback);
   }
 
   async getUserSettings(userId) {
@@ -69,12 +51,7 @@ class AIService {
       // Get admin default settings as fallback
       const adminDefaults = await adminSettingsService.getDefaultAISettings();
 
-      return this.coalesceSettingsBundle({
-        provider: userSettings?.ai_provider || '',
-        apiKey: userSettings?.ai_api_key || '',
-        apiUrl: userSettings?.ai_api_url || '',
-        model: userSettings?.ai_model || ''
-      }, adminDefaults);
+      return this.coalesceSettingsBundle(userAISettings(userSettings), adminDefaults);
     } catch (error) {
       console.error('Failed to get user AI settings:', error);
       // Fallback to admin defaults, then hardcoded defaults
@@ -123,12 +100,7 @@ class AIService {
       }
 
       // Fall back to main AI settings
-      return this.coalesceSettingsBundle({
-        provider: userSettings?.ai_provider || '',
-        apiKey: userSettings?.ai_api_key || '',
-        apiUrl: userSettings?.ai_api_url || '',
-        model: userSettings?.ai_model || ''
-      }, adminDefaults);
+      return this.coalesceSettingsBundle(userAISettings(userSettings), adminDefaults);
     } catch (error) {
       console.error('Failed to get CUSIP user AI settings:', error);
       // Fallback to main settings
@@ -387,10 +359,10 @@ Your response:`;
         ...tokenParam
       };
       
-      // Only add temperature for models that support it.
-      // Reasoning models (o-series, all gpt-5 variants) reject any non-default temperature.
+      // New OpenAI models may reject custom temperature regardless of their
+      // name. Let OpenAI use its default for every OpenAI request.
       const isReasoningModel = /^(o\d|gpt-5|deepseek-reasoner)/i.test(model);
-      if (!isReasoningModel) {
+      if (provider !== 'openai' && !isReasoningModel) {
         requestParams.temperature = 0.1;
       }
       

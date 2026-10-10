@@ -18,6 +18,7 @@ class ParallelJobQueue {
    * queue skips these types so each type has exactly one owner.
    */
   startParallelProcessing() {
+    if (process.env.DISABLE_BACKGROUND_JOBS === 'true') return;
     if (this.isRunning) {
       logger.logImport('Parallel job queue already running');
       return;

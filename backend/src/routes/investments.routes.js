@@ -251,6 +251,46 @@ router.get('/portfolio/summary', investmentsController.getPortfolioSummary);
 router.post('/portfolio/refresh', investmentsController.refreshPrices);
 
 // ========================================
+// RETIREMENT PLANNER
+// ========================================
+
+/**
+ * @route GET /api/investments/retirement
+ * @desc Get the saved retirement plan and a current projection
+ * @access Pro
+ */
+router.get('/retirement', investmentsController.getRetirementPlan);
+
+/**
+ * @route POST /api/investments/retirement/calculate
+ * @desc Calculate an unsaved retirement plan preview
+ * @access Pro
+ */
+router.post(
+  '/retirement/calculate',
+  validate(schemas.retirementPlan),
+  investmentsController.calculateRetirementPlan
+);
+
+/**
+ * @route PUT /api/investments/retirement
+ * @desc Upsert the user's single saved retirement plan
+ * @access Pro
+ */
+router.put(
+  '/retirement',
+  validate(schemas.retirementPlan),
+  investmentsController.saveRetirementPlan
+);
+
+/**
+ * @route DELETE /api/investments/retirement
+ * @desc Reset the saved retirement plan
+ * @access Pro
+ */
+router.delete('/retirement', investmentsController.deleteRetirementPlan);
+
+// ========================================
 // SCREENER
 // ========================================
 

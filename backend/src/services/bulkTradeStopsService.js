@@ -48,6 +48,9 @@ async function update(userId, tradeIds, stops, applyDefaultToMissing, dryRun = f
       let stop = requested.get(trade.id);
       if (stop === undefined && applyDefaultToMissing && trade.stop_loss == null) {
         stop = Trade.calculateDefaultStopLossFromSettings(trade, settings);
+        // A dollar default larger than the position value yields a price at
+        // or below zero (or the wrong side of entry); leave that trade alone.
+        if (stop != null && !Trade.isValidStopForEntry(stop, trade.entry_price, trade.side)) stop = null;
       }
       if (stop === undefined || stop === null || Trade.stopLossMatches(stop, trade.stop_loss)) continue;
       const riskAmount = Trade.calculateRiskAmount(trade.entry_price, stop, trade.quantity, trade.side,

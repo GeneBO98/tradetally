@@ -57,8 +57,17 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
     return parseInstrumentData(symbol);
   };
 
+  const diagnostics = context.diagnostics;
+  const recordSkip = (rowIndex, reason, expected = false) => {
+    if (!diagnostics) return;
+    diagnostics.skippedRows++;
+    if (expected) diagnostics.expected_skipped_rows = (diagnostics.expected_skipped_rows || 0) + 1;
+    diagnostics.skippedReasons.push({ row: rowIndex, reason });
+  };
+
   // First, parse all trade transactions from the filled orders
-  for (const record of records) {
+  for (const [recordIndex, record] of records.entries()) {
+    const rowIndex = recordIndex + 1;
     try {
       const symbol = cleanString(record.Symbol);
       const side = record.Side ? record.Side.toLowerCase() : '';
@@ -71,12 +80,21 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
 
       if (status && !['FILLED', 'EXECUTED'].includes(status)) {
         console.log(`Skipping PaperMoney order with non-filled status: ${status}`);
+        recordSkip(rowIndex, `Order not filled (status: ${status})`, true);
         continue;
       }
 
       // Skip if missing essential data
       if (!symbol || !side || quantity === 0 || !Number.isFinite(price) || price === 0 || !execTime) {
         console.log(`Skipping PaperMoney record missing data:`, { symbol, side, quantity, price, execTime });
+        const missing = [
+          !symbol && 'symbol',
+          !side && 'side',
+          quantity === 0 && 'quantity',
+          (!Number.isFinite(price) || price === 0) && 'price',
+          !execTime && 'execution time'
+        ].filter(Boolean);
+        recordSkip(rowIndex, `Could not import this row: missing or invalid ${missing.join(', ')}.`, !symbol && !side);
         continue;
       }
 
@@ -85,9 +103,11 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       let entryTime = null;
       if (execTime) {
         // Convert MM/DD/YY format to full date
-        const dateMatch = execTime.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\s+(.+)$/);
+        // Manual trade exports omit the time ("9/15/26"); default to the open.
+        const dateMatch = execTime.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})(?:\s+(.+))?$/);
         if (dateMatch) {
-          const [_, month, day, year, time] = dateMatch;
+          const [_, month, day, year, rawTime] = dateMatch;
+          const time = rawTime || '09:30:00';
           // Smart year conversion: assume 00-49 is 2000-2049, 50-99 is 1950-1999
           const yearNum = parseInt(year);
           const fullYear = year.length === 4
@@ -101,6 +121,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
 
       if (!tradeDate || !entryTime) {
         console.log(`Skipping PaperMoney record with invalid date: ${execTime}`);
+        recordSkip(rowIndex, `Could not import this row: unrecognized execution time "${execTime}".`);
         continue;
       }
 
@@ -111,11 +132,13 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
 
       if (entryTime > maxFutureDate) {
         console.log(`Skipping PaperMoney record with future date: ${execTime}`);
+        recordSkip(rowIndex, `Could not import this row: execution time ${execTime} is in the future.`);
         continue;
       }
 
       if (entryTime < minPastDate) {
         console.log(`Skipping PaperMoney record with date too far in past: ${execTime}`);
+        recordSkip(rowIndex, `Could not import this row: execution time ${execTime} is before 2000.`);
         continue;
       }
 

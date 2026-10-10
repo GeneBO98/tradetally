@@ -820,7 +820,7 @@ class User {
       await client.query(`
         DELETE FROM job_queue
         WHERE user_id = $1
-        OR data->>'userId' = $1
+        OR data->>'userId' = $1::text
         OR data->>'tradeId' IN (SELECT id::text FROM trades WHERE user_id = $1)
         OR (
           type = ANY($2::text[])

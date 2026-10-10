@@ -2,10 +2,11 @@
  * IBKR Flex Web Service Integration
  * Fetches trade data from Interactive Brokers using the Flex Query API
  *
- * API Documentation: https://www.interactivebrokers.com/campus/ibkr-api-page/flex-web-service/
+ * API Documentation: https://www.interactivebrokers.com/docs/web-api/flex-web-service/using-flex-web-service
  */
 
 const axios = require('axios');
+const crypto = require('crypto');
 const { parse } = require('csv-parse/sync');
 const { parseIBKRRecords } = require('../../utils/csvParser');
 const { executionIdentityMatches } = require('../../utils/csv/dedup');
@@ -23,6 +24,7 @@ const { version: APP_VERSION } = require('../../../package.json');
 const FLEX_BASE_URL = 'https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService';
 const FLEX_USER_AGENT = `TradeTally/${APP_VERSION}`;
 const REPORT_REQUEST_TIMEOUT = 120000; // 2 minutes to request report
+const SEND_REQUEST_MIN_INTERVAL = 6000; // Enforces both 1/sec and 10/min across a serialized token
 // IBKR limits Flex requests to 10/minute per token (error 1018) and the limit
 // covers GetStatement polls too, so poll no faster than every 10 seconds.
 const REPORT_POLL_INTERVAL = 10000;
@@ -260,64 +262,217 @@ function buildIBKRError(humanMessage, { errorCode = null, rawMessage = null, tra
 
 class IBKRService {
   constructor() {
+    // Keep the default array for backwards-compatible diagnostics/tests while
+    // real requests use isolated state keyed by a one-way token hash.
     this.sendRequestTimestamps = [];
+    this.sendRequestTimestampsByToken = new Map();
+    this.sendRequestQueues = new Map();
+    this.tokenOperationQueues = new Map();
   }
 
-  async waitForSendRequestSlot() {
-    const now = Date.now();
-    this.sendRequestTimestamps = this.sendRequestTimestamps.filter(timestamp => now - timestamp < 60000);
-    const lastTimestamp = this.sendRequestTimestamps[this.sendRequestTimestamps.length - 1] || 0;
-    const oneSecondWait = Math.max(0, 1000 - (now - lastTimestamp));
-    const minuteWait = this.sendRequestTimestamps.length >= 10
-      ? Math.max(0, 60000 - (now - this.sendRequestTimestamps[0]))
-      : 0;
-    const waitMs = Math.max(oneSecondWait, minuteWait);
+  getTokenKey(flexToken) {
+    if (!flexToken) return '__default__';
+    return crypto.createHash('sha256').update(String(flexToken)).digest('hex');
+  }
+
+  async withTokenOperation(flexToken, operation) {
+    const key = this.getTokenKey(flexToken);
+    const previous = this.tokenOperationQueues.get(key) || Promise.resolve();
+    let release;
+    const turn = new Promise(resolve => { release = resolve; });
+    const queued = previous.then(() => turn);
+    this.tokenOperationQueues.set(key, queued);
+    await previous;
+    let client = null;
+    let distributedLockAcquired = false;
+    try {
+      client = await db.connect();
+      const lockResult = await client.query(
+        `SELECT pg_try_advisory_lock(hashtextextended('ibkr-token:' || $1::text, 0)) AS acquired`,
+        [key]
+      );
+      distributedLockAcquired = Boolean(lockResult.rows[0]?.acquired);
+      if (!distributedLockAcquired) {
+        throw buildIBKRError('Another IBKR operation is already using this Flex Token. Please wait for it to finish.', {
+          errorCode: 'IBKR_OPERATION_IN_PROGRESS',
+          transient: true
+        });
+      }
+      return await operation();
+    } finally {
+      try {
+        if (client) {
+          try {
+            if (distributedLockAcquired) {
+              await this.waitForTokenSendRequestCooldown(key);
+              await client.query(
+                `SELECT pg_advisory_unlock(hashtextextended('ibkr-token:' || $1::text, 0))`,
+                [key]
+              );
+            }
+          } finally {
+            client.release();
+          }
+        }
+      } finally {
+        release();
+        if (this.tokenOperationQueues.get(key) === queued) this.tokenOperationQueues.delete(key);
+      }
+    }
+  }
+
+  async waitForTokenSendRequestCooldown(key) {
+    const timestamps = key === '__default__'
+      ? this.sendRequestTimestamps
+      : (this.sendRequestTimestampsByToken.get(key) || []);
+    const lastTimestamp = timestamps[timestamps.length - 1];
+    if (!lastTimestamp) return;
+    const waitMs = Math.max(0, SEND_REQUEST_MIN_INTERVAL - (Date.now() - lastTimestamp));
     if (waitMs > 0) await this.sleep(waitMs);
-    const reservedTimestamp = Date.now();
-    this.sendRequestTimestamps = this.sendRequestTimestamps.filter(timestamp => reservedTimestamp - timestamp < 60000);
-    this.sendRequestTimestamps.push(reservedTimestamp);
   }
 
-  /**
-   * Validate IBKR credentials by requesting a test report
-   * @param {string} flexToken - IBKR Flex Token
-   * @param {string} queryId - Flex Query ID
-   * @returns {Promise<{valid: boolean, message: string}>}
-   */
-  async validateCredentials(flexToken, queryId) {
-    console.log('[IBKR] Validating credentials...');
+  async waitForSendRequestSlot(flexToken = null) {
+    const key = this.getTokenKey(flexToken);
+    const previous = this.sendRequestQueues.get(key) || Promise.resolve();
+    let release;
+    const turn = new Promise(resolve => { release = resolve; });
+    const queued = previous.then(() => turn);
+    this.sendRequestQueues.set(key, queued);
+    await previous;
 
     try {
-      // Request a report to validate credentials
-      const response = await this.requestFlexReport(flexToken, queryId);
+      const now = Date.now();
+      let timestamps = key === '__default__'
+        ? this.sendRequestTimestamps
+        : (this.sendRequestTimestampsByToken.get(key) || []);
+      timestamps = timestamps.filter(timestamp => now - timestamp < 60000);
+      const lastTimestamp = timestamps[timestamps.length - 1] || 0;
+      const minimumIntervalWait = Math.max(0, SEND_REQUEST_MIN_INTERVAL - (now - lastTimestamp));
+      const minuteWait = timestamps.length >= 10
+        ? Math.max(0, 60000 - (now - timestamps[0]))
+        : 0;
+      const waitMs = Math.max(minimumIntervalWait, minuteWait);
+      if (waitMs > 0) await this.sleep(waitMs);
 
-      if (response.referenceCode) {
-        console.log('[IBKR] Credentials validated successfully');
-        return { valid: true, message: 'Credentials validated successfully' };
-      }
-
-      return { valid: false, message: response.error || 'Unknown validation error' };
-    } catch (error) {
-      console.error('[IBKR] Credential validation failed:', error.message);
-      return { valid: false, message: error.message };
+      const reservedTimestamp = Date.now();
+      timestamps = timestamps.filter(timestamp => reservedTimestamp - timestamp < 60000);
+      timestamps.push(reservedTimestamp);
+      if (key === '__default__') this.sendRequestTimestamps = timestamps;
+      else this.sendRequestTimestampsByToken.set(key, timestamps);
+    } finally {
+      release();
+      if (this.sendRequestQueues.get(key) === queued) this.sendRequestQueues.delete(key);
     }
   }
 
   /**
-   * Request a Flex report generation
-   * Retries up to 3 times on transient DNS/network errors and retryable IBKR codes.
+   * Validate that the generated Flex report contains a Trades section and,
+   * when rows expose their configured fields, all fields required by the
+   * importer. Empty XML Trades sections are accepted because IBKR does not
+   * emit field metadata until the section has data.
+   */
+  validateReportSchema(decoded) {
+    if (!decoded?.recognized || !decoded.sections?.trades) {
+      return {
+        valid: false,
+        message: 'The Flex Query must include the Trades section. Add Trades in IBKR Flex Query configuration, then save and run the query once.',
+        missingFields: ['Trades section'],
+        warnings: []
+      };
+    }
+
+    const headers = new Set((decoded.section_headers?.trades || []).map(normalizeHeader));
+    const requiredGroups = [
+      { label: 'Symbol', aliases: ['symbol'] },
+      { label: 'Asset Class', aliases: ['assetclass', 'assetcategory'] },
+      { label: 'Date/Time', aliases: ['datetime', 'tradedate', 'date'] },
+      { label: 'Quantity', aliases: ['quantity'] },
+      { label: 'Trade Price', aliases: ['tradeprice', 'price'] },
+      { label: 'Buy/Sell', aliases: ['buysell', 'action', 'side'] },
+      { label: 'Level of Detail', aliases: ['levelofdetail'] }
+    ];
+    const missingFields = headers.size === 0
+      ? []
+      : requiredGroups
+        .filter(group => !group.aliases.some(alias => headers.has(alias)))
+        .map(group => group.label);
+
+    if (missingFields.length > 0) {
+      return {
+        valid: false,
+        message: 'The Flex Query Trades section is missing required fields: ' + missingFields.join(', ') + '. Add them in IBKR, save, and run the query once.',
+        missingFields,
+        warnings: []
+      };
+    }
+
+    const warnings = [];
+    if (headers.size === 0) {
+      warnings.push('Trades is configured, but the generated report had no trade rows, so individual field selections could not be verified.');
+    }
+    if (!decoded.sections.open_positions) {
+      warnings.push('Open Positions is not configured; execution trades will sync, but TradeTally cannot reconcile currently open stock positions from IBKR.');
+    }
+    return { valid: true, message: 'IBKR credentials and Flex Query schema validated successfully', missingFields: [], warnings };
+  }
+
+  async validateCredentials(flexToken, queryId) {
+    return this.withTokenOperation(flexToken, () => this.validateCredentialsUnlocked(flexToken, queryId));
+  }
+
+  async validateCredentialsUnlocked(flexToken, queryId) {
+    console.log('[IBKR] Validating credentials and generated report schema...');
+
+    try {
+      const response = await this.requestFlexReport(flexToken, queryId);
+      if (!response.referenceCode) {
+        return { valid: false, message: response.error || 'IBKR did not return a report reference code' };
+      }
+
+      const envelope = await this.fetchGeneratedReport(
+        response.referenceCode,
+        flexToken,
+        response.statementUrl
+      );
+      const decoded = envelope?.decoded || decodeIBKRFlexReport(envelope?.content || envelope);
+      const schema = this.validateReportSchema(decoded);
+      if (!schema.valid) return schema;
+
+      console.log('[IBKR] Credentials and Flex Query schema validated successfully');
+      return { ...schema, format: decoded.format };
+    } catch (error) {
+      console.error('[IBKR] Credential validation failed:', error.message);
+      return {
+        valid: false,
+        message: error.message,
+        errorCode: error.errorCode || null,
+        transient: Boolean(error.transient)
+      };
+    }
+  }
+
+  /**
+   * Request a Flex report generation.
+   *
+   * Do not rapidly retry transient SendRequest failures here. IBKR counts
+   * failed generation requests toward the token's failure lockout. The sync
+   * orchestrator persists those failures and retries the affected window at
+   * most three times, one hour apart.
    */
   async requestFlexReport(flexToken, queryId, options = {}) {
     console.log('[IBKR] Requesting Flex report...');
 
     const url = `${FLEX_BASE_URL}/SendRequest`;
     let params = this.buildReportRequestParams(flexToken, queryId, options);
-    const maxAttempts = 5;
+    // A second request is only available for the documented 1003 fallback
+    // from an explicit range to the saved query period. Transient failures
+    // are returned immediately and must never consume this extra attempt.
+    const maxAttempts = options.allowBareFallback === false ? 1 : 2;
     let usedBareRequestFallback = false;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        await this.waitForSendRequestSlot();
+        await this.waitForSendRequestSlot(flexToken);
         const response = await axios.get(url, {
           params,
           timeout: REPORT_REQUEST_TIMEOUT,
@@ -344,17 +499,10 @@ class IBKRService {
             continue;
           }
 
-          // Retry if the code is known-transient OR the human message says
-          // "try again"/"temporary"/etc. IBKR sometimes returns undocumented
+          // Classify the code and message for the durable hourly retry
+          // workflow. No immediate retry is issued from SendRequest. IBKR sometimes returns undocumented
           // codes with explicitly retryable wording.
           const isTransient = RETRYABLE_IBKR_CODES.has(errorCode) || isRetryableErrorMessage(errorMsg);
-          if (isTransient && attempt < maxAttempts) {
-            const delay = attempt * 15000;
-            console.warn(`[IBKR] Retryable error ${errorCode} ("${errorMsg}") on attempt ${attempt}/${maxAttempts}, retrying in ${delay / 1000}s...`);
-            await this.sleep(delay);
-            continue;
-          }
-
           throw buildIBKRError(this.getErrorMessage(errorCode, errorMsg), {
             errorCode,
             rawMessage: errorMsg,
@@ -384,17 +532,9 @@ class IBKRService {
           });
         }
 
-        // Retry on transient network/DNS errors
-        if (RETRYABLE_NETWORK_CODES.has(error.code) && attempt < maxAttempts) {
-          const delay = attempt * 10000;
-          console.warn(`[IBKR] Network error (${error.code}) on attempt ${attempt}/${maxAttempts}, retrying in ${delay / 1000}s...`);
-          await this.sleep(delay);
-          continue;
-        }
-
         if (RETRYABLE_NETWORK_CODES.has(error.code)) {
-          // Exhausted retries on a transient network error — mark as transient
-          // so the scheduler can auto-retry later.
+          // Mark transient so the durable hourly retry workflow can resume the
+          // affected window without issuing another immediate SendRequest.
           error.transient = true;
           error.errorCode = error.code;
         }
@@ -550,7 +690,9 @@ class IBKRService {
       cursor = new Date(windowEndDate);
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
-    return windows;
+    // Fetch recent data first. If an older window fails, the successful recent
+    // windows can still be imported and the backfill can resume later.
+    return windows.reverse();
   }
 
   async fetchGeneratedReport(referenceCode, flexToken, statementUrl, sourceWindow = null) {
@@ -579,7 +721,14 @@ class IBKRService {
    * @returns {Promise<{imported: number, skipped: number, failed: number, duplicates: number}>}
    */
   async syncTrades(connection, options = {}) {
-    const { startDate, endDate, syncLogId, syncType = 'manual', now } = options;
+    return this.withTokenOperation(
+      connection.ibkrFlexToken,
+      () => this.syncTradesUnlocked(connection, options)
+    );
+  }
+
+  async syncTradesUnlocked(connection, options = {}) {
+    const { startDate, endDate, syncLogId, syncType = 'manual', now, referenceCode } = options;
 
     console.log(`[IBKR] Starting sync for connection ${connection.id}`);
 
@@ -596,7 +745,7 @@ class IBKRService {
       timezone: userTimezone,
       now
     });
-    console.log(`[IBKR] Resolved date range: ${windows[0]?.start_date || 'none'} to ${windows[windows.length - 1]?.end_date || 'none'} (${endDate ? 'explicit end' : 'latest finalized Activity date'})`);
+    console.log(`[IBKR] Resolved date range: ${windows[windows.length - 1]?.start_date || 'none'} to ${windows[0]?.end_date || 'none'} (${endDate ? 'explicit end' : 'latest finalized Activity date'}; newest first)`);
     const tradeRecords = [];
     let openPositionRecords = [];
     let sawOpenPositionSection = false;
@@ -610,10 +759,19 @@ class IBKRService {
     let latestWindowRetrieved = false;
     let latestRetrievedEndDate = null;
     const requestedRanges = [];
+    let retryableWindow = null;
+    let retryableError = null;
+    let retryableReferenceCode = null;
 
-    for (let windowIndex = 0; windowIndex < windows.length; windowIndex++) {
+    windowLoop: for (let windowIndex = 0; windowIndex < windows.length; windowIndex++) {
       const window = { ...windows[windowIndex] };
       let reportResponse;
+      let usedPersistedReference = Boolean(referenceCode && windowIndex === 0);
+      if (usedPersistedReference) {
+        reportResponse = { referenceCode, statementUrl: FLEX_BASE_URL + '/GetStatement' };
+        requestedRanges.push({ ...window, reused_reference: true });
+        console.log('[IBKR] Resuming the timed-out window with its existing report reference');
+      }
       let fallbackDays = 0;
       while (!reportResponse) {
         requestedRanges.push({ ...window });
@@ -632,7 +790,7 @@ class IBKRService {
         } catch (error) {
           const canTryEarlierActivityDate = error.errorCode === '1003' &&
             !endDate &&
-            windowIndex === windows.length - 1 &&
+            windowIndex === 0 &&
             fallbackDays < MAX_ACTIVITY_REPORT_FALLBACK_DAYS &&
             window.start_date < window.end_date;
 
@@ -656,6 +814,11 @@ class IBKRService {
             completedWindows++;
             break;
           }
+          if (error.transient) {
+            retryableWindow = { ...window };
+            retryableError = error;
+            break windowLoop;
+          }
           throw error;
         }
       }
@@ -663,12 +826,50 @@ class IBKRService {
       if (!reportResponse) continue;
 
       if (!reportResponse.referenceCode) throw new Error('Failed to request IBKR report');
-      const envelope = await this.fetchGeneratedReport(
-        reportResponse.referenceCode,
-        connection.ibkrFlexToken,
-        reportResponse.statementUrl,
-        window
-      );
+      let envelope;
+      try {
+        envelope = await this.fetchGeneratedReport(
+          reportResponse.referenceCode,
+          connection.ibkrFlexToken,
+          reportResponse.statementUrl,
+          window
+        );
+      } catch (error) {
+        if (error.errorCode === '1017' && usedPersistedReference) {
+          console.warn('[IBKR] Persisted report reference expired; requesting one replacement report for this window');
+          usedPersistedReference = false;
+          try {
+            requestedRanges.push({ ...window, replacement_for_expired_reference: true });
+            reportResponse = await this.requestFlexReport(
+              connection.ibkrFlexToken,
+              connection.ibkrFlexQueryId,
+              {
+                startDate: window.start_date,
+                endDate: window.end_date,
+                syncType,
+                overrideDates: true,
+                allowBareFallback: false
+              }
+            );
+            envelope = await this.fetchGeneratedReport(
+              reportResponse.referenceCode,
+              connection.ibkrFlexToken,
+              reportResponse.statementUrl,
+              window
+            );
+          } catch (replacementError) {
+            error = replacementError;
+          }
+        }
+
+        if (!envelope) {
+          if (!error.transient) throw error;
+          retryableWindow = { ...window };
+          retryableError = error;
+          retryableReferenceCode = reportResponse?.referenceCode || null;
+          break windowLoop;
+        }
+      }
       const reportContent = typeof envelope === 'string' ? envelope : envelope.content;
       const decoded = envelope?.decoded || decodeIBKRFlexReport(reportContent);
       if (!decoded.recognized) {
@@ -679,12 +880,16 @@ class IBKRService {
       }
       reportFormats.add(decoded.format);
       reportsRetrieved++;
-      if (windowIndex === windows.length - 1) {
+      if (windowIndex === 0) {
         latestWindowRetrieved = true;
         latestRetrievedEndDate = window.end_date;
       }
       tradeRecords.push(...decoded.trade_records);
-      openPositionRecords = decoded.open_position_records;
+      // Open Positions is a point-in-time snapshot. Keep it only from the
+      // newest retrieved statement, never overwrite it with an older window.
+      if (!sawOpenPositionSection && decoded.sections?.open_positions) {
+        openPositionRecords = decoded.open_position_records;
+      }
       rawOpenPositionRows += decoded.open_position_records.length;
       sawOpenPositionSection = sawOpenPositionSection || Boolean(decoded.sections?.open_positions);
       completedWindows++;
@@ -733,6 +938,18 @@ class IBKRService {
       }
     }
 
+    if (retryableWindow) {
+      const message = `IBKR did not finish report ${retryableWindow.start_date} through ${retryableWindow.end_date}. Completed newer windows were kept; this window will be retried hourly.`;
+      warnings.push(message);
+      warningDetails.push({
+        code: 'IBKR_BACKFILL_RETRY_PENDING',
+        message,
+        error_code: retryableError?.errorCode || null,
+        window_start: retryableWindow.start_date,
+        window_end: retryableWindow.end_date
+      });
+    }
+
     // Update sync log status
     if (syncLogId) {
       await BrokerConnection.updateSyncLog(syncLogId, 'parsing');
@@ -765,7 +982,7 @@ class IBKRService {
     const openPositionResult = sawOpenPositionSection
       ? this.extractOpenPositionTradesFromRecords(openPositionRecords, connection, existingContext, {
         parsedTrades: trades,
-        endDate: latestRetrievedEndDate || windows[windows.length - 1]?.end_date,
+        endDate: latestRetrievedEndDate || windows[0]?.end_date,
         sectionPresent: true
       })
       : { trades: [], warnings: [] };
@@ -815,6 +1032,10 @@ class IBKRService {
     result.returnedRanges = returnedRanges;
     result.tradeRows = tradeRecords.length;
     result.openPositionRows = rawOpenPositionRows;
+    result.retryableWindow = retryableWindow;
+    result.retryableErrorCode = retryableError?.errorCode || null;
+    result.retryableReferenceCode = retryableReferenceCode;
+    result.backfillFloor = windows[windows.length - 1]?.start_date || null;
 
     if (tradeRecords.length > 0 &&
         result.imported === 0 && (result.updated || 0) === 0 && result.duplicates === 0 &&
@@ -898,8 +1119,7 @@ class IBKRService {
           const rValue = existingTrade?.stop_loss != null && agg.is_fully_closed && agg.exit_price != null
             ? Trade.calculateRValue(agg.entry_price, existingTrade.stop_loss, agg.exit_price, preparedTrade.side, {
               quantity: agg.quantity || preparedTrade.quantity,
-              commission: agg.commission,
-              fees: agg.fees,
+              commission: agg.commission, fees: agg.fees,
               instrumentType: existingTrade.instrument_type || preparedTrade.instrumentType,
               contractSize: existingTrade.contract_size || preparedTrade.contractSize,
               pointValue: existingTrade.point_value || preparedTrade.pointValue,
@@ -923,9 +1143,9 @@ class IBKRService {
                 fees = $11,
                 entry_commission = $12,
                 exit_commission = $13,
-                r_value = $14,
+                r_value = CASE WHEN $14::boolean THEN $15 ELSE r_value END,
                 updated_at = NOW()
-            WHERE id = $15 AND user_id = $16
+            WHERE id = $16 AND user_id = $17
           `;
           await db.query(updateQuery, [
             JSON.stringify(annotatedExecs),
@@ -941,6 +1161,7 @@ class IBKRService {
             agg.fees,
             preparedTrade.entryCommission || 0,
             preparedTrade.exitCommission || 0,
+            true,
             rValue,
             tradeData.existingTradeId,
             userId
@@ -1880,6 +2101,7 @@ class IBKRService {
       '1019': 'Statement is being generated — please wait a moment and try again.',
       '1020': 'Invalid request. Please check your Flex Token and Query ID.',
       '1021': 'Statement could not be retrieved right now. Please try again shortly.',
+      '1025': 'IBKR temporarily locked this Flex Token after too many failed report attempts. Stop retrying and wait before testing the connection again.',
     };
 
     return errorMessages[errorCode] || defaultMessage || `IBKR Error ${errorCode}: ${defaultMessage}`;

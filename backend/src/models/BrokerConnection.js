@@ -220,6 +220,34 @@ class BrokerConnection {
         RETURNING *
       `;
 
+      if (brokerType === 'tradovate') {
+        // One connection per Tradovate login; reconnecting refreshes tokens.
+        query = `
+          INSERT INTO broker_connections (
+            user_id, broker_type, connection_status,
+            oauth_access_token, oauth_refresh_token, oauth_token_expires_at,
+            oauth_refresh_token_expires_at, oauth_scopes, external_account_id,
+            external_user_id, broker_environment, broker_metadata, account_label,
+            auto_sync_enabled, sync_frequency, sync_time
+          )
+          VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          ON CONFLICT (user_id, (COALESCE(external_user_id, ''))) WHERE broker_type = 'tradovate' DO UPDATE SET
+            oauth_access_token = EXCLUDED.oauth_access_token,
+            oauth_refresh_token = EXCLUDED.oauth_refresh_token,
+            oauth_token_expires_at = EXCLUDED.oauth_token_expires_at,
+            oauth_refresh_token_expires_at = EXCLUDED.oauth_refresh_token_expires_at,
+            oauth_scopes = EXCLUDED.oauth_scopes,
+            external_account_id = EXCLUDED.external_account_id,
+            broker_environment = EXCLUDED.broker_environment,
+            broker_metadata = EXCLUDED.broker_metadata,
+            account_label = EXCLUDED.account_label,
+            connection_status = 'pending',
+            consecutive_failures = 0,
+            updated_at = CURRENT_TIMESTAMP
+          RETURNING *
+        `;
+      }
+
       if (brokerType === 'webull') {
         query = `
           INSERT INTO broker_connections (
@@ -352,16 +380,64 @@ class BrokerConnection {
   }
 
   /**
+   * Acquire a PostgreSQL advisory lock for one broker connection. The lock is
+   * held on a dedicated pool client, so it protects manual and scheduled syncs
+   * across every Node process.
+   */
+  static async acquireSyncLock(connectionId) {
+    const client = await db.connect();
+    try {
+      const result = await client.query(
+        `SELECT pg_try_advisory_lock(hashtextextended('broker-sync:' || $1::text, 0)) AS acquired`,
+        [connectionId]
+      );
+      if (!result.rows[0]?.acquired) {
+        client.release();
+        return null;
+      }
+
+      let released = false;
+      return {
+        async release() {
+          if (released) return;
+          released = true;
+          try {
+            await client.query(
+              `SELECT pg_advisory_unlock(hashtextextended('broker-sync:' || $1::text, 0))`,
+              [connectionId]
+            );
+          } finally {
+            client.release();
+          }
+        }
+      };
+    } catch (error) {
+      client.release();
+      throw error;
+    }
+  }
+
+  /**
    * Find all connections due for sync
    */
   static async findDueForSync() {
     const query = `
       SELECT * FROM broker_connections
-      WHERE auto_sync_enabled = true
-        AND connection_status = 'active'
-        AND (next_scheduled_sync IS NULL OR next_scheduled_sync <= NOW())
-        AND consecutive_failures < 3
-      ORDER BY next_scheduled_sync ASC NULLS FIRST
+      WHERE connection_status = 'active'
+        AND (
+          (auto_sync_enabled = true
+            AND NOT (broker_type = 'ibkr' AND broker_metadata->'ibkr_backfill_retry' IS NOT NULL)
+            AND (next_scheduled_sync IS NULL OR next_scheduled_sync <= NOW())
+            AND consecutive_failures < 3)
+          OR
+          (broker_type = 'ibkr'
+            AND broker_metadata->'ibkr_backfill_retry' IS NOT NULL
+            AND NULLIF(broker_metadata->'ibkr_backfill_retry'->>'retry_at', '')::timestamptz <= NOW())
+        )
+      ORDER BY COALESCE(
+        NULLIF(broker_metadata->'ibkr_backfill_retry'->>'retry_at', '')::timestamptz,
+        next_scheduled_sync
+      ) ASC NULLS FIRST
     `;
 
     const result = await db.query(query);
@@ -500,6 +576,73 @@ class BrokerConnection {
     `;
     const result = await db.query(query, [connectionId, String(delayMinutes)]);
     return result.rows[0] || null;
+  }
+
+  /**
+   * Persist an IBKR backfill cursor for an hourly retry. retryCount is the
+   * number of additional hourly attempts already consumed (0 after the
+   * initial sync times out).
+   */
+  static async scheduleIBKRBackfillRetry(connectionId, state, delayMinutes = 60) {
+    const message = `IBKR report timed out for ${state.windowStart} through ${state.windowEnd}; retry ${Number(state.retryCount) + 1} of 3 is scheduled in ${delayMinutes} minutes.`;
+    const query = `
+      UPDATE broker_connections
+      SET broker_metadata = COALESCE(broker_metadata, '{}'::jsonb) ||
+            jsonb_build_object('ibkr_backfill_retry', jsonb_build_object(
+              'floor', $2::text,
+              'window_start', $3::text,
+              'window_end', $4::text,
+              'retry_count', $5::int,
+              'retry_at', (NOW() + ($6 || ' minutes')::interval)::text,
+              'reference_code', $8::text,
+              'error_code', $7::text
+            )),
+          last_sync_status = 'warning',
+          last_sync_message = $9,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1 AND broker_type = 'ibkr'
+      RETURNING *
+    `;
+    const result = await db.query(query, [
+      connectionId,
+      state.floor,
+      state.windowStart,
+      state.windowEnd,
+      Number(state.retryCount || 0),
+      String(delayMinutes),
+      state.errorCode || null,
+      state.referenceCode || null,
+      message
+    ]);
+    return result.rows.length ? this.formatConnection(result.rows[0], false) : null;
+  }
+
+  /** Clear a completed IBKR backfill retry cursor. */
+  static async clearIBKRBackfillRetry(connectionId) {
+    await db.query(
+      `UPDATE broker_connections
+       SET broker_metadata = COALESCE(broker_metadata, '{}'::jsonb) - 'ibkr_backfill_retry',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND broker_type = 'ibkr'`,
+      [connectionId]
+    );
+  }
+
+  /** Stop an IBKR backfill after all three hourly retries are exhausted. */
+  static async stopIBKRBackfillRetry(connectionId, message) {
+    const query = `
+      UPDATE broker_connections
+      SET broker_metadata = COALESCE(broker_metadata, '{}'::jsonb) - 'ibkr_backfill_retry',
+          last_sync_status = 'failed',
+          last_sync_message = $2,
+          last_error_at = CURRENT_TIMESTAMP,
+          last_error_message = $2,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1 AND broker_type = 'ibkr'
+      RETURNING *
+    `;
+    const result = await db.query(query, [connectionId, message]);
+    return result.rows.length ? this.formatConnection(result.rows[0], false) : null;
   }
 
   /**
@@ -786,11 +929,22 @@ class BrokerConnection {
     };
 
     // Add broker-specific public fields
+    const safeDecrypt = (value, field) => {
+      try {
+        return encryptionService.decrypt(value);
+      } catch {
+        console.warn(`[BrokerConnection] Failed to decrypt ${field} for connection ${row.id} — credential may be corrupted`);
+        return null;
+      }
+    };
+
     if (row.broker_type === 'ibkr') {
       connection.ibkrFlexQueryId = row.ibkr_flex_query_id;
+      connection.brokerMetadata = row.broker_metadata || {};
+      connection.ibkrBackfillRetry = connection.brokerMetadata.ibkr_backfill_retry || null;
       // Only include decrypted token if explicitly requested (for sync operations)
       if (includeCredentials && row.ibkr_flex_token) {
-        connection.ibkrFlexToken = encryptionService.decrypt(row.ibkr_flex_token);
+        connection.ibkrFlexToken = safeDecrypt(row.ibkr_flex_token, 'ibkr_flex_token');
       }
     } else if (row.broker_type === 'schwab') {
       const brokerMetadata = row.broker_metadata || {};
@@ -806,10 +960,10 @@ class BrokerConnection {
       // Only include decrypted tokens if explicitly requested
       if (includeCredentials) {
         if (row.schwab_access_token) {
-          connection.schwabAccessToken = encryptionService.decrypt(row.schwab_access_token);
+          connection.schwabAccessToken = safeDecrypt(row.schwab_access_token, 'schwab_access_token');
         }
         if (row.schwab_refresh_token) {
-          connection.schwabRefreshToken = encryptionService.decrypt(row.schwab_refresh_token);
+          connection.schwabRefreshToken = safeDecrypt(row.schwab_refresh_token, 'schwab_refresh_token');
         }
       }
     } else if (row.broker_type === 'trading212') {
@@ -834,10 +988,10 @@ class BrokerConnection {
       connection.brokerMetadata = row.broker_metadata || {};
       if (includeCredentials) {
         if (row.oauth_access_token) {
-          connection.oauthAccessToken = encryptionService.decrypt(row.oauth_access_token);
+          connection.oauthAccessToken = safeDecrypt(row.oauth_access_token, 'oauth_access_token');
         }
         if (row.oauth_refresh_token) {
-          connection.oauthRefreshToken = encryptionService.decrypt(row.oauth_refresh_token);
+          connection.oauthRefreshToken = safeDecrypt(row.oauth_refresh_token, 'oauth_refresh_token');
         }
       }
     }

@@ -152,7 +152,7 @@ class AdminSettingsService {
     } catch (error) {
       console.error('Error getting default AI settings:', error);
       return {
-        provider: 'gemini',
+        provider: '',
         apiKey: '',
         apiUrl: '',
         model: '',

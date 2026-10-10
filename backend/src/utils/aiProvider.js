@@ -216,11 +216,8 @@ class AIProvider {
       // OpenAI API uses max_completion_tokens; local/other APIs may still use max_tokens
       const isOpenAIAPI = apiUrl && apiUrl.includes('api.openai.com');
 
-      // Reasoning models (o-series, all gpt-5 variants, deepseek-reasoner) need
-      // higher token limits because reasoning tokens count toward the limit but
-      // don't produce visible output. These models also reject custom
-      // `temperature` — only the default is supported. Keep this regex in sync
-      // with aiService.js.
+      // Reasoning models need a higher token limit because reasoning tokens
+      // count toward the limit but don't produce visible output.
       const isReasoningModel = /^(o\d|gpt-5|deepseek-reasoner)/i.test(modelName);
       const tokenLimit = resolveMaxTokens(options, isReasoningModel ? 16384 : 4096);
 
@@ -230,8 +227,10 @@ class AIProvider {
             : { max_tokens: tokenLimit })
         : {};
 
-      // Reasoning models don't support custom temperature
-      const supportsTemperature = !isReasoningModel;
+      // OpenAI model capabilities change independently of model names. Omit
+      // temperature for all OpenAI requests so newly released models cannot
+      // reject our default value. Keep it for compatible providers that use it.
+      const supportsTemperature = options.provider !== 'openai' && !isReasoningModel;
 
       const body = {
         model: modelName,

@@ -58,11 +58,9 @@ const playbookRoutes = require('./routes/playbook.routes');
 const aiRoutes = require('./routes/ai.routes');
 const symbolsRoutes = require('./routes/symbols.routes');
 const unsubscribeRoutes = require('./routes/unsubscribe.routes');
-const trialFeedbackRoutes = require('./routes/trialFeedback.routes');
 const passkeyRoutes = require('./routes/passkey.routes');
 const testimonialsRoutes = require('./routes/testimonials.routes');
 const supportRoutes = require('./routes/support.routes');
-const internalRoutes = require('./routes/internal.routes');
 const edgeReportRoutes = require('./routes/edgeReport.routes');
 const replayRoutes = require('./routes/replay.routes');
 const backtestRoutes = require('./routes/backtest.routes');
@@ -75,8 +73,8 @@ const backupScheduler = require('./services/backupScheduler.service');
 const stockScannerScheduler = require('./services/stockScannerScheduler');
 const watchlistPillarsScheduler = require('./services/watchlistPillarsScheduler');
 const GamificationScheduler = require('./services/gamificationScheduler');
-const TrialScheduler = require('./services/trialScheduler');
-const RetentionEmailScheduler = require('./services/retentionEmailScheduler');
+const WeeklyDigestScheduler = require('./services/weeklyDigestScheduler');
+const priceHistoryScheduler = require('./services/priceHistoryScheduler');
 const OptionsScheduler = require('./services/optionsScheduler');
 const brokerSyncScheduler = require('./services/brokerSync/brokerSyncScheduler');
 const plaidFundingScheduler = require('./services/plaid/plaidFundingScheduler');
@@ -88,10 +86,8 @@ const symbolCategoryScheduler = require('./services/symbolCategoryScheduler');
 const portfolioSnapshotScheduler = require('./services/portfolioSnapshotScheduler');
 const webMentionScheduler = require('./services/webMentionScheduler');
 const webhookEventBridge = require('./services/webhookEventBridge');
-const crmSyncScheduler = require('./services/crmSyncScheduler');
 const edgeReportScheduler = require('./services/edgeReportScheduler');
 const activityTrackingService = require('./services/activityTrackingService');
-const engagementScheduler = require('./services/engagementScheduler');
 const activityTrackingMiddleware = require('./middleware/activityTracking');
 const emailTrackingRoutes = require('./routes/emailTracking.routes');
 const backgroundWorker = require('./workers/backgroundWorker');
@@ -281,7 +277,6 @@ app.use('/api/features', featuresRoutes);
 app.use('/api/behavioral-analytics', behavioralAnalyticsRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/support', supportRoutes);
-app.use('/api/internal', internalRoutes);
 app.use('/api/watchlists', watchlistRoutes);
 app.use('/api/price-alerts', priceAlertsRoutes);
 app.use('/api/web-mentions', webMentionsRoutes);
@@ -310,7 +305,6 @@ app.use('/api/playbooks', playbookRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/symbols', symbolsRoutes);
 app.use('/api/unsubscribe', unsubscribeRoutes);
-app.use('/api/trial-feedback', trialFeedbackRoutes);
 app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/testimonials', testimonialsRoutes);
 app.use('/api/edge-reports', edgeReportRoutes);
@@ -597,26 +591,16 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
     console.log('Gamification disabled (ENABLE_GAMIFICATION=false)');
   }
 
-  if (backgroundJobsDisabled) {
-    console.log('Trial scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-  } else if (process.env.ENABLE_TRIAL_EMAILS !== 'false') {
-    defer('trial-scheduler', () => {
-      console.log('Starting trial scheduler...');
-      TrialScheduler.startScheduler();
-    });
-  } else {
-    console.log('Trial emails disabled (ENABLE_TRIAL_EMAILS=false)');
-  }
 
   if (backgroundJobsDisabled) {
-    console.log('Retention email scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
-  } else if (process.env.ENABLE_RETENTION_EMAILS !== 'false') {
-    defer('retention-email-scheduler', () => {
-      console.log('Starting retention email scheduler...');
-      RetentionEmailScheduler.startScheduler();
+    console.log('Weekly digest scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
+  } else if (process.env.ENABLE_WEEKLY_DIGESTS !== 'false') {
+    defer('weekly-digest-scheduler', () => {
+      console.log('Starting weekly digest scheduler...');
+      WeeklyDigestScheduler.startScheduler();
     });
   } else {
-    console.log('Retention emails disabled (ENABLE_RETENTION_EMAILS=false)');
+    console.log('Retention emails disabled (ENABLE_WEEKLY_DIGESTS=false)');
   }
 
   if (backgroundJobsDisabled) {
@@ -751,6 +735,10 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
     console.log('Web mention scheduler disabled (ENABLE_WEB_MENTION_SCHEDULER=false)');
   }
 
+  if (!backgroundJobsDisabled && process.env.ENABLE_PRICE_HISTORY_SCHEDULER !== 'false') {
+    defer('price-history-scheduler', () => priceHistoryScheduler.start());
+  }
+
   if (process.env.ENABLE_V1_WEBHOOKS === 'true') {
     defer('v1-webhook-bridge', () => webhookEventBridge.start());
   }
@@ -767,17 +755,6 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
     console.log('Edge report scheduler disabled (ENABLE_EDGE_REPORTS=false)');
   }
 
-  if (backgroundJobsDisabled) {
-    console.log('CRM sync disabled (DISABLE_BACKGROUND_JOBS=true)');
-  } else if (process.env.ENABLE_CRM_SYNC === 'true') {
-    defer('crm-sync-scheduler', () => {
-      console.log('Starting CRM sync scheduler...');
-      crmSyncScheduler.start();
-      console.log('[SUCCESS] CRM sync scheduler started');
-    });
-  } else {
-    console.log('CRM sync disabled (ENABLE_CRM_SYNC=false)');
-  }
 
   if (backgroundJobsDisabled) {
     console.log('Activity tracking disabled (DISABLE_BACKGROUND_JOBS=true)');
@@ -791,17 +768,6 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
     console.log('Activity tracking disabled (ENABLE_ACTIVITY_TRACKING=false)');
   }
 
-  if (backgroundJobsDisabled) {
-    console.log('Engagement tracking disabled (DISABLE_BACKGROUND_JOBS=true)');
-  } else if (process.env.ENABLE_ENGAGEMENT_TRACKING !== 'false') {
-    defer('engagement-scheduler', () => {
-      console.log('Starting engagement scheduler...');
-      engagementScheduler.start();
-      console.log('[SUCCESS] Engagement scheduler started');
-    });
-  } else {
-    console.log('Engagement tracking disabled (ENABLE_ENGAGEMENT_TRACKING=false)');
-  }
 
   if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
     console.log('Push notification service loaded');
@@ -970,6 +936,7 @@ async function startServer() {
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
   await priceMonitoringService.stop();
+  priceHistoryScheduler.stop();
   OptionsScheduler.stop();
   brokerSyncScheduler.stop();
   plaidFundingScheduler.stop();
@@ -981,8 +948,7 @@ process.on('SIGTERM', async () => {
   webMentionScheduler.stop();
   edgeReportScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
-  if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
-  if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
+  if (WeeklyDigestScheduler.stopScheduler) WeeklyDigestScheduler.stopScheduler();
   webhookEventBridge.stop();
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
@@ -997,6 +963,7 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
   await priceMonitoringService.stop();
+  priceHistoryScheduler.stop();
   OptionsScheduler.stop();
   brokerSyncScheduler.stop();
   plaidFundingScheduler.stop();
@@ -1008,8 +975,7 @@ process.on('SIGINT', async () => {
   webMentionScheduler.stop();
   edgeReportScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
-  if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
-  if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
+  if (WeeklyDigestScheduler.stopScheduler) WeeklyDigestScheduler.stopScheduler();
   webhookEventBridge.stop();
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();

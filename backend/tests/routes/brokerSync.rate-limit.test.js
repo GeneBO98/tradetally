@@ -5,6 +5,7 @@ jest.mock('../../src/middleware/auth', () => ({
   })
 }));
 jest.mock('../../src/controllers/brokerSync.controller', () => ({
+  getProviders: jest.fn(),
   getConnections: jest.fn(),
   getAllSyncLogs: jest.fn(),
   getConnection: jest.fn(),

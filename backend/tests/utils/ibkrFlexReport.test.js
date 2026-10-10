@@ -17,6 +17,8 @@ describe('IBKR Flex report decoding', () => {
     expect(decoded.open_position_records).toHaveLength(1);
     expect(decoded.row_counts).toEqual({ trades: 4, open_positions: 1 });
     expect(decoded.sections).toEqual({ trades: true, open_positions: true });
+    expect(decoded.section_headers.trades).toEqual(expect.arrayContaining(['symbol', 'dateTime', 'quantity', 'tradePrice', 'buySell']));
+    expect(decoded.section_headers.open_positions).toEqual(expect.arrayContaining(['symbol', 'position', 'costBasisPrice']));
     expect(decoded.trade_records[2]).toMatchObject({
       Account: 'U1234567',
       Conid: '265598',

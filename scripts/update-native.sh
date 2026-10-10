@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 PNPM_CMD=(corepack pnpm)
-PM2_APP_NAME="tradetally"
+PM2_APP_NAME="tradetally-backend-native"
 PM2_ECOSYSTEM="$REPO_ROOT/scripts/ecosystem.config.js"
 CURRENT_STEP="initializing"
 STASHED=0
@@ -296,39 +296,6 @@ sync_current_branch() {
 The branch has diverged and the automatic rebase failed. Resolve the git conflict manually on the host."
 }
 
-sync_public_branch_if_needed() {
-  run_step "Fetching origin/main" git fetch origin main
-
-  if [ "$UPSTREAM_REF" = "origin/main" ]; then
-    log "Current branch already tracks origin/main; skipping public branch sync"
-    return
-  fi
-
-  local missing_public_commits missing_public_list
-  missing_public_commits="$(git cherry HEAD origin/main 2>/dev/null | grep -c '^+' || true)"
-  if [ "${missing_public_commits:-0}" -eq 0 ]; then
-    log "Public branch changes are already present in $UPSTREAM_REF"
-    return
-  fi
-
-  missing_public_list="$(git cherry -v HEAD origin/main 2>/dev/null | grep '^+' || true)"
-  log "origin/main has $missing_public_commits commit(s) not present on $UPSTREAM_REF. Merging public changes"
-  printf '%s\n' "$missing_public_list"
-
-  if ! git merge -X ours --no-edit origin/main; then
-    git merge --abort >/dev/null 2>&1 || true
-    fail \
-      "automatic public sync conflict" \
-      "The TradeTally native update script attempted to merge origin/main into $UPSTREAM_REF on $(hostname) at $(date -u), but the automatic sync failed even while preferring the current branch on file conflicts.
-
-Missing public commits:
-$missing_public_list"
-  fi
-
-  UPDATED=1
-  run_step "Pushing synced branch to $UPSTREAM_REF" git push "$UPSTREAM_REMOTE" "HEAD:$UPSTREAM_BRANCH"
-  log "Private branch synced with origin/main and pushed to $UPSTREAM_REF"
-}
 
 install_dependencies() {
   if "${PNPM_CMD[@]}" install --frozen-lockfile; then
@@ -446,7 +413,6 @@ require_clean_git_state
 ensure_pnpm
 stash_local_changes_if_needed
 sync_current_branch
-sync_public_branch_if_needed
 
 if [ "$UPDATED" -eq 0 ]; then
   log "No repository changes detected. Verifying running services anyway"

@@ -188,6 +188,13 @@ const brokerStyles = computed(() => {
         bgClass: 'bg-primary-100 dark:bg-primary-900/30',
         textClass: 'text-primary-600 dark:text-primary-400'
       }
+    case 'tradovate':
+      return {
+        name: props.connection.brokerEnvironment === 'demo' ? 'Tradovate Demo' : 'Tradovate',
+        abbrev: 'TV',
+        bgClass: 'bg-primary-100 dark:bg-primary-900/30',
+        textClass: 'text-primary-600 dark:text-primary-400'
+      }
     case 'trading212':
       return {
         name: props.connection.brokerEnvironment === 'demo' ? 'Trading 212 Demo' : 'Trading 212 Live',

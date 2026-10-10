@@ -4,8 +4,6 @@
 User-agent: *
 Allow: /
 
-# Sitemap location
-Sitemap: https://tradetally.io/sitemap.xml
 
 # Block access to API endpoints
 Disallow: /api/

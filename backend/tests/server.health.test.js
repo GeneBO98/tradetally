@@ -44,12 +44,6 @@ jest.mock('../src/services/symbolCategoryScheduler', () => ({
 jest.mock('../src/services/gamificationScheduler', () => ({
   stopScheduler: jest.fn()
 }));
-jest.mock('../src/services/trialScheduler', () => ({
-  stopScheduler: jest.fn()
-}));
-jest.mock('../src/services/retentionEmailScheduler', () => ({
-  stopScheduler: jest.fn()
-}));
 jest.mock('../src/services/webhookEventBridge', () => ({
   stop: jest.fn()
 }));

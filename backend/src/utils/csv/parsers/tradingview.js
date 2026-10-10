@@ -9,6 +9,8 @@ const FOREX_CURRENCIES = new Set([
   'SEK', 'SGD', 'THB', 'TRY', 'USD', 'XAG', 'XAU', 'ZAR'
 ]);
 
+const FUTURES_EXCHANGE_PATTERN = /^(?:(?:CME|CBOT|NYMEX|COMEX)(?:_MINI|_MICRO)?|EUREX|ICEUS|ICEEUR|SGX|OSE|TOCOM)$/;
+
 function getTradingViewForexInstrumentData(symbol) {
   const normalizedSymbol = String(symbol || '').toUpperCase().trim();
   const contractSymbol = normalizedSymbol.includes(':')
@@ -34,7 +36,6 @@ function getTradingViewForexInstrumentData(symbol) {
     pointValue: null
   };
 }
-const FUTURES_EXCHANGE_PATTERN = /^(?:(?:CME|CBOT|NYMEX|COMEX)(?:_MINI|_MICRO)?|EUREX|ICEUS|ICEEUR|SGX|OSE|TOCOM)$/;
 
 
 function getTradingViewFuturesInstrumentData(symbol) {

@@ -122,6 +122,19 @@
               </p>
             </div>
 
+            <div v-if="isIbkrImport">
+              <label for="source-timezone" class="label">IBKR report timezone</label>
+              <BaseSelect
+                id="source-timezone"
+                v-model="sourceTimezone"
+                noun="timezones"
+                :options="timezoneSelectGroups"
+              />
+              <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+                Select the timezone used by the Date/Time column in the IBKR export. This is separate from the timezone used to display trades in TradeTally.
+              </p>
+            </div>
+
             <!-- Contextual broker export guide: only appears once a broker is chosen -->
             <div v-if="showBrokerGuide" class="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/40">
               <div class="flex items-start gap-3">
@@ -1299,6 +1312,7 @@ import { useImportPreferences } from '@/composables/useImportPreferences'
 import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 import { isSierraChartBinaryFile, parseCSVHeaders, parseCSVSampleRows } from '@/utils/csvImportParse'
 import { collectAccountIdentifiersFromSamples, extractFilenameAccount } from '@/utils/importAccountDetection'
+import { TIMEZONE_OPTIONS } from '@/utils/timezone'
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
@@ -1314,6 +1328,7 @@ const loading = ref(false)
 const error = ref(null)
 const importStage = ref('')
 const selectedBroker = ref('auto')
+const sourceTimezone = ref('America/New_York')
 const selectedFile = ref(null)
 const isAnalyzingFile = ref(false)
 const fileAnalysis = ref({
@@ -1678,6 +1693,21 @@ const selectedBrokerLabel = computed(() => {
 
   return formatBrokerName(selectedBroker.value)
 })
+
+const ibkrBrokerFormats = new Set(['ibkr', 'ibkr_trade_confirmation'])
+const isIbkrImport = computed(() => {
+  if (ibkrBrokerFormats.has(selectedBroker.value)) return true
+  return selectedBroker.value === 'auto' && ibkrBrokerFormats.has(fileAnalysis.value.detectedBroker)
+})
+const timezoneSelectGroups = computed(() => {
+  const groups = new Map()
+  for (const timezone of TIMEZONE_OPTIONS) {
+    if (!groups.has(timezone.group)) groups.set(timezone.group, [])
+    groups.get(timezone.group).push(timezone)
+  }
+  return Array.from(groups, ([label, options]) => ({ label, options }))
+})
+const resolveSourceTimezoneParam = () => isIbkrImport.value ? sourceTimezone.value : null
 
 const displayedHeaderPreview = computed(() => fileAnalysis.value.headers.slice(0, 6))
 
@@ -2508,7 +2538,8 @@ async function handleImport() {
       mappingId,
       accountIdToSend,
       resolveImportStrategyParam(),
-      resolveImportOptions()
+      resolveImportOptions(),
+      resolveSourceTimezoneParam()
     )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
@@ -2669,7 +2700,8 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
       mappingId,
       accountIdToSend,
       resolveImportStrategyParam(),
-      resolveImportOptions()
+      resolveImportOptions(),
+      resolveSourceTimezoneParam()
     )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'
@@ -3671,7 +3703,8 @@ async function handleMappingSaved(mapping) {
       mapping.id,
       accountIdToSend,
       resolveImportStrategyParam(),
-      resolveImportOptions()
+      resolveImportOptions(),
+      resolveSourceTimezoneParam()
     )
     console.log('Import result:', result)
     importStage.value = 'Processing trades...'

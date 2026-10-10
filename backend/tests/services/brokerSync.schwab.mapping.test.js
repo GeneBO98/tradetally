@@ -432,6 +432,55 @@ describe('Schwab parseTransactions (full payload -> trades)', () => {
     expect(totalEntryCommission).toBeCloseTo(1.0, 10);
   });
 
+  test('separate same-day partial sell orders remain distinct trades', () => {
+    const opening = schwabEquityTx({
+      orderId: 'buy-200',
+      time: '2026-09-17T13:43:39Z',
+      symbol: 'TQQQ',
+      price: 70.65,
+      amount: 200,
+      positionEffect: 'OPENING'
+    });
+    const firstSale = schwabEquityTx({
+      orderId: 'sell-first',
+      time: '2026-09-17T15:35:42Z',
+      symbol: 'TQQQ',
+      price: 71.15,
+      amount: -100,
+      positionEffect: 'CLOSING'
+    });
+    const secondSale = schwabEquityTx({
+      orderId: 'sell-second',
+      time: '2026-09-17T16:20:00Z',
+      symbol: 'TQQQ',
+      price: 71.15,
+      amount: -100,
+      positionEffect: 'CLOSING'
+    });
+
+    const firstSync = schwabService.parseTransactions([opening, firstSale]);
+    expect(firstSync).toHaveLength(2);
+    expect(firstSync.find(trade => trade.exitPrice !== null).quantity).toBe(100);
+    expect(firstSync.find(trade => trade.exitPrice === null).quantity).toBe(100);
+
+    const secondSync = schwabService.parseTransactions([opening, firstSale, secondSale]);
+    const closed = secondSync.filter(trade => trade.exitPrice !== null);
+    expect(closed).toHaveLength(2);
+    expect(closed.map(trade => trade.quantity)).toEqual([100, 100]);
+
+    const existingFirst = {
+      ...closed[0],
+      trade_date: closed[0].tradeDate,
+      entry_price: closed[0].entryPrice,
+      exit_price: closed[0].exitPrice,
+      instrument_type: closed[0].instrumentType,
+      account_identifier: closed[0].accountIdentifier,
+      executions: closed[0].executionData
+    };
+    expect(schwabService.isDuplicateTrade(closed[0], [existingFirst])).toBe(true);
+    expect(schwabService.isDuplicateTrade(closed[1], [existingFirst])).toBe(false);
+  });
+
   test('same-symbol positions and exits are matched within their Schwab account', () => {
     const trades = schwabService.parseTransactions([
       schwabEquityTx({

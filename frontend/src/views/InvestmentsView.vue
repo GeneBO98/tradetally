@@ -1595,7 +1595,7 @@ const searchSymbol = ref("");
 const showAddHoldingModal = ref(false);
 const showFavoritesOnly = ref(false);
 const holdingToDelete = ref(null);
-const portfolioPeriods = ["this_month", "last_month", "1M", "3M", "6M", "1Y", "5Y", "10Y", "YTD"];
+const portfolioPeriods = ["this_month", "last_month", "1M", "3M", "6M", "1Y", "5Y", "10Y", "YTD", "ALL"];
 const portfolioPeriod = ref("6M");
 // True from first render until the initial data load finishes. Separate from
 // portfolioLoading because the loading flag is only set inside store actions,

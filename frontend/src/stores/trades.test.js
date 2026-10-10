@@ -190,4 +190,19 @@ describe('trades store request params', () => {
     // No refreshes after a failed mutation
     expect(api.get).not.toHaveBeenCalled()
   })
+  it('sends import choices together with the broker report timezone', async () => {
+    const store = await loadStore()
+    const file = new File(['Symbol,Date/Time'], 'ibkr.csv', { type: 'text/csv' })
+    api.post.mockResolvedValue({ data: { importId: 'import-1' } })
+
+    await store.importTrades(file, 'ibkr', null, null, null, {
+      strategy_mode: 'preserve', account_mode: 'preserve', include_notes: false
+    }, 'America/New_York')
+
+    const [, formData] = api.post.mock.calls[0]
+    expect(formData.get('account_mode')).toBe('preserve')
+    expect(formData.get('strategy_mode')).toBe('preserve')
+    expect(formData.get('include_notes')).toBe('false')
+    expect(formData.get('source_timezone')).toBe('America/New_York')
+  })
 })

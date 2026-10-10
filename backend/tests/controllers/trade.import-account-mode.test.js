@@ -44,6 +44,24 @@ describe('trade import account override validation', () => {
     jest.clearAllMocks();
   });
 
+  test('starts an ordinary import without an account override', async () => {
+    db.query.mockResolvedValue({ rows: [{ id: 'import-1' }] });
+    const nextTick = jest.spyOn(process, 'nextTick').mockImplementationOnce(() => {});
+    const req = createRequest({ broker: 'auto', sourceTimezone: 'America/New_York' });
+    const res = createResponse();
+    const next = jest.fn();
+
+    try {
+      await tradeController.importTrades(req, res, next);
+    } finally {
+      nextTick.mockRestore();
+    }
+
+    expect(res.statusCode).toBe(202);
+    expect(res.payload.message).toBe('Import started');
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test('rejects override mode when no account ID was supplied', async () => {
     const req = createRequest({ broker: 'sierrachart', account_mode: 'override' });
     const res = createResponse();

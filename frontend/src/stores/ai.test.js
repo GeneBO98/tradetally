@@ -79,7 +79,34 @@ describe('AI store session recovery', () => {
 
     await expect(store.createSession()).rejects.toMatchObject({ response: { status: 500 } })
     expect(api.get).not.toHaveBeenCalled()
-    expect(store.error).toBe('Ollama model is not available')
+    expect(store.error).toBe('AI analysis is temporarily unavailable. Please try again shortly.')
+  })
+
+  it('shows a confirmed AI failure immediately without recovery polling', async () => {
+    api.post.mockRejectedValue({
+      response: { status: 503, data: { code: 'AI_UNAVAILABLE', message: 'Gemini API key not configured' } }
+    })
+    const store = await loadStore()
+    await expect(store.createSession()).rejects.toMatchObject({ response: { status: 503 } })
+    expect(api.get).not.toHaveBeenCalled()
+    expect(store.error).toBe('AI analysis is temporarily unavailable. Please try again shortly.')
+    expect(store.generating).toBe(false)
+  })
+
+  it('removes a failed follow-up and hides provider details without polling', async () => {
+    api.post.mockResolvedValueOnce({ data: {
+      session_id: 'session-1', initial_analysis: 'Initial analysis', max_followups: 5
+    } })
+    const store = await loadStore()
+    await store.createSession()
+    api.post.mockRejectedValueOnce({ response: {
+      status: 503, data: { code: 'AI_UNAVAILABLE', message: 'Gemini API key not configured' }
+    } })
+    await expect(store.sendFollowup('Review my entries')).rejects.toMatchObject({ response: { status: 503 } })
+    expect(api.get).not.toHaveBeenCalled()
+    expect(store.messages).toHaveLength(1)
+    expect(store.error).toBe('AI analysis is temporarily unavailable. Please try again shortly.')
+    expect(store.generating).toBe(false)
   })
 
   it('recovers a completed follow-up after a gateway timeout', async () => {

@@ -73,10 +73,62 @@ const validatePayload = (schema, body) => {
   return { value };
 };
 
+const USERNAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+// Older iOS builds generate a hidden username from the name fields. That value
+// can contain spaces even though the registration form does not expose a
+// username field. Treat an invalid generated username as absent so the
+// controller uses its existing email-based unique username generator.
+const normalizeMobileRegistration = (body, userAgent = '') => {
+  if (!body || typeof body !== 'object' || !/^TradeTally-iOS\//i.test(userAgent)) {
+    return body;
+  }
+
+  const normalized = { ...body };
+
+  if (normalized.fullName === undefined) {
+    const firstName = normalized.firstName ?? normalized.first_name;
+    const lastName = normalized.lastName ?? normalized.last_name;
+    const fullName = [firstName, lastName]
+      .filter(value => typeof value === 'string' && value.trim())
+      .map(value => value.trim())
+      .join(' ');
+
+    if (fullName) {
+      normalized.fullName = fullName;
+    }
+  }
+
+  delete normalized.firstName;
+  delete normalized.lastName;
+  delete normalized.first_name;
+  delete normalized.last_name;
+
+  if (normalized.username !== undefined) {
+    const username = typeof normalized.username === 'string'
+      ? normalized.username.trim()
+      : '';
+    const isValidUsername = username.length >= 3 &&
+      username.length <= 30 &&
+      USERNAME_PATTERN.test(username);
+
+    if (isValidUsername) {
+      normalized.username = username;
+    } else {
+      delete normalized.username;
+      console.warn('[REGISTER] Ignoring invalid auto-generated username from TradeTally iOS client');
+    }
+  }
+
+  return normalized;
+};
+
 const validate = (schema) => {
   return (req, res, next) => {
     // Normalize snake_case to camelCase before validation
-    req.body = normalizeFieldNames(req.body);
+    req.body = normalizeFieldNames(schema === schemas.register
+      ? normalizeMobileRegistration(req.body, req.headers?.['user-agent'] || '')
+      : req.body);
     
     const { error, value } = schema.validate(req.body);
     if (error) {
@@ -172,22 +224,6 @@ const schemas = {
     max_trades: Joi.number().integer().min(1).max(10000).allow(null).optional(),
     maxTrades: Joi.number().integer().min(1).max(10000).allow(null).optional()
   }).oxor('user_id', 'userId').oxor('batch_size', 'batchSize').oxor('max_trades', 'maxTrades'),
-
-  internalCrmSyncRun: Joi.object({
-    targets: Joi.array()
-      .items(Joi.string().valid('twenty', 'invoiceNinja'))
-      .min(1)
-      .optional(),
-    reason: Joi.string().max(255).allow('', null).optional()
-  }),
-
-  internalCrmSyncUserRun: Joi.object({
-    targets: Joi.array()
-      .items(Joi.string().valid('twenty', 'invoiceNinja'))
-      .min(1)
-      .optional(),
-    reason: Joi.string().max(255).allow('', null).optional()
-  }),
 
   forgotPassword: Joi.object({
     email: emailField.required()
@@ -907,6 +943,29 @@ const schemas = {
     dripShares: nullableNumber,
     dripPrice: nullableNumber,
     notes: nullableString(2000)
+  }),
+
+  // Retirement planner uses snake_case end to end.
+  retirementPlan: Joi.object({
+    current_age: Joi.number().integer().min(18).max(99).required(),
+    age_as_of_date: isoDateOnly.optional(),
+    target_retirement_age: Joi.number()
+      .integer()
+      .min(19)
+      .max(100)
+      .greater(Joi.ref('current_age'))
+      .required(),
+    current_annual_cost_of_living: Joi.number().min(0).max(1_000_000_000_000).required(),
+    desired_annual_retirement_spending: Joi.number().positive().max(1_000_000_000_000).required(),
+    target_portfolio_balance: Joi.number().min(0).max(1_000_000_000_000).allow(null, '').optional(),
+    monthly_contribution: Joi.number().min(0).max(1_000_000_000).required(),
+    annual_contribution_increase_percent: Joi.number().greater(-100).max(100).required(),
+    additional_retirement_savings: Joi.number().min(0).max(1_000_000_000_000).required(),
+    other_annual_retirement_income: Joi.number().min(0).max(1_000_000_000_000).required(),
+    other_income_start_age: Joi.number().integer().min(18).max(100).allow(null, '').optional(),
+    custom_return_rate_percent: Joi.number().greater(-100).max(100).required(),
+    inflation_rate_percent: Joi.number().min(0).max(20).required(),
+    withdrawal_rate_percent: Joi.number().greater(0).max(20).required()
   }),
 
   investmentFavoriteToggle: Joi.object({

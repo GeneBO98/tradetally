@@ -489,9 +489,10 @@ class BackupService {
       // Serialize a value for INSERT based on its column data type
       const serializeValue = (value, colType) => {
         if (value == null) return null;
-        if (colType === 'jsonb') {
-          // JSONB columns: always JSON.stringify (handles both objects AND arrays)
-          return typeof value === 'string' ? value : JSON.stringify(value);
+        if (colType === 'jsonb' || colType === 'json') {
+          // Snapshots contain decoded JSON values, including scalar strings.
+          // Passing a string directly makes PostgreSQL parse it as JSON text.
+          return JSON.stringify(value);
         }
         if (Array.isArray(value)) {
           // PostgreSQL array columns (text[], integer[], etc.): pass through for pg driver
@@ -875,6 +876,7 @@ class BackupService {
 
         console.log(`[RESTORE] Trades: ${results.trades.added} added, ${results.trades.skipped} skipped, ${results.trades.errors} errors`);
       }
+      this._restoredUserIds = restoredUserIds;
 
       // Restore diary entries with per-record fault tolerance
       const diaryEntriesData = getTableData('diaryEntries', 'diary_entries');
