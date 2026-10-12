@@ -12,3 +12,30 @@
     </div>
   </div>
 </template>
+
+<script setup>
+import { onBeforeUnmount, onMounted } from 'vue'
+
+// The server falls back to index.html with a 200 for unknown paths, so tell
+// crawlers this is a 404 to keep it out of the index as a soft 404.
+let robotsMeta = null
+let previousRobots = null
+
+onMounted(() => {
+  robotsMeta = document.head.querySelector('meta[name="robots"]')
+  if (robotsMeta) {
+    previousRobots = robotsMeta.getAttribute('content')
+  } else {
+    robotsMeta = document.createElement('meta')
+    robotsMeta.setAttribute('name', 'robots')
+    document.head.appendChild(robotsMeta)
+  }
+  robotsMeta.setAttribute('content', 'noindex')
+})
+
+onBeforeUnmount(() => {
+  if (!robotsMeta) return
+  if (previousRobots === null) robotsMeta.remove()
+  else robotsMeta.setAttribute('content', previousRobots)
+})
+</script>
