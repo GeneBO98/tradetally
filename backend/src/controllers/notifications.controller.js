@@ -902,13 +902,26 @@ const notificationsController = {
       `;
       
       const tokenId = uuidv4();
-      const result = await db.query(query, [
-        tokenId, userId, device_token, normalizedPlatform,
-        normalizedEnvironment, normalizedBundleId, true
-      ]);
-      
+      // A physical device belongs to whichever account registered it last.
+      // Without this, signing a phone into a second account left the first
+      // account's row active and that account's pushes kept arriving on it.
+      // The advisory lock serialises concurrent registrations of one token so
+      // the one-active-row unique index (migration 276) never trips.
+      const result = await db.withTransaction(async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [device_token]);
+        await client.query(
+          `UPDATE device_tokens SET active = false, updated_at = CURRENT_TIMESTAMP
+           WHERE device_token = $1 AND user_id <> $2 AND active = true`,
+          [device_token, userId]
+        );
+        return client.query(query, [
+          tokenId, userId, device_token, normalizedPlatform,
+          normalizedEnvironment, normalizedBundleId, true
+        ]);
+      });
+
       console.log(`Device token registered for user ${userId}: ${normalizedPlatform} (${normalizedEnvironment})`);
-      
+
       res.json({
         success: true,
         message: 'Device token registered successfully',
@@ -916,6 +929,27 @@ const notificationsController = {
       });
     } catch (error) {
       logger.logError('Error registering device token:', error);
+      next(error);
+    }
+  },
+
+  // Deactivate this device for the signed-in user (called on sign-out)
+  async unregisterDeviceToken(req, res, next) {
+    try {
+      const { device_token } = req.body || {};
+      if (!device_token) {
+        return res.status(400).json({ success: false, error: 'Device token is required' });
+      }
+
+      const result = await db.query(
+        `UPDATE device_tokens SET active = false, updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = $1 AND device_token = $2 AND active = true`,
+        [req.user.id, device_token]
+      );
+
+      res.json({ success: true, deactivated: result.rowCount });
+    } catch (error) {
+      logger.logError('Error unregistering device token:', error);
       next(error);
     }
   },

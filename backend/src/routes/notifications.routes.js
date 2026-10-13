@@ -31,6 +31,7 @@ mobileRouter.use(authenticate);
 
 // Device token management
 mobileRouter.post('/device-token', notificationsController.registerDeviceToken);
+mobileRouter.delete('/device-token', notificationsController.unregisterDeviceToken);
 
 // Notification preferences
 mobileRouter.get('/preferences', notificationsController.getNotificationPreferences);

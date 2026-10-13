@@ -1,6 +1,11 @@
-jest.mock('../../src/config/database', () => ({
-  query: jest.fn()
-}));
+jest.mock('../../src/config/database', () => {
+  const client = { query: jest.fn() };
+  return {
+    query: jest.fn(),
+    client,
+    withTransaction: jest.fn(fn => fn(client))
+  };
+});
 
 jest.mock('../../src/utils/logger', () => ({
   logError: jest.fn()
@@ -25,7 +30,7 @@ describe('notificationsController APNs registration', () => {
   });
 
   test('stores the canonical topic and client APNs environment', async () => {
-    db.query.mockResolvedValue({
+    db.client.query.mockResolvedValue({
       rows: [{
         id: 'token-id',
         device_token: 'device-token',
@@ -50,7 +55,7 @@ describe('notificationsController APNs registration', () => {
 
     await notificationsController.registerDeviceToken(req, res, jest.fn());
 
-    expect(db.query).toHaveBeenCalledWith(
+    expect(db.client.query).toHaveBeenCalledWith(
       expect.stringContaining('bundle_id = $6'),
       ['token-id', 'user-1', 'device-token', 'ios', 'development', 'com.tradetally.ios', true]
     );
@@ -73,6 +78,51 @@ describe('notificationsController APNs registration', () => {
     };
 
     await notificationsController.registerDeviceToken(req, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(db.query).not.toHaveBeenCalled();
+    expect(db.withTransaction).not.toHaveBeenCalled();
+  });
+
+  test('deactivates other accounts on the same device before activating this one', async () => {
+    db.client.query.mockResolvedValue({ rows: [{ id: 'token-id' }] });
+    const req = {
+      user: { id: 'user-2' },
+      body: { device_token: 'shared-token', platform: 'ios', environment: 'production' }
+    };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await notificationsController.registerDeviceToken(req, res, jest.fn());
+
+    const calls = db.client.query.mock.calls;
+    expect(calls[0]).toEqual([expect.stringContaining('pg_advisory_xact_lock'), ['shared-token']]);
+    expect(calls[1]).toEqual([
+      expect.stringMatching(/SET active = false[\s\S]*user_id <> \$2/),
+      ['shared-token', 'user-2']
+    ]);
+    expect(calls[2][0]).toEqual(expect.stringContaining('INSERT INTO device_tokens'));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+  });
+
+  test('unregister deactivates only the current user\'s row for the token', async () => {
+    db.query.mockResolvedValue({ rowCount: 1 });
+    const req = { user: { id: 'user-1' }, body: { device_token: 'device-token' } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await notificationsController.unregisterDeviceToken(req, res, jest.fn());
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SET active = false'),
+      ['user-1', 'device-token']
+    );
+    expect(res.json).toHaveBeenCalledWith({ success: true, deactivated: 1 });
+  });
+
+  test('unregister requires a device token', async () => {
+    const req = { user: { id: 'user-1' }, body: {} };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await notificationsController.unregisterDeviceToken(req, res, jest.fn());
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(db.query).not.toHaveBeenCalled();
