@@ -683,6 +683,7 @@ router.delete('/bulk', authenticate, tradeController.bulkDeleteTrades);
 router.patch('/bulk', authenticate, tradeController.bulkUpdateMetadata);
 router.patch('/bulk/stops', authenticate, tradeController.bulkUpdateStops);
 router.post('/bulk/stops/preview', authenticate, tradeController.previewBulkStops);
+router.post('/bulk/charts', authenticate, tradeController.bulkAddCharts);
 
 /**
  * @swagger

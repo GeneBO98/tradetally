@@ -261,7 +261,7 @@ class User {
       if (key !== 'user_id' && key !== 'id') {
         const dbColumn = columnMapping[key] || key;
         // For JSONB columns, ensure proper casting and JSON serialization
-        if (dbColumn === 'analytics_chart_layout' || dbColumn === 'dashboard_layout' || dbColumn === 'ui_preferences' || dbColumn === 'breakeven_tolerance_ticks_by_underlying') {
+        if (dbColumn === 'analytics_chart_layout' || dbColumn === 'dashboard_layout' || dbColumn === 'ui_preferences' || dbColumn === 'breakeven_tolerance_ticks_by_underlying' || dbColumn === 'default_stop_loss_points_by_underlying') {
           fields.push(`${dbColumn} = $${paramCount}::jsonb`);
           // PostgreSQL JSONB requires JSON string, not JavaScript object.
           // ui_preferences is NOT NULL DEFAULT '{}', so coerce null/undefined to an empty object.

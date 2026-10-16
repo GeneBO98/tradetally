@@ -1690,7 +1690,8 @@ function capturedMoveDollars(source) {
 
   const side = source.side
   const move = side === 'short' ? entry - exit : exit - entry
-  return Math.max(0, move * quantity * getExcursionStorageMultiplier(source))
+  // The storage multiplier already includes quantity and point value.
+  return Math.max(0, move * getExcursionStorageMultiplier(source))
 }
 
 function hasLegacyFuturesExcursionUnits(source) {

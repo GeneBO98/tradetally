@@ -52,6 +52,7 @@ const AmbiguousTradeReviewService = require('../services/ambiguousTradeReviewSer
 const BulkTradeMetadataService = require('../services/bulkTradeMetadataService');
 const FeeProfileService = require('../services/feeProfileService');
 const BulkTradeStopsService = require('../services/bulkTradeStopsService');
+const BulkTradeChartsService = require('../services/bulkTradeChartsService');
 const BrokerTradeExclusions = require('../services/brokerTradeExclusions');
 
 // Analytics requests can arrive in parallel from the dashboard, trade list,
@@ -1643,6 +1644,20 @@ const tradeController = {
           tradeId: change.trade_id,
           bulk: true,
           changedFields: ['stop_loss', 'r_value']
+        });
+      }
+    } catch (error) { next(error); }
+  },
+
+  async bulkAddCharts(req, res, next) {
+    try {
+      const result = await BulkTradeChartsService.add(
+        req.user.id, req.body?.trade_ids, req.body?.chart_url, req.body?.chart_title
+      );
+      res.json(result);
+      for (const change of result.changes) {
+        publishTradeEvent('trade.updated', req, {
+          tradeId: change.trade_id, bulk: true, changedFields: ['charts']
         });
       }
     } catch (error) { next(error); }

@@ -444,12 +444,14 @@
                                     :options="[
                                         { value: 'percent', label: 'Percentage' },
                                         { value: 'dollar', label: 'Dollar amount' },
+                                        { value: 'points', label: 'Points' },
                                         { value: 'lod', label: 'Low of Day (LoD)' }
                                     ]"
                                 />
                                 <div class="mt-2 text-sm text-gray-500 dark:text-gray-400 space-y-1">
                                     <p><strong class="text-gray-700 dark:text-gray-300">Percentage:</strong> Use a fixed percentage below/above entry price.</p>
                                     <p><strong class="text-gray-700 dark:text-gray-300">Dollar amount:</strong> Use a fixed risk per trade in dollars (e.g., $100 or $150 per trade).</p>
+                                    <p><strong class="text-gray-700 dark:text-gray-300">Points:</strong> Use a fixed price distance from entry, with optional defaults for each instrument.</p>
                                     <p><strong class="text-gray-700 dark:text-gray-300">Low of Day (LoD):</strong> Use the low price of the entry day (Qullamaggie-style swing trades). Uses Low of Day for long positions and High of Day for short positions.</p>
                                 </div>
                             </div>
@@ -552,6 +554,33 @@
                                     $2 per share risk, so a $100 long entry
                                     becomes $98 stop loss
                                 </p>
+                            </div>
+
+                            <div v-if="analyticsForm.defaultStopLossType === 'points'" class="space-y-4 py-6">
+                                <div>
+                                    <label for="default_stop_loss_points" class="label">Default Stop Loss (Points)</label>
+                                    <input id="default_stop_loss_points" v-model.number="analyticsForm.default_stop_loss_points"
+                                        type="number" min="0.00000001" max="1000000" step="any" class="input" placeholder="No default" />
+                                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                        Applies to new and imported trades without a stop. A 1.5-point stop on a long entry at 6000 is 5998.5, regardless of quantity.
+                                    </p>
+                                </div>
+                                <fieldset class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+                                    <legend class="px-1 text-sm font-semibold text-gray-900 dark:text-white">Per-instrument defaults</legend>
+                                    <p class="mb-3 text-sm text-gray-500 dark:text-gray-400">Use futures roots such as ES, MES, NQ, or MNQ. These override the default above; contracts such as ESZ6 use ES.</p>
+                                    <div v-for="(row, index) in stop_points_rows" :key="index" class="mb-3 flex items-end gap-3">
+                                        <div class="flex-1">
+                                            <label :for="`stop-points-symbol-${index}`" class="label">Instrument</label>
+                                            <input :id="`stop-points-symbol-${index}`" v-model="row.underlying" class="input" placeholder="ES" maxlength="20" />
+                                        </div>
+                                        <div class="flex-1">
+                                            <label :for="`stop-points-value-${index}`" class="label">Points</label>
+                                            <input :id="`stop-points-value-${index}`" v-model.number="row.points" type="number" min="0.00000001" max="1000000" step="any" class="input" />
+                                        </div>
+                                        <button type="button" class="btn-secondary" :aria-label="`Remove instrument default ${index + 1}`" @click="stop_points_rows.splice(index, 1)">Remove</button>
+                                    </div>
+                                    <button type="button" class="btn-secondary" @click="stop_points_rows.push({ underlying: '', points: null })">Add instrument</button>
+                                </fieldset>
                             </div>
 
                             <div class="py-6">
@@ -1746,6 +1775,7 @@ const analyticsForm = ref({
     defaultStopLossType: "percent",
     defaultStopLossPercent: null,
     defaultStopLossDollars: null,
+    default_stop_loss_points: null,
     defaultTakeProfitType: "percent",
     defaultTakeProfitPercent: null,
     defaultTakeProfitRMultiple: null,
@@ -1784,6 +1814,24 @@ const breakevenToleranceDescription = computed(() => {
 // Per-instrument breakeven tolerance overrides, edited as rows then serialized
 // to a { UNDERLYING: ticks } map on save.
 const breakevenToleranceRows = ref([]);
+const stop_points_rows = ref([]);
+
+function stopPointsMapFromRows() {
+    const overrides = {};
+    for (const row of stop_points_rows.value) {
+        const underlying = String(row.underlying || '').trim().toUpperCase();
+        if (!underlying && (row.points == null || row.points === '')) continue;
+        const points = Number(row.points);
+        if (!/^[A-Z0-9]{1,20}$/.test(underlying) || !Number.isFinite(points) || points <= 0 || points > 1000000) {
+            throw new Error('Each instrument default needs a symbol and a positive point distance of at most 1,000,000.');
+        }
+        if (Object.prototype.hasOwnProperty.call(overrides, underlying)) {
+            throw new Error(`Remove the duplicate default for ${underlying}.`);
+        }
+        overrides[underlying] = points;
+    }
+    return overrides;
+}
 
 function addBreakevenToleranceRow() {
     breakevenToleranceRows.value.push({ underlying: "", ticks: 0 });
@@ -2104,6 +2152,8 @@ async function loadAnalyticsSettings(settingsData = null) {
                 settings.defaultStopLossPercent || null,
             defaultStopLossDollars:
                 settings.defaultStopLossDollars ?? null,
+            default_stop_loss_points:
+                settings.default_stop_loss_points ?? settings.defaultStopLossPoints ?? null,
             defaultTakeProfitType:
                 settings.defaultTakeProfitType || "percent",
             defaultTakeProfitPercent:
@@ -2120,6 +2170,8 @@ async function loadAnalyticsSettings(settingsData = null) {
         breakevenToleranceRows.value = breakevenRowsFromMap(
             settings.breakevenToleranceTicksByUnderlying,
         );
+        stop_points_rows.value = Object.entries(settings.default_stop_loss_points_by_underlying ?? settings.defaultStopLossPointsByUnderlying ?? {})
+            .map(([underlying, points]) => ({ underlying, points: Number(points) }));
     } catch (error) {
         console.error("Failed to load analytics settings:", error);
         // Default values if loading fails
@@ -2132,6 +2184,8 @@ async function loadAnalyticsSettings(settingsData = null) {
         analyticsForm.value.defaultStopLossType = "percent";
         analyticsForm.value.defaultStopLossPercent = null;
         analyticsForm.value.defaultStopLossDollars = null;
+        analyticsForm.value.default_stop_loss_points = null;
+        stop_points_rows.value = [];
         analyticsForm.value.defaultTakeProfitType = "percent";
         analyticsForm.value.defaultTakeProfitPercent = null;
         analyticsForm.value.defaultTakeProfitRMultiple = null;
@@ -2167,6 +2221,9 @@ async function updateAnalyticsSettings() {
                 analyticsForm.value.defaultStopLossPercent || null,
             defaultStopLossDollars:
                 analyticsForm.value.defaultStopLossDollars ?? null,
+            default_stop_loss_points:
+                analyticsForm.value.default_stop_loss_points || null,
+            default_stop_loss_points_by_underlying: stopPointsMapFromRows(),
             defaultTakeProfitType:
                 analyticsForm.value.defaultTakeProfitType || "percent",
             defaultTakeProfitPercent:
@@ -2205,6 +2262,7 @@ async function updateAnalyticsSettings() {
         showError(
             "Error",
             error.response?.data?.error ||
+                error.message ||
                 "Failed to update analytics settings",
         );
     } finally {

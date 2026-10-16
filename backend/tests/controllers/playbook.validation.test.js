@@ -8,6 +8,11 @@ const checklistItem = {
 };
 
 describe('playbook API validation', () => {
+  it('accepts stable item IDs and rejects duplicate IDs on update', () => {
+    const item = { ...checklistItem, id: '4980a5b1-c475-474d-a619-87a51a080877' };
+    expect(schemas.updatePlaybook.validate({ name: 'Plan', checklistItems: [item, checklistItem] }).error).toBeUndefined();
+    expect(schemas.updatePlaybook.validate({ name: 'Plan', checklistItems: [item, item] }).error).toBeDefined();
+  });
   it('accepts create payloads with reviewMode and autoAssignEnabled', () => {
     const { error, value } = schemas.createPlaybook.validate({
       name: 'ORB Grade',

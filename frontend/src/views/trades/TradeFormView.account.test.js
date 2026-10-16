@@ -2,18 +2,20 @@ import { shallowMount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import contracts from '../../../../tests/fixtures/trading-calculation-contracts.json'
 
 const mocks = vi.hoisted(() => ({
   route: { params: {}, query: {} },
-  fetchTrade: vi.fn()
+  fetchTrade: vi.fn(),
+  updateTrade: vi.fn().mockResolvedValue({})
 }))
 
 vi.mock('vue-router', () => ({
   useRoute: () => mocks.route,
-  useRouter: () => ({ push: vi.fn(), back: vi.fn() })
+  useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() })
 }))
 vi.mock('@/stores/trades', () => ({
-  useTradesStore: () => ({ fetchTrade: mocks.fetchTrade })
+  useTradesStore: () => ({ fetchTrade: mocks.fetchTrade, updateTrade: mocks.updateTrade })
 }))
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({ user: { timezone: 'UTC' } })
@@ -48,7 +50,10 @@ describe('manual trade account assignment', () => {
   afterEach(() => wrapper?.unmount())
 
   async function mountForm() {
-    wrapper = shallowMount(TradeFormView, { attachTo: document.body })
+    wrapper = shallowMount(TradeFormView, {
+      attachTo: document.body,
+      global: { stubs: { ImageUpload: { template: '<div />', data: () => ({ selectedFiles: [] }) } } }
+    })
     await flushPromises()
   }
 
@@ -96,5 +101,18 @@ describe('manual trade account assignment', () => {
     await mountForm()
     expect(mocks.fetchTrade).toHaveBeenCalledWith('trade-1', { raw: true })
     expect(accountSelect().props('modelValue')).toBe(account_identifier)
+  })
+
+  it('preserves futures excursion dollars when editing a multi-contract trade (issue 415)', async () => {
+    const fixture = contracts.futures_excursion_edit
+    mocks.route.params = { id: 'trade-1' }
+    mocks.fetchTrade.mockResolvedValue({ ...fixture.trade, id: 'trade-1', executions: [] })
+    await mountForm()
+    expect(Number(wrapper.get('#mfe').element.value)).toBe(fixture.expected_points)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.updateTrade).toHaveBeenCalledWith('trade-1', expect.objectContaining({
+      mae: 0, mfe: fixture.trade.mfe, postExitMae: 0, postExitMfe: fixture.trade.post_exit_mfe
+    }))
   })
 })

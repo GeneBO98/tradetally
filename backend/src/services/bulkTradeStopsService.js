@@ -39,7 +39,8 @@ async function update(userId, tradeIds, stops, applyDefaultToMissing, dryRun = f
     }
     const settings = applyDefaultToMissing
       ? (await client.query(`
-          SELECT default_stop_loss_type, default_stop_loss_percent, default_stop_loss_dollars
+          SELECT default_stop_loss_type, default_stop_loss_percent, default_stop_loss_dollars,
+                 default_stop_loss_points, default_stop_loss_points_by_underlying
           FROM user_settings WHERE user_id = $1
         `, [userId])).rows[0]
       : null;

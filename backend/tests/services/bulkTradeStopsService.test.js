@@ -15,6 +15,16 @@ const trade = { id, symbol: 'AAPL', ...contract.trade, stop_loss: null };
 describe('bulk stop editing', () => {
   beforeEach(() => { jest.clearAllMocks(); });
 
+  it('fills missing futures stops from the per-instrument point default', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ ...trade, symbol: 'ESZ6', instrument_type: 'future',
+      entry_price: 6000, exit_price: 6003, quantity: 2, point_value: 50, commission: 0, fees: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ default_stop_loss_type: 'points', default_stop_loss_points: 2,
+        default_stop_loss_points_by_underlying: { ES: 1.5 } }] });
+    expect((await BulkTradeStops.preview('user-1', [id], [], true)).changes).toEqual([
+      { trade_id: id, stop_loss: 5998.5, risk_amount: 150, r_value: 2 }
+    ]);
+  });
+
   it('previews default stops and net R without taking write locks', async () => {
     db.query.mockResolvedValueOnce({ rows: [trade] })
       .mockResolvedValueOnce({ rows: [{ default_stop_loss_type: 'percent', default_stop_loss_percent: contract.default_stop_loss_percent }] });

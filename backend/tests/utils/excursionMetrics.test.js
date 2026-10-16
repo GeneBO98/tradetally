@@ -1,6 +1,15 @@
 const { buildExcursionMetrics } = require('../../src/utils/excursionMetrics');
+const contracts = require('../../../tests/fixtures/trading-calculation-contracts.json');
 
 describe('excursionMetrics', () => {
+  test('keeps issue 415 multi-contract dollar excursions in dollar units', () => {
+    const { trade, expected_points } = contracts.futures_excursion_edit;
+    const metrics = buildExcursionMetrics(trade);
+    expect(metrics.legacy_point_units).toBe(false);
+    expect(metrics.mfe).toBe(trade.mfe);
+    expect(metrics.mfe_points).toBe(expected_points);
+    expect(metrics.post_exit_mfe_points).toBe(expected_points);
+  });
   test('calculates issue 310 ES missed-after-exit dollars, points, R, and efficiency', () => {
     const trade = {
       symbol: 'ESM6',

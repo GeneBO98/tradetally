@@ -626,6 +626,7 @@ function selectPlaybook(playbook) {
   form.reviewMode = playbook.reviewMode === 'score' ? 'score' : 'checklist'
   form.autoAssignEnabled = playbook.autoAssignEnabled === true
   form.checklistItems = (playbook.checklistItems || []).map((item, index) => ({
+    id: item.id,
     localId: item.id || `${playbook.id}-${index}`,
     label: item.label,
     itemOrder: item.itemOrder ?? index,
@@ -702,6 +703,7 @@ async function savePlaybook() {
 
   const checklistItems = form.checklistItems
     .map((item, index) => ({
+      ...(item.id ? { id: item.id } : {}),
       label: item.label.trim(),
       itemOrder: index,
       weight: Number(item.weight) || 1,

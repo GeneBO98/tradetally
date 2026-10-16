@@ -275,6 +275,9 @@
               <button @click="showBulkStopsModal = true" class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
                 Set stops / R
               </button>
+              <button @click="showBulkChartsModal = true" class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
+                Add chart link
+              </button>
               <button
                 v-if="allocationEnabled && allocationGroups.length >= 2"
                 @click="showBulkAllocationModal = true"
@@ -1162,6 +1165,8 @@
     />
     <BulkTradeStopsModal :open="showBulkStopsModal" :trade-ids="selectedTrades" :trades="tradesStore.trades"
       @close="showBulkStopsModal = false" @saved="handleBulkStopsSaved" />
+    <BulkTradeChartsModal :open="showBulkChartsModal" :trade_ids="selectedTrades"
+      @close="showBulkChartsModal = false" @saved="handleBulkChartsSaved" />
   </div>
 </template>
 
@@ -1180,6 +1185,7 @@ const TradeFilters = defineAsyncComponent(() => import('@/components/trades/Trad
 const BulkTradeAllocationModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeAllocationModal.vue'))
 const BulkTradeEditModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeEditModal.vue'))
 const BulkTradeStopsModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeStopsModal.vue'))
+const BulkTradeChartsModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeChartsModal.vue'))
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
 import ColumnCustomizer from '@/components/trades/ColumnCustomizer.vue'
@@ -1327,6 +1333,7 @@ const allocationEnabled = ref(false)
 const allocationGroups = ref([])
 const showBulkAllocationModal = ref(false)
 const showBulkEditModal = ref(false)
+const showBulkChartsModal = ref(false)
 const showBulkStopsModal = ref(false)
 
 // Filters modal
@@ -1916,6 +1923,11 @@ function handleBulkEditSaved(result) {
 
 function handleBulkStopsSaved(result) {
   showBulkStopsModal.value = false
+  handleBulkEditSaved(result)
+}
+
+function handleBulkChartsSaved(result) {
+  showBulkChartsModal.value = false
   handleBulkEditSaved(result)
 }
 

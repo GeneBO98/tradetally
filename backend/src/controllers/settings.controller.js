@@ -187,6 +187,10 @@ const settingsController = {
 
       // Convert snake_case to camelCase for frontend
       const camelCaseSettings = keysToCamelCase(safeSettings);
+      for (const field of ['default_stop_loss_points', 'default_stop_loss_points_by_underlying']) {
+        delete camelCaseSettings[toCamelCase(field)];
+        if (safeSettings?.[field] !== undefined) camelCaseSettings[field] = safeSettings[field];
+      }
       if (safeSettings?.ai_analysis_instructions !== undefined) {
         delete camelCaseSettings.aiAnalysisInstructions;
         camelCaseSettings.ai_analysis_instructions = safeSettings.ai_analysis_instructions;
@@ -237,6 +241,10 @@ const settingsController = {
 
       // Convert snake_case to camelCase for frontend
       const camelCaseSettings = keysToCamelCase(safeSettings);
+      for (const field of ['default_stop_loss_points', 'default_stop_loss_points_by_underlying']) {
+        delete camelCaseSettings[toCamelCase(field)];
+        if (safeSettings?.[field] !== undefined) camelCaseSettings[field] = safeSettings[field];
+      }
       if (safeSettings?.ai_analysis_instructions !== undefined) {
         delete camelCaseSettings.aiAnalysisInstructions;
         camelCaseSettings.ai_analysis_instructions = safeSettings.ai_analysis_instructions;

@@ -543,7 +543,10 @@ const schemas = {
     enableTradeGrouping: Joi.boolean(),
     tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440),
     autoCloseExpiredOptions: Joi.boolean(),
-    defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar'),
+    defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar', 'points'),
+    default_stop_loss_points: Joi.number().positive().max(1000000).allow(null),
+    default_stop_loss_points_by_underlying: Joi.object()
+      .pattern(/^[A-Z0-9]{1,20}$/, Joi.number().positive().max(1000000)).max(100),
     defaultStopLossPercent: Joi.number().min(0).max(100).allow(null),
     defaultStopLossDollars: Joi.number().min(0).allow(null),
     defaultTakeProfitType: Joi.string().valid('percent', 'risk_reward', 'dollar'),
@@ -763,12 +766,13 @@ const schemas = {
     autoAssignEnabled: Joi.boolean().default(false),
     checklistItems: Joi.array().items(
       Joi.object({
+        id: Joi.string().uuid(),
         label: Joi.string().trim().max(255).required(),
         itemOrder: Joi.number().integer().min(0).allow(null),
         weight: Joi.number().positive().max(100).default(1),
         isRequired: Joi.boolean().default(false)
       })
-    ).min(1).required()
+    ).unique((a, b) => Boolean(a.id && b.id && a.id === b.id)).min(1).required()
   }),
 
   submitPlaybookReview: Joi.object({

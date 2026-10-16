@@ -30,6 +30,14 @@ const AnalyticsCache = require('../../src/services/analyticsCache');
 const settingsController = require('../../src/controllers/settings.controller');
 
 describe('settings take-profit propagation', () => {
+  test('returns point-stop settings in snake_case', async () => {
+    const points = { default_stop_loss_points: 2, default_stop_loss_points_by_underlying: { ES: 1.5 } };
+    User.getSettings.mockResolvedValue(points);
+    const res = { json: jest.fn() };
+    await settingsController.getSettings({ user: { id: 'user-1' } }, res, jest.fn());
+    expect(res.json).toHaveBeenCalledWith({ settings: expect.objectContaining(points) });
+    expect(res.json.mock.calls[0][0].settings).not.toHaveProperty('defaultStopLossPoints');
+  });
   beforeEach(() => {
     jest.clearAllMocks();
     User.getSettings.mockResolvedValue({ default_take_profit_type: 'percent' });

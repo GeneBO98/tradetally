@@ -1,4 +1,21 @@
 {
+  "point_stop_cases": [
+    { "symbol": "ESZ6", "instrument_type": "future", "side": "long", "entry_price": 6000, "quantity": 3, "expected_stop": 5998.5 },
+    { "symbol": "NQZ6", "instrument_type": "future", "side": "short", "entry_price": 22000, "quantity": 1, "expected_stop": 22010 },
+    { "symbol": "MESZ6", "instrument_type": "future", "side": "long", "entry_price": 6000, "quantity": 3, "expected_stop": 5998 },
+    { "symbol": "ESM7", "instrument_type": "future", "side": "short", "entry_price": 6000, "quantity": 1, "expected_stop": 6001.5 },
+    { "symbol": "AAPL", "instrument_type": "stock", "side": "long", "entry_price": 100, "quantity": 10, "expected_stop": 98 }
+  ],
+  "futures_excursion_edit": {
+    "trade": {
+      "symbol": "MESZ6", "instrument_type": "future", "underlying_asset": "MES",
+      "entry_price": 7731, "exit_price": 7752.92, "quantity": 3, "point_value": 5,
+      "side": "long", "mae": 0, "mfe": 817.5, "post_exit_mae": 0, "post_exit_mfe": 817.5,
+      "entry_time": "2026-10-15T14:00:00Z", "exit_time": "2026-10-15T15:31:00Z",
+      "pnl": 325.75, "commission": 3, "fees": 0
+    },
+    "expected_points": 54.5
+  },
   "ibkr_backfill_retry": {
     "floor": "2024-01-01",
     "window_end": "2025-12-31",

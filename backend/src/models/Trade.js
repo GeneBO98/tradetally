@@ -462,6 +462,11 @@ class Trade {
                 console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
               }
             }
+          } else if (stopLossType === 'points') {
+            finalStopLoss = this.calculateDefaultStopLossFromSettings({
+              symbol, side, entry_price: entryPrice, quantity,
+              instrument_type: instrumentType, underlying_asset: finalUnderlyingAsset || underlyingAsset
+            }, userSettings);
           } else if (stopLossType === 'dollar' && userSettings?.default_stop_loss_dollars > 0 && quantity > 0) {
             // Dollar-based stop loss: fixed risk per trade (e.g., $100 per trade)
             // Uses same multipliers as calculatePnL: stocks 1, options contractSize (100), futures pointValue
@@ -1408,6 +1413,12 @@ class Trade {
                 console.log(`[STOP LOSS UPDATE] Applied fallback ${stopLossPercent}% stop loss: $${updates.stopLoss}`);
               }
             }
+          } else if (stopLossType === 'points') {
+            updates.stopLoss = this.calculateDefaultStopLossFromSettings({
+              symbol, side, entry_price: entryPrice, quantity: quantityForDefaults,
+              instrument_type: updates.instrumentType ?? currentTrade.instrument_type,
+              underlying_asset: updates.underlyingAsset ?? currentTrade.underlying_asset
+            }, userSettings);
           } else if (stopLossType === 'dollar' && userSettings?.default_stop_loss_dollars > 0 && quantityForDefaults > 0) {
             // Dollar-based stop loss (same multipliers as calculatePnL for options/futures)
             const stopLossDollars = parseFloat(userSettings.default_stop_loss_dollars);
@@ -2470,6 +2481,18 @@ class Trade {
       } else if (side === 'short' || side === 'sell') {
         stopLoss = entryPrice * (1 + stopLossPercent / 100);
       }
+    } else if (stopLossType === 'points') {
+      const instrument_type = normalizeInstrumentType(trade.instrument_type || trade.instrumentType || 'stock', trade.symbol);
+      const underlying = String(instrument_type === 'future'
+        ? (trade.underlying_asset || trade.underlyingAsset || extractUnderlyingFromFuturesSymbol(trade.symbol))
+        : trade.symbol || '').trim().toUpperCase();
+      const overrides = settings?.default_stop_loss_points_by_underlying ?? settings?.defaultStopLossPointsByUnderlying ?? {};
+      const points = Number(Object.prototype.hasOwnProperty.call(overrides, underlying)
+        ? overrides[underlying]
+        : (settings?.default_stop_loss_points ?? settings?.defaultStopLossPoints));
+      if (!Number.isFinite(points) || points <= 0) return null;
+      if (side === 'long' || side === 'buy') stopLoss = entryPrice - points;
+      else if (side === 'short' || side === 'sell') stopLoss = entryPrice + points;
     } else if (stopLossType === 'dollar') {
       const stopLossDollars = parseFloat(this.getSettingValue(settings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
       if (!isFinite(stopLossDollars) || stopLossDollars <= 0 || !isFinite(quantity) || quantity <= 0) return null;

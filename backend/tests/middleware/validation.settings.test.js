@@ -1,6 +1,14 @@
 const { schemas } = require('../../src/middleware/validation');
 
 describe('settings validation', () => {
+  test('accepts point defaults and validates instrument distances', () => {
+    const payload = { defaultStopLossType: 'points', default_stop_loss_points: 2,
+      default_stop_loss_points_by_underlying: { ES: 1.5, NQ: 10 } };
+    expect(schemas.updateSettings.validate(payload).error).toBeUndefined();
+    for (const overrides of [{ ES: -1 }, { ES: 0 }, { 'ES;DROP': 2 }, { es: 2 }]) {
+      expect(schemas.updateSettings.validate({ ...payload, default_stop_loss_points_by_underlying: overrides }).error).toBeDefined();
+    }
+  });
   test('does not inject stop-loss defaults into partial settings updates', () => {
     const payload = {
       uiPreferences: {

@@ -187,10 +187,32 @@ class Playbook {
   }
 
   static async replaceChecklistItems(client, playbookId, checklistItems) {
-    await client.query('DELETE FROM playbook_checklist_items WHERE playbook_id = $1', [playbookId]);
+    // Reviews store item IDs in their response snapshots. Retain those IDs when
+    // editing a label, weight, required flag, or order.
+    const retained_ids = checklistItems.filter(item => item.id).map(item => item.id);
+    await client.query(
+      'DELETE FROM playbook_checklist_items WHERE playbook_id = $1 AND NOT (id = ANY($2::uuid[]))',
+      [playbookId, retained_ids]
+    );
 
     for (let index = 0; index < checklistItems.length; index += 1) {
       const item = checklistItems[index];
+      if (item.id) {
+        const result = await client.query(
+          `UPDATE playbook_checklist_items
+           SET label = $3, item_order = $4, weight = $5, is_required = $6
+           WHERE id = $1 AND playbook_id = $2
+           RETURNING id`,
+          [item.id, playbookId, item.label, item.item_order ?? item.itemOrder ?? index,
+            item.weight ?? 1, (item.is_required ?? item.isRequired) === true]
+        );
+        if (result.rows.length === 0) {
+          const error = new Error('Checklist item does not belong to this playbook');
+          error.status = 400;
+          throw error;
+        }
+        continue;
+      }
       await client.query(
         `
           INSERT INTO playbook_checklist_items (
@@ -201,9 +223,9 @@ class Playbook {
         [
           playbookId,
           item.label,
-          item.itemOrder ?? index,
+          item.item_order ?? item.itemOrder ?? index,
           item.weight ?? 1,
-          item.isRequired === true
+          (item.is_required ?? item.isRequired) === true
         ]
       );
     }
