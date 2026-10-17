@@ -36,27 +36,21 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        # Official image via the public ECR mirror: anonymous Docker Hub pulls
-        # from shared runners hit its rate limit, and secrets for an
-        # authenticated pull are unavailable to fork pull requests.
-        image: public.ecr.aws/docker/library/postgres:16-alpine
-        env:
-          POSTGRES_USER: tradetally
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: tradetally_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+    # This runner includes PostgreSQL 16. Pin the OS so ubuntu-latest moving
+    # to another release cannot silently change the test database version.
+    runs-on: ubuntu-24.04
 
     steps:
+      - name: Start PostgreSQL 16
+        # Use the runner's database instead of a container pull, which can
+        # fail on shared registry limits before any workflow steps execute.
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql --set ON_ERROR_STOP=1 --command "CREATE USER tradetally WITH PASSWORD 'testpass';"
+          sudo -u postgres createdb --owner=tradetally tradetally_test
+          PGPASSWORD=testpass psql --host=localhost --username=tradetally --dbname=tradetally_test \
+            --set ON_ERROR_STOP=1 --command "SELECT version();"
+
       - name: Check out manually selected release tag
         if: github.event_name == 'workflow_dispatch'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
