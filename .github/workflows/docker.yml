@@ -36,25 +36,9 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        # Official image via the public ECR mirror: anonymous Docker Hub pulls
-        # from shared runners hit its rate limit, and secrets for an
-        # authenticated pull are unavailable to fork pull requests.
-        image: public.ecr.aws/docker/library/postgres:16-alpine
-        env:
-          POSTGRES_USER: tradetally
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: tradetally_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+    # This runner includes PostgreSQL 16. Avoid registry pull quotas in tests,
+    # including fork pull requests where registry credentials are unavailable.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Check out manually selected release tag
@@ -87,6 +71,13 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Start PostgreSQL 16 for tests
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql --set ON_ERROR_STOP=1 --command "CREATE ROLE tradetally WITH LOGIN SUPERUSER PASSWORD 'testpass';"
+          sudo -u postgres createdb --owner=tradetally tradetally_test
+          pg_isready --host=localhost --port=5432
 
       - name: Run backend tests
         run: pnpm --dir backend test
