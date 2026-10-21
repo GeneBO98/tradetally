@@ -7,6 +7,25 @@
 const db = require('../config/database');
 const { normalizeBrokerName } = require('../services/brokerFeeApplicationService');
 
+// Trade-level commission is a round-trip total when no per-side amount is
+// recorded. Use the same allocation in cashflow totals and the daily detail.
+const futuresEntryCommissionSql = `CASE
+  WHEN COALESCE(entry_commission, 0) != 0 THEN entry_commission
+  WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(commission, 0) - exit_commission
+  ELSE COALESCE(commission, 0) / 2.0
+END`;
+const futuresExitCommissionSql = `CASE
+  WHEN COALESCE(exit_commission, 0) != 0 THEN exit_commission
+  ELSE COALESCE(commission, 0) - (${futuresEntryCommissionSql})
+END`;
+// Stored P&L is net of costs. Add them back before allocating entry and exit
+// costs to their dates; use price movement for closed trades without stored P&L.
+const futuresGrossPnlSql = `COALESCE(
+  pnl + COALESCE(commission, 0) + COALESCE(fees, 0),
+  (CASE WHEN side IN ('long', 'buy') THEN exit_price - entry_price
+        ELSE entry_price - exit_price END) * quantity * COALESCE(point_value, 1)
+)`;
+
 class Account {
   /**
    * Create a new account
@@ -485,6 +504,9 @@ class Account {
    * - Outflow: LONG entries (purchases) + SHORT exits (covers) + Withdrawals + Fees
    * - Net: Inflow - Outflow
    * - Balance: Running balance starting from initial_balance
+   * - Futures: commissions at entry, realized settlement and remaining costs
+   *   at exit. Contract notional is exposure, not a cash purchase or sale.
+   * - Explicitly simulated trades do not move account cash.
    */
   static async getCashflow(userId, accountId, options = {}) {
     const { startDate, endDate } = options;
@@ -512,7 +534,38 @@ class Account {
     // - Rebates (negative commissions) have the opposite effect
     // - This matches how broker statements show net cash movements per transaction
     const query = `
-      WITH entry_cashflows AS (
+      WITH futures_trades AS (
+        SELECT *,
+          ${futuresEntryCommissionSql} AS opening_commission,
+          ${futuresExitCommissionSql} AS closing_commission,
+          ${futuresGrossPnlSql} AS gross_pnl
+        FROM trades
+        WHERE user_id = $1
+          AND instrument_type = 'future'
+          AND COALESCE(is_simulated, false) = false
+          AND entry_price IS NOT NULL
+          AND (
+            ($2::varchar IS NOT NULL AND account_identifier = $2)
+            OR ($2::varchar IS NULL AND (account_identifier IS NULL OR account_identifier = ''))
+          )
+      ),
+      futures_cashflows AS (
+        SELECT DATE(COALESCE(entry_time, trade_date)) AS date,
+          GREATEST(-opening_commission, 0) AS trade_inflow,
+          GREATEST(opening_commission, 0) AS trade_outflow,
+          opening_commission AS fees
+        FROM futures_trades
+        WHERE DATE(COALESCE(entry_time, trade_date)) BETWEEN $3 AND $4
+        UNION ALL
+        SELECT DATE(exit_time) AS date,
+          GREATEST(gross_pnl - closing_commission - COALESCE(fees, 0), 0) AS trade_inflow,
+          GREATEST(-(gross_pnl - closing_commission - COALESCE(fees, 0)), 0) AS trade_outflow,
+          closing_commission + COALESCE(fees, 0) AS fees
+        FROM futures_trades
+        WHERE exit_time IS NOT NULL AND exit_price IS NOT NULL
+          AND DATE(exit_time) BETWEEN $3 AND $4
+      ),
+      entry_cashflows AS (
         -- Cash flows that happen on ENTRY date (when trade is opened)
         -- Track trade values and commissions separately by trade direction
         -- Commission is separated into fees (positive) and rebates (negative) BY TRADE TYPE
@@ -604,6 +657,8 @@ class Account {
           ), 0) as outflow_rebates
         FROM trades
         WHERE user_id = $1
+          AND COALESCE(instrument_type, 'stock') != 'future'
+          AND COALESCE(is_simulated, false) = false
           AND (
             ($2::varchar IS NOT NULL AND account_identifier = $2)
             OR ($2::varchar IS NULL AND (account_identifier IS NULL OR account_identifier = ''))
@@ -702,6 +757,8 @@ class Account {
           COALESCE(SUM(COALESCE(fees, 0)), 0) as other_fees
         FROM trades
         WHERE user_id = $1
+          AND COALESCE(instrument_type, 'stock') != 'future'
+          AND COALESCE(is_simulated, false) = false
           AND (
             ($2::varchar IS NOT NULL AND account_identifier = $2)
             OR ($2::varchar IS NULL AND (account_identifier IS NULL OR account_identifier = ''))
@@ -711,7 +768,7 @@ class Account {
           AND DATE(exit_time) <= $4
         GROUP BY DATE(exit_time)
       ),
-      daily_trades AS (
+      daily_security_cashflows AS (
         -- Combine entry and exit cashflows by date
         -- Commission handling: NET approach to match broker statements
         -- - Fees reduce inflows or increase outflows for the same transaction type
@@ -728,6 +785,16 @@ class Account {
           SELECT date, trade_inflow, trade_outflow, inflow_fees, inflow_rebates, outflow_fees, outflow_rebates, 0::numeric as other_fees FROM entry_cashflows
           UNION ALL
           SELECT date, trade_inflow, trade_outflow, inflow_fees, inflow_rebates, outflow_fees, outflow_rebates, other_fees FROM exit_cashflows
+        ) combined
+        GROUP BY date
+      ),
+      daily_trades AS (
+        SELECT date, SUM(trade_inflow) AS trade_inflow,
+          SUM(trade_outflow) AS trade_outflow, SUM(fees) AS fees
+        FROM (
+          SELECT date, trade_inflow, trade_outflow, fees FROM daily_security_cashflows
+          UNION ALL
+          SELECT date, trade_inflow, trade_outflow, fees FROM futures_cashflows
         ) combined
         GROUP BY date
       ),
@@ -852,7 +919,8 @@ class Account {
    * Mirrors getCashflow's attribution exactly so the items line up with the
    * daily row: ENTRY cash is dated by entry_time (LONG buy = outflow, SHORT
    * sell = inflow) and EXIT cash by exit_time (LONG sell = inflow, SHORT cover
-   * = outflow). Amounts are gross trade value (price x qty x multiplier);
+   * = outflow). Futures have zero entry value and settle realized P&L at exit;
+   * other amounts are gross trade value (price x qty x multiplier).
    * commission is returned alongside for context but not netted in here — the
    * authoritative net/fees for the day come from getCashflow.
    */
@@ -880,12 +948,17 @@ class Account {
           'entry' AS event_type,
           COALESCE(entry_time, trade_date::timestamp) AS event_time,
           entry_price AS price,
-          (entry_price * quantity * ${multiplierExpr}) AS gross_amount,
-          CASE WHEN side IN ('short', 'sell') THEN 'inflow' ELSE 'outflow' END AS direction,
-          COALESCE(entry_commission, 0) AS commission
+          CASE WHEN instrument_type = 'future' THEN 0
+            ELSE entry_price * quantity * ${multiplierExpr} END AS gross_amount,
+          CASE WHEN instrument_type = 'future' THEN
+            CASE WHEN (${futuresEntryCommissionSql}) < 0 THEN 'inflow' ELSE 'outflow' END
+            WHEN side IN ('short', 'sell') THEN 'inflow' ELSE 'outflow' END AS direction,
+          CASE WHEN instrument_type = 'future' THEN ${futuresEntryCommissionSql}
+            ELSE COALESCE(entry_commission, 0) END AS commission
         FROM trades
         WHERE user_id = $1
           AND ${accountMatch}
+          AND COALESCE(is_simulated, false) = false
           AND entry_price IS NOT NULL
           AND DATE(COALESCE(entry_time, trade_date)) = $3
         UNION ALL
@@ -894,12 +967,17 @@ class Account {
           'exit' AS event_type,
           exit_time AS event_time,
           exit_price AS price,
-          (exit_price * quantity * ${multiplierExpr}) AS gross_amount,
-          CASE WHEN side IN ('long', 'buy') THEN 'inflow' ELSE 'outflow' END AS direction,
-          COALESCE(exit_commission, 0) AS commission
+          CASE WHEN instrument_type = 'future' THEN ABS(${futuresGrossPnlSql})
+            ELSE exit_price * quantity * ${multiplierExpr} END AS gross_amount,
+          CASE WHEN instrument_type = 'future' THEN
+            CASE WHEN (${futuresGrossPnlSql}) >= 0 THEN 'inflow' ELSE 'outflow' END
+            WHEN side IN ('long', 'buy') THEN 'inflow' ELSE 'outflow' END AS direction,
+          CASE WHEN instrument_type = 'future' THEN ${futuresExitCommissionSql}
+            ELSE COALESCE(exit_commission, 0) END AS commission
         FROM trades
         WHERE user_id = $1
           AND ${accountMatch}
+          AND COALESCE(is_simulated, false) = false
           AND exit_time IS NOT NULL
           AND exit_price IS NOT NULL
           AND DATE(exit_time) = $3
