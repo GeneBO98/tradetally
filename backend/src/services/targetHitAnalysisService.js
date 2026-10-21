@@ -6,23 +6,17 @@
 const ChartService = require('./chartService');
 const logger = require('../utils/logger');
 
-// Per-unit dollar multiplier using the same symbol/instrument heuristic as the
-// commission-adjustment blocks in calculateManagementR. MUST stay in sync with
-// them so the configured dollar fallback converts to the correct per-share risk.
+const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
+
 function serviceTradeMultiplier(trade) {
   const { symbol, instrument_type, point_value, contract_size } = trade;
-  const isFutures = instrument_type === 'future' ||
-    (symbol && /^(MES|ES|MNQ|NQ|MYM|YM|M2K|RTY|MGC|GC|MCL|CL|SI|HG)/i.test(symbol));
-  if (isFutures) {
-    if (point_value) return parseFloat(point_value);
-    if (symbol && /^(MES|MNQ|MYM|M2K)/i.test(symbol)) return 5;
-    if (symbol && /^(ES|NQ|YM|RTY)/i.test(symbol)) return 50;
-    return 5;
+  const root = extractUnderlyingFromFuturesSymbol(symbol);
+  if (instrument_type === 'future' || (instrument_type !== 'option' && root)) {
+    const stored = Number(point_value);
+    return Number.isFinite(stored) && stored > 0
+      ? stored : getFuturesPointValue(root || trade.underlying_asset);
   }
-  if (instrument_type === 'option') {
-    return parseFloat(contract_size) || 100;
-  }
-  return 1;
+  return instrument_type === 'option' ? (parseFloat(contract_size) || 100) : 1;
 }
 
 // Configured dollar-risk fallback expressed as a per-share risk unit.
@@ -879,27 +873,10 @@ class TargetHitAnalysisService {
     // Commission reduces your actual profit, so it reduces actual R
     const totalCommission = Math.abs(parseFloat(commission || 0)) + Math.abs(parseFloat(fees || 0));
     if (totalCommission > 0 && risk > 0 && totalQty > 0) {
-      // Calculate multiplier based on instrument type
-      // Also detect futures from symbol pattern if instrument_type is incorrect
       const { symbol } = trade;
-      const isFutures = instrument_type === 'future' ||
-        (symbol && /^(MES|ES|MNQ|NQ|MYM|YM|M2K|RTY|MGC|GC|MCL|CL|SI|HG)/i.test(symbol));
-
-      let multiplier = 1; // default for stocks
-      if (isFutures) {
-        // Use point_value if set, otherwise detect from symbol
-        if (point_value) {
-          multiplier = parseFloat(point_value);
-        } else if (symbol && /^(MES|MNQ|MYM|M2K)/i.test(symbol)) {
-          multiplier = 5; // Micro futures = $5 per point
-        } else if (symbol && /^(ES|NQ|YM|RTY)/i.test(symbol)) {
-          multiplier = 50; // E-mini futures = $50 per point
-        } else {
-          multiplier = 5; // Default to micro
-        }
-      } else if (instrument_type === 'option') {
-        multiplier = parseFloat(contract_size) || 100;
-      }
+      const isFutures = instrument_type === 'future' || Boolean(extractUnderlyingFromFuturesSymbol(symbol));
+      const multiplier = serviceTradeMultiplier(trade);
+      if (!(multiplier > 0)) return null;
 
       const riskAmount = risk * totalQty * multiplier;
       const commissionR = totalCommission / riskAmount;
@@ -924,24 +901,8 @@ class TargetHitAnalysisService {
     // This ensures apples-to-apples comparison (both net of commissions)
     let commissionR = 0;
     if (totalCommission > 0 && risk > 0 && totalQty > 0) {
-      const { symbol } = trade;
-      const isFutures = instrument_type === 'future' ||
-        (symbol && /^(MES|ES|MNQ|NQ|MYM|YM|M2K|RTY|MGC|GC|MCL|CL|SI|HG)/i.test(symbol));
-
-      let multiplier = 1;
-      if (isFutures) {
-        if (point_value) {
-          multiplier = parseFloat(point_value);
-        } else if (symbol && /^(MES|MNQ|MYM|M2K)/i.test(symbol)) {
-          multiplier = 5;
-        } else if (symbol && /^(ES|NQ|YM|RTY)/i.test(symbol)) {
-          multiplier = 50;
-        } else {
-          multiplier = 5;
-        }
-      } else if (instrument_type === 'option') {
-        multiplier = parseFloat(contract_size) || 100;
-      }
+      const multiplier = serviceTradeMultiplier(trade);
+      if (!(multiplier > 0)) return null;
 
       const riskAmount = risk * totalQty * multiplier;
       commissionR = totalCommission / riskAmount;

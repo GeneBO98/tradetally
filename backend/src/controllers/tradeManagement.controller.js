@@ -50,7 +50,7 @@ function instrumentMultiplier(trade) {
     if (!pv || isNaN(pv) || pv <= 0) {
       const underlying = trade.underlying_asset || trade.underlyingAsset
         || extractUnderlyingFromFuturesSymbol(trade.symbol);
-      pv = underlying ? getFuturesPointValue(underlying) : 50;
+      pv = getFuturesPointValue(underlying);
     }
     return pv;
   }
@@ -426,8 +426,8 @@ function calculateRMultiples(trade, options = {}) {
         finalPointValue = getFuturesPointValue(underlying);
         logger.info(`[R-CALC] Auto-looked up point_value for ${symbol} (${underlying}): $${finalPointValue} per point`);
       } else {
-        logger.warn(`[R-CALC] Could not determine point_value for futures trade ${trade.symbol}, defaulting to 50`);
-        finalPointValue = 50; // Default to $50 per point (common for many futures)
+        logger.warn(`[R-CALC] Unknown point_value for futures trade ${trade.symbol}`);
+        finalPointValue = null;
       }
     }
     
@@ -465,11 +465,11 @@ function calculateRMultiples(trade, options = {}) {
     ? dollarRisk
     : (calculatedRiskAmount && calculatedRiskAmount > 0
         ? calculatedRiskAmount
-        : risk * tradeQuantity * multiplier);
+        : (multiplier > 0 ? risk * tradeQuantity * multiplier : null));
   if (!dollarRisk && calculatedRiskAmount && risk > 0 && tradeQuantity > 0) {
     multiplier = calculatedRiskAmount / (risk * tradeQuantity);
   }
-  const actualPLAmount = actualPL * tradeQuantity * multiplier;
+  const actualPLAmount = multiplier > 0 ? actualPL * tradeQuantity * multiplier : null;
   
   // Calculate target_pl_amount:
   // - For multiple targets: use directTargetPLAmount (sum of net profits at each TP level)
@@ -485,7 +485,7 @@ function calculateRMultiples(trade, options = {}) {
     });
   } else if (takeProfit) {
     // Traditional calculation for single TP
-    targetPLAmount = targetPL * tradeQuantity * multiplier;
+    targetPLAmount = multiplier > 0 ? targetPL * tradeQuantity * multiplier : null;
     logger.debug('[R-CALC] Using traditional calculation for target_pl_amount (single TP):', {
       targetPL: targetPL?.toFixed(2),
       tradeQuantity,
@@ -498,7 +498,7 @@ function calculateRMultiples(trade, options = {}) {
   // For futures, a very large risk amount might indicate incorrect point_value
   if (instrumentType === 'future' && riskAmount > 1000000) {
     logger.warn('[R-CALC] Risk amount seems unreasonably large for futures trade:', {
-      riskAmount: riskAmount.toFixed(2),
+      riskAmount: riskAmount?.toFixed(2),
       risk,
       tradeQuantity,
       multiplier,
@@ -514,8 +514,8 @@ function calculateRMultiples(trade, options = {}) {
     risk,
     tradeQuantity,
     multiplier,
-    riskAmount: riskAmount.toFixed(2),
-    actualPLAmount: actualPLAmount.toFixed(2),
+    riskAmount: riskAmount?.toFixed(2),
+    actualPLAmount: actualPLAmount?.toFixed(2),
     targetPLAmount: targetPLAmount?.toFixed(2) || null,
     instrumentType,
     point_value: point_value || 'not set',
@@ -533,7 +533,7 @@ function calculateRMultiples(trade, options = {}) {
     actualRAlreadyNet = true;
     logger.debug('[R-CALC] Actual R from net P&L:', {
       netPnl,
-      riskAmount: riskAmount.toFixed(2),
+      riskAmount: riskAmount?.toFixed(2),
       priceBasedActualR: priceBasedActualR.toFixed(4),
       netActualR: actualR.toFixed(4)
     });
@@ -545,23 +545,7 @@ function calculateRMultiples(trade, options = {}) {
   const { commission, fees, symbol } = trade;
   const totalCommission = Math.abs(parseFloat(commission || 0)) + Math.abs(parseFloat(fees || 0));
   if (totalCommission > 0 && riskAmount > 0) {
-    // Detect futures from symbol if instrument_type is incorrect
-    const isFutures = instrumentType === 'future' ||
-      (symbol && /^(MES|ES|MNQ|NQ|MYM|YM|M2K|RTY|MGC|GC|MCL|CL|SI|HG)/i.test(symbol));
-
-    // For futures detected by symbol but with wrong instrument_type, recalculate riskAmount
-    // (skipped when using the configured dollar-risk fallback).
-    let effectiveRiskAmount = riskAmount;
-    if (!dollarRisk && isFutures && instrumentType !== 'future') {
-      // Recalculate with correct futures multiplier
-      let futuresMultiplier = 5; // Default to micro
-      if (symbol && /^(MES|MNQ|MYM|M2K)/i.test(symbol)) {
-        futuresMultiplier = 5; // Micro futures = $5 per point
-      } else if (symbol && /^(ES|NQ|YM|RTY)/i.test(symbol)) {
-        futuresMultiplier = 50; // E-mini futures = $50 per point
-      }
-      effectiveRiskAmount = risk * tradeQuantity * futuresMultiplier;
-    }
+    const effectiveRiskAmount = riskAmount;
 
     const commissionR = totalCommission / effectiveRiskAmount;
     const grossActualR = actualR;
@@ -644,7 +628,7 @@ function calculateRMultiples(trade, options = {}) {
     management_r: managementR !== null ? roundR(managementR) : null,
     planned_r: plannedR !== null ? roundR(plannedR) : null,
     planned_pl_amount: plannedPLAmount !== null ? Math.round(plannedPLAmount * 100) / 100 : null,
-    risk_amount: Math.round(riskAmount * 100) / 100,
+    risk_amount: riskAmount == null ? null : Math.round(riskAmount * 100) / 100,
     multiplier: multiplier,
     instrument_type: instrumentType
   });
@@ -666,10 +650,10 @@ function calculateRMultiples(trade, options = {}) {
 
     // Dollar amounts
     risk_per_share: Math.round(risk * 100) / 100,
-    risk_amount: Math.round(riskAmount * 100) / 100,
+    risk_amount: riskAmount == null ? null : Math.round(riskAmount * 100) / 100,
     risk_basis: dollarRisk ? 'default_dollar' : 'current_stop',
     actual_pl_per_share: Math.round(actualPL * 100) / 100,
-    actual_pl_amount: pnl !== null && pnl !== undefined ? parseFloat(pnl) : Math.round(actualPLAmount * 100) / 100,
+    actual_pl_amount: pnl !== null && pnl !== undefined ? parseFloat(pnl) : (actualPLAmount == null ? null : Math.round(actualPLAmount * 100) / 100),
     target_pl_per_share: targetPL !== undefined ? Math.round(targetPL * 100) / 100 : null,
     target_pl_amount: targetPLAmount !== null ? Math.round(targetPLAmount * 100) / 100 : null,
 

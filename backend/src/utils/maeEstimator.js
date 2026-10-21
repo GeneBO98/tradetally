@@ -17,7 +17,9 @@ class MAEEstimator {
       const stored = parseFloat(trade.point_value);
       if (isFinite(stored) && stored > 0) return stored;
       const underlying = trade.underlying_asset || extractUnderlyingFromFuturesSymbol(trade.symbol);
-      return getFuturesPointValue(underlying);
+      const pointValue = getFuturesPointValue(underlying);
+      if (pointValue == null) throw new Error(`Unknown futures point value for ${trade.symbol}`);
+      return pointValue;
     }
 
     if (instrumentType === 'option') {

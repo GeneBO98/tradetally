@@ -1,154 +1,72 @@
 /**
- * Utilities for futures contract handling
+ * Dollars per quoted price point and minimum outright tick, per contract.
+ * Exchange quote units matter: grains/livestock quoted in cents use dollars
+ * per cent here, not bushels/pounds per contract. Broker multipliers remain
+ * authoritative for exports using other units.
+ * Sources: documentation/reviews/futures-contract-specifications.md
  */
+const FUTURES_CONTRACTS = Object.freeze({
+  ES: [50, 0.25], NQ: [20, 0.25], YM: [5, 1], RTY: [50, 0.1],
+  MES: [5, 0.25], MNQ: [2, 0.25], MYM: [0.5, 1], M2K: [5, 0.1],
+  NES: [0.5, 0.5], NNQ: [0.2, 0.5], NDOW: [0.05, 2], N2K: [0.5, 0.2],
+  CL: [1000, 0.01], MCL: [100, 0.01], NG: [10000, 0.001],
+  MNG: [1000, 0.001], QG: [2500, 0.005], RB: [42000, 0.0001], HO: [42000, 0.0001],
+  GC: [100, 0.1], MGC: [10, 0.1], SI: [5000, 0.005], SIL: [1000, 0.01],
+  HG: [12500, 0.0005], MHG: [2500, 0.0005], PL: [50, 0.1], PA: [100, 0.5], PAM: [10, 0.5],
+  '1OZ': [1, 0.25],
+  BTC: [5, 5], MBT: [0.1, 5], ETH: [50, 0.5], MET: [0.1, 0.5],
+  VX: [1000, 0.05], VXM: [100, 0.05],
+  ZB: [1000, 1 / 32], UB: [1000, 1 / 32], ZN: [1000, 1 / 64],
+  TN: [1000, 1 / 64], ZF: [1000, 1 / 128], ZT: [2000, 1 / 256],
+  ZC: [50, 0.25], ZW: [50, 0.25], ZS: [50, 0.25], KE: [50, 0.25],
+  MZC: [5, 0.5], MZW: [5, 0.5], MZS: [5, 0.5], MZM: [10, 0.2], MZL: [60, 0.02],
+  ZM: [100, 0.1], ZL: [600, 0.01], HE: [400, 0.025], LE: [400, 0.025], GF: [500, 0.025],
+  '6E': [125000, 0.00005], '6B': [62500, 0.0001], '6A': [100000, 0.00005],
+  '6C': [100000, 0.00005], '6J': [12500000, 0.0000005], '6S': [125000, 0.00005],
+  '6N': [100000, 0.00005], '6M': [500000, 0.00001],
+  M6E: [12500, 0.0001], M6B: [6250, 0.0001], M6A: [10000, 0.0001],
+  MCD: [10000, 0.0001], MJY: [1250000, 0.000001], MSF: [12500, 0.0001]
+});
 
-/**
- * Get point value for futures contracts based on underlying asset
- * @param {string} underlying - The underlying asset symbol (e.g., 'ES', 'MES', 'NQ')
- * @returns {number} Point value in dollars per point
- */
-const POINT_VALUES = {
-  // E-mini contracts
-  'ES': 50,      // E-mini S&P 500
-  'NQ': 20,      // E-mini NASDAQ-100
-  'YM': 5,       // E-mini Dow
-  'RTY': 50,     // E-mini Russell 2000
+// Documented CQG product codes for the same CME contracts.
+const ROOT_ALIASES = Object.freeze({ ENQ: 'NQ', EP: 'ES' });
 
-  // Micro E-mini contracts (1/10th of E-mini)
-  'MES': 5,      // Micro E-mini S&P 500 (10 Micros = 1 E-mini)
-  'MNQ': 2,      // Micro E-mini NASDAQ-100 (10 Micros = 1 E-mini)
-  'MYM': 0.5,    // Micro E-mini Dow (10 Micros = 1 E-mini)
-  'M2K': 5,      // Micro E-mini Russell 2000 (10 Micros = 1 E-mini)
+function normalizeRoot(root) {
+  const normalized = typeof root === 'string' ? root.trim().toUpperCase() : '';
+  return ROOT_ALIASES[normalized] || normalized;
+}
 
-  // Energy
-  'CL': 1000,    // Crude Oil
-  'MCL': 100,    // Micro WTI Crude Oil (1/10th of CL)
-  'NG': 10000,   // Natural Gas
-  'MNG': 1000,   // Micro Natural Gas (1/10th of NG)
-  'QG': 2500,    // Mini Natural Gas
-
-  // Metals
-  'GC': 100,     // Gold
-  'MGC': 10,     // Micro Gold (1/10th of GC)
-  'SI': 5000,    // Silver
-  'SIL': 1000,   // Micro Silver
-  'HG': 12500,   // Copper
-
-  // Treasuries
-  'ZB': 1000,    // 30-Year Treasury Bond
-  'ZN': 1000,    // 10-Year Treasury Note
-  'ZF': 1000,    // 5-Year Treasury Note
-  'ZT': 2000     // 2-Year Treasury Note
-};
-
+/** Unknown contracts have no guessed dollar multiplier. */
 function getFuturesPointValue(underlying) {
-  if (!underlying) return 50; // Default to $50 if unknown
-  return POINT_VALUES[underlying.toUpperCase()] || 50; // Default to $50 multiplier
+  return FUTURES_CONTRACTS[normalizeRoot(underlying)]?.[0] ?? null;
 }
 
-/**
- * Whether a symbol is a known futures root (exact match against the point
- * value table). Roots collide with real stock tickers (CL, GC, SI...), so
- * callers must only use this behind an explicit futures context.
- */
+function getFuturesTickSize(underlying) {
+  return FUTURES_CONTRACTS[normalizeRoot(underlying)]?.[1] ?? null;
+}
+
 function isKnownFuturesRoot(root) {
-  if (!root) return false;
-  return Object.prototype.hasOwnProperty.call(POINT_VALUES, root.toUpperCase());
+  return Object.prototype.hasOwnProperty.call(FUTURES_CONTRACTS, normalizeRoot(root));
 }
 
-/**
- * Resolve user input to a known futures root: accepts a bare root ("MNQ") or
- * a contract symbol ("MNQM6" -> "MNQ"). Returns null when the input is
- * neither a known root nor a contract whose extracted root is known.
- */
 function resolveFuturesRoot(input) {
-  if (!input) return null;
-  const normalized = String(input).trim().toUpperCase();
+  const normalized = normalizeRoot(input);
   if (isKnownFuturesRoot(normalized)) return normalized;
   const extracted = extractUnderlyingFromFuturesSymbol(normalized);
-  return extracted && isKnownFuturesRoot(extracted) ? extracted : null;
+  return extracted && isKnownFuturesRoot(extracted) ? normalizeRoot(extracted) : null;
 }
 
-/**
- * Get minimum tick size for futures contracts based on underlying asset.
- * Returns the price increment of one tick (in points), or null if unknown.
- * Returning null (rather than a guessed default) is deliberate: tick sizes vary
- * widely across contracts, and a wrong value would distort breakeven tolerance.
- * @param {string} underlying - The underlying asset symbol (e.g., 'ES', 'MNQ')
- * @returns {number|null} Tick size in points, or null if unknown
- */
-function getFuturesTickSize(underlying) {
-  if (!underlying) return null;
-
-  const upperUnderlying = underlying.toUpperCase();
-
-  const tickSizes = {
-    // E-mini equity index
-    'ES': 0.25,    // E-mini S&P 500
-    'NQ': 0.25,    // E-mini NASDAQ-100
-    'YM': 1,       // E-mini Dow
-    'RTY': 0.1,    // E-mini Russell 2000
-
-    // Micro E-mini equity index
-    'MES': 0.25,   // Micro E-mini S&P 500
-    'MNQ': 0.25,   // Micro E-mini NASDAQ-100
-    'MYM': 1,      // Micro E-mini Dow
-    'M2K': 0.1,    // Micro E-mini Russell 2000
-
-    // Energy
-    'CL': 0.01,    // Crude Oil
-    'MCL': 0.01,   // Micro WTI Crude Oil
-    'NG': 0.001,   // Natural Gas
-    'MNG': 0.001,  // Micro Natural Gas
-    'QG': 0.005,   // Mini Natural Gas
-
-    // Metals
-    'GC': 0.1,     // Gold
-    'MGC': 0.1,    // Micro Gold
-    'SI': 0.005,   // Silver
-    'SIL': 0.005,  // Micro Silver
-    'HG': 0.0005,  // Copper
-
-    // Treasuries (fractional ticks)
-    'ZB': 0.03125,    // 30-Year T-Bond (1/32)
-    'ZN': 0.015625,   // 10-Year T-Note (1/64)
-    'ZF': 0.0078125,  // 5-Year T-Note (1/128)
-    'ZT': 0.00390625  // 2-Year T-Note (1/256)
-  };
-
-  return tickSizes[upperUnderlying] ?? null;
-}
-
-/**
- * Extract underlying asset from a futures contract symbol
- * Handles formats like: ESM4, NQU24, MESZ5, CLZ23, M2KM6, etc.
- * @param {string} symbol - The futures contract symbol
- * @returns {string|null} The underlying asset symbol or null if not a futures format
- */
+/** Accept broker contract, exchange-prefixed, continuous and display symbols. */
 function extractUnderlyingFromFuturesSymbol(symbol) {
   if (!symbol) return null;
-
-  const normalizedSymbol = symbol.toString().toUpperCase().trim();
-
-  // Standard futures format: BASE + MONTH_CODE + YEAR (e.g., ESM4, NQU24, MESZ5, CLZ23, M2KM6)
-  // Base may contain digits (e.g. M2K = Micro Russell 2000), so allow alphanumerics after a leading letter.
-  // Month codes: F,G,H,J,K,M,N,Q,U,V,X,Z
-  const futuresMatch = normalizedSymbol.match(/^([A-Z][A-Z0-9]{0,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
-  if (futuresMatch) {
-    return futuresMatch[1]; // Return the base symbol (underlying asset)
-  }
-
-  // TradingView format: NYMEX_MINI:QG1!
-  const tvMatch = normalizedSymbol.match(/^([A-Z_]+):([A-Z]+)(\d+)/);
-  if (tvMatch) {
-    const underlying = tvMatch[2];
-    // Extract just the letters if there are numbers mixed in
-    const letterMatch = underlying.match(/^([A-Z]+)/);
-    return letterMatch ? letterMatch[1] : underlying;
-  }
-
-  // If symbol doesn't match futures pattern, return null
-  return null;
+  const normalized = String(symbol).trim().toUpperCase()
+    .replace(/^F\.[A-Z]{2,}\./, '').replace(/^[A-Z_]+:/, '').replace(/^\//, '');
+  const contract = normalized.match(/^([A-Z0-9]{1,4})([FGHJKMNQUVXZ])(\d{1,4})$/);
+  if (contract && /[A-Z]/.test(contract[1])) return contract[1];
+  const continuous = normalized.match(/^([A-Z0-9]{1,4})\d+!$/);
+  if (continuous && /[A-Z]/.test(continuous[1])) return continuous[1];
+  const display = normalized.match(/^([A-Z0-9]{1,4})\s+(?:[A-Z]{3}\s?\d{2}|(?:0[1-9]|1[0-2])-\d{2})$/);
+  return display ? display[1] : null;
 }
 
 module.exports = {
@@ -158,4 +76,3 @@ module.exports = {
   isKnownFuturesRoot,
   resolveFuturesRoot
 };
-

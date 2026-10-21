@@ -1,6 +1,6 @@
-const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../../futuresUtils');
+const { getFuturesPointValue, getFuturesTickSize, extractUnderlyingFromFuturesSymbol } = require('../../futuresUtils');
 const { isExecutionDuplicate } = require('../dedup');
-const { extractAccountFromRecord } = require('../detect');
+const { extractAccountFromRecord, hasTradovateFillHeaders } = require('../detect');
 const { parseDate, parseDateTime, getExecutionTimeBounds, cleanString, parseInstrumentData, parseNumeric, parseInteger } = require('../shared');
 
 
@@ -233,6 +233,21 @@ async function parseTradovatePerformanceReport(records, context = {}) {
 async function parseTradovateTransactions(records, existingPositions = {}, context = {}) {
   console.log(`Processing ${records.length} Tradovate order records`);
 
+  // Fills have execution prices and quantities but no order Status. Preserve
+  // their fill IDs: several fills can belong to the same order.
+  records = records.map(record => {
+    if (!hasTradovateFillHeaders(Object.keys(record))) return record;
+    const inactive = ['false', '0'].includes(String(record._active ?? record.active ?? '').toLowerCase());
+    return {
+      ...record,
+      Status: inactive ? 'Inactive' : 'Filled',
+      filledQty: record.Quantity,
+      avgPrice: record.Price,
+      'Fill Time': record.Timestamp,
+      executionId: cleanString(record['Fill ID'] || record._id)
+    };
+  });
+
   const transactions = [];
   const completedTrades = [];
   const lastTradeEndTime = {};
@@ -300,6 +315,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         price: fillPrice,
         fees: Math.abs(parseNumeric(record.Commission || record.commission)), // Optional in fills exports
         orderId,
+        executionId: record.executionId,
         isExit,
         orderText,
         raw: record,
@@ -343,12 +359,19 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
     console.log(`\n=== Processing ${symbolTransactions.length} Tradovate transactions for ${symbol} ===`);
 
     // Get the base product for point value lookup
-    const baseProduct = symbolTransactions[0]?.product || symbol.replace(/[A-Z]?\d+$/, '');
+    const baseProduct = symbolTransactions[0]?.product || extractUnderlyingFromFuturesSymbol(symbol);
     // Broker sync passes the API's valuePerPoint per product; CSV imports fall
     // back to the static futures table.
     const pointValue = Number(context.pointValueByProduct?.[baseProduct]) > 0
       ? Number(context.pointValueByProduct[baseProduct])
       : getFuturesPointValue(baseProduct);
+    if (!Number.isFinite(pointValue) || pointValue <= 0) {
+      const reason = `Unknown futures point value for ${symbol}. Supply the contract multiplier or contact support before importing.`;
+      if (!context.diagnostics) throw new Error(reason);
+      context.diagnostics.invalidRows += symbolTransactions.length;
+      context.diagnostics.skippedReasons.push(...symbolTransactions.map(() => ({ symbol, reason })));
+      continue;
+    }
 
     // For futures, the value multiplier is the point value
     const valueMultiplier = pointValue;
@@ -367,7 +390,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
       contractYear: null,
       tickSize: Number(context.tickSizeByProduct?.[baseProduct]) > 0
         ? Number(context.tickSizeByProduct[baseProduct])
-        : null
+        : getFuturesTickSize(baseProduct)
     };
 
     // Parse contract month/year from symbol (e.g., MESZ5 -> Z = December, 5 = 2025)
@@ -503,9 +526,13 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         fees: feesForExecution,
         orderId: transaction.orderId
       };
+      if (transaction.executionId) newExecution.executionId = transaction.executionId;
 
       const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
       const executionExists = existsGlobally || currentTrade.executions.some(exec => {
+        if (exec.executionId && newExecution.executionId) {
+          return String(exec.executionId) === String(newExecution.executionId);
+        }
         if (exec.orderId && newExecution.orderId) {
           return exec.orderId === newExecution.orderId;
         }

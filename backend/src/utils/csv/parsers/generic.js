@@ -98,9 +98,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             entryPrice: Math.abs(rawPrice), // Use absolute value for price
             quantity: Math.abs(rawQuantity), // Use absolute value for quantity
             side: side,
-            commission: mapping.commission_column
-              ? parseNumeric(row[mapping.commission_column])
-              : (mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0),
+            commission: mapping.commission_column ? parseNumeric(row[mapping.commission_column]) : 0,
             fees: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
             stopLoss: mapping.stop_loss_column ? parseNumeric(row[mapping.stop_loss_column]) : null,
             takeProfit: mapping.take_profit_column ? parseNumeric(row[mapping.take_profit_column]) : null,
@@ -181,6 +179,11 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         : context.accountColumnName
           ? extractAccountFromRecord(record, context.accountColumnName)
           : null;
+
+      const instrumentData = parseInstrumentData(trade.symbol);
+      if (instrumentData.instrumentType === 'future' && !(instrumentData.pointValue > 0)) {
+        throw new Error(`Unknown futures point value for ${trade.symbol}. Supply the contract multiplier or contact support before importing.`);
+      }
 
       transactions.push({
         symbol: trade.symbol.toUpperCase(),
@@ -301,9 +304,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           price: transaction.price,
           datetime: transaction.datetime,
           commission: transaction.commission,
-          fees: context.separateExecutionCosts
-            ? transaction.fees
-            : transaction.commission + transaction.fees,
+          fees: transaction.fees,
           orderId: transaction.orderId
         };
 

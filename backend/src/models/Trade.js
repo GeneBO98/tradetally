@@ -2104,8 +2104,8 @@ class Trade {
     // Determine the multiplier based on instrument type
     let multiplier;
     if (instrumentType === 'future') {
-      // For futures, use point value (e.g., $5 per point for ES, $2 for MNQ)
-      multiplier = pointValue || 1;
+      if (!Number.isFinite(Number(pointValue)) || Number(pointValue) <= 0) return null;
+      multiplier = Number(pointValue);
     } else if (instrumentType === 'option') {
       // For options, use contract size (typically 100 shares per contract)
       multiplier = contractSize || 100;
@@ -2134,6 +2134,7 @@ class Trade {
   static calculatePnLPercent(entryPrice, exitPrice, side, pnl = null, quantity = null, instrumentType = 'stock', pointValue = null, contractSize = null) {
     // Note: exitPrice === 0 is valid for expired worthless options, so use explicit null checks
     if (exitPrice == null || entryPrice == null || entryPrice <= 0) return null;
+    if (instrumentType === 'future' && !(Number(pointValue) > 0)) return null;
 
     let pnlPercent;
 
@@ -2214,6 +2215,7 @@ class Trade {
         finalPointValue = getFuturesPointValue(underlying);
       }
 
+      if (!Number.isFinite(finalPointValue) || finalPointValue <= 0) return null;
       multiplier = finalPointValue;
     } else if (normalizedInstrumentType === 'option') {
       const parsedContractSize = contractSize ? parseFloat(contractSize) : null;
@@ -2244,7 +2246,8 @@ class Trade {
     if (!defaultStopLossDollars || defaultStopLossDollars <= 0 || !quantity || quantity <= 0) return null;
     let multiplier;
     if (instrumentType === 'future') {
-      multiplier = pointValue || 1;
+      if (!Number.isFinite(Number(pointValue)) || Number(pointValue) <= 0) return null;
+      multiplier = Number(pointValue);
     } else if (instrumentType === 'option') {
       multiplier = contractSize || 100;
     } else {

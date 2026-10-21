@@ -75,6 +75,11 @@ function buildGenericValidationReason(trade, record, context = {}) {
 
 const NON_TRADE_FILE_SIGNATURES = [
   {
+    kind: 'cash_history',
+    label: 'a cash history report',
+    test: (h) => h.includes('cash change type') && h.includes('delta') && h.includes('amount')
+  },
+  {
     kind: 'positions',
     label: 'an open positions report',
     test: (h) => h.some(x => /unrealized/.test(x)) ||
@@ -205,6 +210,17 @@ function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = [], u
 
   normalizeExecutionCollections(trades);
   trades = trades.map(trade => normalizeParsedTradeInstrumentData(trade));
+  trades = trades.filter(trade => {
+    if ((trade.instrumentType || trade.instrument_type) !== 'future') return true;
+    const pointValue = Number(trade.pointValue ?? trade.point_value);
+    if (Number.isFinite(pointValue) && pointValue > 0) return true;
+    diagnostics.invalidRows++;
+    diagnostics.skippedReasons.push({
+      symbol: trade.symbol,
+      reason: `Unknown futures point value for ${trade.symbol}. Supply the contract multiplier or contact support before importing.`
+    });
+    return false;
+  });
   trades = repairTradeReversals(trades, diagnostics);
 
   // Update diagnostics with final counts
