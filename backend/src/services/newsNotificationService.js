@@ -1,6 +1,7 @@
 const { createHash } = require('crypto');
 const db = require('../config/database');
 const NotificationService = require('./notificationService');
+const TierService = require('./tierService');
 
 const MAX_ARTICLE_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -29,6 +30,21 @@ class NewsNotificationService {
     }
     if (articles.size === 0) return 0;
 
+    // News is a Pro feature. Tier depends on overrides, subscriptions, and
+    // whether billing is enabled at all, so resolve it through TierService.
+    const candidates = await db.query(`
+      SELECT DISTINCT t.user_id
+      FROM trades t
+      JOIN users u ON u.id = t.user_id
+      WHERE t.exit_price IS NULL AND UPPER(t.symbol) = $1
+        AND u.notify_news_open_positions = true
+    `, [symbol]);
+    const proUserIds = [];
+    for (const { user_id } of candidates.rows) {
+      if (await TierService.getUserTier(user_id) === 'pro') proUserIds.push(user_id);
+    }
+    if (proUserIds.length === 0) return 0;
+
     // Claim and save in one statement: concurrent refreshes, multiple positions,
     // and the same story appearing for several symbols still deliver only once.
     // A failed insert rolls back the receipt too, allowing the next fetch to retry.
@@ -37,11 +53,7 @@ class NewsNotificationService {
         SELECT * FROM jsonb_to_recordset($2::jsonb)
           AS article(article_key text, data jsonb)
       ), eligible_users AS (
-        SELECT DISTINCT t.user_id
-        FROM trades t
-        JOIN users u ON u.id = t.user_id
-        WHERE t.exit_price IS NULL AND UPPER(t.symbol) = $1
-          AND u.notify_news_open_positions = true
+        SELECT unnest($1::uuid[]) AS user_id
       ), claimed AS (
         INSERT INTO news_notification_deliveries (user_id, article_key)
         SELECT u.user_id, a.article_key FROM eligible_users u CROSS JOIN articles a
@@ -53,7 +65,7 @@ class NewsNotificationService {
       SELECT c.user_id, 'news_alert', a.data
       FROM claimed c JOIN articles a USING (article_key)
       RETURNING id, user_id, data
-    `, [symbol, JSON.stringify([...articles.values()])]);
+    `, [proUserIds, JSON.stringify([...articles.values()])]);
 
     for (const notification of result.rows) {
       await NotificationService.sendSSENotification(notification.user_id, {
