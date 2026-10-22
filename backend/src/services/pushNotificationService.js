@@ -3,6 +3,24 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 const NotificationPreferenceService = require('./notificationPreferenceService');
 
+// Inbox push types that carry Pro-only content. Gamification (achievements,
+// level-ups, challenges, leaderboard rankings) and broker re-auth reminders
+// stay available to free users.
+const PRO_INBOX_TYPES = new Set([
+  'news_alert',
+  'earnings_announcement',
+  'behavioral_alert',
+  'trade_reminder',
+  'portfolio_alert',
+  'web_mention_alert'
+]);
+
+// Lazy require keeps this module free of a load-time dependency cycle.
+async function isProUser(userId) {
+  const TierService = require('./tierService');
+  return TierService.isProUser(userId);
+}
+
 class PushNotificationService {
   constructor() {
     this.apnProviders = new Map();
@@ -222,6 +240,9 @@ class PushNotificationService {
     };
     if (!titles[type]) return { success: false, reason: 'unsupported_type' };
     if (!this.isEnabled) return { success: false, reason: 'disabled' };
+    if (PRO_INBOX_TYPES.has(type) && !await isProUser(user_id)) {
+      return { success: false, reason: 'pro_required' };
+    }
 
     const preferences = {
       news_alert: 'notify_news_open_positions',
@@ -253,6 +274,11 @@ class PushNotificationService {
   }
 
   async sendPriceAlert(userId, alertData) {
+    if (!await isProUser(userId)) {
+      logger.logDebug(`Push notification for price alert skipped for user ${userId} - Pro required`);
+      return { success: false, reason: 'pro_required' };
+    }
+
     // Check if user has price alerts enabled
     const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_price_alerts');
     if (!isEnabled) {
@@ -298,6 +324,11 @@ class PushNotificationService {
   }
 
   async sendNewsAlert(userId, newsData) {
+    if (!await isProUser(userId)) {
+      logger.logDebug(`Push notification for news alert skipped for user ${userId} - Pro required`);
+      return { success: false, reason: 'pro_required' };
+    }
+
     // Check if user has news notifications enabled
     const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_news_open_positions');
     if (!isEnabled) {
@@ -325,6 +356,11 @@ class PushNotificationService {
   }
 
   async sendEarningsAlert(userId, earningsData) {
+    if (!await isProUser(userId)) {
+      logger.logDebug(`Push notification for earnings alert skipped for user ${userId} - Pro required`);
+      return { success: false, reason: 'pro_required' };
+    }
+
     // Check if user has earnings notifications enabled
     const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_earnings_announcements');
     if (!isEnabled) {

@@ -40,20 +40,29 @@
           <div class="divide-y divide-gray-100 dark:divide-gray-800 pl-4">
             <div class="flex items-center justify-between py-4 px-2 -mx-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
               <div class="flex-1 pr-6">
-                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 block">
+                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                   News on Open Positions
+                  <router-link
+                    v-if="showProLock"
+                    :to="pricingLink"
+                    class="px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 hover:bg-primary-200 dark:bg-primary-900/30 dark:text-primary-300"
+                    title="Upgrade to Pro to enable this notification"
+                  >Pro</router-link>
                 </label>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
                   Get notified when news breaks for stocks you currently have open positions in
                 </p>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+              <label
+                class="relative inline-flex items-center flex-shrink-0"
+                :class="isProLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
+              >
                 <input
                   type="checkbox"
                   v-model="preferences.notify_news_open_positions"
                   @change="updatePreference('notify_news_open_positions')"
                   class="sr-only peer"
-                  :disabled="updating"
+                  :disabled="updating || isProLocked"
                 />
                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
               </label>
@@ -61,20 +70,29 @@
 
             <div class="flex items-center justify-between py-4 px-2 -mx-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
               <div class="flex-1 pr-6">
-                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 block">
+                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                   Earnings Announcements
+                  <router-link
+                    v-if="showProLock"
+                    :to="pricingLink"
+                    class="px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 hover:bg-primary-200 dark:bg-primary-900/30 dark:text-primary-300"
+                    title="Upgrade to Pro to enable this notification"
+                  >Pro</router-link>
                 </label>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
                   Receive notifications about upcoming earnings announcements for your watchlist
                 </p>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+              <label
+                class="relative inline-flex items-center flex-shrink-0"
+                :class="isProLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
+              >
                 <input
                   type="checkbox"
                   v-model="preferences.notify_earnings_announcements"
                   @change="updatePreference('notify_earnings_announcements')"
                   class="sr-only peer"
-                  :disabled="updating"
+                  :disabled="updating || isProLocked"
                 />
                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
               </label>
@@ -82,20 +100,29 @@
 
             <div class="flex items-center justify-between py-4 px-2 -mx-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
               <div class="flex-1 pr-6">
-                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 block">
+                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                   Trade Reminders
+                  <router-link
+                    v-if="showProLock"
+                    :to="pricingLink"
+                    class="px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 hover:bg-primary-200 dark:bg-primary-900/30 dark:text-primary-300"
+                    title="Upgrade to Pro to enable this notification"
+                  >Pro</router-link>
                 </label>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
                   Receive behavioral analytics alerts for patterns like revenge trading and overconfidence warnings
                 </p>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+              <label
+                class="relative inline-flex items-center flex-shrink-0"
+                :class="isProLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
+              >
                 <input
                   type="checkbox"
                   v-model="preferences.notify_trade_reminders"
                   @change="updatePreference('notify_trade_reminders')"
                   class="sr-only peer"
-                  :disabled="updating"
+                  :disabled="updating || isProLocked"
                 />
                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
               </label>
@@ -113,20 +140,29 @@
           <div class="divide-y divide-gray-100 dark:divide-gray-800 pl-4">
             <div class="flex items-center justify-between py-4 px-2 -mx-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
               <div class="flex-1 pr-6">
-                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 block">
+                <label class="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                   Price Alerts
+                  <router-link
+                    v-if="showProLock"
+                    :to="pricingLink"
+                    class="px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 hover:bg-primary-200 dark:bg-primary-900/30 dark:text-primary-300"
+                    title="Upgrade to Pro to enable this notification"
+                  >Pro</router-link>
                 </label>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
                   Receive notifications when your price alerts and watchlist triggers are activated
                 </p>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+              <label
+                class="relative inline-flex items-center flex-shrink-0"
+                :class="isProLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
+              >
                 <input
                   type="checkbox"
                   v-model="preferences.notify_price_alerts"
                   @change="updatePreference('notify_price_alerts')"
                   class="sr-only peer"
-                  :disabled="updating"
+                  :disabled="updating || isProLocked"
                 />
                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
               </label>
@@ -205,13 +241,29 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useProAccess } from '@/composables/useProAccess'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiBell, mdiAlert, mdiCheck, mdiInformation } from '@mdi/js'
 import api from '@/services/api'
 
 // Icons
 const bellIcon = mdiBell
+
+// News, earnings, behavioral reminders and price alerts are Pro features.
+// Locked (disabled) until the user is confirmed Pro; the Pro label only shows
+// once we know the user is on the free tier.
+const route = useRoute()
+const { isProUser, showProLock } = useProAccess()
+const isProLocked = computed(() => !isProUser.value)
+const PRO_PREFERENCE_KEYS = new Set([
+  'notify_news_open_positions',
+  'notify_earnings_announcements',
+  'notify_trade_reminders',
+  'notify_price_alerts'
+])
+const pricingLink = computed(() => `/pricing?redirect=${encodeURIComponent(route?.fullPath || '/profile')}`)
 const alertIcon = mdiAlert
 const checkIcon = mdiCheck
 const infoIcon = mdiInformation
@@ -247,6 +299,11 @@ async function fetchPreferences() {
 }
 
 async function updatePreference(preferenceKey) {
+  if (isProLocked.value && PRO_PREFERENCE_KEYS.has(preferenceKey)) {
+    // Disabled inputs should not fire, but never persist a Pro toggle for free users
+    preferences.value[preferenceKey] = !preferences.value[preferenceKey]
+    return
+  }
   updating.value = true
   updateStatus.value = null
 

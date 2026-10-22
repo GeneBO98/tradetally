@@ -749,8 +749,8 @@ router.post('/bulk/tags', authenticate, tradeController.bulkAddTags);
  *       200:
  *         description: List of upcoming earnings
  */
-router.get('/earnings', authenticate, tradeController.getUpcomingEarnings);
-router.post('/earnings/refresh', authenticate, tradeController.refreshUpcomingEarnings);
+router.get('/earnings', authenticate, requiresTier('pro'), tradeController.getUpcomingEarnings);
+router.post('/earnings/refresh', authenticate, requiresTier('pro'), tradeController.refreshUpcomingEarnings);
 
 /**
  * @swagger
@@ -764,8 +764,8 @@ router.post('/earnings/refresh', authenticate, tradeController.refreshUpcomingEa
  *       200:
  *         description: List of trade-related news
  */
-router.get('/news', authenticate, tradeController.getTradeNews);
-router.post('/news/refresh', authenticate, tradeController.refreshTradeNews);
+router.get('/news', authenticate, requiresTier('pro'), tradeController.getTradeNews);
+router.post('/news/refresh', authenticate, requiresTier('pro'), tradeController.refreshTradeNews);
 
 // Export trades - MUST be before /:id route to avoid matching "export" as an ID
 router.get('/export', authenticate, tradeController.exportTrades);
@@ -937,7 +937,7 @@ router.post('/quality/batch', authenticate, tradeController.calculateBatchQualit
 router.post('/quality/all', authenticate, tradeController.calculateAllTradesQuality);
 
 // Health data integration routes
-router.put('/:id/health', authenticate, tradeController.updateTradeHealthData);
-router.put('/health/bulk', authenticate, tradeController.bulkUpdateHealthData);
+router.put('/:id/health', authenticate, requiresTier('pro'), tradeController.updateTradeHealthData);
+router.put('/health/bulk', authenticate, requiresTier('pro'), tradeController.bulkUpdateHealthData);
 
 module.exports = router;

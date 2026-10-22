@@ -1603,6 +1603,7 @@ import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useNotification } from "@/composables/useNotification";
+import { useProAccess } from "@/composables/useProAccess";
 import NotificationPreferences from "@/components/profile/NotificationPreferences.vue";
 import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhookManager.vue";
 import api from "@/services/api";
@@ -1629,10 +1630,7 @@ const { showSuccess, showError, showDangerConfirmation } = useNotification();
 
 // Webhook destinations (a notification delivery channel) require Pro. On
 // self-hosted instances billing is disabled, so everyone has access.
-const isProUser = computed(() => {
-  if (authStore.user?.billingEnabled === false) return true;
-  return authStore.user?.tier === "pro";
-});
+const { isProUser } = useProAccess();
 
 // Profile form data
 const profileLoading = ref(false);
@@ -1674,9 +1672,12 @@ const twoFactorStatus = ref({
 // Subscription data
 const subscriptionLoading = ref(false);
 const portalLoading = ref(false);
+// billing_available starts as null ("unknown") rather than false: false
+// means self-hosted (everything unlocked), so defaulting to it made
+// canManageApiKeys flash true for free users until /billing/status loaded.
 const billingStatus = ref({
     billing_enabled: false,
-    billing_available: false,
+    billing_available: null,
 });
 const subscription = ref({
     subscription: null,
@@ -1850,11 +1851,19 @@ const shouldShowUpgradeButton = computed(() => {
 });
 
 const canManageApiKeys = computed(() => {
-    if (!billingStatus.value.billing_available) {
+    // Billing confirmed unavailable (self-hosted): everyone can manage keys
+    if (billingStatus.value.billing_available === false) {
         return true;
     }
 
-    return subscription.value.tier === "pro";
+    // Billing on or still loading: require Pro. The auth store tier is known
+    // before /billing/subscription loads, so Pro users don't see a flash of
+    // the upgrade notice and free users never see the key controls.
+    if (isProUser.value) return true;
+    return (
+        billingStatus.value.billing_available === true &&
+        subscription.value.tier === "pro"
+    );
 });
 
 // Avatar helpers and methods

@@ -313,14 +313,24 @@
           :class="[showAdvanced ? 'rotate-90' : '', 'h-4 w-4 mr-1 transition-transform']"
         />
         Advanced Filters
-        <span v-if="activeAdvancedCount > 0" class="ml-2 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-xs px-2 py-0.5 rounded-full">
+        <span
+          v-if="showProLock"
+          class="ml-2 px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+        >Pro</span>
+        <span v-else-if="activeAdvancedCount > 0" class="ml-2 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-xs px-2 py-0.5 rounded-full">
           {{ activeAdvancedCount }}
         </span>
       </button>
     </div>
 
-    <!-- Advanced filters (collapsible) -->
-    <div v-if="showAdvanced" class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-6">
+    <!-- Advanced filters (collapsible, Pro only) -->
+    <div v-if="showAdvanced && showProLock" class="border-t border-gray-200 dark:border-gray-700 pt-4">
+      <ProUpgradePrompt
+        variant="compact"
+        description="Filter by sector, price, quantity, P&L, hold time, broker, day of week, market session, and quality grade with Pro."
+      />
+    </div>
+    <div v-else-if="showAdvanced && isProUser" class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-6">
       <!-- Range Filters and Timing & Options - Side by Side -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Range Filters Group -->
@@ -804,6 +814,9 @@ import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { formatLocalDate } from '@/utils/date'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import { useProAccess } from '@/composables/useProAccess'
+import { isProTradeFilterKey } from '@/utils/proTradeFilters'
 
 const props = defineProps({
   // When true (default), TradeFilters auto-emits a `filter` event on mount
@@ -827,6 +840,7 @@ const uiPreferencesStore = useUiPreferencesStore()
 const { selectedAccount, isFiltered: globalAccountFilterActive } = useGlobalAccountFilter()
 
 const showAdvanced = ref(false)
+const { isProUser, showProLock } = useProAccess()
 
 // Load saved period from localStorage on initialization
 const savedPeriodInit = localStorage.getItem('tradeFiltersPeriod')
@@ -1519,6 +1533,14 @@ function applyFilters() {
     console.error('[TradeFilters] localStorage save failed:', e)
   }
 
+  // Advanced-panel filters are Pro-only (ignored server-side for free users);
+  // don't send them once we know the user is on the free tier.
+  if (showProLock.value) {
+    for (const key of Object.keys(cleanFilters)) {
+      if (isProTradeFilterKey(key)) delete cleanFilters[key]
+    }
+  }
+
   console.log('[TradeFilters] Emitting cleanFilters:', cleanFilters)
   emit('filter', cleanFilters)
 }
@@ -1558,6 +1580,8 @@ async function clearImportFilter() {
 }
 
 async function fetchAvailableSectors() {
+  // /analytics/sectors/available is Pro-only and only feeds the advanced panel
+  if (!isProUser.value) return
   try {
     loadingSectors.value = true
     const response = await api.get('/analytics/sectors/available')
@@ -1762,6 +1786,11 @@ function handleClickOutside(event) {
 }
 
 // Watch for global account filter changes and re-apply filters
+// Tier can resolve after mount; load the Pro-only sector list once it does.
+watch(isProUser, (is_pro) => {
+  if (is_pro && availableSectors.value.length === 0) fetchAvailableSectors()
+})
+
 watch(selectedAccount, () => {
   console.log('[TradeFilters] Global account filter changed to:', selectedAccount.value || 'All Accounts')
   filters.value.accounts = selectedAccount.value || ''

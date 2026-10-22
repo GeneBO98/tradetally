@@ -22,6 +22,12 @@ jest.mock('../../src/utils/timezone', () => ({
 
 jest.mock('../../src/services/achievementService', () => ({}));
 
+// Advanced filters are Pro-only (TradeQueries._buildWhereClause drops them for
+// free users). These tests pin SQL for the full filter set, so run as Pro.
+jest.mock('../../src/services/tierService', () => ({
+  isProUser: jest.fn().mockResolvedValue(true)
+}));
+
 // pnlType filters consult the user's breakeven tolerance via User.getSettings;
 // mock it so it doesn't issue its own db.query (keeps the single-query assertion).
 jest.mock('../../src/models/User', () => ({

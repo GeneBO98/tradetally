@@ -8,6 +8,7 @@
 const CronScheduler = require('./schedulers/CronScheduler');
 const db = require('../config/database');
 const EightPillarsService = require('./eightPillarsService');
+const TierService = require('./tierService');
 
 class WatchlistPillarsScheduler extends CronScheduler {
   constructor() {
@@ -54,15 +55,22 @@ class WatchlistPillarsScheduler extends CronScheduler {
   async execute() {
     const startTime = Date.now();
 
-    // Get all unique symbols from all watchlists
+    // Get all unique symbols from watchlists owned by Pro users (watchlists
+    // are a Pro feature; every user counts as Pro when billing is disabled)
     const result = await db.query(`
-      SELECT DISTINCT wi.symbol
+      SELECT DISTINCT wi.symbol, w.user_id
       FROM watchlist_items wi
       JOIN watchlists w ON wi.watchlist_id = w.id
-      ORDER BY wi.symbol
     `);
 
-    const symbols = result.rows.map(r => r.symbol.toUpperCase());
+    const proUserIds = new Set(
+      await TierService.filterProUserIds(result.rows.map(r => r.user_id))
+    );
+    const symbols = [...new Set(
+      result.rows
+        .filter(r => r.symbol && proUserIds.has(String(r.user_id)))
+        .map(r => r.symbol.toUpperCase())
+    )].sort();
 
     if (symbols.length === 0) {
       console.log('[WATCHLIST PILLARS] No watchlist symbols to analyze');

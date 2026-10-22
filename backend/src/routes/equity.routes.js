@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const equityController = require('../controllers/equity.controller');
 const { authenticate } = require('../middleware/auth');
+const { requiresTier } = require('../middleware/tierAuth');
 
 // All equity routes require authentication
 router.use(authenticate);
@@ -22,6 +23,6 @@ router.delete('/snapshots/:id', equityController.deleteEquitySnapshot);
 router.put('/current', equityController.updateCurrentEquity);
 
 // Calculate K Ratio
-router.get('/k-ratio', equityController.calculateKRatio);
+router.get('/k-ratio', requiresTier('pro'), equityController.calculateKRatio);
 
 module.exports = router;

@@ -107,6 +107,12 @@
               :class="{ 'text-primary-500 dark:text-primary-400': isItemActive(item) }"
             />
             <span class="flex-1">{{ item.name }}</span>
+            <span
+              v-if="item.badge === 'pro'"
+              class="shrink-0 rounded-[3px] bg-primary-500/15 px-1.5 py-0 text-[9px] font-bold uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+            >
+              Pro
+            </span>
             <ChevronRightIcon
               class="h-3.5 w-3.5 -translate-x-1 text-gray-300 opacity-0 transition-all duration-200 group-hover/item:translate-x-0 group-hover/item:opacity-100 dark:text-gray-600"
             />
@@ -207,7 +213,7 @@ const roleBadge = computed(() => {
 const items = computed(() => {
   const list = [
     { name: 'My Profile', to: '/profile', route: 'profile', icon: UserCircleIcon },
-    { name: 'Price Alerts', to: '/price-alerts', route: 'price-alerts', icon: BellAlertIcon },
+    { name: 'Price Alerts', to: '/price-alerts', route: 'price-alerts', icon: BellAlertIcon, badge: 'pro' },
     { name: 'Settings', to: '/settings', route: 'settings', icon: Cog6ToothIcon }
   ]
   if (isAdmin.value) {

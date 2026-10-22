@@ -5,6 +5,7 @@ const AnalyticsCache = require('./analyticsCache');
 const TradeQueries = require('./tradeQueries');
 const analyticsController = require('../controllers/analytics.controller');
 const pushNotificationService = require('./pushNotificationService');
+const TierService = require('./tierService');
 const { getDateInTimezone, getDayOfWeekInTimezone } = require('../utils/timezone');
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
@@ -152,6 +153,8 @@ class DashboardCacheWarmer extends IntervalScheduler {
 
   async execute() {
     const users = await this.getActiveUsers();
+    // The dashboard AI insight is Pro-only, so only precompute it for Pro users.
+    const proUserIds = new Set(await TierService.filterProUserIds(users.map(user => user.id)));
     const summary = {
       users: users.length,
       warmed: 0,
@@ -166,7 +169,7 @@ class DashboardCacheWarmer extends IntervalScheduler {
       const batch = users.slice(index, index + 3);
       const results = await Promise.allSettled(batch.map(async user => {
         await this.warmDashboard(user);
-        await getRecommendationSummary(user.id);
+        if (proUserIds.has(String(user.id))) await getRecommendationSummary(user.id);
         return this.wakeWidgetIfDue(user.id);
       }));
 

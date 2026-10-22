@@ -83,25 +83,46 @@ class PriceMonitoringService {
     console.log('Price monitoring service stopped');
   }
 
+  // Symbols to refresh each cycle. Open-trade symbols are always included
+  // because they feed the (free) dashboard open-positions quotes via the
+  // price_monitoring cache. Alert, watchlist and holdings symbols are Pro
+  // features, so they are only monitored for users who are currently Pro.
+  async getMonitoredSymbols() {
+    const [openTradeResult, proFeatureResult] = await Promise.all([
+      db.query(`
+        SELECT DISTINCT symbol FROM trades
+        WHERE exit_price IS NULL AND exit_time IS NULL
+      `),
+      db.query(`
+        SELECT DISTINCT symbol, user_id
+        FROM (
+          SELECT symbol, user_id FROM price_alerts WHERE is_active = TRUE
+          UNION
+          SELECT wi.symbol, w.user_id
+            FROM watchlist_items wi
+            JOIN watchlists w ON w.id = wi.watchlist_id
+          UNION
+          SELECT symbol, user_id FROM investment_holdings
+        ) AS pro_symbols
+      `)
+    ]);
+
+    const proUserIds = new Set(
+      await TierService.filterProUserIds(proFeatureResult.rows.map(row => row.user_id))
+    );
+
+    const symbols = new Set(openTradeResult.rows.map(row => row.symbol));
+    for (const row of proFeatureResult.rows) {
+      if (proUserIds.has(String(row.user_id))) {
+        symbols.add(row.symbol);
+      }
+    }
+    return [...symbols].filter(Boolean);
+  }
+
   async monitorPrices() {
     try {
-      // Get all unique symbols from active alerts, watchlists, open positions, and holdings
-      const symbolsQuery = `
-        SELECT DISTINCT symbol
-        FROM (
-          SELECT symbol FROM price_alerts WHERE is_active = TRUE
-          UNION
-          SELECT symbol FROM watchlist_items
-          UNION
-          SELECT DISTINCT symbol FROM trades
-            WHERE exit_price IS NULL AND exit_time IS NULL
-          UNION
-          SELECT DISTINCT symbol FROM investment_holdings
-        ) AS symbols
-      `;
-
-      const symbolsResult = await db.query(symbolsQuery);
-      const allSymbols = symbolsResult.rows.map(row => row.symbol);
+      const allSymbols = await this.getMonitoredSymbols();
 
       if (allSymbols.length === 0) {
         logger.debug('No symbols to monitor');
@@ -326,7 +347,6 @@ class PriceMonitoringService {
           COALESCE(pm.current_price::NUMERIC, 0) AS current_price,
           pm.percent_change,
           u.email,
-          u.tier,
           us.email_notifications as user_email_enabled
         FROM price_alerts pa
         JOIN users u ON pa.user_id = u.id
@@ -339,13 +359,13 @@ class PriceMonitoringService {
       const alertsResult = await db.query(alertsQuery);
       let alerts = alertsResult.rows;
       
-      // Filter alerts based on billing status for hosted vs self-hosted
-      const billingEnabled = await TierService.isBillingEnabled();
-      if (billingEnabled) {
-        // Hosted instance - only Pro users get alerts
-        alerts = alerts.filter(alert => alert.tier === 'pro');
-      }
-      // Self-hosted instance (billingEnabled = false) - all users get alerts
+      // Price alerts are Pro-only. Resolve the effective tier (admins,
+      // overrides, trials, subscriptions) rather than trusting users.tier.
+      // filterProUserIds returns everyone when billing is disabled (self-hosted).
+      const proUserIds = new Set(
+        await TierService.filterProUserIds(alerts.map(alert => alert.user_id))
+      );
+      alerts = alerts.filter(alert => proUserIds.has(String(alert.user_id)));
 
       for (const alert of alerts) {
         const shouldTrigger = this.shouldTriggerAlert(alert);

@@ -9,6 +9,11 @@ jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
 jest.mock('../../src/models/User', () => ({
   getSettings: jest.fn().mockResolvedValue({})
 }));
+jest.mock('../../src/services/tierService', () => ({
+  isProUser: jest.fn().mockResolvedValue(true),
+  getUserTier: jest.fn().mockResolvedValue('pro'),
+  isBillingEnabled: jest.fn().mockResolvedValue(false)
+}));
 
 const db = require('../../src/config/database');
 const analyticsController = require('../../src/controllers/analytics.controller');

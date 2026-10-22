@@ -39,10 +39,7 @@ class NewsNotificationService {
       WHERE t.exit_price IS NULL AND UPPER(t.symbol) = $1
         AND u.notify_news_open_positions = true
     `, [symbol]);
-    const proUserIds = [];
-    for (const { user_id } of candidates.rows) {
-      if (await TierService.getUserTier(user_id) === 'pro') proUserIds.push(user_id);
-    }
+    const proUserIds = await TierService.filterProUserIds(candidates.rows.map(row => row.user_id));
     if (proUserIds.length === 0) return 0;
 
     // Claim and save in one statement: concurrent refreshes, multiple positions,

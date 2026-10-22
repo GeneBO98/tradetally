@@ -24,13 +24,15 @@ jest.mock('../../src/models/PlaidConnection', () => ({
   findTransactionRule: jest.fn(),
   markTransactionRuleApplied: jest.fn(),
   markTransactionsRemoved: jest.fn(),
-  resetApprovedTransactionByAccountTransactionId: jest.fn()
+  resetApprovedTransactionByAccountTransactionId: jest.fn(),
+  updateAfterFailure: jest.fn()
 }));
 
 jest.mock('../../src/services/plaid/plaidClient', () => ({
   isConfigured: jest.fn(() => true),
   createLinkToken: jest.fn(),
   syncTransactions: jest.fn(),
+  getAccounts: jest.fn(),
   env: 'sandbox'
 }));
 
@@ -43,7 +45,12 @@ jest.mock('../../src/services/analyticsCache', () => ({
   invalidate: jest.fn()
 }));
 
+jest.mock('../../src/services/tierService', () => ({
+  canSyncBrokerConnection: jest.fn(() => Promise.resolve({ allowed: true }))
+}));
+
 const Account = require('../../src/models/Account');
+const TierService = require('../../src/services/tierService');
 const PlaidConnection = require('../../src/models/PlaidConnection');
 const plaidClient = require('../../src/services/plaid/plaidClient');
 const db = require('../../src/config/database');
@@ -396,5 +403,41 @@ describe('plaidFundingService revertTransaction', () => {
       'ach credit'
     );
     expect(PlaidConnection.markTransactionPending).toHaveBeenCalledWith('plaid-tx-5', 'user-1');
+  });
+});
+
+describe('plaidFundingService syncConnection Pro gating', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    PlaidConnection.hasSchema.mockResolvedValue(true);
+    PlaidConnection.findById.mockResolvedValue({
+      id: 'conn-1',
+      userId: 'user-1',
+      accessToken: 'access-token',
+      targetType: 'bank'
+    });
+  });
+
+  test('skips the sync without calling Plaid or recording a failure for non-Pro users', async () => {
+    TierService.canSyncBrokerConnection.mockResolvedValueOnce({
+      allowed: false,
+      code: 'PRO_FEATURE_REQUIRED',
+      message: 'Broker sync is now a Pro feature.'
+    });
+
+    const result = await plaidFundingService.syncConnection('conn-1');
+
+    expect(TierService.canSyncBrokerConnection).toHaveBeenCalledWith('user-1');
+    expect(result).toEqual(expect.objectContaining({ processedCount: 0, skippedForTier: true }));
+    expect(plaidClient.getAccounts).not.toHaveBeenCalled();
+    expect(PlaidConnection.updateAfterFailure).not.toHaveBeenCalled();
+  });
+
+  test('syncs when the user is allowed (Pro or within the grace period)', async () => {
+    TierService.canSyncBrokerConnection.mockResolvedValueOnce({ allowed: true, tier: 'pro' });
+    plaidClient.getAccounts.mockRejectedValueOnce(new Error('plaid down'));
+
+    await expect(plaidFundingService.syncConnection('conn-1')).rejects.toThrow('plaid down');
+    expect(plaidClient.getAccounts).toHaveBeenCalledWith('access-token');
   });
 });

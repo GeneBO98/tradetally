@@ -5,6 +5,7 @@ const PlaidBalanceSnapshot = require('../../models/PlaidBalanceSnapshot');
 const PlaidConnection = require('../../models/PlaidConnection');
 const PlaidSecurity = require('../../models/PlaidSecurity');
 const plaidClient = require('./plaidClient');
+const TierService = require('../tierService');
 const plaidClassificationService = require('./plaidClassificationService');
 const plaidHoldingsSyncService = require('./plaidHoldingsSyncService');
 const { derivePlaidAccountIdentifier } = require('./plaidAccountIdentifier');
@@ -307,6 +308,22 @@ class PlaidFundingService {
     const connection = await PlaidConnection.findById(connectionId, userId, true);
     if (!connection) {
       throw new Error('Plaid connection not found');
+    }
+
+    // Plaid sync is Pro-only, like broker sync (same grace period). This is
+    // the funnel for scheduled, webhook-triggered and manual syncs. A gated
+    // user is skipped cleanly: no Plaid API calls and no failure recorded, so
+    // the connection is not marked as errored and resumes after an upgrade.
+    const syncAccess = await TierService.canSyncBrokerConnection(connection.userId);
+    if (!syncAccess.allowed) {
+      console.log(`[INFO] [PLAID] Skipping sync for connection ${connection.id}: Plaid sync is Pro-only for this user`);
+      return {
+        processedCount: 0,
+        skippedForTier: true,
+        reason: 'tier_pro_required',
+        code: syncAccess.code,
+        message: syncAccess.message
+      };
     }
 
     try {

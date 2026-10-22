@@ -5,6 +5,7 @@ const alphaVantage = require('../utils/alphaVantage');
 const historicalPriceCache = require('../utils/historicalPriceCache');
 const HoldingsService = require('./holdingsService');
 const NotificationService = require('./notificationService');
+const TierService = require('./tierService');
 const { calculateTimeWeightedReturn } = require('./retirementCalculator');
 
 const UNSORTED_ACCOUNT = '__unsorted__';
@@ -1021,8 +1022,12 @@ class PortfolioService {
        ORDER BY created_at ASC`,
     );
 
+    // Portfolio is a Pro feature: only snapshot users who are currently Pro
+    // (every user counts as Pro when billing is disabled).
+    const proUserIds = new Set(await TierService.filterProUserIds(usersResult.rows.map(row => row.id)));
+
     const results = [];
-    for (const row of usersResult.rows) {
+    for (const row of usersResult.rows.filter(r => proUserIds.has(String(r.id)))) {
       try {
         results.push(await this.createDailySnapshotsForUser(row.id, effectiveDate));
       } catch (error) {
@@ -2022,21 +2027,25 @@ class PortfolioService {
 
     // Only equities have daily candles. Options/futures/crypto/forex symbols would
     // just fail every provider call (and burn rate limit), so exclude them.
+    // Grouped per user so the nightly pre-warm only covers Pro users' symbols
+    // (portfolio is a Pro feature; everyone counts when billing is disabled).
     const result = await db.query(
-      `SELECT symbol, MIN(eff) AS earliest
+      `SELECT symbol, user_id, MIN(eff) AS earliest
          FROM (
-           SELECT h.symbol AS symbol, l.purchase_date AS eff
+           SELECT h.symbol AS symbol, h.user_id AS user_id, l.purchase_date AS eff
              FROM investment_lots l
              JOIN investment_holdings h ON h.id = l.holding_id
            UNION ALL
-           SELECT t.symbol AS symbol, t.entry_time AS eff
+           SELECT t.symbol AS symbol, t.user_id AS user_id, t.entry_time AS eff
              FROM trades t
             WHERE t.exit_price IS NULL AND t.side = 'long'
               AND COALESCE(t.instrument_type, 'stock') = 'stock'
          ) s
         WHERE symbol IS NOT NULL AND eff IS NOT NULL
-        GROUP BY symbol`
+        GROUP BY symbol, user_id`
     );
+    const proUserIds = new Set(await TierService.filterProUserIds(result.rows.map(row => row.user_id)));
+    const proRows = result.rows.filter(row => proUserIds.has(String(row.user_id)));
 
     const need = new Map();
     // Equity tickers are short and alphanumeric (e.g. AAPL, BRK.B). Skip anything with
@@ -2055,18 +2064,20 @@ class PortfolioService {
       }
     };
 
-    result.rows.forEach(row => addNeed(row.symbol, this._normalizeDateValue(row.earliest)));
+    proRows.forEach(row => addNeed(row.symbol, this._normalizeDateValue(row.earliest)));
 
     // Benchmarks must reach back to the earliest holding so the series can be anchored.
     const globalEarliest = [...need.values()].sort()[0] || null;
     if (globalEarliest) {
       const benchRows = await db.query(
-        `SELECT DISTINCT default_benchmark_symbol AS symbol
+        `SELECT DISTINCT default_benchmark_symbol AS symbol, user_id
            FROM portfolio_preferences
           WHERE default_benchmark_symbol IS NOT NULL`
       );
       addNeed(DEFAULT_BENCHMARK, globalEarliest);
-      benchRows.rows.forEach(row => addNeed(row.symbol, globalEarliest));
+      benchRows.rows
+        .filter(row => proUserIds.has(String(row.user_id)))
+        .forEach(row => addNeed(row.symbol, globalEarliest));
     }
 
     // Symbols already confirmed to have no candles (within the re-check window) are

@@ -12,7 +12,12 @@ jest.mock('../../src/utils/finnhub', () => ({
   isConfigured: jest.fn().mockReturnValue(true)
 }));
 
+jest.mock('../../src/services/tierService', () => ({
+  filterProUserIds: jest.fn()
+}));
+
 const db = require('../../src/config/database');
+const TierService = require('../../src/services/tierService');
 const finnhub = require('../../src/utils/finnhub');
 const NewsService = require('../../src/services/newsService');
 const NewsNotificationService = require('../../src/services/newsNotificationService');
@@ -20,6 +25,7 @@ const NewsNotificationService = require('../../src/services/newsNotificationServ
 describe('NewsService widget refresh tracking', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    TierService.filterProUserIds.mockImplementation(async ids => [...new Set(ids.map(String))]);
   });
 
   afterEach(async () => {
@@ -79,6 +85,30 @@ describe('NewsService widget refresh tracking', () => {
 
     expect(users).toEqual(['user-1', 'user-2']);
     expect(db.query.mock.calls[0][1]).toEqual([['AAPL', 'MSFT']]);
+  });
+
+  test('only returns Pro users for silent news refresh pushes', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 'free-user' }, { user_id: 'pro-user' }] });
+    TierService.filterProUserIds.mockResolvedValueOnce(['pro-user']);
+
+    const users = await NewsService.getUserIdsTrackingSymbols(['AAPL']);
+
+    expect(TierService.filterProUserIds).toHaveBeenCalledWith(['free-user', 'pro-user']);
+    expect(users).toEqual(['pro-user']);
+  });
+
+  test('only fetches news for symbols tracked by Pro users', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [
+        { symbol: 'TSLA', user_id: 'free-user' },
+        { symbol: 'NVDA', user_id: 'pro-user' },
+        { symbol: 'AAPL', user_id: 'pro-user' },
+        { symbol: 'AAPL', user_id: 'free-user' }
+      ]
+    });
+    TierService.filterProUserIds.mockResolvedValueOnce(['pro-user']);
+
+    expect(await NewsService.getAllTrackedSymbols()).toEqual(['AAPL', 'NVDA']);
   });
 
   test('deduplicates non-blocking stale refresh requests', async () => {

@@ -12,6 +12,7 @@
 const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
+const TierService = require('./tierService');
 
 class DividendService {
   /**
@@ -332,8 +333,20 @@ class DividendService {
 
     try {
       // Get all symbols with open trades
-      const symbolsWithUsers = await this.getSymbolsWithOpenTrades();
-      console.log(`${logPrefix} Found ${symbolsWithUsers.length} symbols with open trades`);
+      const allSymbolsWithUsers = await this.getSymbolsWithOpenTrades();
+
+      // Dividend records are only surfaced in the Pro portfolio, so skip
+      // users who are not currently Pro (everyone counts when billing is off).
+      const proUserIds = new Set(await TierService.filterProUserIds(
+        allSymbolsWithUsers.flatMap(entry => entry.userIds || [])
+      ));
+      const symbolsWithUsers = allSymbolsWithUsers
+        .map(entry => ({
+          symbol: entry.symbol,
+          userIds: (entry.userIds || []).filter(id => proUserIds.has(String(id)))
+        }))
+        .filter(entry => entry.userIds.length > 0);
+      console.log(`${logPrefix} Found ${symbolsWithUsers.length} symbols with open trades held by Pro users`);
 
       // Process each symbol
       for (const { symbol, userIds } of symbolsWithUsers) {

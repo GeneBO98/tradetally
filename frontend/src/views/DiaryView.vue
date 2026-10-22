@@ -61,6 +61,10 @@
               >
                 <SparklesIcon class="w-4 h-4 mr-1" />
                 AI Analysis
+                <span
+                  v-if="showProLock"
+                  class="ml-1.5 px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                >Pro</span>
               </button>
             </div>
           </div>
@@ -517,7 +521,12 @@
 
         <!-- AI Analysis View -->
         <div v-else-if="currentView === 'analysis'">
-          <DiaryAnalysis />
+          <DiaryAnalysis v-if="isProUser" />
+          <ProUpgradePrompt
+            v-else-if="showProLock"
+            variant="card"
+            description="Let AI analyze your journal entries to surface recurring patterns, emotional triggers, and areas to improve."
+          />
         </div>
       </div>
     </div>
@@ -617,6 +626,8 @@ import { formatTradeDate } from '@/utils/date'
 import { debounce } from '@/utils/debounce'
 import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
 import DiaryAnalysis from '@/components/diary/DiaryAnalysis.vue'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import { useProAccess } from '@/composables/useProAccess'
 import GeneralNotes from '@/components/diary/GeneralNotes.vue'
 import TemplateManager from '@/components/diary/TemplateManager.vue'
 import LinkedTradesList from '@/components/diary/LinkedTradesList.vue'
@@ -639,6 +650,7 @@ import {
 } from '@heroicons/vue/24/outline'
 
 const authStore = useAuthStore()
+const { isProUser, showProLock } = useProAccess()
 const diaryStore = useDiaryStore()
 const uiPreferencesStore = useUiPreferencesStore()
 const router = useRouter()

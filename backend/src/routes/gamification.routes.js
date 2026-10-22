@@ -19,8 +19,8 @@ router.post('/achievements/check', gamificationController.checkAchievements);
 // Challenge routes
 router.get('/challenges', gamificationController.getUserChallenges);
 router.get('/challenges/active', gamificationController.getActiveChallenges);
-router.post('/challenges/:challengeId/join', gamificationController.joinChallenge);
-router.get('/challenges/:challengeId/leaderboard', gamificationController.getChallengeLeaderboard);
+router.post('/challenges/:challengeId/join', requiresTier('pro'), gamificationController.joinChallenge);
+router.get('/challenges/:challengeId/leaderboard', requiresTier('pro'), gamificationController.getChallengeLeaderboard);
 
 // Leaderboard routes
 router.get('/leaderboards', gamificationController.getAllLeaderboards);
@@ -34,7 +34,7 @@ router.put('/privacy', gamificationController.updatePrivacySettings);
 
 // Dashboard and comparison
 router.get('/dashboard', gamificationController.getDashboard);
-router.get('/peer-comparison', gamificationController.getPeerComparison);
+router.get('/peer-comparison', requiresTier('pro'), gamificationController.getPeerComparison);
 
 // Admin routes
 router.post('/challenges', requireAdmin, validate(schemas.gamificationChallengeCreate), gamificationController.createChallenge);

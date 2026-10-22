@@ -466,7 +466,17 @@
 
             <!-- AI Insight of the Day -->
             <template v-if="element.id === 'ai-insight'">
+              <div v-if="showProLock" class="card" data-testid="ai-insight-locked">
+                <div class="card-body">
+                  <h3 class="heading-card">AI Insight</h3>
+                  <ProUpgradePrompt
+                    variant="compact"
+                    description="Get a daily AI insight on your trading patterns with TradeTally Pro."
+                  />
+                </div>
+              </div>
               <AiInsightCard
+                v-else-if="isProUser"
                 :insights="aiInsights"
                 :loading="aiInsightLoading"
                 :error="aiInsightError"
@@ -1069,7 +1079,7 @@
             <!-- Upcoming Earnings Section (Pro Only) -->
             <template v-if="element.id === 'upcoming-earnings'">
               <UpcomingEarningsSection
-                v-if="openTradeSymbols.length > 0 && authStore.user?.tier === 'pro'"
+                v-if="openTradeSymbols.length > 0 && isProUser"
                 :symbols="openTradeSymbols"
               />
             </template>
@@ -1077,7 +1087,7 @@
             <!-- Trade News Section (Pro Only) -->
             <template v-if="element.id === 'trade-news'">
               <TradeNewsSection
-                v-if="openTradeSymbols.length > 0 && authStore.user?.tier === 'pro'"
+                v-if="openTradeSymbols.length > 0 && isProUser"
                 :symbols="openTradeSymbols"
               />
             </template>
@@ -1648,6 +1658,9 @@
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, onMounted, nextTick, watch, computed, onUnmounted, defineAsyncComponent } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useProAccess } from '@/composables/useProAccess'
+import { isProTradeFilterKey } from '@/utils/proTradeFilters'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import { useRouter } from 'vue-router'
 import { format } from 'date-fns'
 import { formatTradeDate, formatLocalDate } from '@/utils/date'
@@ -1711,6 +1724,7 @@ import { plan_bar, range_bar } from '@/utils/positionRangeBars'
 import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
+const { isProUser, showProLock } = useProAccess()
 const { formatTime: formatTimeTz } = useUserTimezone()
 const { formatCurrency, currencySymbol, currencyCode, formatSignedCurrency } = useCurrencyFormatter()
 const { selectedAccount, selectedAccountLabel } = useGlobalAccountFilter()
@@ -1994,6 +2008,8 @@ const activeAdvancedFilterCount = computed(() => {
 function appendAdvancedFilterParams(params) {
   for (const [k, v] of Object.entries(appliedFilters.value || {})) {
     if (ADVANCED_FILTER_IGNORE_KEYS.has(k)) continue
+    // Advanced-panel filters are Pro-only; the API ignores them for free users.
+    if (showProLock.value && isProTradeFilterKey(k)) continue
     if (!isActiveAdvancedFilterValue(v)) continue
     params.append(k, Array.isArray(v) ? v.join(',') : String(v))
   }
@@ -2110,6 +2126,12 @@ const aiInsightLoading = ref(false)
 const aiInsightError = ref(null)
 
 async function fetchAiInsight() {
+  // AI insights are a Pro feature; free users see an upgrade prompt instead.
+  if (!isProUser.value) {
+    aiInsights.value = []
+    aiInsightLoading.value = false
+    return
+  }
   aiInsightLoading.value = true
   aiInsightError.value = null
   try {
@@ -2211,7 +2233,7 @@ const newsRailSection = computed(
 const newsRailUserVisible = computed(() => newsRailSection.value?.visible !== false)
 const showNewsRail = computed(() => {
   if (openTradeSymbols.value.length === 0) return false
-  if (authStore.user?.tier !== 'pro') return false
+  if (!isProUser.value) return false
   // While customizing, keep the rail mounted so the toggle/header is visible.
   return newsRailUserVisible.value || isCustomizing.value
 })
@@ -3170,6 +3192,11 @@ function navigateToTradesByPnLType(type) {
 }
 
 // Watch for changes to timeRange and save immediately
+// Tier can resolve after mount (slow /auth/me); load the Pro AI insight then.
+watch(isProUser, (is_pro, was_pro) => {
+  if (is_pro && !was_pro) fetchAiInsight()
+})
+
 watch(() => filters.value.timeRange, (newRange) => {
   saveFiltersToStorage()
   // If switching to custom, restore saved dates if available

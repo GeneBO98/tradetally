@@ -264,30 +264,33 @@ const gamificationController = {
     try {
       const userId = req.user?.id;
       const participantFilter = await LeaderboardService.getParticipantFilter('u');
-      
+
+      // Leaderboard filters (strategy/volume/P&L) are Pro-only
+      // (leaderboard_filters). Free users keep the unfiltered top-10 view;
+      // their filter params are ignored, matching getFilteredRankings.
+      const canFilter = userId ? await TierService.isProUser(userId) : false;
+
       // Extract filter parameters from query string
       const filters = {};
-      
-      if (req.query.strategy) {
-        filters.strategy = req.query.strategy;
+
+      if (canFilter) {
+        if (req.query.strategy) {
+          filters.strategy = req.query.strategy;
+        }
+        if (req.query.minVolume) {
+          filters.minVolume = parseFloat(req.query.minVolume);
+        }
+        if (req.query.maxVolume) {
+          filters.maxVolume = parseFloat(req.query.maxVolume);
+        }
+        if (req.query.minPnl) {
+          filters.minPnl = parseFloat(req.query.minPnl);
+        }
+        if (req.query.maxPnl) {
+          filters.maxPnl = parseFloat(req.query.maxPnl);
+        }
       }
-      
-      if (req.query.minVolume) {
-        filters.minVolume = parseFloat(req.query.minVolume);
-      }
-      
-      if (req.query.maxVolume) {
-        filters.maxVolume = parseFloat(req.query.maxVolume);
-      }
-      
-      if (req.query.minPnl) {
-        filters.minPnl = parseFloat(req.query.minPnl);
-      }
-      
-      if (req.query.maxPnl) {
-        filters.maxPnl = parseFloat(req.query.maxPnl);
-      }
-      
+
       console.log('getAllLeaderboards with filters:', filters);
       
       // Get filtered user IDs if filters are provided

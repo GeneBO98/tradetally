@@ -112,15 +112,24 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
               <span>{{ showAIPanel ? 'Hide AI Assistant' : 'AI Assistant' }}</span>
+              <span
+                v-if="showProLock"
+                class="ml-2 px-1.5 py-0.5 text-xs font-semibold rounded bg-white/20"
+              >Pro</span>
             </button>
           </div>
         </div>
       </div>
 
       <!-- AI Conversation Panel -->
-      <div v-if="showAIPanel" class="card">
+      <div v-if="showAIPanel && isProUser" class="card">
         <AIConversationPanel />
       </div>
+      <ProUpgradePrompt
+        v-else-if="showAIPanel && showProLock"
+        variant="card"
+        description="Chat with the AI Trading Assistant about your performance, patterns, and areas to improve with TradeTally Pro."
+      />
 
       <!-- Customization Mode Message -->
       <div v-if="isCustomizing" class="card bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
@@ -240,6 +249,10 @@
 
             <!-- Sector Performance -->
             <template v-else-if="element.id === 'sector-performance'">
+              <ProLockedSection
+                title="Sector Performance"
+                description="See how your trading performs across market sectors and industries with Pro."
+              >
       <div class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
@@ -401,6 +414,7 @@
           </div>
         </div>
       </div>
+              </ProLockedSection>
             </template>
 
             <!-- Drawdown Chart -->
@@ -429,6 +443,10 @@
 
             <!-- Day of Week Performance -->
             <template v-else-if="element.id === 'day-of-week'">
+              <ProLockedSection
+                title="Performance by Day of Week"
+                description="Find your strongest and weakest trading days of the week with Pro."
+              >
       <div class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Day of Week</h3>
@@ -437,6 +455,7 @@
           </div>
         </div>
       </div>
+              </ProLockedSection>
             </template>
 
             <!-- Performance by Hold Time -->
@@ -568,25 +587,40 @@
 
             <!-- Strategy/Setup Performance -->
             <template v-else-if="element.id === 'strategy-performance'">
+              <ProLockedSection
+                title="Strategy / Setup Performance"
+                description="Compare P&L and win rate across your strategies and setups with Pro."
+              >
               <StrategyPerformanceTable
                 :stats="filteredStrategyStats"
                 :r-value-mode="rValueMode"
                 :calculation-method="calculationMethod"
               />
+              </ProLockedSection>
             </template>
 
             <!-- Hour of Day Performance -->
             <template v-else-if="element.id === 'hour-of-day-performance'">
+              <ProLockedSection
+                title="Performance by Hour of Day"
+                description="Discover which hours of the trading day work best for you with Pro."
+              >
               <HourOfDayTable
                 :stats="filteredHourOfDayStats"
                 :r-value-mode="rValueMode"
                 :calculation-method="calculationMethod"
               />
+              </ProLockedSection>
             </template>
 
             <!-- MAE / MFE Analysis -->
             <template v-else-if="element.id === 'mae-mfe-analysis'">
+              <ProLockedSection
+                title="MAE / MFE Analysis"
+                description="Measure maximum adverse and favorable excursion to see how well you manage entries and exits with Pro."
+              >
       <MaeMfeAnalysis :filters="filters" />
+              </ProLockedSection>
             </template>
 
           </div>
@@ -722,6 +756,9 @@ import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
 import MaeMfeAnalysis from '@/components/analytics/MaeMfeAnalysis.vue'
+import ProLockedSection from '@/components/common/ProLockedSection.vue'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import { useProAccess } from '@/composables/useProAccess'
 import OverviewStats from '@/components/analytics/OverviewStats.vue'
 import DetailedStats from '@/components/analytics/DetailedStats.vue'
 import TagPerformanceTable from '@/components/analytics/TagPerformanceTable.vue'
@@ -771,10 +808,10 @@ const { selectedAccount } = useGlobalAccountFilter()
 const showAdvanced = ref(false)
 const showAIPanel = ref(false)
 
-// Check if user is on free tier
-const isFreeTier = computed(() => {
-  return authStore.user?.tier !== 'pro'
-})
+// Pro gating. isFreeTier is false-safe: it stays true until the user is
+// loaded and confirmed Pro, so Pro-only data never renders early.
+const { isProUser, showProLock } = useProAccess()
+const isFreeTier = computed(() => !isProUser.value)
 
 // Dropdown visibility
 const showStrategyDropdown = ref(false)
@@ -1156,6 +1193,7 @@ function handleClickOutside(event) {
 
 // Fetch available sectors for filter dropdown
 async function fetchAvailableSectorsForFilter() {
+  if (!isProUser.value) return
   loadingSectorsFilter.value = true
   try {
     const response = await api.get('/analytics/sectors/available')
@@ -1602,6 +1640,8 @@ function createPerformanceByPositionSizeChart() {
 }
 
 function createDayOfWeekChart() {
+  // Day-of-week data is omitted from /analytics/charts for free users
+  if (!isProUser.value || !Array.isArray(dayOfWeekData.value)) return
   if (!dayOfWeekChart.value) {
     console.error('Day of week chart canvas not found')
     return
@@ -2010,7 +2050,7 @@ async function fetchChartData() {
     performanceByHoldTimeData.value = response.data.performanceByHoldTime
     performanceByHoldTimeRData.value = response.data.performanceByHoldTimeR || []
     performanceByHoldTimeCounts.value = response.data.performanceByHoldTimeCounts || []
-    dayOfWeekData.value = response.data.dayOfWeek
+    dayOfWeekData.value = response.data.dayOfWeek || []
     dailyVolumeData.value = response.data.dailyVolume
     
     // Update dynamic labels if provided
@@ -2181,6 +2221,8 @@ async function fetchPerformance() {
 }
 
 async function fetchSymbolStats() {
+  // /analytics/symbols is Pro-only (403 for free users)
+  if (!isProUser.value) return
   try {
     const params = buildFilterParams()
     console.log('[SYMBOLS] Fetching symbol stats with filters:', params)
@@ -2203,6 +2245,8 @@ async function fetchTagStats() {
 }
 
 async function fetchStrategyStats() {
+  // /analytics/strategies is Pro-only (403 for free users)
+  if (!isProUser.value) return
   try {
     const params = buildFilterParams()
     const response = await api.get('/analytics/strategies', { params })
@@ -2213,6 +2257,8 @@ async function fetchStrategyStats() {
 }
 
 async function fetchHourOfDayStats() {
+  // /analytics/hours is Pro-only (403 for free users)
+  if (!isProUser.value) return
   try {
     const params = buildFilterParams()
     const response = await api.get('/analytics/hours', { params })
@@ -2520,6 +2566,8 @@ async function clearFilters() {
 }
 
 async function getRecommendations() {
+  // Full AI recommendations are Pro-only
+  if (!isProUser.value) return
   try {
     console.log('[START] Starting AI recommendations request...')
     loadingRecommendations.value = true
@@ -2592,6 +2640,8 @@ async function getRecommendations() {
 }
 
 async function fetchSectorData() {
+  // /analytics/sectors* is Pro-only (403 for free users)
+  if (!isProUser.value) return
   try {
     loadingSectors.value = true
     const params = buildFilterParams()
@@ -2648,6 +2698,7 @@ function navigateToSectorTrades(sectorName) {
 }
 
 async function refreshSectorData() {
+  if (!isProUser.value) return
   try {
     loadingSectorRefresh.value = true
     const params = new URLSearchParams()
@@ -3013,6 +3064,17 @@ function navigateToTradesByDate(date) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   })
 }
+
+// If the user's tier resolves after mount (slow /auth/me), load the
+// Pro-only sections that were skipped on the first pass.
+watch(isProUser, async (is_pro, was_pro) => {
+  if (!is_pro || was_pro) return
+  fetchAvailableSectorsForFilter()
+  await Promise.all([fetchSymbolStats(), fetchStrategyStats(), fetchHourOfDayStats()])
+  fetchSectorData()
+  await nextTick()
+  createDayOfWeekChart()
+})
 
 // Watch for global account filter changes
 watch(selectedAccount, () => {

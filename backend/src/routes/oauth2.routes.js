@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticate, optionalAuth } = require('../middleware/auth');
 const { requireCsrf } = require('../middleware/csrf');
 const oauth2Controller = require('../controllers/oauth2.controller');
+const { requiresTier } = require('../middleware/tierAuth');
 
 // Public OAuth2 endpoints (standard OAuth2 spec)
 // These endpoints follow OAuth2 RFC 6749 specification
@@ -66,7 +67,7 @@ router.get('/api/clients', authenticate, oauth2Controller.listClients);
  * Requires: Authentication
  * Body: name, description, redirectUris, allowedScopes, logoUrl, websiteUrl, isTrusted
  */
-router.post('/api/clients', authenticate, oauth2Controller.registerClient);
+router.post('/api/clients', authenticate, requiresTier('pro'), oauth2Controller.registerClient);
 
 /**
  * DELETE /api/oauth/clients/:clientId

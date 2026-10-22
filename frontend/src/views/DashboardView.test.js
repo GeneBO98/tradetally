@@ -131,6 +131,7 @@ vi.mock('@/components/trades/TradeFilters.vue', () => ({
 
 import DashboardView from '@/views/DashboardView.vue'
 import { useTradesStore } from '@/stores/trades'
+import { useAuthStore } from '@/stores/auth'
 
 const FILTER_BUTTON_SELECTOR = 'button[aria-label="More filters"]'
 
@@ -406,5 +407,50 @@ describe('DashboardView loading and advanced filter wiring', () => {
     expect(wrapper.findAll('pre')).toHaveLength(0)
     expect(wrapper.findComponent({ name: 'draggable' }).element).toBe(dashboard_element)
     expect(wrapper.text()).toContain('PLTR')
+  })
+
+  describe('Pro gating', () => {
+    function getUrls(prefix) {
+      return apiMock.get.mock.calls
+        .map(([url]) => url)
+        .filter((url) => typeof url === 'string' && url.startsWith(prefix))
+    }
+
+    it('free users: no AI insight call, upgrade card shown, advanced filter params dropped', async () => {
+      useAuthStore().user = { id: 1, tier: 'free', billingEnabled: true, role: 'user' }
+      wrapper = await mountDashboard()
+
+      expect(getUrls('/analytics/recommendations')).toHaveLength(0)
+      expect(wrapper.find('[data-testid="ai-insight-locked"]').exists()).toBe(true)
+      expect(wrapper.find('[data-stub="AiInsightCard"]').exists()).toBe(false)
+
+      await openFiltersModal(wrapper)
+      const tradeFilters = wrapper.findComponent({ name: 'TradeFilters' })
+      tradeFilters.vm.$emit('filter', { tags: 'a', sectors: 'Technology', minPrice: 5 })
+      await flushPromises()
+
+      const last = getUrls('/trades/analytics').at(-1)
+      expect(last).toContain('tags=a')
+      expect(last).not.toContain('sectors=')
+      expect(last).not.toContain('minPrice=')
+      expect(getUrls('/analytics/recommendations')).toHaveLength(0)
+    })
+
+    it('Pro users: AI insight fetched and advanced filter params sent', async () => {
+      useAuthStore().user = { id: 1, tier: 'pro', billingEnabled: true, role: 'user' }
+      wrapper = await mountDashboard()
+
+      expect(getUrls('/analytics/recommendations').length).toBeGreaterThan(0)
+      expect(wrapper.find('[data-testid="ai-insight-locked"]').exists()).toBe(false)
+
+      await openFiltersModal(wrapper)
+      const tradeFilters = wrapper.findComponent({ name: 'TradeFilters' })
+      tradeFilters.vm.$emit('filter', { tags: 'a', sectors: 'Technology', minPrice: 5 })
+      await flushPromises()
+
+      const last = getUrls('/trades/analytics').at(-1)
+      expect(last).toContain('sectors=Technology')
+      expect(last).toContain('minPrice=5')
+    })
   })
 })

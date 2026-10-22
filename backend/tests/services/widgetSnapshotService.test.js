@@ -7,6 +7,7 @@ jest.mock('../../src/services/newsService', () => ({
   getCachedNews: jest.fn(),
   requestBackgroundRefresh: jest.fn()
 }));
+jest.mock('../../src/services/tierService', () => ({ isProUser: jest.fn() }));
 jest.mock('../../src/utils/finnhub', () => ({
   isConfigured: jest.fn(),
   getBatchQuotes: jest.fn()
@@ -23,6 +24,7 @@ const TradeQueries = require('../../src/services/tradeQueries');
 const Trade = require('../../src/models/Trade');
 const NewsService = require('../../src/services/newsService');
 const finnhub = require('../../src/utils/finnhub');
+const TierService = require('../../src/services/tierService');
 const contracts = require('../../../tests/fixtures/trading-calculation-contracts.json');
 const service = require('../../src/services/widgetSnapshotService');
 
@@ -32,6 +34,7 @@ describe('widgetSnapshotService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     finnhub.isConfigured.mockReturnValue(true);
+    TierService.isProUser.mockResolvedValue(true);
     TradeQueries.cacheKey.mockReturnValue('analytics:user_user-1:week');
     cache.get.mockReturnValue({ summary: { totalPnL: 425.5, winRate: 60, totalTrades: 5 } });
     AnalyticsCache.get.mockResolvedValue(null);
@@ -100,12 +103,32 @@ describe('widgetSnapshotService', () => {
         body: 'Your best setups are working.',
         tone: 'positive'
       },
+      is_pro: true,
       updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
     });
     expect(TradeQueries.getAnalytics).not.toHaveBeenCalled();
     expect(finnhub.getBatchQuotes).not.toHaveBeenCalled();
     expect(NewsService.getCachedNews).toHaveBeenCalledWith(['AAPL']);
     expect(NewsService.requestBackgroundRefresh).not.toHaveBeenCalled();
+  });
+
+  test('strips news and AI insight for free users and flags is_pro=false', async () => {
+    TierService.isProUser.mockResolvedValue(false);
+
+    const snapshot = await service.getSnapshot({ id: 'user-1', timezone: 'America/Chicago' });
+
+    expect(snapshot).toEqual(expect.objectContaining({
+      weekPnL: 425.5,
+      openPositionsCount: 1,
+      topNews: null,
+      recentNews: [],
+      newsFetchedAt: null,
+      topInsight: null,
+      is_pro: false
+    }));
+    expect(NewsService.getCachedNews).not.toHaveBeenCalled();
+    expect(NewsService.requestBackgroundRefresh).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalledWith(expect.stringContaining('analytics_cache'), expect.anything());
   });
 
   test('ignores an old cache row during regular hours and uses the dashboard quote source', async () => {

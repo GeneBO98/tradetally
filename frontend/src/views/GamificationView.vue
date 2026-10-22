@@ -130,7 +130,14 @@
         <!-- Tab Content -->
         <div class="content-wrapper py-8">
             <!-- Challenges Tab -->
-            <ChallengesPanel v-if="activeTab === 'challenges'" />
+            <template v-if="activeTab === 'challenges'">
+                <ChallengesPanel v-if="isProUser" />
+                <ProUpgradePrompt
+                    v-else-if="showProLock"
+                    variant="card"
+                    description="Join trading challenges and compete on challenge leaderboards with TradeTally Pro."
+                />
+            </template>
 
             <!-- Overview Tab -->
             <div v-if="activeTab === 'overview'">
@@ -589,9 +596,18 @@
                             </div>
                         </div>
 
-                        <!-- Filters Section -->
+                        <!-- Filters Section (Pro only) -->
                         <div
-                            v-if="showFilters"
+                            v-if="showFilters && showProLock"
+                            class="px-6 pt-4 border-b border-gray-200 dark:border-gray-700"
+                        >
+                            <ProUpgradePrompt
+                                variant="banner"
+                                description="Filter rankings by strategy, position size, and profit per trade to compare yourself with similar traders."
+                            />
+                        </div>
+                        <div
+                            v-if="showFilters && isProUser"
                             class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750"
                         >
                             <div v-if="loadingFilters" class="text-center py-4">
@@ -1067,6 +1083,8 @@ import api from "@/services/api";
 import MdiIcon from "@/components/MdiIcon.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import ChallengesPanel from "@/components/gamification/ChallengesPanel.vue";
+import ProUpgradePrompt from "@/components/ProUpgradePrompt.vue";
+import { useProAccess } from "@/composables/useProAccess";
 import { useNotification } from "@/composables/useNotification";
 import {
     usePriceAlertNotifications,
@@ -1097,6 +1115,7 @@ export default {
         MdiIcon,
         BaseSelect,
         ChallengesPanel,
+        ProUpgradePrompt,
     },
     setup() {
         const { showSuccess, showError, showWarning } = useNotification();
@@ -1106,6 +1125,7 @@ export default {
             celebrationLevelContext,
         } = usePriceAlertNotifications();
         const authStore = useAuthStore();
+        const { isProUser, showProLock } = useProAccess();
         const uiPreferencesStore = useUiPreferencesStore();
         const route = useRoute();
         const router = useRouter();
@@ -1341,7 +1361,9 @@ export default {
             }
         };
 
-        const loadLeaderboards = async (appliedFilters = {}) => {
+        const loadLeaderboards = async (requestedFilters = {}) => {
+            // Peer filters are Pro-only; the API ignores them for free users.
+            const appliedFilters = isProUser.value ? requestedFilters : {};
             try {
                 // Build query parameters from filters
                 const params = new URLSearchParams();
@@ -1423,6 +1445,7 @@ export default {
 
         // Load filter options from the API
         const loadFilterOptions = async () => {
+            if (!isProUser.value) return;
             try {
                 loadingFilters.value = true;
                 const response = await api.get(
@@ -1454,7 +1477,9 @@ export default {
         };
 
         // Load user rankings (with optional filters)
-        const loadUserRankings = async (appliedFilters = {}) => {
+        const loadUserRankings = async (requestedFilters = {}) => {
+            // Peer filters are Pro-only; the API ignores them for free users.
+            const appliedFilters = isProUser.value ? requestedFilters : {};
             try {
                 rankingsLoading.value = true;
 
@@ -2293,6 +2318,8 @@ export default {
             checkingAchievements,
             // Filter-related
             showFilters,
+            isProUser,
+            showProLock,
             loadingFilters,
             rankingsLoading,
             applyingFilters,

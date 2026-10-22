@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { useAnalytics } from '@/composables/useAnalytics'
+import { hasProAccess } from '@/composables/useProAccess'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -119,7 +120,8 @@ const router = createRouter({
       path: '/metrics/edge-report',
       name: 'edge-report',
       component: () => import('@/views/EdgeReportView.vue'),
-      meta: { requiresAuth: true }
+      // /api/edge-reports/* is Pro-only; free users go to the upgrade page.
+      meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
       path: '/metrics/allocations',
@@ -522,13 +524,13 @@ router.beforeEach(async (to, from, next) => {
     }
 
     const requiredTier = to.meta.requiresTier
-    const userTier = authStore.user?.tier || 'free'
 
-    // Check if user has required tier (pro is higher than free)
-    if (requiredTier === 'pro' && userTier !== 'pro') {
-      // Pro feature requested without a Pro tier; on a billing-enabled instance
-      // this is handled before reaching here, so fall back to the dashboard.
-      next({ name: 'dashboard' })
+    // Check if user has required tier (pro is higher than free). Admins and
+    // owners are granted Pro by the backend, so hasProAccess covers them.
+    if (requiredTier === 'pro' && !hasProAccess(authStore.user)) {
+      // Send free users to the upgrade page instead of silently bouncing them
+      // to the dashboard; the redirect param returns them after upgrading.
+      next({ path: '/pricing', query: { redirect: to.fullPath } })
     } else {
       next()
     }

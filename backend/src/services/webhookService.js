@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const fetch = require('node-fetch');
 const WebhookSubscription = require('../models/WebhookSubscription');
 const logger = require('../utils/logger');
+const TierService = require('./tierService');
 const { fetchWithValidatedRedirects, ensureValidatedOutboundUrl, OutboundUrlValidationError } = require('../utils/urlSecurity');
 
 const ALLOWED_EVENT_TYPES = Object.freeze([
@@ -396,6 +397,12 @@ class WebhookService {
     const subscriptions = await WebhookSubscription.listActiveByEventTypeForUser(event.type, userId);
     if (subscriptions.length === 0) {
       return { delivered: 0, failed: 0, skipped: 0 };
+    }
+
+    // Webhooks are Pro-only: a downgraded user's existing subscriptions stay
+    // stored but stop receiving deliveries until they are Pro again.
+    if (!(await TierService.isProUser(userId))) {
+      return { delivered: 0, failed: 0, skipped: subscriptions.length };
     }
 
     let delivered = 0;

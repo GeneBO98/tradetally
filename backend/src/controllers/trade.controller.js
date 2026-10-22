@@ -16,7 +16,7 @@ const { convertQuoteCurrency } = require('../utils/quoteCurrency');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
-const { parseTradeFilters, tradeFilterProfiles } = require('../utils/tradeFilters');
+const { parseTradeFilters, tradeFilterProfiles, restrictFiltersToTier } = require('../utils/tradeFilters');
 const upload = require('../middleware/upload');
 const { normalizeCsvBuffer, stripNullCharacters } = require('../utils/csv/encoding');
 const currencyConverter = require('../utils/currencyConverter');
@@ -760,8 +760,13 @@ const tradeController = {
     try {
       const { limit = 50, offset = 0 } = req.query;
 
+      // Round trips use their own SQL builder (Trade.getRoundTripTrades), so
+      // drop Pro-only advanced filters here rather than in TradeQueries.
       const filters = {
-        ...parseTradeFilters(req.query, tradeFilterProfiles.roundTrip),
+        ...(await restrictFiltersToTier(
+          req.user.id,
+          parseTradeFilters(req.query, tradeFilterProfiles.roundTrip)
+        )),
         limit: parseInt(limit),
         offset: parseInt(offset)
       };
@@ -3734,7 +3739,7 @@ const tradeController = {
 
       const { minHoldTime, maxHoldTime } = req.query;
 
-      const filters = {
+      let filters = {
         ...parseTradeFilters(req.query, tradeFilterProfiles.analytics),
         includeArchived: req.query.includeArchived === 'true' || req.query.includeArchived === '1'
       };
@@ -3753,6 +3758,9 @@ const tradeController = {
         }
       }
 
+      // Drop Pro-only filters before keying the cache so a free user's key
+      // matches the population TradeQueries actually computes.
+      filters = await restrictFiltersToTier(req.user.id, filters);
       const cacheKey = TradeQueries.cacheKey(req.user.id, filters);
 
       const cached = cache.get(cacheKey);

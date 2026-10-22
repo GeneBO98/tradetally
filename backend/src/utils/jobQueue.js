@@ -786,7 +786,16 @@ class JobQueue {
     const MAEEstimator = require('./maeEstimator');
     const AnalyticsCache = require('../services/analyticsCache');
     const { resolvePostExitWindow } = require('./postExitWindow');
+    const TierService = require('../services/tierService');
     const { userId, batchSize = 5, maxTrades = 50, importId = null, includePostExit = false } = data;
+
+    // MAE/MFE is a Pro feature and every recalc hits market-data APIs, so
+    // stop (without re-enqueueing) for users who are not currently Pro.
+    // isProUser resolves to true for everyone when billing is disabled.
+    if (!(await TierService.isProUser(userId))) {
+      logger.logImport(`MAE recalc skipped for user ${userId}: not a Pro user`);
+      return { message: 'MAE recalc skipped: user is not Pro', skipped: true };
+    }
 
     // Post-exit windows are only computed when the enqueue site asks for them
     // (import backfill scoped by importId). A user-wide post-exit sweep would

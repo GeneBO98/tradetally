@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const edgeReportController = require('../controllers/edgeReport.controller');
 const { authenticate } = require('../middleware/auth');
+const { requiresTier } = require('../middleware/tierAuth');
 const { createRateLimiter } = require('../utils/rateLimit');
 
 // On-demand generation hits analytics queries and (optionally) the user's AI
@@ -14,6 +15,9 @@ const generateLimiter = createRateLimiter({
 
 // Apply authentication to all routes
 router.use(authenticate);
+
+// Weekly Edge Reports are a Pro feature (list, latest, and generation)
+router.use(requiresTier('pro'));
 
 // List recent edge reports (latest first, max 12)
 router.get('/', edgeReportController.listReports);

@@ -10,6 +10,11 @@ jest.mock('../../src/utils/urlSecurity', () => ({
   OutboundUrlValidationError: class OutboundUrlValidationError extends Error {}
 }));
 
+jest.mock('../../src/services/tierService', () => ({
+  isProUser: jest.fn()
+}));
+
+const TierService = require('../../src/services/tierService');
 const WebhookSubscription = require('../../src/models/WebhookSubscription');
 const { webhookService } = require('../../src/services/webhookService');
 
@@ -17,6 +22,40 @@ describe('webhookService event routing', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     WebhookSubscription.listActiveByEventTypeForUser.mockResolvedValue([]);
+    TierService.isProUser.mockResolvedValue(true);
+  });
+
+  test('does not deliver to users who are no longer Pro', async () => {
+    WebhookSubscription.listActiveByEventTypeForUser.mockResolvedValue([{ id: 'wh-1', is_active: true }]);
+    TierService.isProUser.mockResolvedValue(false);
+    const deliverSpy = jest.spyOn(webhookService, 'deliverEventToWebhook');
+
+    const result = await webhookService.handleDomainEvent({
+      id: 'evt-4',
+      type: 'trade.created',
+      payload: { tradeId: 't-1' },
+      metadata: { userId: 'free-user' }
+    });
+
+    expect(TierService.isProUser).toHaveBeenCalledWith('free-user');
+    expect(deliverSpy).not.toHaveBeenCalled();
+    expect(result).toEqual({ delivered: 0, failed: 0, skipped: 1 });
+    deliverSpy.mockRestore();
+  });
+
+  test('delivers to Pro users', async () => {
+    WebhookSubscription.listActiveByEventTypeForUser.mockResolvedValue([{ id: 'wh-1', is_active: true }]);
+    const deliverSpy = jest.spyOn(webhookService, 'deliverEventToWebhook').mockResolvedValue({ status: 'delivered' });
+
+    const result = await webhookService.handleDomainEvent({
+      id: 'evt-5',
+      type: 'trade.created',
+      payload: { tradeId: 't-1' },
+      metadata: { userId: 'pro-user' }
+    });
+
+    expect(result).toEqual({ delivered: 1, failed: 0, skipped: 0 });
+    deliverSpy.mockRestore();
   });
 
   test('looks up subscriptions only for the user in the event metadata', async () => {

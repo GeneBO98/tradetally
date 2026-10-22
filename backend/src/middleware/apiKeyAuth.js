@@ -4,6 +4,7 @@ const { hasScope, resolveEffectiveScopes } = require('../utils/apiScopes');
 const { isV1Request, sendV1Error } = require('../utils/apiResponse');
 const { TOKEN_PURPOSES, verifyJwtToken, isTokenSessionValid, findActiveUserForAuth } = require('./auth');
 const { AUTH_COOKIE_NAME } = require('../utils/authCookies');
+const TierService = require('../services/tierService');
 
 function sendAuthError(req, res, status, code, message, extra = {}) {
   if (isV1Request(req)) {
@@ -44,6 +45,14 @@ async function resolveApiKeyIdentity(rawKey) {
     return { error: 'API_KEY_OWNER_INACTIVE' };
   }
 
+  // API access is a Pro feature (api_access). Keys are only creatable by Pro
+  // users, but a key must stop working once its owner downgrades. getUserTier
+  // resolves to 'pro' when billing is disabled (self-hosted).
+  const tier = await TierService.getUserTier(user.id);
+  if (tier !== 'pro') {
+    return { error: 'API_KEY_TIER_REQUIRED', currentTier: tier || 'free' };
+  }
+
   return {
     user,
     apiKey: {
@@ -63,8 +72,31 @@ const API_KEY_ERROR_MESSAGES = {
   INVALID_API_KEY: 'Invalid API key',
   API_KEY_INACTIVE: 'API key is inactive',
   API_KEY_EXPIRED: 'API key has expired',
-  API_KEY_OWNER_INACTIVE: 'API key owner account is inactive'
+  API_KEY_OWNER_INACTIVE: 'API key owner account is inactive',
+  API_KEY_TIER_REQUIRED: 'Pro tier required'
 };
+
+// Rejects an unresolved API key identity with the right status: tier failures
+// are 403 with the requiresTier('pro') body fields; everything else is 401.
+function sendApiKeyIdentityError(req, res, identity) {
+  if (identity.error === 'API_KEY_TIER_REQUIRED') {
+    const message = 'API access requires a Pro subscription';
+    if (isV1Request(req)) {
+      return sendV1Error(res, 403, 'PRO_TIER_REQUIRED', message, {
+        currentTier: identity.currentTier,
+        requiredTier: 'pro'
+      });
+    }
+    return res.status(403).json({
+      error: API_KEY_ERROR_MESSAGES.API_KEY_TIER_REQUIRED,
+      code: 'PRO_TIER_REQUIRED',
+      message,
+      currentTier: identity.currentTier,
+      requiredTier: 'pro'
+    });
+  }
+  return sendAuthError(req, res, 401, identity.error, API_KEY_ERROR_MESSAGES[identity.error]);
+}
 
 function attachApiKeyIdentity(req, identity) {
   req.user = identity.user;
@@ -90,7 +122,7 @@ const apiKeyAuth = async (req, res, next) => {
       if (identity.error === 'INVALID_API_KEY') {
         console.warn('Invalid API key attempted');
       }
-      return sendAuthError(req, res, 401, identity.error, API_KEY_ERROR_MESSAGES[identity.error]);
+      return sendApiKeyIdentityError(req, res, identity);
     }
 
     attachApiKeyIdentity(req, identity);

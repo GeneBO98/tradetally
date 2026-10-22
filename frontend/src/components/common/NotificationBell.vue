@@ -64,11 +64,15 @@
             <BellSlashIcon class="h-12 w-12 text-gray-400 mx-auto mb-3" />
             <p class="text-gray-500 dark:text-gray-400">No unread notifications</p>
             <router-link
-              to="/notifications"
-              class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 mt-2 inline-block"
+              :to="allNotificationsLink"
+              class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 mt-2 inline-flex items-center gap-1.5"
               @click="closeDropdown"
             >
               View all notifications
+              <span
+                v-if="showProLock"
+                class="px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+              >Pro</span>
             </router-link>
           </div>
 
@@ -155,11 +159,15 @@
         <!-- Footer -->
         <div v-if="notifications.length > 0" class="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
           <router-link
-            to="/notifications"
-            class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+            :to="allNotificationsLink"
+            class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 inline-flex items-center gap-1.5"
             @click="closeDropdown"
           >
             View all notifications
+            <span
+              v-if="showProLock"
+              class="px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+            >Pro</span>
           </router-link>
         </div>
       </div>
@@ -200,6 +208,16 @@ import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useNotificationCenter } from '@/composables/useNotificationCenter'
 import { useNotification } from '@/composables/useNotification'
 import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
+import { useProAccess } from '@/composables/useProAccess'
+
+// The full notifications page is Pro-only; send free users to the upgrade
+// page (returning to /notifications after upgrading) instead of a silent bounce.
+const { showProLock } = useProAccess()
+const allNotificationsLink = computed(() =>
+  showProLock.value
+    ? { path: '/pricing', query: { redirect: '/notifications' } }
+    : '/notifications'
+)
 
 const router = useRouter()
 const authStore = useAuthStore()

@@ -1,6 +1,6 @@
 jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
 jest.mock('../../src/services/notificationService', () => ({ sendSSENotification: jest.fn(), sendMobileNotification: jest.fn() }));
-jest.mock('../../src/services/tierService', () => ({ getUserTier: jest.fn() }));
+jest.mock('../../src/services/tierService', () => ({ filterProUserIds: jest.fn() }));
 
 const db = require('../../src/config/database');
 const NotificationService = require('../../src/services/notificationService');
@@ -16,7 +16,7 @@ describe('news article notifications', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     db.query.mockResolvedValue({ rows: [] });
-    TierService.getUserTier.mockResolvedValue('pro');
+    TierService.filterProUserIds.mockImplementation(async ids => ids);
   });
 
   test('ignores old, future, undated, and unidentifiable articles', async () => {
@@ -61,14 +61,14 @@ describe('news article notifications', () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ user_id: 'free-user' }, { user_id: 'pro-user' }] })
       .mockResolvedValueOnce({ rows: [] });
-    TierService.getUserTier.mockImplementation(async id => (id === 'pro-user' ? 'pro' : 'free'));
+    TierService.filterProUserIds.mockImplementation(async ids => ids.filter(id => id === 'pro-user'));
     await NewsNotificationService.publishForSymbol('AAPL', [article()]);
     expect(db.query.mock.calls[1][1][0]).toEqual(['pro-user']);
   });
 
   test('skips delivery entirely when no eligible user is Pro', async () => {
     db.query.mockResolvedValueOnce({ rows: [{ user_id: 'free-user' }] });
-    TierService.getUserTier.mockResolvedValue('free');
+    TierService.filterProUserIds.mockResolvedValue([]);
     expect(await NewsNotificationService.publishForSymbol('AAPL', [article()])).toBe(0);
     expect(db.query).toHaveBeenCalledTimes(1);
     expect(NotificationService.sendMobileNotification).not.toHaveBeenCalled();

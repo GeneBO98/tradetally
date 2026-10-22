@@ -4,6 +4,7 @@ const AnalyticsCache = require('./analyticsCache');
 const TradeQueries = require('./tradeQueries');
 const Trade = require('../models/Trade');
 const NewsService = require('./newsService');
+const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
 const { groupTradesIntoPositions } = require('../utils/openPositionGrouping');
 const { getDateInTimezone, getDayOfWeekInTimezone } = require('../utils/timezone');
@@ -340,13 +341,20 @@ async function loadTopInsight(userId) {
   };
 }
 
+const EMPTY_NEWS = Object.freeze({ topNews: null, recentNews: [], newsFetchedAt: null });
+
 async function getSnapshot(user, now = new Date()) {
+  // News and the AI insight are Pro content. Free users get the P&L and
+  // position metrics plus is_pro=false so the widget can render a locked
+  // state; news/insight lookups (and the background news refresh they can
+  // trigger) are skipped entirely. Self-hosted installs resolve to Pro.
+  const isPro = await TierService.isProUser(user.id);
   const [analytics, positionMetrics, topInsight] = await Promise.all([
     loadAnalytics(user),
     loadOpenPositionMetrics(user.id, now),
-    loadTopInsight(user.id)
+    isPro ? loadTopInsight(user.id) : null
   ]);
-  const news = await loadNewsSnapshot(positionMetrics.symbols);
+  const news = isPro ? await loadNewsSnapshot(positionMetrics.symbols) : EMPTY_NEWS;
   const summary = analytics?.summary || {};
 
   return {
@@ -361,6 +369,7 @@ async function getSnapshot(user, now = new Date()) {
     recentNews: news.recentNews,
     newsFetchedAt: news.newsFetchedAt,
     topInsight,
+    is_pro: isPro,
     updatedAt: now.toISOString()
   };
 }

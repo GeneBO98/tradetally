@@ -14,6 +14,7 @@ const TradeQueries = require('./tradeQueries');
 const AIService = require('../utils/aiService');
 const EmailService = require('./emailService');
 const User = require('../models/User');
+const TierService = require('./tierService');
 
 const MIN_GROUP_TRADES = 2;
 const LOSS_STREAK_THRESHOLD = 3;
@@ -398,6 +399,10 @@ Write the coaching summary now.`;
   static async generateNarrative(userId, report) {
     const fallback = this.buildFallbackNarrative(report);
     try {
+      // The AI narrative is a Pro feature (and may use the admin AI key).
+      if (!(await TierService.isProUser(userId))) {
+        return fallback;
+      }
       const settings = await AIService.getUserSettings(userId);
       if (!AIService.isProviderConfigured(settings)) {
         return fallback;
@@ -471,6 +476,9 @@ Write the coaching summary now.`;
   // configured, and a send failure never fails report generation.
   static async maybeSendEmail(userId, report, narrative) {
     try {
+      if (!(await TierService.isProUser(userId))) {
+        return false;
+      }
       const settings = await User.getSettings(userId);
       if (!settings || settings.edge_report_enabled !== true) {
         return false;
@@ -503,7 +511,9 @@ Write the coaching summary now.`;
         WHERE s.edge_report_enabled = true
         ORDER BY u.id
       `);
-      users = result.rows;
+      // Edge reports are a Pro feature: skip opted-in users who are no longer Pro.
+      const proIds = new Set(await TierService.filterProUserIds(result.rows.map(row => row.id)));
+      users = result.rows.filter(row => proIds.has(String(row.id)));
     } catch (error) {
       console.error('[EDGE-REPORT] Failed to load opted-in users:', error.message);
       throw error;

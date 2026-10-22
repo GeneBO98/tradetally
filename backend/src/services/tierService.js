@@ -160,6 +160,37 @@ class TierService {
     return { tier, billingEnabled: true };
   }
 
+  // Batch form of getUserTier for background jobs: returns the subset of
+  // userIds that are currently Pro, in one query. Mirrors _fetchUserTier:
+  // admins/owners, then an unexpired override (which wins even when 'free'),
+  // then an active subscription, then users.tier.
+  static async filterProUserIds(userIds) {
+    const unique = [...new Set((userIds || []).filter(Boolean).map(String))];
+    if (unique.length === 0) return [];
+    if (!(await this.isBillingEnabled())) return unique;
+
+    const result = await db.query(`
+      SELECT u.id
+      FROM users u
+      LEFT JOIN tier_overrides t
+        ON t.user_id = u.id AND (t.expires_at IS NULL OR t.expires_at > NOW())
+      WHERE u.id = ANY($1::uuid[])
+        AND (
+          u.role IN ('admin', 'owner')
+          OR t.tier = 'pro'
+          OR (t.id IS NULL AND (
+            u.tier = 'pro'
+            OR EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id = u.id AND s.status = 'active')
+          ))
+        )
+    `, [unique]);
+    return result.rows.map(row => String(row.id));
+  }
+
+  static async isProUser(userId, hostHeader = null) {
+    return (await this.getUserTier(userId, hostHeader)) === 'pro';
+  }
+
   // Check if user has access to a specific feature
   static async hasFeatureAccess(userId, featureKey, hostHeader = null) {
     // If billing is disabled (self-hosted), grant all features

@@ -15,6 +15,7 @@ const { getUserTimezone } = require('../utils/timezone');
 const { buildTradeDateRangeClause } = require('../utils/tradeDateFilter');
 const { buildExecutionDailyPnlRows } = require('../utils/executionPnlByDate');
 const { fxUsd } = require('../utils/tradeFx');
+const { restrictFiltersToTier } = require('../utils/tradeFilters');
 
 async function timedDbQuery(label, query, values = []) {
   const startedAt = Date.now();
@@ -182,6 +183,12 @@ class TradeQueries {
   // Users remove them via the "Remove sample data" action or by deleting them
   // individually like any other trade.
   static async _buildWhereClause(userId, filters = {}) {
+    // Advanced filters (days of week, hold time, P&L/price ranges, quality,
+    // news, sectors, ...) are Pro-only. Every request path - trade list,
+    // counts, exports, analytics, Trade Management, v1 - builds its WHERE
+    // clause here, so this is the single enforcement point. No-op (and no
+    // tier lookup) when no advanced filter is set.
+    filters = await restrictFiltersToTier(userId, filters || {});
     const values = [userId];
     let paramCount = 2;
     let whereClause = `WHERE t.user_id = $1`;

@@ -207,4 +207,56 @@ const tradeFilterProfiles = {
   }
 };
 
-module.exports = { parseTradeFilters, tradeFilterProfiles };
+// Filters the Trades page groups under "Advanced Filters"
+// (frontend TradeFilters.vue activeAdvancedCount) are Pro-only
+// (advanced_filtering). Basic filters stay available to everyone: symbol,
+// side, status, date ranges, accounts, broker(s), strategies/setups, tags,
+// instrument types, importId, and pnlType (winners/losers, used by the free
+// dashboard's click-throughs). `sector` (single) is the legacy alias of
+// the advanced `sectors` multi-select.
+const ADVANCED_FILTER_KEYS = [
+  'sector', 'sectors', 'hasNews',
+  'minPrice', 'maxPrice', 'minQuantity', 'maxQuantity',
+  'minPnl', 'maxPnl', 'holdTime',
+  'daysOfWeek', 'market_sessions', 'optionTypes', 'qualityGrades'
+];
+
+const isActiveFilterValue = (value) => {
+  if (value === undefined || value === null || value === '') return false;
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+};
+
+function hasAdvancedFilters(filters = {}) {
+  return ADVANCED_FILTER_KEYS.some((key) => isActiveFilterValue(filters[key]));
+}
+
+// Returns a copy of `filters` without the advanced keys.
+function stripAdvancedFilters(filters = {}) {
+  const basic = { ...filters };
+  for (const key of ADVANCED_FILTER_KEYS) delete basic[key];
+  return basic;
+}
+
+/**
+ * Drops advanced filters for users without Pro. Returns the original object
+ * untouched when no advanced filter is active (no tier lookup), or when the
+ * user is Pro (self-hosted installs always resolve to Pro).
+ */
+async function restrictFiltersToTier(userId, filters = {}) {
+  if (!filters || !hasAdvancedFilters(filters)) return filters;
+  // Lazy require: tierService pulls in models that also load trade helpers.
+  const TierService = require('../services/tierService');
+  if (await TierService.isProUser(userId)) return filters;
+  console.log(`[INFO] Dropping advanced trade filters for non-Pro user ${userId}`);
+  return stripAdvancedFilters(filters);
+}
+
+module.exports = {
+  parseTradeFilters,
+  tradeFilterProfiles,
+  ADVANCED_FILTER_KEYS,
+  hasAdvancedFilters,
+  stripAdvancedFilters,
+  restrictFiltersToTier
+};

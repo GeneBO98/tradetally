@@ -31,6 +31,12 @@ jest.mock('../../src/utils/timezone', () => ({
 
 jest.mock('../../src/services/achievementService', () => ({}));
 
+// Advanced filters are Pro-only (TradeQueries._buildWhereClause drops them for
+// free users). These tests pin SQL for the full filter set, so run as Pro.
+jest.mock('../../src/services/tierService', () => ({
+  isProUser: jest.fn().mockResolvedValue(true)
+}));
+
 jest.mock('../../src/models/User', () => ({
   getSettings: jest.fn().mockResolvedValue({ statistics_calculation: 'average' })
 }));

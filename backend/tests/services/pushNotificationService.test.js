@@ -27,6 +27,10 @@ jest.mock('../../src/services/notificationPreferenceService', () => ({
   isNotificationEnabled: jest.fn().mockResolvedValue(true)
 }));
 
+jest.mock('../../src/services/tierService', () => ({
+  isProUser: jest.fn().mockResolvedValue(true)
+}));
+
 process.env.ENABLE_PUSH_NOTIFICATIONS = 'true';
 process.env.APNS_KEY_PATH = '/tmp/test-apns-key.p8';
 process.env.APNS_KEY_ID = 'KEY1234567';
@@ -42,6 +46,7 @@ jest.spyOn(fs, 'existsSync').mockImplementation(filePath => (
 const db = require('../../src/config/database');
 const pushNotificationService = require('../../src/services/pushNotificationService');
 const NotificationPreferenceService = require('../../src/services/notificationPreferenceService');
+const TierService = require('../../src/services/tierService');
 
 describe('pushNotificationService', () => {
   const developmentProvider = () => mockProviders.find(entry => entry.config.production === false).provider;
@@ -50,6 +55,7 @@ describe('pushNotificationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     NotificationPreferenceService.isNotificationEnabled.mockResolvedValue(true);
+    TierService.isProUser.mockResolvedValue(true);
   });
 
   afterAll(() => {
@@ -205,5 +211,36 @@ describe('pushNotificationService', () => {
       .toEqual({ success: false, reason: 'unsupported_type' });
     expect(db.query).not.toHaveBeenCalled();
     expect(productionProvider().send).not.toHaveBeenCalled();
+  });
+
+  test('blocks Pro-content inbox pushes for free users but keeps free types', async () => {
+    TierService.isProUser.mockResolvedValue(false);
+    const sendSpy = jest.spyOn(pushNotificationService, 'sendPushNotification').mockResolvedValue({ success: true });
+
+    for (const type of ['news_alert', 'earnings_announcement', 'behavioral_alert', 'trade_reminder', 'portfolio_alert', 'web_mention_alert']) {
+      expect(await pushNotificationService.sendInboxNotification('free-user', type, { message: 'x' }, 'notice'))
+        .toEqual({ success: false, reason: 'pro_required' });
+    }
+    expect(sendSpy).not.toHaveBeenCalled();
+
+    for (const type of ['achievement_earned', 'level_up', 'challenge_completed', 'leaderboard_ranking', 'broker_reauth_required']) {
+      await pushNotificationService.sendInboxNotification('free-user', type, { rank: 1, leaderboard: 'P&L' }, 'notice');
+    }
+    expect(sendSpy).toHaveBeenCalledTimes(5);
+    sendSpy.mockRestore();
+  });
+
+  test('blocks price alert pushes for free users', async () => {
+    TierService.isProUser.mockResolvedValue(false);
+    const sendSpy = jest.spyOn(pushNotificationService, 'sendPushNotification').mockResolvedValue({ success: true });
+
+    expect(await pushNotificationService.sendPriceAlert('free-user', { symbol: 'AAPL', body: 'AAPL above 200' }))
+      .toEqual({ success: false, reason: 'pro_required' });
+    expect(sendSpy).not.toHaveBeenCalled();
+
+    TierService.isProUser.mockResolvedValue(true);
+    await pushNotificationService.sendPriceAlert('pro-user', { symbol: 'AAPL', body: 'AAPL above 200' });
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    sendSpy.mockRestore();
   });
 });

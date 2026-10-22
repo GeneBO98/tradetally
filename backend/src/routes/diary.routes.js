@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, optionalAuth } = require('../middleware/auth');
+const { requiresTier } = require('../middleware/tierAuth');
 const imageUpload = require('../middleware/upload');
 const {
   getEntries,
@@ -49,8 +50,9 @@ router.get('/tags', getTags);
 router.get('/stats', getStats);
 
 // AI Analysis of diary entries
-router.get('/analyze', analyzeEntries);
-router.get('/analyze/:requestId', getAnalysisStatus);
+// AI diary analysis is Pro-only
+router.get('/analyze', requiresTier('pro'), analyzeEntries);
+router.get('/analyze/:requestId', requiresTier('pro'), getAnalysisStatus);
 
 // Get diary entry by date
 router.get('/date/:date', getEntryByDate);

@@ -62,6 +62,10 @@
             </template>
             <template v-else>
               AI conversations require a Pro subscription.
+              <router-link
+                :to="`/pricing?redirect=${encodeURIComponent($route?.fullPath || '/')}`"
+                class="font-medium underline text-primary-700 dark:text-primary-300"
+              >Upgrade to Pro</router-link>
             </template>
           </p>
         </div>

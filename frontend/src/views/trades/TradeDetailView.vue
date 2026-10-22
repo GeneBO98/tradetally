@@ -42,6 +42,10 @@
           >
             <SparklesIcon class="h-4 w-4" />
             <span>{{ showAIPanel ? 'Hide Analysis' : 'Analyze Trade' }}</span>
+            <span
+              v-if="showProLock"
+              class="px-1.5 py-0.5 text-xs font-semibold rounded bg-white/20"
+            >Pro</span>
           </button>
           <button
             v-if="trade.entry_price !== null && trade.entry_price !== undefined"
@@ -229,7 +233,12 @@
       </div>
 
       <!-- AI Single Trade Analysis -->
-      <div v-if="showAIPanel" class="card">
+      <ProUpgradePrompt
+        v-if="showAIPanel && showProLock"
+        variant="card"
+        description="Get an AI review of this trade's executions, setup, news, and charts with TradeTally Pro."
+      />
+      <div v-else-if="showAIPanel && isProUser" class="card">
         <AIConversationPanel
           :trade-id="trade.id"
           title="AI Trade Analysis"
@@ -1583,8 +1592,17 @@
             </div>
           </div>
 
-          <!-- News Section -->
-          <div v-if="trade.has_news && trade.news_events && trade.news_events.length > 0" class="card">
+          <!-- News Section (Pro only) -->
+          <div v-if="showProLock && trade.has_news && trade.news_events && trade.news_events.length > 0" class="card">
+            <div class="card-body">
+              <h3 class="heading-card">Breaking News</h3>
+              <ProUpgradePrompt
+                variant="compact"
+                description="See the news and sentiment around this trade with TradeTally Pro."
+              />
+            </div>
+          </div>
+          <div v-else-if="isProUser && trade.has_news && trade.news_events && trade.news_events.length > 0" class="card">
             <div class="card-body">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="heading-card">Breaking News</h3>
@@ -1681,6 +1699,7 @@ import TradeChartVisualization from '@/components/trades/TradeChartVisualization
 import TradeImages from '@/components/trades/TradeImages.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import { useProAccess } from '@/composables/useProAccess'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAIStore } from '@/stores/ai'
 import { getTradeDateOnlyParts } from '@/utils/date'
@@ -1876,10 +1895,8 @@ const manualGradingReviewForm = reactive({
   reviewNotes: ''
 })
 
-const isPlaybookFeatureAvailable = computed(() => {
-  if (!authStore.user) return false
-  return authStore.user.billingEnabled === false || authStore.user.tier === 'pro' || authStore.user.role === 'admin'
-})
+const { isProUser, showProLock } = useProAccess()
+const isPlaybookFeatureAvailable = isProUser
 
 const selectedAdherencePlaybook = computed(() => {
   return adherencePlaybooks.value.find(playbook => playbook.id === selectedAdherencePlaybookId.value) || null

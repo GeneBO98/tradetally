@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const analyticsController = require('../controllers/analytics.controller');
 const { authenticate } = require('../middleware/auth');
+const { requiresTier } = require('../middleware/tierAuth');
+
+// Pro-only analytics (billing-disabled/self-hosted installs pass through).
+const requirePro = requiresTier('pro');
 
 /**
  * @swagger
@@ -40,8 +44,8 @@ router.get('/overview', authenticate, analyticsController.getOverview);
  *       200:
  *         description: MAE/MFE analysis data
  */
-router.get('/maemfe', authenticate, analyticsController.getMAEMFE);
-router.get('/maemfe/trades', authenticate, analyticsController.getMAEMFETrades);
+router.get('/maemfe', authenticate, requirePro, analyticsController.getMAEMFE);
+router.get('/maemfe/trades', authenticate, requirePro, analyticsController.getMAEMFETrades);
 
 /**
  * @swagger
@@ -69,7 +73,7 @@ router.get('/performance', authenticate, analyticsController.getPerformance);
  *       200:
  *         description: Symbol performance statistics
  */
-router.get('/symbols', authenticate, analyticsController.getSymbolStats);
+router.get('/symbols', authenticate, requirePro, analyticsController.getSymbolStats);
 
 /**
  * @swagger
@@ -97,7 +101,7 @@ router.get('/tags', authenticate, analyticsController.getTagStats);
  *       200:
  *         description: Strategy performance statistics
  */
-router.get('/strategies', authenticate, analyticsController.getStrategyStats);
+router.get('/strategies', authenticate, requirePro, analyticsController.getStrategyStats);
 
 /**
  * @swagger
@@ -111,7 +115,7 @@ router.get('/strategies', authenticate, analyticsController.getStrategyStats);
  *       200:
  *         description: Hour of day performance statistics
  */
-router.get('/hours', authenticate, analyticsController.getHourOfDayStats);
+router.get('/hours', authenticate, requirePro, analyticsController.getHourOfDayStats);
 
 router.get('/calendar', authenticate, analyticsController.getCalendarData);
 router.get('/calendar/day', authenticate, analyticsController.getCalendarDayDetail);
@@ -119,11 +123,11 @@ router.get('/export', authenticate, analyticsController.exportData);
 router.get('/charts', authenticate, analyticsController.getChartData);
 router.get('/drawdown', authenticate, analyticsController.getDrawdownAnalysis);
 router.get('/recommendations', authenticate, analyticsController.getRecommendations);
-router.get('/sectors', authenticate, analyticsController.getSectorPerformance);
-router.get('/sectors/available', authenticate, analyticsController.getAvailableSectors);
+router.get('/sectors', authenticate, requirePro, analyticsController.getSectorPerformance);
+router.get('/sectors/available', authenticate, requirePro, analyticsController.getAvailableSectors);
 router.get('/brokers/available', authenticate, analyticsController.getAvailableBrokers);
-router.get('/sectors/refresh', authenticate, analyticsController.refreshSectorPerformance);
-router.post('/categorize-symbols', authenticate, analyticsController.categorizeSymbols);
-router.get('/symbol-stats', authenticate, analyticsController.getSymbolCategoryStats);
+router.get('/sectors/refresh', authenticate, requirePro, analyticsController.refreshSectorPerformance);
+router.post('/categorize-symbols', authenticate, requirePro, analyticsController.categorizeSymbols);
+router.get('/symbol-stats', authenticate, requirePro, analyticsController.getSymbolCategoryStats);
 
 module.exports = router;

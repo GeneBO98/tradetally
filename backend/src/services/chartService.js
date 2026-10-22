@@ -256,13 +256,9 @@ class ChartService {
   // When billing is disabled (self-hosted): configured market data provider preferred, Alpha Vantage fallback, all users
   static async getTradeChartData(userId, symbol, entryDate, exitDate = null, hostHeader = null, resolution = '1', trade = null) {
     try {
-      // Crypto symbols always use CoinGecko regardless of tier/billing
-      if (finnhub.isCryptoSymbol(symbol)) {
-        console.log(`[CHART] ${symbol} is crypto, using CoinGecko`);
-        return await ChartService.getCryptoTradeChartData(symbol, entryDate, exitDate);
-      }
-
-      // Check user tier and billing status
+      // Check user tier and billing status. This runs before every data
+      // source (crypto included) so the Pro gate cannot be bypassed by
+      // instrument type.
       const userTier = await TierService.getUserTier(userId, hostHeader);
       const isProUser = userTier === 'pro';
       const billingEnabled = await TierService.isBillingEnabled(hostHeader);
@@ -276,6 +272,12 @@ class ChartService {
         const error = new Error('Trade charts are a Pro feature. Upgrade to Pro for high-precision candlestick charts.');
         error.statusCode = 403;
         throw error;
+      }
+
+      // Crypto symbols use CoinGecko on every install (after the tier gate)
+      if (finnhub.isCryptoSymbol(symbol)) {
+        console.log(`[CHART] ${symbol} is crypto, using CoinGecko`);
+        return await ChartService.getCryptoTradeChartData(symbol, entryDate, exitDate);
       }
 
       // Futures select by provider capability; configured sources are tried

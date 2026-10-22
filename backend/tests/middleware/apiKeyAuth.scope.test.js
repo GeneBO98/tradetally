@@ -6,12 +6,17 @@ jest.mock('../../src/utils/logger', () => ({
   logError: jest.fn()
 }));
 
+jest.mock('../../src/services/tierService', () => ({
+  getUserTier: jest.fn()
+}));
+
 jest.mock('../../src/middleware/auth', () => ({
   ...jest.requireActual('../../src/middleware/auth'),
   findActiveUserForAuth: jest.fn()
 }));
 
 const ApiKey = require('../../src/models/ApiKey');
+const TierService = require('../../src/services/tierService');
 const { findActiveUserForAuth } = require('../../src/middleware/auth');
 const { apiKeyAuth, requireApiScope } = require('../../src/middleware/apiKeyAuth');
 
@@ -34,6 +39,7 @@ function createRes(req) {
 describe('apiKey scope middleware', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    TierService.getUserTier.mockResolvedValue('pro');
     findActiveUserForAuth.mockResolvedValue({
       id: 'u1',
       username: 'demo',
@@ -79,6 +85,51 @@ describe('apiKey scope middleware', () => {
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json.mock.calls[0][0].error.code).toBe('API_KEY_OWNER_INACTIVE');
     expect(req.user).toBeUndefined();
+  });
+
+  test('rejects keys whose owner is no longer Pro (downgraded)', async () => {
+    ApiKey.verifyKey.mockResolvedValue({
+      id: 'k1', name: 'k', user_id: 'u1', permissions: ['read'], scopes: [],
+      is_active: true, expires_at: null
+    });
+    TierService.getUserTier.mockResolvedValue('free');
+
+    const req = createReq({ 'x-api-key': 'tt_live_read_key' });
+    const res = createRes(req);
+    const next = jest.fn();
+
+    await apiKeyAuth(req, res, next);
+
+    expect(TierService.getUserTier).toHaveBeenCalledWith('u1');
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0].error).toMatchObject({
+      code: 'PRO_TIER_REQUIRED',
+      details: { currentTier: 'free', requiredTier: 'pro' }
+    });
+    expect(req.user).toBeUndefined();
+  });
+
+  test('non-v1 requests get the requiresTier 403 body when the owner is not Pro', async () => {
+    ApiKey.verifyKey.mockResolvedValue({
+      id: 'k1', name: 'k', user_id: 'u1', permissions: ['read'], scopes: [],
+      is_active: true, expires_at: null
+    });
+    TierService.getUserTier.mockResolvedValue('free');
+
+    const req = { ...createReq({ 'x-api-key': 'tt_live_read_key' }), originalUrl: '/api/trades' };
+    const res = createRes(req);
+    const next = jest.fn();
+
+    await apiKeyAuth(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      error: 'Pro tier required',
+      currentTier: 'free',
+      requiredTier: 'pro'
+    }));
+    expect(next).not.toHaveBeenCalled();
   });
 
   test('legacy read permission maps to read scopes', async () => {

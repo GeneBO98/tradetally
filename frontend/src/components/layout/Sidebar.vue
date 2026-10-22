@@ -505,7 +505,7 @@ const navItems = computed(() => {
       items: [
         { name: 'Performance', to: '/metrics', route: 'metrics' },
         { name: 'Monthly', to: '/metrics/monthly', route: 'monthly-performance' },
-        { name: 'Edge Report', to: '/metrics/edge-report', route: 'edge-report' },
+        { name: 'Edge Report', to: '/metrics/edge-report', route: 'edge-report', badge: 'pro' },
         { name: 'Partial Exits', to: '/metrics/partial-exits', route: 'partial-exit-analytics', badge: 'pro' },
         { name: 'Behavioral', to: '/metrics/behavioral', route: 'behavioral-analytics', badge: 'pro' },
         { name: 'Health', to: '/metrics/health', route: 'health-analytics', badge: 'pro' }

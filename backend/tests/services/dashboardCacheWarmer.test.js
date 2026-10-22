@@ -21,6 +21,9 @@ jest.mock('../../src/controllers/analytics.controller', () => ({
   getRecommendationSummary: jest.fn()
 }));
 
+jest.mock('../../src/services/tierService', () => ({
+  filterProUserIds: jest.fn(async ids => ids.map(String))
+}));
 jest.mock('../../src/services/pushNotificationService', () => ({
   sendBackgroundRefresh: jest.fn()
 }));

@@ -506,6 +506,32 @@ const CSV_EXPORT_COLUMNS = [
   'position_group_id'
 ].join(', ');
 
+// Resolves whether the requesting user is Pro. Self-hosted installs (billing
+// disabled) always resolve to Pro inside TierService.getUserTier.
+async function isProUser(req) {
+  const TierService = require('../services/tierService');
+  return TierService.isProUser(req.user.id);
+}
+
+// Advanced overview metrics (SQN, Kelly %, K-Ratio, MAE/MFE) are Pro-only. Free users
+// still receive the rest of the overview so the free dashboard keeps working.
+// Returns a copy so cached/in-flight payloads shared with Pro requests are
+// never mutated.
+const PRO_OVERVIEW_METRICS = ['sqn', 'kelly_percentage', 'k_ratio', 'avg_mae', 'avg_mfe'];
+function stripProOverviewMetrics(payload) {
+  if (!payload || !payload.overview) return payload;
+  const overview = { ...payload.overview };
+  for (const key of PRO_OVERVIEW_METRICS) overview[key] = null;
+  return { ...payload, overview };
+}
+
+// Day-of-week performance (time_analysis) is Pro-only; free users get an
+// empty series so chart consumers render an empty/locked state.
+function stripProChartData(data) {
+  if (!data || typeof data !== 'object') return data;
+  return { ...data, dayOfWeek: [] };
+}
+
 const analyticsController = {
   async getOverview(req, res, next) {
     try {
@@ -551,13 +577,17 @@ const analyticsController = {
       // Tolerance config is part of the key so changing it yields fresh results.
       const normalizedFiltersForCache = convertQueryToTradeFilters(req.query);
       const filterHashKey = createFilterHash(normalizedFiltersForCache);
-      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}_be${toleranceCacheKey(breakevenConfig)}_grp${groupByPosition ? 'pos' : 'leg'}`;
+      // Tier is part of the key: advanced trade filters are dropped for free
+      // users (TradeQueries._buildWhereClause), so the same query string can
+      // describe different trade populations before and after an upgrade.
+      const isPro = await isProUser(req);
+      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}_be${toleranceCacheKey(breakevenConfig)}_grp${groupByPosition ? 'pos' : 'leg'}_t${isPro ? 'pro' : 'free'}`;
 
       // Check cache first for faster response
       const cachedData = cache.get(cacheKey);
       if (cachedData) {
         console.log(`[CACHE HIT] Analytics overview returned from cache for user ${req.user.id}`);
-        return res.json(await convertForDisplay(req, cachedData));
+        return res.json(await convertForDisplay(req, isPro ? cachedData : stripProOverviewMetrics(cachedData)));
       }
       console.log(`[CACHE MISS] Computing analytics overview for user ${req.user.id}`);
 
@@ -1043,7 +1073,7 @@ const analyticsController = {
         return { overview };
       });
 
-      res.json(await convertForDisplay(req, payload));
+      res.json(await convertForDisplay(req, isPro ? payload : stripProOverviewMetrics(payload)));
     } catch (error) {
       console.error('Analytics overview error:', error);
       next(error);
@@ -1954,11 +1984,12 @@ const analyticsController = {
       // Include filter hash in cache key to handle different filter combinations
       const normalizedForCache = convertQueryToTradeFilters(req.query);
       const filterHashKey = createFilterHash(normalizedForCache);
-      const cacheKey = `analytics_chart_data_${req.user.id}_${filterHashKey}`;
+      const isPro = await isProUser(req);
+      const cacheKey = `analytics_chart_data_${req.user.id}_${filterHashKey}_t${isPro ? 'pro' : 'free'}`;
       const cachedData = cache.get(cacheKey);
 
       if (cachedData) {
-        return res.json(await convertForDisplay(req, cachedData, {
+        return res.json(await convertForDisplay(req, isPro ? cachedData : stripProChartData(cachedData), {
           moneyArrayKeys: CHART_MONEY_ARRAYS,
           moneyLabelKeys: CHART_MONEY_LABELS
         }));
@@ -2447,7 +2478,7 @@ const analyticsController = {
         return responseData;
       });
 
-      res.json(await convertForDisplay(req, responseData, {
+      res.json(await convertForDisplay(req, isPro ? responseData : stripProChartData(responseData), {
         moneyArrayKeys: CHART_MONEY_ARRAYS,
         moneyLabelKeys: CHART_MONEY_LABELS
       }));
@@ -2584,6 +2615,13 @@ const analyticsController = {
   async getRecommendations(req, res, next) {
     try {
       console.log('[AI] Recommendations request started');
+
+      // AI insights (full and dashboard summary) are Pro-only. Self-hosted
+      // installs resolve every user to Pro.
+      if (!(await isProUser(req))) {
+        const { sendProTierRequired } = require('../middleware/tierAuth');
+        return sendProTierRequired(res, 'free', 'AI insights require a Pro subscription');
+      }
 
       // Dashboard summary mode — short, single insight for the AiInsightCard.
       // Cheaper than the full recommendation flow; works even when AI is not

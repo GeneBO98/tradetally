@@ -1,5 +1,16 @@
 const TierService = require('../services/tierService');
 
+// Shared 403 body for Pro-gated endpoints. Matches the requiresTier('pro')
+// response so clients can render a single upgrade prompt.
+function sendProTierRequired(res, currentTier = 'free', message = 'This feature requires a Pro subscription') {
+  return res.status(403).json({
+    error: 'Pro tier required',
+    message,
+    currentTier,
+    requiredTier: 'pro'
+  });
+}
+
 // Middleware to check if user has required tier
 const requiresTier = (requiredTier) => {
   return async (req, res, next) => {
@@ -91,6 +102,7 @@ const attachTierInfo = async (req, res, next) => {
 };
 
 module.exports = {
+  sendProTierRequired,
   requiresTier,
   requiresFeature,
   attachTierInfo

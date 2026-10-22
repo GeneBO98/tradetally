@@ -23,6 +23,10 @@ jest.mock('../../../src/config/database', () => ({
   query: jest.fn()
 }));
 
+jest.mock('../../../src/services/tierService', () => ({
+  canImportTrades: jest.fn()
+}));
+
 jest.mock('../../../src/events/domainEvents', () => ({ publish: jest.fn().mockResolvedValue({}) }));
 
 const tradeController = require('../../../src/controllers/trade.controller');
@@ -31,6 +35,7 @@ const Trade = require('../../../src/models/Trade');
 const TradeQueries = require('../../../src/services/tradeQueries');
 const db = require('../../../src/config/database');
 const { publish } = require('../../../src/events/domainEvents');
+const TierService = require('../../../src/services/tierService');
 const tradeV1Controller = require('../../../src/controllers/v1/trade.controller');
 
 function createMockRes(requestId = 'req-trade') {
@@ -45,6 +50,7 @@ describe('v1 trade controller', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     publish.mockResolvedValue({});
+    TierService.canImportTrades.mockResolvedValue({ allowed: true, remaining: null, tier: 'pro' });
     TradeQueries._buildWhereClause.mockResolvedValue({
       whereClause: 'WHERE t.user_id = $1',
       values: ['u1'],
@@ -165,6 +171,37 @@ describe('v1 trade controller', () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json.mock.calls[0][0].error.code).toBe('BULK_LIMIT_EXCEEDED');
     expect(tradeController.createTrade).not.toHaveBeenCalled();
+  });
+
+  test('bulk create caps free users at the CSV import batch limit', async () => {
+    TierService.canImportTrades.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      max: 100,
+      tier: 'free',
+      message: 'Free tier is limited to 100 trades per import.'
+    });
+    const trades = Array.from({ length: 101 }, () => validTrade());
+    const res = createMockRes();
+    await tradeV1Controller.bulkCreateTrades({ body: { trades }, user: { id: 'u1' }, headers: {} }, res, jest.fn());
+
+    expect(TierService.canImportTrades).toHaveBeenCalledWith('u1', 101);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0].error).toMatchObject({
+      code: 'TIER_LIMIT_EXCEEDED',
+      details: { currentTier: 'free', requiredTier: 'pro', maxTradesPerImport: 100 }
+    });
+    expect(tradeController.createTrade).not.toHaveBeenCalled();
+  });
+
+  test('bulk create allows Pro users past the free batch limit', async () => {
+    tradeController.createTrade.mockImplementation((req, res) => res.status(201).json({ trade: { id: 't1' } }));
+    const trades = Array.from({ length: 150 }, () => validTrade());
+    const res = createMockRes();
+    await tradeV1Controller.bulkCreateTrades({ body: { trades }, user: { id: 'u1' }, headers: {} }, res, jest.fn());
+
+    expect(tradeController.createTrade).toHaveBeenCalledTimes(150);
+    expect(res.json.mock.calls[0][0].created).toBe(150);
   });
 
   test('bulk delete accepts the ids alias', async () => {

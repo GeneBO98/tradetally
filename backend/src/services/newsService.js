@@ -10,6 +10,7 @@
 const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const NewsNotificationService = require('./newsNotificationService');
+const TierService = require('./tierService');
 
 const LOG_PREFIX = '[NEWS-SERVICE]';
 
@@ -53,22 +54,35 @@ class NewsService {
   }
 
   /**
-   * Get all distinct symbols with open trades or in watchlists across all users
+   * Get all distinct symbols with open trades or in watchlists, limited to
+   * users who are currently Pro (news is a Pro feature). On self-hosted
+   * installs (billing disabled) every user counts as Pro.
    */
   static async getAllTrackedSymbols() {
     const query = `
-      SELECT DISTINCT symbol FROM (
-        SELECT symbol FROM trades
+      SELECT DISTINCT symbol, user_id FROM (
+        SELECT symbol, user_id FROM trades
         WHERE exit_price IS NULL AND symbol IS NOT NULL AND symbol != ''
         UNION
-        SELECT symbol FROM watchlist_items
-        WHERE symbol IS NOT NULL AND symbol != ''
+        SELECT wi.symbol, w.user_id
+        FROM watchlist_items wi
+        JOIN watchlists w ON w.id = wi.watchlist_id
+        WHERE wi.symbol IS NOT NULL AND wi.symbol != ''
       ) combined
-      ORDER BY symbol
+      WHERE user_id IS NOT NULL
     `;
 
     const result = await db.query(query);
-    return result.rows.map(row => row.symbol);
+    const proUserIds = new Set(
+      await TierService.filterProUserIds(result.rows.map(row => row.user_id))
+    );
+    const symbols = new Set();
+    for (const row of result.rows) {
+      if (proUserIds.has(String(row.user_id))) {
+        symbols.add(row.symbol);
+      }
+    }
+    return [...symbols].sort();
   }
 
   /**
@@ -98,7 +112,8 @@ class NewsService {
       [normalized]
     );
 
-    return result.rows.map(row => row.user_id);
+    // Silent news refresh pushes are Pro-only.
+    return TierService.filterProUserIds(result.rows.map(row => row.user_id));
   }
 
   /**

@@ -32,7 +32,7 @@
           <p class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">Advanced Metrics</p>
 
           <!-- Pro Tier Overlay for Free Users -->
-          <div v-if="isFreeTier" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-lg">
+          <div v-if="isLocked && showProLock" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-lg">
             <div class="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md">
               <svg class="mx-auto h-12 w-12 text-primary-600 dark:text-primary-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -52,7 +52,8 @@
 
           <div
             class="grid grid-cols-1 sm:grid-cols-2 gap-x-8"
-            :class="{ 'filter blur-sm pointer-events-none select-none': isFreeTier }"
+            :class="{ 'filter blur-sm pointer-events-none select-none': isLocked }"
+            :aria-hidden="isLocked ? 'true' : undefined"
           >
             <div
               v-for="row in advancedStatRows"
@@ -75,7 +76,12 @@
     <div class="card xl:col-span-1">
       <div class="card-body">
         <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Top Performing Symbols</h3>
-        <div v-if="symbolStats.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
+        <ProUpgradePrompt
+          v-if="isLocked && showProLock"
+          variant="compact"
+          description="See your best and worst performing symbols with Pro."
+        />
+        <div v-else-if="isLocked || symbolStats.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
           No data available
         </div>
         <div v-else>
@@ -142,6 +148,8 @@
 <script setup>
 import { computed } from 'vue'
 import StockLogo from '@/components/common/StockLogo.vue'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import { useProAccess } from '@/composables/useProAccess'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { winRateExclBERounded } from '@/utils/analyticsFormatters'
 
@@ -156,6 +164,13 @@ const props = defineProps({
 defineEmits(['navigate-symbol'])
 
 const { formatCurrency } = useCurrencyFormatter()
+const { isProUser, showProLock } = useProAccess()
+
+// Locked when the parent says free tier OR the shared gate has not confirmed
+// Pro yet. Locked rows render placeholders, never the real values, so SQN /
+// Kelly / K-Ratio cannot be read from the DOM by removing the blur.
+const isLocked = computed(() => props.isFreeTier || !isProUser.value)
+const LOCKED_PLACEHOLDER = '--'
 
 const POSITIVE_CLASS = 'text-green-600'
 const NEGATIVE_CLASS = 'text-red-600'
@@ -227,6 +242,12 @@ const freeStatRows = computed(() => {
 
 // Advanced stats gated behind Pro (single overlay, matching existing behavior)
 const advancedStatRows = computed(() => {
+  const rows = buildAdvancedStatRows()
+  if (!isLocked.value) return rows
+  return rows.map(row => ({ ...row, display: LOCKED_PLACEHOLDER, class: NEUTRAL_CLASS }))
+})
+
+function buildAdvancedStatRows() {
   const o = props.overview || {}
   const m = props.calculationMethod
   const mae = (o.avg_mae === 'N/A' || o.avg_mae == null) ? 'N/A' : formatCurrency(o.avg_mae)
@@ -244,5 +265,5 @@ const advancedStatRows = computed(() => {
     { label: `${m} Position MAE`, display: mae, class: mae === 'N/A' ? NEUTRAL_CLASS : NEGATIVE_CLASS, tip: 'Maximum Adverse Excursion — largest unrealized loss during the trade (estimated).' },
     { label: `${m} Position MFE`, display: mfe, class: mfe === 'N/A' ? NEUTRAL_CLASS : POSITIVE_CLASS, tip: 'Maximum Favorable Excursion — largest unrealized profit during the trade (estimated).' }
   ]
-})
+}
 </script>
