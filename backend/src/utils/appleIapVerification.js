@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { X509Certificate } = require('crypto');
-const { decodeProtectedHeader, importX509, jwtVerify } = require('jose');
+const { SignedDataVerifier, Environment } = require('@apple/app-store-server-library');
+const verifierCache = new Map();
 
 class AppleTransactionVerificationError extends Error {
   constructor(message, statusCode = 400) {
@@ -10,11 +10,6 @@ class AppleTransactionVerificationError extends Error {
     this.code = 'INVALID_APPLE_TRANSACTION';
     this.statusCode = statusCode;
   }
-}
-
-function wrapPem(base64Der) {
-  const formatted = base64Der.match(/.{1,64}/g)?.join('\n') || base64Der;
-  return `-----BEGIN CERTIFICATE-----\n${formatted}\n-----END CERTIFICATE-----`;
 }
 
 function loadTrustedRoots() {
@@ -36,59 +31,24 @@ function loadTrustedRoots() {
     .map(filePath => fs.readFileSync(filePath, 'utf8'));
 }
 
-function verifyCertificateChain(header) {
-  if (!header.x5c || header.x5c.length === 0) {
-    throw new AppleTransactionVerificationError('JWS header missing x5c certificate chain');
-  }
-
+function getVerifier(bundleId, environment) {
   const trustedRoots = loadTrustedRoots();
   if (trustedRoots.length === 0) {
     throw new AppleTransactionVerificationError('Apple root CA not configured on the server', 500);
   }
 
-  let roots;
-  let chain;
-  try {
-    roots = trustedRoots.map(pem => new X509Certificate(pem));
-  } catch (error) {
-    throw new AppleTransactionVerificationError(`Apple root CA could not be parsed: ${error.message}`, 500);
+  const appId = Number(process.env.APPLE_APPLE_ID || process.env.APPLE_APP_ID);
+  if (environment === Environment.PRODUCTION && (!Number.isSafeInteger(appId) || appId <= 0)) {
+    throw new AppleTransactionVerificationError('Apple application ID is not configured', 500);
   }
-  try {
-    chain = header.x5c.map(certificate => new X509Certificate(Buffer.from(certificate, 'base64')));
-  } catch (error) {
-    throw new AppleTransactionVerificationError(`Apple certificate chain could not be parsed: ${error.message}`);
+  const key = JSON.stringify([bundleId, environment, appId, trustedRoots]);
+  if (!verifierCache.has(key)) {
+    verifierCache.set(key, new SignedDataVerifier(
+      trustedRoots.map(root => Buffer.from(root)), true, environment, bundleId,
+      environment === Environment.PRODUCTION ? appId : undefined
+    ));
   }
-
-  const now = Date.now();
-  const isCurrentlyValid = certificate =>
-    new Date(certificate.validFrom).getTime() <= now && now <= new Date(certificate.validTo).getTime();
-
-  for (let i = 0; i < chain.length; i++) {
-    const certificate = chain[i];
-    if (!isCurrentlyValid(certificate)) {
-      throw new AppleTransactionVerificationError('Apple certificate chain validation failed: certificate is expired or not yet valid');
-    }
-    if (i > 0 && !certificate.ca) {
-      throw new AppleTransactionVerificationError('Apple certificate chain validation failed: issuer is not a CA');
-    }
-    const issuer = chain[i + 1];
-    if (issuer && (!certificate.checkIssued(issuer) || !certificate.verify(issuer.publicKey))) {
-      throw new AppleTransactionVerificationError('Apple certificate chain validation failed: signature does not match issuer');
-    }
-  }
-
-  // The last certificate must either be a trusted root or be signed by one
-  const last = chain[chain.length - 1];
-  const anchored = roots.some(root =>
-    isCurrentlyValid(root) &&
-    (root.fingerprint256 === last.fingerprint256 ||
-      (root.ca && last.checkIssued(root) && last.verify(root.publicKey)))
-  );
-  if (!anchored) {
-    throw new AppleTransactionVerificationError('Apple certificate chain validation failed: chain is not anchored to a trusted Apple root');
-  }
-
-  return wrapPem(header.x5c[0]);
+  return verifierCache.get(key);
 }
 
 function getAllowedBundleIds() {
@@ -108,17 +68,27 @@ async function verifyAppleSignedTransaction(jws, expectedClaims = {}) {
     expectedAppAccountToken
   } = expectedClaims;
 
-  const header = decodeProtectedHeader(jws);
-  const leafCertPem = verifyCertificateChain(header);
-  const publicKey = await importX509(leafCertPem, header.alg);
-
   let payload;
   try {
-    ({ payload } = await jwtVerify(jws, publicKey, {
-      algorithms: [header.alg]
-    }));
+    // These untrusted fields select a verifier only. Apple's verifier checks
+    // the signature, certificate chain, revocation, bundle, and environment.
+    const parts = String(jws).split('.');
+    if (parts.length !== 3) throw new Error('Expected a signed JWS transaction');
+    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
+    const unverified = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+    if (header.alg !== 'ES256') throw new Error('Expected ES256 signature');
+    if (!getAllowedBundleIds().includes(unverified.bundleId)) throw new Error('Unexpected bundle ID');
+    if (![Environment.PRODUCTION, Environment.SANDBOX].includes(unverified.environment)) {
+      throw new Error('Unsupported Apple environment');
+    }
+    if (process.env.NODE_ENV === 'production' && unverified.environment !== Environment.PRODUCTION &&
+        process.env.APPLE_IAP_ALLOW_SANDBOX !== 'true') {
+      throw new Error('Sandbox transactions are disabled on this server');
+    }
+    payload = await getVerifier(unverified.bundleId, unverified.environment).verifyAndDecodeTransaction(jws);
   } catch (error) {
-    throw new AppleTransactionVerificationError(`Apple signed transaction verification failed: ${error.message}`);
+    if (error instanceof AppleTransactionVerificationError) throw error;
+    throw new AppleTransactionVerificationError(`Apple signed transaction verification failed: ${error.message || error.status}`);
   }
 
   if (expectedTransactionId && String(payload.transactionId) !== String(expectedTransactionId)) {
@@ -141,7 +111,7 @@ async function verifyAppleSignedTransaction(jws, expectedClaims = {}) {
   if (String(payload.type || '').toLowerCase() !== 'auto-renewable subscription') {
     throw new AppleTransactionVerificationError('Apple transaction is not an auto-renewable subscription');
   }
-  if (!payload.expiresDate) {
+  if (!payload.expiresDate || !Number.isFinite(new Date(payload.expiresDate).getTime())) {
     throw new AppleTransactionVerificationError('Apple subscription transaction is missing an expiration date');
   }
 
@@ -163,7 +133,9 @@ async function verifyAppleSignedTransaction(jws, expectedClaims = {}) {
   if (process.env.NODE_ENV === 'production' && !expectedAppAppleId) {
     throw new AppleTransactionVerificationError('Apple application ID is not configured');
   }
-  if (expectedAppAppleId && String(payload.appAppleId || '') !== String(expectedAppAppleId)) {
+  // appAppleId is present on notifications/AppTransaction, but is not a
+  // required field on StoreKit's JWSTransactionDecodedPayload.
+  if (expectedAppAppleId && payload.appAppleId != null && String(payload.appAppleId) !== String(expectedAppAppleId)) {
     throw new AppleTransactionVerificationError(`Unexpected appAppleId: ${payload.appAppleId}`);
   }
 

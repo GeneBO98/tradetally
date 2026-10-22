@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
+    "@apple/app-store-server-library": "^3.1.0",
     "@google/generative-ai": "^0.24.1",
     "@opentelemetry/api-logs": "^0.220.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.220.0",
