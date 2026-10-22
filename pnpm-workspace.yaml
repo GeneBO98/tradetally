@@ -30,6 +30,8 @@ overrides:
   'brace-expansion@^2': ^2.1.4
   browserslist: ^4.28.7
   baseline-browser-mapping: ^2.11.0
+  follow-redirects: ^1.16.1
+  source-map-js: ^1.2.2
 
 onlyBuiltDependencies:
   - '@scarf/scarf'

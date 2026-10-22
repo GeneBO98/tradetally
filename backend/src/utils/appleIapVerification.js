@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const forge = require('node-forge');
+const { X509Certificate } = require('crypto');
 const { decodeProtectedHeader, importX509, jwtVerify } = require('jose');
 
 class AppleTransactionVerificationError extends Error {
@@ -46,13 +46,46 @@ function verifyCertificateChain(header) {
     throw new AppleTransactionVerificationError('Apple root CA not configured on the server', 500);
   }
 
-  const caStore = forge.pki.createCaStore(trustedRoots);
-  const chain = header.x5c.map(certificate => forge.pki.certificateFromPem(wrapPem(certificate)));
-
+  let roots;
+  let chain;
   try {
-    forge.pki.verifyCertificateChain(caStore, chain);
+    roots = trustedRoots.map(pem => new X509Certificate(pem));
   } catch (error) {
-    throw new AppleTransactionVerificationError(`Apple certificate chain validation failed: ${error.message}`);
+    throw new AppleTransactionVerificationError(`Apple root CA could not be parsed: ${error.message}`, 500);
+  }
+  try {
+    chain = header.x5c.map(certificate => new X509Certificate(Buffer.from(certificate, 'base64')));
+  } catch (error) {
+    throw new AppleTransactionVerificationError(`Apple certificate chain could not be parsed: ${error.message}`);
+  }
+
+  const now = Date.now();
+  const isCurrentlyValid = certificate =>
+    new Date(certificate.validFrom).getTime() <= now && now <= new Date(certificate.validTo).getTime();
+
+  for (let i = 0; i < chain.length; i++) {
+    const certificate = chain[i];
+    if (!isCurrentlyValid(certificate)) {
+      throw new AppleTransactionVerificationError('Apple certificate chain validation failed: certificate is expired or not yet valid');
+    }
+    if (i > 0 && !certificate.ca) {
+      throw new AppleTransactionVerificationError('Apple certificate chain validation failed: issuer is not a CA');
+    }
+    const issuer = chain[i + 1];
+    if (issuer && (!certificate.checkIssued(issuer) || !certificate.verify(issuer.publicKey))) {
+      throw new AppleTransactionVerificationError('Apple certificate chain validation failed: signature does not match issuer');
+    }
+  }
+
+  // The last certificate must either be a trusted root or be signed by one
+  const last = chain[chain.length - 1];
+  const anchored = roots.some(root =>
+    isCurrentlyValid(root) &&
+    (root.fingerprint256 === last.fingerprint256 ||
+      (root.ca && last.checkIssued(root) && last.verify(root.publicKey)))
+  );
+  if (!anchored) {
+    throw new AppleTransactionVerificationError('Apple certificate chain validation failed: chain is not anchored to a trusted Apple root');
   }
 
   return wrapPem(header.x5c[0]);
