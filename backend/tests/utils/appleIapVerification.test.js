@@ -1,9 +1,16 @@
 const mockVerify = jest.fn();
-jest.mock('@apple/app-store-server-library', () => ({
-  SignedDataVerifier: jest.fn().mockImplementation(() => ({ verifyAndDecodeTransaction: mockVerify })),
-  Environment: { PRODUCTION: 'Production', SANDBOX: 'Sandbox' }
-}));
-const { SignedDataVerifier } = require('@apple/app-store-server-library');
+jest.mock('@apple/app-store-server-library', () => {
+  class VerificationException extends Error {
+    constructor(status) { super(); this.status = status; }
+  }
+  return {
+    SignedDataVerifier: jest.fn().mockImplementation(() => ({ verifyAndDecodeTransaction: mockVerify })),
+    Environment: { PRODUCTION: 'Production', SANDBOX: 'Sandbox' },
+    VerificationException,
+    VerificationStatus: { 6: 'INVALID_CERTIFICATE', INVALID_CERTIFICATE: 6 }
+  };
+});
+const { SignedDataVerifier, VerificationException } = require('@apple/app-store-server-library');
 const { verifyAppleSignedTransaction } = require('../../src/utils/appleIapVerification');
 
 describe('Apple signed transaction validation', () => {
@@ -40,6 +47,12 @@ describe('Apple signed transaction validation', () => {
     await expect(verifyAppleSignedTransaction(jws(payload), claims)).rejects.toThrow('invalid signature');
     payload.appAccountToken = 'another-user';
     await expect(verifyAppleSignedTransaction(jws(payload), claims)).rejects.toThrow('not bound');
+  });
+
+  test('reports Apple verification failures by status name', async () => {
+    mockVerify.mockRejectedValueOnce(new VerificationException(6));
+    await expect(verifyAppleSignedTransaction(jws(payload), claims))
+      .rejects.toThrow('Apple signed transaction verification failed: INVALID_CERTIFICATE');
   });
 
   test.each([0, 'invalid', Date.now() - 1000])('rejects invalid or expired expiration %s', async (expiresDate) => {

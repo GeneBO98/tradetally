@@ -1,6 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const { SignedDataVerifier, Environment } = require('@apple/app-store-server-library');
+const {
+  SignedDataVerifier,
+  Environment,
+  VerificationException,
+  VerificationStatus
+} = require('@apple/app-store-server-library');
 const verifierCache = new Map();
 
 class AppleTransactionVerificationError extends Error {
@@ -88,7 +93,11 @@ async function verifyAppleSignedTransaction(jws, expectedClaims = {}) {
     payload = await getVerifier(unverified.bundleId, unverified.environment).verifyAndDecodeTransaction(jws);
   } catch (error) {
     if (error instanceof AppleTransactionVerificationError) throw error;
-    throw new AppleTransactionVerificationError(`Apple signed transaction verification failed: ${error.message || error.status}`);
+    // Apple's VerificationException only carries a numeric status code
+    const reason = error instanceof VerificationException
+      ? VerificationStatus[error.status] || `status ${error.status}`
+      : error.message || error.status;
+    throw new AppleTransactionVerificationError(`Apple signed transaction verification failed: ${reason}`);
   }
 
   if (expectedTransactionId && String(payload.transactionId) !== String(expectedTransactionId)) {
