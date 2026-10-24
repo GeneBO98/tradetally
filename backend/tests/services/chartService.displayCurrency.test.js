@@ -29,6 +29,11 @@ describe('chart display currency contracts', () => {
       expect(out.candles_currency).toBe(fixture.expected.candles_currency);
       expect(out.trade.effective_currency).toBe(fixture.expected.effective_currency);
       expect(out.trade.entryPrice).toBeCloseTo(fixture.expected.entry_price);
+      if (fixture.expected.price_currency) {
+        expect(out.trade.price_currency).toBe(fixture.expected.price_currency);
+        expect(out.trade.native_prices.entry_price).toBe(fixture.expected.native_entry_price);
+        expect(out.trade.pnl).toBeCloseTo(fixture.expected.pnl);
+      }
       expect(out.price_scale).toBe(fixture.expected.price_scale);
     }
     expect(JSON.stringify(fixture.chart_data)).toBe(before);

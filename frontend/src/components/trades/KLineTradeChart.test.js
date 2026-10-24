@@ -71,7 +71,8 @@ describe('KLineTradeChart', () => {
   })
 
   it.each(contracts.chart_currency_cases)('allows trade overlays only with compatible currencies: $id', async (fixture) => {
-    const compatible = fixture.expected.candles_currency === fixture.expected.effective_currency
+    const price_currency = fixture.expected.price_currency || fixture.expected.effective_currency
+    const compatible = fixture.expected.candles_currency === price_currency
     if (!compatible) {
       localStorage.setItem(`trade_chart_drawings:${fixture.chart_data.trade.id}`, JSON.stringify([{
         name: 'tradePnlMeasurement',
@@ -85,7 +86,7 @@ describe('KLineTradeChart', () => {
           ...fixture.chart_data,
           candles_currency: fixture.expected.candles_currency,
           candles: fixture.chart_data.candles.map(bar => ({ ...bar, close: fixture.expected.close })),
-          trade: { ...fixture.chart_data.trade, entryPrice: fixture.expected.entry_price, effective_currency: fixture.expected.effective_currency, side: 'long', stop_loss: 70, take_profit: 120 },
+          trade: { ...fixture.chart_data.trade, entryPrice: fixture.expected.native_entry_price ?? fixture.expected.entry_price, effective_currency: price_currency, side: 'long', stop_loss: 70, take_profit: 120 },
         },
       },
     })

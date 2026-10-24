@@ -325,7 +325,7 @@
                 </div>
                 <div v-if="trade.instrument_type === 'option' && trade.strike_price">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Strike Price</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradeCurrency(trade.strike_price) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradePrice(trade, 'strike_price') }}</dd>
                 </div>
                 <div v-if="trade.instrument_type === 'option' && trade.expiration_date">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Expiration Date</dt>
@@ -339,14 +339,14 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     {{ trade.instrument_type === 'option' ? 'Entry Price (per share)' : 'Entry Price' }}
                   </dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradeCurrency(trade.entry_price) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradePrice(trade, 'entry_price') }}</dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     {{ trade.instrument_type === 'option' ? 'Exit Price (per share)' : 'Exit Price' }}
                   </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">
-                    <template v-if="trade.exit_time">{{ formatTradeCurrency(trade.exit_price) }}</template>
+                    <template v-if="trade.exit_time">{{ formatTradePrice(trade, 'exit_price') }}</template>
                     <template v-else-if="manualOptionPrice !== null">
                       {{ formatTradeCurrency(manualOptionPrice) }}
                       <span class="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1">(current)</span>
@@ -356,18 +356,18 @@
                 </div>
                 <div v-if="trade.stopLoss || trade.stop_loss">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Stop Loss</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradeCurrency(trade.stop_loss || trade.stopLoss) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradePrice(trade, 'stop_loss') }}</dd>
                 </div>
                 <div v-if="trade.takeProfit || trade.take_profit || (trade.take_profit_targets && trade.take_profit_targets.length > 0)">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Take Profit</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono flex flex-wrap gap-x-4 gap-y-1">
                     <!-- Show single take_profit as TP1 only when NO take_profit_targets exist -->
                     <span v-if="(trade.take_profit || trade.takeProfit) && (!trade.take_profit_targets || trade.take_profit_targets.length === 0)">
-                      <span class="text-xs text-gray-400 mr-1">TP1:</span>{{ formatTradeCurrency(trade.take_profit || trade.takeProfit) }}
+                      <span class="text-xs text-gray-400 mr-1">TP1:</span>{{ formatTradePrice(trade, 'take_profit') }}
                     </span>
                     <!-- Show all targets from take_profit_targets as TP1, TP2, etc. -->
                     <span v-for="(target, index) in (trade.take_profit_targets || [])" :key="index">
-                      <span class="text-xs text-gray-400 mr-1">TP{{ index + 1 }}:</span>{{ formatTradeCurrency(target.price) }}
+                      <span class="text-xs text-gray-400 mr-1">TP{{ index + 1 }}:</span>{{ formatTargetPrice(target, index) }}
                       <span v-if="target.shares" class="text-xs text-gray-400 ml-0.5">({{ target.shares }})</span>
                     </span>
                   </dd>
@@ -1108,10 +1108,10 @@
                         {{ formatQuantity(execution.quantity) }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ execution.entryPrice !== null && execution.entryPrice !== undefined ? formatTradeCurrency(execution.entryPrice) : '-' }}
+                        {{ execution.entryPrice !== null && execution.entryPrice !== undefined ? formatTradePrice(execution, 'entry_price') : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ execution.exitPrice !== null && execution.exitPrice !== undefined ? formatTradeCurrency(execution.exitPrice) : '-' }}
+                        {{ execution.exitPrice !== null && execution.exitPrice !== undefined ? formatTradePrice(execution, 'exit_price') : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
                           :class="[
@@ -1196,13 +1196,13 @@
                     <div v-if="execution.entryPrice !== null && execution.entryPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Entry Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
-                        {{ formatTradeCurrency(execution.entryPrice) }}
+                        {{ formatTradePrice(execution, 'entry_price') }}
                       </div>
                     </div>
                     <div v-if="execution.exitPrice !== null && execution.exitPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Exit Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
-                        {{ formatTradeCurrency(execution.exitPrice) }}
+                        {{ formatTradePrice(execution, 'exit_price') }}
                       </div>
                     </div>
                     <div v-if="execution.exitTime">
@@ -1691,6 +1691,7 @@ import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
 import { ChartPieIcon, DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon } from '@heroicons/vue/24/outline'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { useTradePriceFormatter } from '@/composables/useTradePriceFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import StockLogo from '@/components/common/StockLogo.vue'
@@ -1722,6 +1723,7 @@ const aiStore = useAIStore()
 const { showSuccess, showError, showConfirmation, showDangerConfirmation } = useNotification()
 const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
+const { formatTradePrice } = useTradePriceFormatter()
 
 function reloadScrollStorageKey() {
   return `trade_detail_scroll:${route.params.id}`
@@ -1758,6 +1760,15 @@ function formatTradeCurrency(value, options = {}) {
 
 function formatTradeSignedCurrency(value, options = {}) {
   return formatSignedCurrency(value, { ...options, currency: getTradeCurrency() })
+}
+
+function formatTargetPrice(target, index) {
+  return formatTradePrice({
+    ...target,
+    native_prices: trade.value?.native_prices?.take_profit_targets?.[index],
+    price_currency: trade.value?.price_currency,
+    effective_currency: getTradeCurrency()
+  }, 'price')
 }
 
 function formatExcursionValue(value) {
@@ -2284,6 +2295,8 @@ const processedExecutions = computed(() => {
     }
 
     return [{
+      native_prices: trade.value.native_prices,
+      price_currency: trade.value.price_currency,
       side: tradeSide,
       action: tradeSide,
       quantity,
@@ -2305,11 +2318,13 @@ const processedExecutions = computed(() => {
   )
 
   let runningPosition = 0
-  return executions.map((execution) => {
+  return executions.map((execution, execution_index) => {
     if (!execution) {
       return { action: 'N/A', quantity: 0, price: 0, value: 0, commission: 0, fees: 0, runningPosition: 0, avgCost: null, datetime: null, grossPnl: null, netPnl: null, pnl: null }
     }
 
+    const native_prices = trade.value.native_prices?.executions?.[execution_index]
+    const price_currency = trade.value.price_currency
     const quantity = parseFloat(execution.quantity) || 0
     const commission = parseFloat(execution.commission) || 0
     const fees = parseFloat(execution.fees) || 0
@@ -2328,6 +2343,8 @@ const processedExecutions = computed(() => {
 
       return {
         ...execution,
+        native_prices,
+        price_currency,
         action: execution.side || tradeSide,
         quantity,
         price: entryPrice,
@@ -2359,6 +2376,11 @@ const processedExecutions = computed(() => {
 
     return {
       ...execution,
+      price_currency,
+      native_prices: native_prices ? {
+        entry_price: native_prices.entry_price ?? (isOpening ? native_prices.price : null),
+        exit_price: native_prices.exit_price ?? (isOpening ? null : native_prices.price)
+      } : undefined,
       action,
       quantity,
       price,

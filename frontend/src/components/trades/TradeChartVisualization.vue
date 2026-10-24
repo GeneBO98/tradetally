@@ -97,7 +97,7 @@
         </div>
 
         <KLineTradeChart
-          :chart-data="chartData"
+          :chart-data="price_chart_data"
           :timezone="userTimezone || 'UTC'"
           :selected-resolution="selectedResolution"
           :available-resolutions="availableResolutions"
@@ -109,7 +109,7 @@
         <dl v-if="chartData.trade" class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/70">
             <dt class="text-gray-500 dark:text-gray-400">Entry</dt>
-            <dd class="mt-0.5 font-semibold text-gray-900 dark:text-white">{{ formatTradeCurrency(chartData.trade.entryPrice) }}</dd>
+            <dd class="mt-0.5 font-semibold text-gray-900 dark:text-white">{{ formatTradePrice(chartData.trade, 'entry_price') }}</dd>
           </div>
           <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/70">
             <dt class="text-gray-500 dark:text-gray-400">Exit</dt>
@@ -136,6 +136,8 @@ import api from '@/services/api'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { useTradePriceFormatter } from '@/composables/useTradePriceFormatter'
+import { withNativeTradePrices } from '@/utils/nativeTradePrices'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import {
@@ -183,6 +185,7 @@ const props = defineProps({
 
 const authStore = useAuthStore()
 const { currencyCode, formatCurrency } = useCurrencyFormatter()
+const { formatTradePrice } = useTradePriceFormatter()
 const { showError, showWarning } = useNotification()
 const { userTimezone, timezoneLabel } = useUserTimezone()
 
@@ -228,8 +231,7 @@ const intervalLabel = computed(() => {
 })
 
 // An open trade has no exit yet; say so rather than formatting a null.
-// Format in the currency the trade was actually executed in, matching the
-// Trade Details panel, rather than the account's display currency.
+// P&L remains in the reporting currency; quote prices use native snapshots.
 const tradeCurrency = computed(() => {
   const currency = chartData.value?.trade?.effective_currency || chartData.value?.trade?.currency
   return currency ? String(currency).toUpperCase() : currencyCode.value
@@ -237,6 +239,10 @@ const tradeCurrency = computed(() => {
 const candles_currency = computed(() => (
   chartData.value?.candles_currency || chartData.value?.display_currency || currencyCode.value
 ))
+const price_chart_data = computed(() => ({
+  ...chartData.value,
+  trade: withNativeTradePrices(chartData.value?.trade)
+}))
 
 function formatTradeCurrency(value) {
   return formatCurrency(value, { currency: tradeCurrency.value })
@@ -245,7 +251,7 @@ function formatTradeCurrency(value) {
 const exitLabel = computed(() => {
   const exitPrice = chartData.value?.trade?.exitPrice
   if (exitPrice === null || exitPrice === undefined) return 'Open'
-  return formatTradeCurrency(exitPrice)
+  return formatTradePrice(chartData.value.trade, 'exit_price')
 })
 
 // Surface a degraded chart instead of quietly rendering fallback data: a

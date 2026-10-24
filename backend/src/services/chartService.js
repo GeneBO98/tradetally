@@ -26,16 +26,16 @@ function toEpochSeconds(value) {
 
 class ChartService {
   static async convertTradeChartForDisplay(req, chart_data, candles_source) {
-    const { convertForDisplay, resolveDisplayCurrency, getRatesToDisplay } = require('../utils/displayCurrency');
-    const display_currency = await resolveDisplayCurrency(req.user.id);
+    const { convertForDisplay, getRatesToDisplay } = require('../utils/displayCurrency');
     const converted = await convertForDisplay(req, chart_data, {
       clone: true,
       rowCurrency: true,
       skipKeys: new Set(['candles'])
     });
-    const rates = await getRatesToDisplay([candles_source], display_currency);
+    const price_currency = converted.trade?.price_currency || converted.display_currency;
+    const rates = await getRatesToDisplay([candles_source], price_currency);
     const candle_rate = rates[candles_source];
-    converted.candles_currency = candle_rate ? display_currency : candles_source;
+    converted.candles_currency = candle_rate ? price_currency : candles_source;
     if (candle_rate && Array.isArray(converted.candles)) {
       for (const candle of converted.candles) {
         for (const field of ['open', 'high', 'low', 'close']) {
@@ -49,13 +49,13 @@ class ChartService {
     // Split detection compares prices, so both sides must first be in the
     // same currency. An FX ratio must never be interpreted as a stock split.
     const trade = converted.trade;
-    const trade_currency = trade?.effective_currency || trade?.currency || converted.display_currency;
+    const trade_currency = trade?.price_currency || trade?.effective_currency || trade?.currency || converted.display_currency;
     converted.price_scale = 1;
     if (trade && trade_currency === converted.candles_currency) {
       this.alignCandlesToTradePrices(converted, {
         instrument_type: trade.instrument_type ?? trade.instrumentType,
-        entry_price: trade.entry_price ?? trade.entryPrice,
-        exit_price: trade.exit_price ?? trade.exitPrice,
+        entry_price: trade.native_prices?.entry_price ?? trade.entry_price ?? trade.entryPrice,
+        exit_price: trade.native_prices?.exit_price ?? trade.exit_price ?? trade.exitPrice,
         entry_time: trade.entry_time ?? trade.entryTime ?? trade.entryDate,
         exit_time: trade.exit_time ?? trade.exitTime ?? trade.exitDate,
         trade_date: trade.trade_date ?? trade.tradeDate

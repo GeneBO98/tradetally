@@ -252,6 +252,7 @@ function scaleMoneyInPayload(payload, rate, { maxDepth = 10, rateFor = null, rel
     }
 
     for (const [key, value] of Object.entries(node)) {
+      if (key === 'native_prices') continue;
       if (skipKeys && skipKeys.has(key) && value !== null && typeof value === 'object') continue;
       const isMoney = isTradeMoneyKey(key, parentKey);
       const direct = scaleNumeric(value, effRate);
@@ -303,6 +304,9 @@ function scaleMoneyInPayload(payload, rate, { maxDepth = 10, rateFor = null, rel
  * rows that were never converted to USD (native EUR manual trades) scale by
  * their own currency's rate instead of the USD rate, and their `currency`
  * metadata is relabeled to the effective display currency.
+ * It also snapshots quote prices in native_prices with a price_currency
+ * label before conversion. These display-only values never participate in
+ * reporting-currency calculations and are excluded from the money walker.
  * @returns {Promise<object>} the (possibly cloned) payload with display_currency set
  */
 async function convertForDisplay(req, payload, { clone = true, raw = false, skip = false, rowCurrency = false, moneyArrayKeys = null, moneyLabelKeys = null, skipKeys = null } = {}) {
@@ -340,6 +344,7 @@ async function convertForDisplay(req, payload, { clone = true, raw = false, skip
   let relabel = null;
   if (rowCurrency) {
     const { tradeBaseCurrency } = require('./tradeFx');
+    const { attachNativeTradePrices } = require('./tradePriceDisplay');
     const baseRateCache = new Map([[displayCurrency, 1], ['USD', rate]]);
     relabel = displayCurrency;
 
@@ -366,6 +371,7 @@ async function convertForDisplay(req, payload, { clone = true, raw = false, skip
       for (const ccy of bases) if (!baseRateCache.has(ccy)) baseRateCache.set(ccy, null);
     }
     rateFor = (row) => {
+      attachNativeTradePrices(row);
       const base = tradeBaseCurrency(row);
       const r = baseRateCache.get(base);
       if (r === undefined || r === null) {

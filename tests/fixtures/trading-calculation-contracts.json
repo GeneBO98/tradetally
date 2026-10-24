@@ -1168,7 +1168,87 @@
       ]
     }
   ],
+  "trade_price_currency_cases": [
+    {
+      "id": "gold_usd_prices_eur_reporting",
+      "display_currency": "EUR",
+      "rates": { "USD": 0.8 },
+      "trade": {
+        "symbol": "XAUUSD", "instrument_type": "forex", "original_currency": "USD",
+        "entry_price": 2700, "exit_price": 2710, "pnl": 19, "commission": 1,
+        "quantity": 2, "stop_loss": 2690, "take_profit": 2720,
+        "executions": [{ "entry_price": 2700, "exit_price": 2710, "quantity": 2, "realized_pnl": 19, "commission": 1 }]
+      },
+      "expected": { "entry_price": 2160, "exit_price": 2168, "pnl": 15.2, "commission": 0.8, "effective_currency": "EUR", "price_currency": "USD", "native_entry_price": 2700, "native_exit_price": 2710 }
+    },
+    {
+      "id": "native_gbp_prices_eur_reporting",
+      "display_currency": "EUR",
+      "rates": { "USD": 0.8, "GBP": 1.2 },
+      "trade": {
+        "original_currency": "GBP", "exchange_rate": 1.3,
+        "entry_price": 100, "exit_price": 110, "pnl": 9, "commission": 1, "quantity": 1,
+        "executions": [{ "entryPrice": 100, "exitPrice": 110, "quantity": 1, "realized_pnl": 9, "commission": 1 }]
+      },
+      "expected": { "entry_price": 120, "exit_price": 132, "pnl": 10.8, "commission": 1.2, "effective_currency": "EUR", "price_currency": "GBP", "native_entry_price": 100, "native_exit_price": 110 }
+    },
+    {
+      "id": "imported_jpy_prices_historical_rate",
+      "display_currency": "EUR",
+      "rates": { "USD": 0.8, "JPY": 0.005 },
+      "trade": {
+        "original_currency": "JPY", "exchange_rate": 0.01,
+        "original_entry_price_currency": 150, "original_exit_price_currency": 0,
+        "entry_price": 1.5, "exit_price": 0, "pnl": 1, "commission": 0.5, "quantity": 1,
+        "executions": [{ "entryPrice": 1.5, "exitPrice": 0, "quantity": 1, "realized_pnl": 1, "commission": 0.5 }]
+      },
+      "expected": { "entry_price": 1.2, "exit_price": 0, "pnl": 0.8, "commission": 0.4, "effective_currency": "EUR", "price_currency": "JPY", "native_entry_price": 150, "native_exit_price": 0 }
+    },
+    {
+      "id": "fx_outage_keeps_native_prices_and_honest_pnl_label",
+      "display_currency": "EUR",
+      "rates": {},
+      "trade": {
+        "original_currency": "GBP", "entry_price": 100, "exit_price": null,
+        "pnl": 9, "commission": 1, "quantity": 1,
+        "executions": [{ "price": 100, "quantity": 1, "realized_pnl": 9, "commission": 1 }]
+      },
+      "expected": { "entry_price": 100, "exit_price": null, "pnl": 9, "commission": 1, "effective_currency": "GBP", "price_currency": "GBP", "native_entry_price": 100, "native_exit_price": null }
+    }
+  ],
   "chart_currency_cases": [
+    {
+      "id": "gold_usd_chart_eur_pnl",
+      "source_currency": "USD",
+      "display_currency": "EUR",
+      "rates": { "USD": 0.8 },
+      "chart_data": {
+        "candles": [{ "time": 1788264000, "open": 2700, "high": 2710, "low": 2690, "close": 2705, "volume": 1000 }],
+        "trade": {
+          "id": "gold_usd_chart_eur_pnl", "symbol": "XAUUSD", "instrumentType": "forex",
+          "original_currency": "USD", "currency": "USD", "entryPrice": 2700, "exitPrice": 2710,
+          "entryTime": "2026-09-01T12:00:00Z", "quantity": 1, "pnl": 10
+        }
+      },
+      "expected": { "close": 2705, "volume": 1000, "candles_currency": "USD", "effective_currency": "EUR", "price_currency": "USD", "price_scale": 1, "entry_price": 2160, "native_entry_price": 2700, "pnl": 8 }
+    },
+    {
+      "id": "imported_jpy_chart_eur_pnl",
+      "source_currency": "JPY",
+      "display_currency": "EUR",
+      "rates": { "USD": 0.8, "JPY": 0.005 },
+      "chart_data": {
+        "candles": [{ "time": 1788264000, "open": 150, "high": 151, "low": 149, "close": 150, "volume": 1000 }],
+        "trade": {
+          "id": "imported_jpy_chart_eur_pnl", "symbol": "USDJPY", "instrumentType": "forex",
+          "original_currency": "JPY", "currency": "USD", "exchange_rate": 0.01,
+          "original_entry_price_currency": 150, "original_exit_price_currency": 151,
+          "entryPrice": 1.5, "exitPrice": 1.51,
+          "entryTime": "2026-09-01T12:00:00Z", "quantity": 1, "pnl": 1
+        }
+      },
+      "expected": { "close": 150, "volume": 1000, "candles_currency": "JPY", "effective_currency": "EUR", "price_currency": "JPY", "price_scale": 1, "entry_price": 1.2, "native_entry_price": 150, "pnl": 0.8 }
+    },
     {
       "id": "jpy_quote_usd_trade",
       "source_currency": "JPY",

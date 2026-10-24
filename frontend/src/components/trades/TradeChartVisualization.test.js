@@ -303,6 +303,31 @@ describe('TradeChartVisualization resolutions', () => {
 
 
 describe('TradeChartVisualization currency', () => {
+  it('shows USD gold prices and chart markers while keeping the P&L summary in EUR', async () => {
+    apiGet.mockResolvedValue({ data: {
+      ...baseChartData,
+      candles_currency: 'USD', display_currency: 'EUR',
+      trade: {
+        ...baseChartData.trade, entryPrice: 2160, exitPrice: 2168, pnl: 8,
+        price_currency: 'USD', effective_currency: 'EUR',
+        native_prices: { entry_price: 2700, exit_price: 2710 }
+      }
+    } })
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'gold-native-prices' },
+      global: { stubs: { KLineTradeChart: true, ProUpgradePrompt: true } }
+    })
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(wrapper.findComponent({ name: 'KLineTradeChart' }).exists()).toBe(true))
+    expect(wrapper.text()).toContain('$2700.00')
+    expect(wrapper.text()).toContain('$2710.00')
+    expect(wrapper.text()).toContain('€8.00')
+    const chart = wrapper.findComponent({ name: 'KLineTradeChart' })
+    expect(chart.props('currencyCode')).toBe('USD')
+    expect(chart.props('chartData').trade).toMatchObject({ entryPrice: 2700, exitPrice: 2710, pnl: 8, effective_currency: 'USD' })
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     apiGet.mockReset()
     sessionStorage.clear()
