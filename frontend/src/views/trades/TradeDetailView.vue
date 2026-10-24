@@ -299,7 +299,7 @@
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Currency</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ getTradeCurrency() }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ trade.price_currency || getTradeCurrency() }}</dd>
                 </div>
                 <!-- Options-specific fields -->
                 <div v-if="trade.instrument_type === 'option'">

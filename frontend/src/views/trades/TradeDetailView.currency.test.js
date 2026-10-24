@@ -48,6 +48,8 @@ describe('trade detail quote prices (issue 418)', () => {
     expect(wrapper.text()).toContain('$2,690.00')
     expect(wrapper.text()).toContain('$2,720.00')
     expect(wrapper.text()).toContain('€15.20')
+    const currency_label = wrapper.findAll('dt').find(label => label.text() === 'Currency')
+    expect(currency_label.element.nextElementSibling.textContent.trim()).toBe('USD')
     return wrapper
   }
 
