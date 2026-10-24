@@ -13,6 +13,8 @@ docker-test
 !.env.example
 *.key
 *.pem
+# Public Apple trust anchor required for StoreKit verification.
+!backend/src/certs/apple-root-ca-g3.pem
 *.p12
 *.pfx
 *.jks

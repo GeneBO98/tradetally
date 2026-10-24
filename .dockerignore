@@ -32,6 +32,8 @@ release-assets/
 **/.env
 **/.env.*
 **/*.pem
+# Public trust anchor; not private key material.
+!backend/src/certs/apple-root-ca-g3.pem
 **/*.key
 
 # Temporary files
