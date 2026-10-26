@@ -557,6 +557,51 @@
         },
         "realized_pnl": [null, 189.53244]
       }
+    },
+    {
+      "id": "oanda_reported_currency_pnl",
+      "input": {
+        "side": "long",
+        "instrumentType": "forex",
+        "executions": [
+          {
+            "entry_price": 1.005,
+            "exit_price": 1.0117,
+            "quantity": 1000,
+            "side": "long",
+            "entry_time": "2026-10-01T12:00:00Z",
+            "exit_time": "2026-10-02T12:00:00Z",
+            "commission": 0.37,
+            "fees": 0.5,
+            "broker_pnl": {
+              "source": "oanda",
+              "entry_price": 1.005,
+              "exit_price": 1.0117,
+              "quantity": 1000,
+              "side": "long",
+              "gross_pnl": 6.5
+            }
+          }
+        ],
+        "timezone": "UTC"
+      },
+      "expected": {
+        "aggregate": {
+          "entry_price": 1.005,
+          "exit_price": 1.0117,
+          "quantity": 1000,
+          "commission": 0.37,
+          "fees": 0.5,
+          "pnl": 5.63,
+          "is_fully_closed": true
+        },
+        "realized_pnl": [
+          5.63
+        ],
+        "gross_realized_pnl": [
+          6.5
+        ]
+      }
     }
   ],
   "chart_pnl_measurement_cases": [
@@ -1652,6 +1697,134 @@
       "trade_count": 50,
       "pnl": -10,
       "expected_score": 0
+    }
+  ],
+  "oanda_sync_cases": [
+    {
+      "id": "gbp_account_usdjpy_closed",
+      "account_currency": "GBP",
+      "rates": {
+        "JPY:2026-10-01": 0.0067,
+        "GBP:2026-10-01": 1.2,
+        "GBP:2026-10-02": 1.25
+      },
+      "instrument": {
+        "name": "USD_JPY",
+        "type": "CURRENCY"
+      },
+      "snapshot": {
+        "id": "10",
+        "instrument": "USD_JPY",
+        "state": "CLOSED",
+        "price": "150",
+        "openTime": "2026-10-01T12:00:00Z",
+        "closeTime": "2026-10-02T12:00:00Z",
+        "initialUnits": "1000",
+        "currentUnits": "0",
+        "realizedPL": "5.2",
+        "financing": "-0.4",
+        "dividendAdjustment": "0",
+        "closingTransactionIDs": [
+          "20"
+        ]
+      },
+      "transactions": [
+        {
+          "id": "10",
+          "type": "ORDER_FILL",
+          "time": "2026-10-01T12:00:00Z",
+          "commission": "0.1",
+          "tradeOpened": {
+            "tradeID": "10",
+            "units": "1000"
+          }
+        },
+        {
+          "id": "20",
+          "type": "ORDER_FILL",
+          "time": "2026-10-02T12:00:00Z",
+          "price": "151",
+          "commission": "0.2",
+          "tradesClosed": [
+            {
+              "tradeID": "10",
+              "units": "1000",
+              "price": "151",
+              "realizedPL": "5.2",
+              "financing": "-0.4"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "entry_price": 1.005,
+        "exit_price": 1.0117,
+        "quantity": 1000,
+        "commission": 0.37,
+        "fees": 0.5,
+        "pnl": 5.63,
+        "instrument_type": "forex",
+        "gross_pnl": 6.5
+      }
+    },
+    {
+      "id": "short_metal_partial",
+      "account_currency": "USD",
+      "rates": {},
+      "instrument": {
+        "name": "XAU_USD",
+        "type": "METAL"
+      },
+      "snapshot": {
+        "id": "30",
+        "instrument": "XAU_USD",
+        "state": "OPEN",
+        "price": "2000",
+        "openTime": "2026-10-01T12:00:00Z",
+        "initialUnits": "-2",
+        "currentUnits": "-1.5",
+        "realizedPL": "5",
+        "financing": "1",
+        "dividendAdjustment": "0",
+        "closingTransactionIDs": [
+          "40"
+        ]
+      },
+      "transactions": [
+        {
+          "id": "30",
+          "type": "ORDER_FILL",
+          "time": "2026-10-01T12:00:00Z",
+          "commission": "2",
+          "tradeOpened": {
+            "tradeID": "30",
+            "units": "-2"
+          }
+        },
+        {
+          "id": "40",
+          "type": "ORDER_FILL",
+          "time": "2026-10-02T12:00:00Z",
+          "price": "1990",
+          "commission": "0.5",
+          "tradeReduced": {
+            "tradeID": "30",
+            "units": "0.5",
+            "price": "1990",
+            "realizedPL": "5"
+          }
+        }
+      ],
+      "expected": {
+        "entry_price": 2000,
+        "exit_price": null,
+        "quantity": 2,
+        "commission": 2.5,
+        "fees": -1,
+        "pnl": 4.25,
+        "instrument_type": "cfd",
+        "gross_pnl": 5
+      }
     }
   ]
 }

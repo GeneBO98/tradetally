@@ -20,6 +20,7 @@
                 - {{ connection.accountLabel }}
               </span>
             </h4>
+            <p v-if="connection.brokerType === 'oanda'" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ connection.externalAccountId }}</p>
             <div class="flex items-center space-x-2 mt-1">
               <span
                 class="px-2 py-0.5 text-xs rounded-full"
@@ -56,11 +57,11 @@
               Settings
             </button>
             <button
-              v-if="connection.brokerType === 'schwab' && connection.connectionStatus === 'expired'"
+              v-if="(connection.brokerType === 'schwab' && connection.connectionStatus === 'expired') || connection.brokerType === 'oanda'"
               @click="emit('reconnect', connection); showMenu = false"
               class="w-full px-4 py-2 text-left text-sm font-medium text-primary-600 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              Reconnect Schwab
+              Reconnect {{ brokerStyles.name }}
             </button>
             <button
               @click="emit('test', connection); showMenu = false"
@@ -193,6 +194,12 @@ const brokerStyles = computed(() => {
         name: props.connection.brokerEnvironment === 'demo' ? 'Tradovate Demo' : 'Tradovate',
         abbrev: 'TV',
         bgClass: 'bg-primary-100 dark:bg-primary-900/30',
+        textClass: 'text-primary-600 dark:text-primary-400'
+      }
+    case 'oanda':
+      return {
+        name: props.connection.brokerEnvironment === 'practice' ? 'OANDA Practice' : 'OANDA Live',
+        abbrev: 'OA', bgClass: 'bg-primary-100 dark:bg-primary-900/30',
         textClass: 'text-primary-600 dark:text-primary-400'
       }
     case 'trading212':

@@ -228,9 +228,22 @@ function processGrouped(input, executions, timezone) {
     let exitDate = null;
 
     if (exitPrice != null && qty > 0 && entryPrice != null) {
-      const gross = legSide === 'short'
+      const calculated_gross = legSide === 'short'
         ? (entryPrice - exitPrice) * qty * multiplier
         : (exitPrice - entryPrice) * qty * multiplier;
+      // OANDA realizes P&L in the account's home currency, independently of
+      // the instrument quote currency. Retain its converted USD amount only
+      // while the leg still has the exact economics it was imported with.
+      // Editing a price, side or quantity returns to the normal calculation.
+      const reported = execution.broker_pnl;
+      const matches_report = reported?.source === 'oanda'
+        && reported.side === legSide
+        && ['entry_price', 'exit_price', 'quantity'].every(field => {
+          const value = { entry_price: entryPrice, exit_price: exitPrice, quantity: qty }[field];
+          return parseNumeric(reported[field]) === value;
+        });
+      const reported_gross = matches_report ? parseNumeric(reported.gross_pnl) : null;
+      const gross = reported_gross ?? calculated_gross;
       grossRealizedPnl = gross;
       realizedPnl = gross - totalCost;
       totalRealizedPnl += realizedPnl;

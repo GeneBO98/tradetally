@@ -254,8 +254,8 @@ const schemas = {
     exitPrice: Joi.number().min(0).allow(null, ''),
     quantity: Joi.number().positive().required(),
     side: Joi.string().valid('long', 'short').required(),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').default('stock'),
-    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').optional(), // Accept snake_case for API compatibility
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex', 'cfd').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex', 'cfd').optional(), // Accept snake_case for API compatibility
     commission: Joi.number().default(0),  // Can be negative for rebates
     entryCommission: Joi.number().default(0),  // Can be negative for rebates
     exitCommission: Joi.number().default(0),  // Can be negative for rebates
@@ -359,8 +359,8 @@ const schemas = {
   createShellTrade: Joi.object({
     symbol: Joi.string().max(20).required(),
     side: Joi.string().valid('long', 'short').required(),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').default('stock'),
-    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex').optional(),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex', 'cfd').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex', 'cfd').optional(),
     broker: Joi.string().max(50).allow(''),
     account_identifier: Joi.string().max(50).allow(''),
     strategy: Joi.string().max(100).allow(''),
@@ -413,7 +413,7 @@ const schemas = {
     exitPrice: Joi.number().min(0).allow(null, ''),
     quantity: Joi.number().positive(),
     side: Joi.string().valid('long', 'short'),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex'),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'forex', 'cfd'),
     commission: Joi.number(),  // Can be negative for rebates
     entryCommission: Joi.number(),  // Can be negative for rebates
     exitCommission: Joi.number(),  // Can be negative for rebates
@@ -834,6 +834,22 @@ const schemas = {
     syncFrequency: Joi.string().valid('manual', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours', 'daily').default('manual'),
     syncTime: nullableString(10),
     syncStartDate: nullableDate
+  }),
+
+  brokerSyncOandaAccounts: Joi.object({
+    api_token: Joi.string().trim().min(1).max(512).required(),
+    broker_environment: Joi.string().valid('practice', 'live').default('practice')
+  }),
+
+  brokerSyncOandaConnection: Joi.object({
+    api_token: Joi.string().trim().min(1).max(512).required(),
+    account_id: Joi.string().trim().pattern(/^[0-9-]{1,32}$/).required(),
+    broker_environment: Joi.string().valid('practice', 'live').default('practice'),
+    account_label: Joi.string().trim().max(100).allow('').default(''),
+    auto_sync_enabled: Joi.boolean().default(false),
+    sync_frequency: Joi.string().valid('manual', 'daily', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours').default('daily'),
+    sync_time: Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/).default('06:00:00'),
+    sync_start_date: Joi.string().isoDate().allow(null).default(null)
   }),
 
   brokerSyncTrading212Connection: Joi.object({

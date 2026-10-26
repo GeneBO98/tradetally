@@ -3,6 +3,13 @@ import contracts from '../../../tests/fixtures/trading-calculation-contracts.jso
 import { getTradeGrossPnl, getTradeNetPnl } from './tradePnl'
 
 describe('trading calculation display contracts', () => {
+  it('displays OANDA account-currency realized P&L without recomputing quote-price differences', () => {
+    const fixture = contracts.pnl_engine_cases.find(({ id }) => id === 'oanda_reported_currency_pnl')
+    const trade = { ...fixture.expected.aggregate, exit_time: fixture.input.executions[0].exit_time }
+    expect(getTradeNetPnl(trade)).toBeCloseTo(5.63, 8)
+    expect(getTradeGrossPnl(trade)).toBeCloseTo(6.5, 8)
+  })
+
   it.each(contracts.backup_restore_cases.filter(({ expected }) => expected.exit_time))('displays restored closed-trade P&L for $id', ({ expected }) => {
     expect(getTradeNetPnl(expected)).toBeCloseTo(expected.pnl, 8)
     expect(getTradeGrossPnl(expected)).toBeCloseTo(expected.pnl + expected.commission + expected.fees, 8)

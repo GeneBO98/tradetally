@@ -228,6 +228,7 @@ function formatInstrumentType(type) {
     'option': 'Option',
     'future': 'Future',
     'forex': 'Forex',
+    'cfd': 'CFD / Metal',
     'crypto': 'Crypto',
     'stock': 'Stock'
   }

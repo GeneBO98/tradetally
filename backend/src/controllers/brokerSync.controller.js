@@ -11,6 +11,7 @@ const alpacaService = require('../services/brokerSync/alpacaService');
 const webullService = require('../services/brokerSync/webullService');
 const tradovateService = require('../services/brokerSync/tradovateService');
 const trading212Service = require('../services/brokerSync/trading212Service');
+const oanda_service = require('../services/brokerSync/oandaService');
 const brokerSyncService = require('../services/brokerSync');
 const TierService = require('../services/tierService');
 const AnalyticsCache = require('../services/analyticsCache');
@@ -247,8 +248,48 @@ const brokerSyncController = {
   },
 
   /**
-   * Add a Trading 212 API-key connection.
+   * Discover and connect OANDA v20 accounts using a personal token.
    */
+  async getOandaAccounts(req, res, next) {
+    try {
+      const access = await TierService.canCreateBrokerConnection(req.user.id, req.headers?.host);
+      if (!access.allowed) return sendProRequired(res, access);
+      const accounts = await oanda_service.list_accounts(req.body.api_token, req.body.broker_environment);
+      return res.json({ success: true, data: accounts });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ success: false, error: error.message });
+      next(error);
+    }
+  },
+
+  async addOandaConnection(req, res, next) {
+    try {
+      const user_id = req.user.id;
+      const access = await TierService.canCreateBrokerConnection(user_id, req.headers?.host);
+      if (!access.allowed) return sendProRequired(res, access);
+      const body = req.body;
+      const account = await oanda_service.get_account(body.api_token, body.broker_environment, body.account_id);
+      const connection = await BrokerConnection.create(user_id, {
+        brokerType: 'oanda', oanda_api_token: body.api_token,
+        externalAccountId: body.account_id, brokerEnvironment: body.broker_environment,
+        brokerMetadata: { currency: account.currency }, accountLabel: body.account_label || account.alias || null,
+        autoSyncEnabled: body.auto_sync_enabled, syncFrequency: body.sync_frequency,
+        syncTime: body.sync_time, syncStartDate: body.sync_start_date
+      });
+      await BrokerConnection.updateStatus(connection.id, 'active', 'OANDA account connected');
+      if (body.auto_sync_enabled && body.sync_frequency !== 'manual') {
+        const timezone = await getUserTimezone(user_id);
+        const next_sync = BrokerConnection.calculateNextSync(body.sync_frequency, body.sync_time, timezone);
+        if (next_sync) await BrokerConnection.update(connection.id, { nextScheduledSync: next_sync });
+      }
+      return res.status(201).json({ success: true, data: await BrokerConnection.findById(connection.id, false) });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ success: false, error: error.message });
+      next(error);
+    }
+  },
+
+  /** Add a Trading 212 API-key connection. */
   async addTrading212Connection(req, res, next) {
     try {
       const userId = req.user.id;
@@ -969,6 +1010,8 @@ const brokerSyncController = {
             testResult = { valid: false, message: `Schwab connection test failed: ${error.message}` };
           }
         }
+      } else if (connection.brokerType === 'oanda') {
+        testResult = await oanda_service.validate_connection(connection);
       } else if (connection.brokerType === 'trading212') {
         testResult = await trading212Service.validateCredentials(
           connection.trading212ApiKey,

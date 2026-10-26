@@ -37,6 +37,8 @@ vi.mock('vue-router', async importOriginal => ({
   useRouter: () => ({ replace: vi.fn() })
 }))
 
+vi.mock('@/services/api', () => ({ default: { get: vi.fn().mockResolvedValue({ data: { data: [] } }) } }))
+
 import BrokerSyncView from '@/views/BrokerSyncView.vue'
 
 describe('BrokerSyncView sync outcomes', () => {

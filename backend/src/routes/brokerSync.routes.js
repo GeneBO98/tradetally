@@ -45,6 +45,10 @@ router.get('/connections/:id/accounts', brokerSyncLimiter, brokerSyncController.
 // Add IBKR connection
 router.post('/connections/ibkr', brokerSyncLimiter, validate(schemas.brokerSyncIbkrConnection), brokerSyncController.addIBKRConnection);
 
+// OANDA personal-token connections (credentials never enter query strings).
+router.post('/connections/oanda/accounts', brokerSyncLimiter, validate(schemas.brokerSyncOandaAccounts), brokerSyncController.getOandaAccounts);
+router.post('/connections/oanda', brokerSyncLimiter, validate(schemas.brokerSyncOandaConnection), brokerSyncController.addOandaConnection);
+
 // Add Trading 212 API-key connection
 router.post('/connections/trading212', brokerSyncLimiter, validate(schemas.brokerSyncTrading212Connection), brokerSyncController.addTrading212Connection);
 

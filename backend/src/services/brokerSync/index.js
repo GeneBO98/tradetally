@@ -13,6 +13,7 @@ const tradestationService = require('./tradestationService');
 const alpacaService = require('./alpacaService');
 const webullService = require('./webullService');
 const trading212Service = require('./trading212Service');
+const oanda_service = require('./oandaService');
 const tradovateService = require('./tradovateService');
 const { getUserTimezone } = require('../../utils/timezone');
 const { publishInBackground } = require('../../events/domainEvents');
@@ -148,6 +149,10 @@ class BrokerSyncService {
             endDate,
             syncLogId: syncLog.id
           });
+          break;
+
+        case 'oanda':
+          result = await oanda_service.syncTrades(connection, { startDate, endDate, syncLogId: syncLog.id });
           break;
 
         case 'trading212':

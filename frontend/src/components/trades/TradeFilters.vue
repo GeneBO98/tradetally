@@ -906,7 +906,9 @@ const instrumentTypeOptions = [
   { value: 'stock', label: 'Stocks' },
   { value: 'option', label: 'Options' },
   { value: 'future', label: 'Futures' },
-  { value: 'crypto', label: 'Crypto' }
+  { value: 'crypto', label: 'Crypto' },
+  { value: 'forex', label: 'Forex' },
+  { value: 'cfd', label: 'CFD / Metal' }
 ]
 
 // Option type options

@@ -453,6 +453,12 @@ const brokerStyles = computed(() => {
                 bgClass: "bg-indigo-100 dark:bg-indigo-900/30",
                 textClass: "text-indigo-600 dark:text-indigo-400",
             };
+        case "oanda":
+            return {
+                name: props.connection.brokerEnvironment === "practice" ? "OANDA Practice" : "OANDA Live",
+                abbrev: "OA", bgClass: "bg-primary-100 dark:bg-primary-900/30",
+                textClass: "text-primary-600 dark:text-primary-400",
+            };
         case "trading212":
             return {
                 name: props.connection.brokerEnvironment === "demo"

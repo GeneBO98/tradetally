@@ -119,7 +119,7 @@ class Trade {
       originalPnlCurrency, original_pnl_currency, originalCommissionCurrency, original_commission_currency,
       originalFeesCurrency, original_fees_currency,
       stopLoss, takeProfit, takeProfitTargets, chartUrl,
-      brokerConnectionId, accountIdentifier, account_identifier,
+      brokerConnectionId, accountIdentifier, account_identifier, broker_trade_id,
       conid, manualTargetHitFirst,
       postExitWindowOverrideMinutes, post_exit_window_override_minutes,
       postExitMae, postExitMfe, post_exit_mae, post_exit_mfe
@@ -609,9 +609,9 @@ class Trade {
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
         original_pnl_currency, original_commission_currency, original_fees_currency,
         stop_loss, take_profit, take_profit_targets, r_value, chart_url, broker_connection_id, account_identifier, conid, manual_target_hit_first,
-        post_exit_window_override_minutes, post_exit_mae, post_exit_mfe
+        post_exit_window_override_minutes, post_exit_mae, post_exit_mfe, broker_trade_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65)
       RETURNING *
     `;
 
@@ -641,7 +641,7 @@ class Trade {
       manualTargetHitFirst || null,
       finalPostExitWindowOverrideMinutes,
       roundToDbPrecision(finalPostExitMae),
-      roundToDbPrecision(finalPostExitMfe)
+      roundToDbPrecision(finalPostExitMfe), broker_trade_id || null
     ];
 
     let createdTrade;
