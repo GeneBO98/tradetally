@@ -63,6 +63,19 @@ describe('trade detail quote prices (issue 418)', () => {
     wrapper.unmount()
   })
 
+  it('uses stored gross P&L for OANDA grouped executions with account-currency conversion', async () => {
+    const fixture = contracts.pnl_engine_cases.find(({ id }) => id === 'oanda_reported_currency_pnl')
+    const wrapper = await mountTrade([{
+      ...fixture.input.executions[0],
+      realized_pnl: fixture.expected.realized_pnl[0],
+      gross_realized_pnl: fixture.expected.gross_realized_pnl[0]
+    }])
+    const execution = wrapper.vm.processedExecutions[0]
+    expect(execution.grossPnl).toBeCloseTo(6.5, 8)
+    expect(execution.netPnl).toBeCloseTo(5.63, 8)
+    wrapper.unmount()
+  })
+
   it('uses trade-level native prices when the execution table synthesizes a row', async () => {
     const wrapper = await mountTrade([])
     const execution = wrapper.vm.processedExecutions[0]

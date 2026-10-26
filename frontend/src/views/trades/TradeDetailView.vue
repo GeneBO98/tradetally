@@ -2337,9 +2337,11 @@ const processedExecutions = computed(() => {
         ?? execution.exit_price
         ?? (executionExitTime && Number(trade.value.exit_price) === 0 ? 0 : null)
       const exitPrice = rawExit != null ? parseFloat(rawExit) : null
-      const grossPnl = (exitPrice != null && quantity > 0)
-        ? (tradeSide === 'short' ? (entryPrice - exitPrice) * quantity * valueMultiplier : (exitPrice - entryPrice) * quantity * valueMultiplier)
-        : null
+      const grossPnl = execution.gross_realized_pnl != null
+        ? parseFloat(execution.gross_realized_pnl)
+        : (exitPrice != null && quantity > 0)
+          ? (tradeSide === 'short' ? (entryPrice - exitPrice) * quantity * valueMultiplier : (exitPrice - entryPrice) * quantity * valueMultiplier)
+          : null
 
       return {
         ...execution,
