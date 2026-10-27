@@ -681,12 +681,8 @@ async function getTradeReplayData(trade, userId) {
   const priceScale = isFutures ? 1 : resolvePriceScale(candles, fills);
   candles = applyPriceScale(candles, priceScale);
 
-  // multiplierFor falls back to 1 when a futures trade has no point_value;
-  // recover the contract's real point value from its root instead.
-  let multiplier = multiplierFor(instrumentType, trade.contract_size, trade.point_value);
-  if (isFutures && !asNumber(trade.point_value)) {
-    multiplier = getFuturesPointValue(futuresRoot);
-  }
+  const pointValue = asNumber(trade.point_value) ?? (isFutures ? getFuturesPointValue(futuresRoot) : null);
+  const multiplier = multiplierFor(instrumentType, trade.contract_size, pointValue);
 
   return {
     symbol: trade.symbol,

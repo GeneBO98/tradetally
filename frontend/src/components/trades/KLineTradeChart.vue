@@ -576,7 +576,7 @@ function pnlMeasurementExtendData() {
     side: String(trade.side || 'long').toLowerCase(),
     instrument_type,
     contract_size: Number(trade.contract_size ?? trade.contractSize) || 100,
-    point_value: Number(trade.point_value ?? trade.pointValue) || 1,
+    point_value: instrument_type === 'future' ? (trade.point_value ?? trade.pointValue ?? null) : 1,
     entry_price: Number.isFinite(entry_price) ? entry_price : null,
     currency_code: props.currencyCode,
     show_dollar_pnl: instrument_type !== 'option',

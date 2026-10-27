@@ -1746,7 +1746,8 @@ const hasGroupedExecutions = computed(() => {
 const computedPnlPreview = computed(() => {
   const instrumentType = form.value.instrumentType || 'stock'
   const side = form.value.side
-  const pointValue = instrumentType === 'future' ? (parseFloat(form.value.pointValue) || 1) : 1
+  const pointValue = instrumentType === 'future' ? parseFloat(form.value.pointValue) : 1
+  if (instrumentType === 'future' && (!Number.isFinite(pointValue) || pointValue <= 0)) return null
   const contractSize = instrumentType === 'option' ? (parseFloat(form.value.contractSize) || 100) : 1
   const multiplier = instrumentType === 'future' ? pointValue : (instrumentType === 'option' ? contractSize : 1)
 

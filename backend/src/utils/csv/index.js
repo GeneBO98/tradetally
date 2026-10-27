@@ -1615,6 +1615,10 @@ async function parseCSV(rawFileBuffer, broker = 'generic', context = {}) {
     detectedBroker = null;
   }
 
+  // A recognized file can legitimately contain only inactive/duplicate fills
+  // or unsupported instruments. Generic fallback must not bypass those checks.
+  if (!primaryError && detectedBroker === broker) return primaryResult;
+
   const fallbackBrokers = [];
   if (detectedBroker && detectedBroker !== 'generic' && detectedBroker !== broker) {
     fallbackBrokers.push(detectedBroker);

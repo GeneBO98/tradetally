@@ -961,6 +961,8 @@ function detectBrokerFormat(fileBuffer) {
       return 'tradervue';
     }
 
+    if (hasTradovateFillHeaders(headers)) return 'tradovate';
+
     // Tradovate detection - supports both order-fill exports and paired trade/performance exports
     // Note: Don't rely on first column (orderId) due to potential BOM issues
     if (headers.includes('b/s') &&
@@ -1189,7 +1191,15 @@ function getCsvSampleRows(fileBuffer, maxRows = 5) {
   }
 }
 
+function hasTradovateFillHeaders(headers = []) {
+  const values = Array.isArray(headers) ? headers : parse(String(headers), { trim: true })[0] || [];
+  const fields = new Set(values.map(header => String(header).trim().toLowerCase()));
+  return ['contract', 'b/s', 'quantity', 'price', 'timestamp', 'order id'].every(field => fields.has(field)) &&
+    (fields.has('fill id') || fields.has('_id'));
+}
+
 module.exports = {
+  hasTradovateFillHeaders,
   HEADER_LOCALE_MAP,
   VALUE_LOCALE_MAP,
   localizeRecords,

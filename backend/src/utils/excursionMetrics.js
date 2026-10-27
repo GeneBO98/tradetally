@@ -48,7 +48,9 @@ function capturedMoveDollars(trade) {
   const move = signedPriceMove(trade.entry_price ?? trade.entryPrice, trade.exit_price ?? trade.exitPrice, trade.side);
   if (move == null) return null;
 
-  return Math.max(0, move * quantity * resolveMultiplier(trade));
+  const multiplier = resolveMultiplier(trade);
+  if (multiplier == null || multiplier <= 0) return null;
+  return Math.max(0, move * quantity * multiplier);
 }
 
 function toFuturesPoints(value, trade) {

@@ -18,7 +18,7 @@ function position_direction(position) {
 
 function value_multiplier(position) {
   const instrument = position.instrument_type ?? position.instrumentType
-  if (instrument === 'future') return finite(position.point_value ?? position.pointValue) ?? 1
+  if (instrument === 'future') return finite(position.point_value ?? position.pointValue)
   return 1
 }
 
@@ -77,6 +77,7 @@ export function plan_bar(position) {
   const { current, entry } = inputs
   const quantity = finite(position.total_quantity ?? position.totalQuantity) ?? 0
   const multiplier = value_multiplier(position)
+  if (multiplier === null || multiplier <= 0) return null
   const progress_pct = ((current - stop) * direction / span) * 100
 
   return {

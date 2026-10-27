@@ -966,13 +966,13 @@ function parseInstrumentData(symbol) {
   // Base symbol may contain digits (e.g. M2K = Micro Russell 2000), so allow
   // alphanumerics after a required leading letter rather than letters only.
   const futuresPatterns = [
-    /^([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{1,2})$/,  // Standard: ESM4, NQU24, CLZ23, M2KM6
+    /^([A-Z0-9]{1,4})([FGHJKMNQUVXZ])(\d{1,2})$/,  // Standard: ESM4, NQU24, CLZ23, M2KM6
     // TradingView futures: NYMEX_MINI:QG1!, CME:ESH2026. The lookahead requires the
     // contract part to contain a digit or end with "!" so plain exchange-prefixed
     // stock tickers (e.g. NASDAQ:HUBC, NASDAQ:LASE) are NOT misclassified as futures.
     /^((?:CME|CBOT|NYMEX|COMEX)(?:_MINI|_MICRO)?|EUREX|ICEUS|ICEEUR|SGX|OSE|TOCOM):(?=[A-Z0-9]*\d|[A-Z0-9]+!)([A-Z0-9]+)!?$/,
-    /^\/([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{2})$/,   // Slash notation: /ESM24
-    /^F\.[A-Z]{2,}\.([A-Z][A-Z0-9]{0,2})([FGHJKMNQUVXZ])(\d{1,2})$/  // AvaTrade: F.US.MESM26
+    /^\/([A-Z0-9]{1,4})([FGHJKMNQUVXZ])(\d{2})$/,   // Slash notation: /ESM24
+    /^F\.[A-Z]{2,}\.([A-Z0-9]{1,4})([FGHJKMNQUVXZ])(\d{1,2})$/  // AvaTrade: F.US.MESM26
   ];
 
   for (const pattern of futuresPatterns) {
@@ -983,7 +983,7 @@ function parseInstrumentData(symbol) {
       if (pattern.source.includes(':')) {
         // TradingView format
         const [, , contractSymbol] = match;
-        const standardTvMatch = contractSymbol.match(/^([A-Z][A-Z0-9]*?)([FGHJKMNQUVXZ])(\d{1,4})$/);
+        const standardTvMatch = contractSymbol.match(/^([A-Z0-9]+?)([FGHJKMNQUVXZ])(\d{1,4})$/);
         const continuousTvMatch = contractSymbol.match(/^([A-Z]+)\d+$/);
 
         if (standardTvMatch) {
@@ -1055,8 +1055,8 @@ function parseInstrumentData(symbol) {
     JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06',
     JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12'
   };
-  const ninjaNamedMonth = normalizedSymbol.match(/^([A-Z][A-Z0-9]{0,3})\s+([A-Z]{3})\s?(\d{2})$/);
-  const ninjaNumericMonth = normalizedSymbol.match(/^([A-Z][A-Z0-9]{0,3})\s+(0[1-9]|1[0-2])-(\d{2})$/);
+  const ninjaNamedMonth = normalizedSymbol.match(/^([A-Z0-9]{1,4})\s+([A-Z]{3})\s?(\d{2})$/);
+  const ninjaNumericMonth = normalizedSymbol.match(/^([A-Z0-9]{1,4})\s+(0[1-9]|1[0-2])-(\d{2})$/);
   if (ninjaNamedMonth || ninjaNumericMonth) {
     const underlying = (ninjaNamedMonth || ninjaNumericMonth)[1];
     const month = ninjaNamedMonth

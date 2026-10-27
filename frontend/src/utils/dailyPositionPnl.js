@@ -5,8 +5,9 @@ export function daily_position_pnl(position) {
   const quantity = position.total_quantity ?? position.totalQuantity
   const instrument = position.instrument_type ?? position.instrumentType
   const multiplier = instrument === 'future'
-    ? (position.point_value ?? position.pointValue ?? 1)
+    ? (position.point_value ?? position.pointValue)
     : instrument === 'option' ? (position.contract_size ?? position.contractSize ?? 100) : 1
   if ([change, quantity, multiplier].some(value => value === null || value === undefined || value === '' || !Number.isFinite(Number(value)))) return null
+  if (Number(multiplier) <= 0) return null
   return Number(change) * Number(quantity) * Number(multiplier) * (position.side === 'short' ? -1 : 1)
 }

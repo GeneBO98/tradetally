@@ -31,7 +31,10 @@ function isSellAction(action) {
 function multiplierFor(instrumentType, contractSize, pointValue) {
   if (instrumentType === 'future') {
     const pv = parseNumeric(pointValue);
-    return pv != null && pv > 0 ? pv : 1;
+    if (pv == null || !Number.isFinite(pv) || pv <= 0) {
+      throw new Error('Futures point value is unknown or invalid. Supply the contract multiplier before calculating P&L.');
+    }
+    return pv;
   }
   if (instrumentType === 'option') {
     const cs = parseNumeric(contractSize);

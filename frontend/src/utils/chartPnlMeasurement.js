@@ -11,7 +11,7 @@ export function calculateChartPnlMeasurement({
   side = 'long',
   instrument_type = 'stock',
   contract_size = 100,
-  point_value = 1,
+  point_value = null,
 } = {}) {
   const normalized_entry_price = finiteNumber(entry_price)
   const normalized_exit_price = finiteNumber(exit_price)
@@ -27,7 +27,8 @@ export function calculateChartPnlMeasurement({
   if (normalized_instrument_type === 'option') {
     multiplier = Math.abs(finiteNumber(contract_size, 100)) || 100
   } else if (normalized_instrument_type === 'future') {
-    multiplier = Math.abs(finiteNumber(point_value, 1)) || 1
+    multiplier = finiteNumber(point_value)
+    if (multiplier === null || multiplier <= 0) return null
   }
 
   const position_basis = Math.abs(
