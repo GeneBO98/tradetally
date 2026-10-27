@@ -1,0 +1,20 @@
+[
+  {
+    "file": "metatrader-deal-history.patch",
+    "saved_date": "2026-05-17",
+    "description": "MetaTrader 4/5 deal-history CSV parser and importer",
+    "sha256": "dba8f46817933034d60d44efb64c09777d08b723ce7cdf9da72404ab6d304966"
+  },
+  {
+    "file": "investment-api-key-auth.patch",
+    "saved_date": "2026-05-11",
+    "description": "API-key authentication for investment routes",
+    "sha256": "73e14a49cc8fd4e25e38538c83b0a33572fd6af18c9a39508b7267110620f8ef"
+  },
+  {
+    "file": "ibkr-currency-warning.patch",
+    "saved_date": "2026-05-10",
+    "description": "IBKR unconverted-currency import and sync warning variant",
+    "sha256": "0e814e4ab972b2f1eab32edb9821ba2e8e1cbf56bf643bac7a7971f54d9c2d78"
+  }
+]

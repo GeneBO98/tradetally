@@ -1,0 +1,351 @@
+diff --git a/backend/src/utils/csvParser.js b/backend/src/utils/csvParser.js
+index 430f4f28..07781492 100644
+--- a/backend/src/utils/csvParser.js
++++ b/backend/src/utils/csvParser.js
+@@ -994,6 +994,21 @@ function detectBrokerFormat(fileBuffer) {
+       return 'generic';
+     }
+ 
++    // MetaTrader 4/5 deal history detection (per-execution rows). Distinct from
++    // the completed-trade export above: one row per execution, with `entry`
++    // ("in"/"out") and `ticket` pairing the opening and closing executions.
++    // Canonical header (often semicolon-delimited):
++    //   DATE;TICKET;TYPE;SYMBOL;VOLUME;ENTRY;PRICE;STOPLOSS;TAKEPROFIT;PROFIT;COMMISSION;FEE;SWAP;MAGIC;COMMENT
++    if (headers.includes('ticket') &&
++        headers.includes('symbol') &&
++        headers.includes('entry') &&
++        (headers.includes('volume') || headers.includes('lots')) &&
++        (headers.includes('swap') || headers.includes('magic')) &&
++        !headers.includes('opening_time_utc')) {
++      console.log('[AUTO-DETECT] Detected: MetaTrader 4/5 deal history (per-execution rows)');
++      return 'metatrader';
++    }
++
+     // Robinhood detection - `Activity Date,Process Date,Settle Date,Instrument,
+     // Description,Trans Code,Quantity,Price,Amount` is the canonical account
+     // history export. The generic parser maps `Activity Date` → date,
+@@ -2846,6 +2861,22 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
+       escape: '"'
+     };
+ 
++    if (broker === 'metatrader') {
++      // MT4/MT5 deal history exports are commonly semicolon-delimited. Auto-pick
++      // the delimiter based on which appears most often on the first non-empty
++      // line so comma- and semicolon-style exports both work.
++      const firstNonEmpty = csvString.split('\n').find(l => l && l.trim()) || '';
++      const semicolons = (firstNonEmpty.match(/;/g) || []).length;
++      const commas = (firstNonEmpty.match(/,/g) || []).length;
++      const tabs = (firstNonEmpty.match(/\t/g) || []).length;
++      let mtDelim = ',';
++      if (tabs > semicolons && tabs > commas) mtDelim = '\t';
++      else if (semicolons > commas) mtDelim = ';';
++      parseOptions.delimiter = mtDelim;
++      delimiter = mtDelim;
++      console.log(`[METATRADER] Using delimiter: ${mtDelim === '\t' ? 'TAB' : mtDelim}`);
++    }
++
+     if (broker === 'tradovate') {
+       csvString = normalizeWholeLineQuotedCsvRows(csvString);
+       parseOptions = {
+@@ -3706,6 +3737,22 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
+       return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
+     }
+ 
++    // MetaTrader 4/5 deal history — each row is a single execution (open or
++    // close), and pairs of rows sharing the same TICKET form a completed trade.
++    if (broker === 'metatrader') {
++      console.log('Starting MetaTrader deal-history parsing');
++      const result = parseMetaTraderDeals(records, diagnostics);
++      console.log(`Finished MetaTrader parsing: ${result.length} completed trades`);
++
++      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
++      let finalTrades = result;
++      if (tradeGroupingSettings.enabled && result.length > 0) {
++        finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
++      }
++
++      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
++    }
++
+     const hasGenericCompletedTradeRows = records.some(record => Boolean(
+       record['Opening time (UTC-4)'] ||
+       record['Closing time (UTC-4)'] ||
+@@ -11335,6 +11382,199 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
+   return completedTrades;
+ }
+ 
++// Pull a field from an MT4/MT5 record using a list of candidate header names.
++// Matches case-insensitively because the Proxy wrapping at parse time isn't
++// guaranteed for non-known brokers and exports vary between UPPER and Title
++// case.
++function pickMetaTraderField(record, candidates) {
++  if (!record) return undefined;
++  for (const key of candidates) {
++    if (Object.prototype.hasOwnProperty.call(record, key) && record[key] != null && record[key] !== '') {
++      return record[key];
++    }
++  }
++  // Case-insensitive fallback
++  const lowered = candidates.map(c => c.toLowerCase());
++  for (const recKey of Object.keys(record)) {
++    if (lowered.includes(recKey.toLowerCase()) && record[recKey] != null && record[recKey] !== '') {
++      return record[recKey];
++    }
++  }
++  return undefined;
++}
++
++function normalizeMetaTraderEntry(value) {
++  if (!value) return '';
++  const v = value.toString().trim().toLowerCase();
++  // "in" / "entrada" → open execution; "out" / "salida" → close execution.
++  if (v === 'in' || v === 'entrada' || v === 'entry' || v === 'open') return 'in';
++  if (v === 'out' || v === 'salida' || v === 'exit' || v === 'close') return 'out';
++  // MT5 sometimes marks reversals as "in/out" or "out/in"
++  if (v.startsWith('in')) return 'in';
++  if (v.startsWith('out')) return 'out';
++  return '';
++}
++
++function parseMetaTraderDeals(records, diagnostics) {
++  if (diagnostics) {
++    diagnostics.totalRows = records.length;
++  }
++
++  // Bucket rows by ticket so opening and closing executions can be paired.
++  // MT5 deals may have separate position IDs and order IDs; when both exist we
++  // prefer position id for grouping because the in/out pair shares it.
++  const tickets = new Map();
++  let rowIndex = 0;
++  const skipReasons = diagnostics ? diagnostics.skippedReasons : [];
++
++  for (const record of records) {
++    rowIndex++;
++    const positionId = pickMetaTraderField(record, ['POSITION_ID', 'Position_ID', 'position_id', 'Position ID']);
++    const ticket = pickMetaTraderField(record, ['TICKET', 'Ticket', 'ticket', 'Order', 'ORDER', 'Deal']);
++    const groupKey = (positionId || ticket || '').toString().trim();
++
++    if (!groupKey) {
++      if (diagnostics) {
++        diagnostics.invalidRows++;
++        skipReasons.push({ row: rowIndex, reason: 'MetaTrader row is missing a ticket / position id, cannot pair with a counterparty execution.' });
++      }
++      continue;
++    }
++
++    const entry = normalizeMetaTraderEntry(pickMetaTraderField(record, ['ENTRY', 'Entry', 'entry']));
++    if (!tickets.has(groupKey)) {
++      tickets.set(groupKey, { open: null, close: null, fallback: [], rowIndex });
++    }
++    const bucket = tickets.get(groupKey);
++    if (entry === 'in' && !bucket.open) {
++      bucket.open = { record, rowIndex };
++    } else if (entry === 'out' && !bucket.close) {
++      bucket.close = { record, rowIndex };
++    } else {
++      bucket.fallback.push({ record, rowIndex });
++    }
++  }
++
++  const completedTrades = [];
++
++  for (const [ticketKey, bucket] of tickets.entries()) {
++    let openEntry = bucket.open;
++    let closeEntry = bucket.close;
++
++    // When ENTRY column is absent or non-standard, fall back to chronological
++    // ordering of the rows that arrived for this ticket.
++    if (!openEntry && bucket.fallback.length) {
++      bucket.fallback.sort((a, b) => {
++        const da = new Date(pickMetaTraderField(a.record, ['DATE', 'Date', 'date', 'Time', 'TIME', 'time'])).getTime() || 0;
++        const db = new Date(pickMetaTraderField(b.record, ['DATE', 'Date', 'date', 'Time', 'TIME', 'time'])).getTime() || 0;
++        return da - db;
++      });
++      openEntry = bucket.fallback[0];
++      if (bucket.fallback.length > 1 && !closeEntry) {
++        closeEntry = bucket.fallback[bucket.fallback.length - 1];
++      }
++    }
++
++    if (!openEntry) {
++      if (diagnostics) {
++        diagnostics.invalidRows++;
++        skipReasons.push({ row: bucket.rowIndex, reason: `Ticket ${ticketKey}: no opening execution found.` });
++      }
++      continue;
++    }
++
++    const openRow = openEntry.record;
++    const closeRow = closeEntry ? closeEntry.record : null;
++
++    const symbol = cleanString(pickMetaTraderField(openRow, ['SYMBOL', 'Symbol', 'symbol', 'Instrument', 'INSTRUMENT'])) || '';
++    const rawType = (pickMetaTraderField(openRow, ['TYPE', 'Type', 'type']) || '').toString().toLowerCase().trim();
++    let side = 'long';
++    if (rawType.includes('sell') || rawType === '1' || rawType.includes('short') || rawType.includes('venta') || rawType.includes('vender')) {
++      side = 'short';
++    } else {
++      side = 'long';
++    }
++
++    const quantity = Math.abs(parseNumeric(
++      pickMetaTraderField(openRow, ['VOLUME', 'Volume', 'volume', 'LOTS', 'Lots', 'lots', 'Size', 'SIZE', 'size'])
++    ));
++    const openPrice = parseNumeric(pickMetaTraderField(openRow, ['PRICE', 'Price', 'price', 'Open Price', 'OpenPrice']));
++    const openTimeRaw = pickMetaTraderField(openRow, ['DATE', 'Date', 'date', 'Time', 'TIME', 'time', 'Open Time']);
++    const stopLoss = parseNumeric(pickMetaTraderField(openRow, ['STOPLOSS', 'Stoploss', 'stoploss', 'Stop Loss', 'SL', 'S/L', 's/l'])) || null;
++    const takeProfit = parseNumeric(pickMetaTraderField(openRow, ['TAKEPROFIT', 'Takeprofit', 'takeprofit', 'Take Profit', 'TP', 'T/P', 't/p'])) || null;
++    const comment = cleanString(pickMetaTraderField(openRow, ['COMMENT', 'Comment', 'comment'])) || '';
++    const magic = cleanString(pickMetaTraderField(openRow, ['MAGIC', 'Magic', 'magic'])) || '';
++
++    let commission = parseNumeric(pickMetaTraderField(openRow, ['COMMISSION', 'Commission', 'commission'])) || 0;
++    let fee = parseNumeric(pickMetaTraderField(openRow, ['FEE', 'Fee', 'fee', 'Fees', 'FEES'])) || 0;
++    let swap = parseNumeric(pickMetaTraderField(openRow, ['SWAP', 'Swap', 'swap'])) || 0;
++    let pnl = parseNumeric(pickMetaTraderField(openRow, ['PROFIT', 'Profit', 'profit', 'PnL', 'P&L'])) || 0;
++
++    let exitPrice = null;
++    let exitTimeRaw = null;
++    if (closeRow) {
++      exitPrice = parseNumeric(pickMetaTraderField(closeRow, ['PRICE', 'Price', 'price', 'Close Price', 'ClosePrice']));
++      exitTimeRaw = pickMetaTraderField(closeRow, ['DATE', 'Date', 'date', 'Time', 'TIME', 'time', 'Close Time']);
++      commission += parseNumeric(pickMetaTraderField(closeRow, ['COMMISSION', 'Commission', 'commission'])) || 0;
++      fee += parseNumeric(pickMetaTraderField(closeRow, ['FEE', 'Fee', 'fee', 'Fees', 'FEES'])) || 0;
++      swap += parseNumeric(pickMetaTraderField(closeRow, ['SWAP', 'Swap', 'swap'])) || 0;
++      // Profit on the close row is the canonical realized PnL — prefer it.
++      const closePnl = parseNumeric(pickMetaTraderField(closeRow, ['PROFIT', 'Profit', 'profit', 'PnL', 'P&L']));
++      if (closePnl !== 0 || !pnl) {
++        pnl = closePnl;
++      }
++    }
++
++    if (!symbol || !openPrice || !quantity) {
++      if (diagnostics) {
++        diagnostics.invalidRows++;
++        skipReasons.push({
++          row: openEntry.rowIndex,
++          reason: `Ticket ${ticketKey}: missing symbol, price, or volume — skipped.`
++        });
++      }
++      continue;
++    }
++
++    const entryTime = parseDateTime(openTimeRaw) || parseDate(openTimeRaw);
++    const exitTime = exitTimeRaw ? (parseDateTime(exitTimeRaw) || parseDate(exitTimeRaw)) : null;
++    const tradeDate = parseDate(openTimeRaw) || entryTime;
++
++    const noteParts = [];
++    if (comment) noteParts.push(comment);
++    if (magic && magic !== '0') noteParts.push(`Magic: ${magic}`);
++    noteParts.push(`Ticket: ${ticketKey}`);
++    if (swap && Math.abs(swap) > 0.0001) noteParts.push(`Swap: ${swap}`);
++
++    completedTrades.push({
++      symbol: symbol.toUpperCase(),
++      tradeDate,
++      entryTime,
++      exitTime,
++      entryPrice: openPrice,
++      exitPrice: exitPrice || null,
++      quantity,
++      side,
++      commission,
++      // Roll swap into fees so realized PnL math stays consistent — TradeTally
++      // treats fees as a reduction of net PnL.
++      fees: fee + swap,
++      pnl: pnl,
++      stopLoss,
++      takeProfit,
++      currency: 'USD',
++      broker: 'metatrader',
++      notes: noteParts.join(' • ')
++    });
++
++    if (diagnostics) {
++      diagnostics.parsedRows++;
++    }
++  }
++
++  return completedTrades;
++}
++
+ function isValidTrade(trade) {
+   return trade.symbol &&
+          trade.tradeDate &&
+diff --git a/frontend/src/views/ImportView.vue b/frontend/src/views/ImportView.vue
+index 4b55edb5..bbd991c2 100644
+--- a/frontend/src/views/ImportView.vue
++++ b/frontend/src/views/ImportView.vue
+@@ -172,6 +172,7 @@
+                 <option value="questrade">Questrade</option>
+                 <option value="tradestation">TradeStation</option>
+                 <option value="tastytrade">Tastytrade</option>
++                <option value="metatrader">MetaTrader 4 / 5</option>
+                 <optgroup v-if="customMappings.length > 0" label="Custom Importers">
+                   <option
+                     v-for="mapping in customMappings"
+@@ -1532,6 +1533,16 @@ const brokerGuides = {
+       'Start with Auto-Detect, then use Generic CSV if your export layout is custom.'
+     ],
+     warning: 'Options exports need enough contract details to reconstruct trades accurately.'
++  },
++  metatrader: {
++    title: 'MetaTrader 4 / 5',
++    badge: 'Supported',
++    steps: [
++      'Open the History tab in MT4/MT5 and export your deals/orders as a CSV report.',
++      'Make sure the file includes the Date, Ticket, Type, Symbol, Volume, Entry, and Price columns.',
++      'Upload the raw CSV — semicolon- or comma-delimited exports are both supported.'
++    ],
++    warning: 'Use the deal/order history export (one row per execution). Account summary or equity reports do not contain enough detail to rebuild trades.'
+   }
+ }
+ 
+@@ -1673,6 +1684,7 @@ function formatBrokerName(broker) {
+     questrade: 'Questrade',
+     tradestation: 'TradeStation',
+     tastytrade: 'Tastytrade',
++    metatrader: 'MetaTrader 4 / 5',
+     other: 'Other'
+   }
+   return brokerLabels[broker] || broker
+@@ -1795,7 +1807,10 @@ async function parseCSVSampleRows(file, headers, count = 2) {
+         let headerLineIdx = -1
+         for (let i = 0; i < Math.min(15, lines.length); i++) {
+           const line = lines[i].trim()
+-          if (!line || !line.includes(',')) continue
++          // Accept any delimited line — comma, semicolon, tab, or pipe.
++          // MT4/MT5 exports commonly use semicolons; rejecting non-comma lines
++          // here makes the broker auto-detect see a single-column header.
++          if (!line || !/[,;\t|]/.test(line)) continue
+           const lower = line.toLowerCase()
+           if ((lower.includes('date') && lower.includes('time') && lower.includes('type')) ||
+               (lower.includes('symbol') && (lower.includes('quantity') || lower.includes('qty') || lower.includes('price'))) ||
+@@ -1858,7 +1873,10 @@ async function parseCSVHeaders(file) {
+         let fallbackLine = ''
+         for (let i = 0; i < Math.min(15, lines.length); i++) {
+           const line = lines[i].trim()
+-          if (!line || !line.includes(',')) continue
++          // Accept any delimited line — comma, semicolon, tab, or pipe.
++          // MT4/MT5 exports commonly use semicolons; rejecting non-comma lines
++          // here makes the broker auto-detect see a single-column header.
++          if (!line || !/[,;\t|]/.test(line)) continue
+           const lower = line.toLowerCase()
+           // Check if this looks like a real header row with column names
+           if ((lower.includes('date') && lower.includes('time') && lower.includes('type')) ||
+@@ -2022,6 +2040,17 @@ function detectBrokerFromHeaders(headers) {
+     return 'tradingview_performance'
+   }
+ 
++  // MetaTrader 4 / 5 deal history detection (per-execution rows). Pairs of
++  // rows sharing the same TICKET form a completed trade. The ENTRY column
++  // (in/out) distinguishes opening and closing executions.
++  if (headersStr.includes('ticket') && headersStr.includes('symbol') &&
++      headersStr.includes('entry') &&
++      (headersStr.includes('volume') || headersStr.includes('lots')) &&
++      (headersStr.includes('swap') || headersStr.includes('magic')) &&
++      !headersStr.includes('opening_time_utc')) {
++    return 'metatrader'
++  }
++
+   // Generic CSV detection - check if it has basic required fields
+   // Include common non-English equivalents for broader detection
+   const hasSymbol = lowerHeaders.some(h => h.includes('symbol') || h.includes('ticker') || h.includes('stock'))

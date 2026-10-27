@@ -1,0 +1,19 @@
+diff --git a/backend/src/routes/investments.routes.js b/backend/src/routes/investments.routes.js
+index a3f3cd0c..e6aa1980 100644
+--- a/backend/src/routes/investments.routes.js
++++ b/backend/src/routes/investments.routes.js
+@@ -6,12 +6,12 @@
+ 
+ const express = require('express');
+ const router = express.Router();
+-const { authenticate } = require('../middleware/auth');
+ const { requiresTier } = require('../middleware/tierAuth');
++const { flexibleAuth } = require('../middleware/apiKeyAuth');
+ const investmentsController = require('../controllers/investments.controller');
+ 
+ // All investment routes require authentication and Pro tier
+-router.use(authenticate);
++router.use(flexibleAuth);
+ router.use(requiresTier('pro'));
+ 
+ // ========================================

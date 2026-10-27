@@ -1,0 +1,201 @@
+diff --git a/backend/src/services/brokerSync/ibkrService.js b/backend/src/services/brokerSync/ibkrService.js
+index 8ebc1445..894fcc01 100644
+--- a/backend/src/services/brokerSync/ibkrService.js
++++ b/backend/src/services/brokerSync/ibkrService.js
+@@ -205,6 +205,7 @@ class IBKRService {
+ 
+     // Fetch existing positions and trades for duplicate detection
+     const existingContext = await this.getExistingContext(connection.userId);
++    existingContext.allowCurrencyWithoutConversion = true;
+ 
+     // Parse CSV using existing parser
+     const parseResult = await parseCSV(
+@@ -214,6 +215,14 @@ class IBKRService {
+     );
+ 
+     let trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
++    const syncDetails = {};
++    const currencyWarning = existingContext.currencyWarning || parseResult?.diagnostics?.warnings?.find(warning =>
++      typeof warning === 'string' && warning.includes('Display Currency')
++    );
++    if (currencyWarning) {
++      syncDetails.warning = currencyWarning;
++      syncDetails.nonUsdCurrencies = existingContext.nonUsdCurrencies || [];
++    }
+     console.log(`[IBKR] Parsed ${trades.length} trades`);
+ 
+     // Update sync log with fetched count
+@@ -231,6 +240,9 @@ class IBKRService {
+ 
+     // Import trades
+     const result = await this.importTrades(connection.userId, trades, existingContext);
++    if (syncDetails.warning) {
++      result.syncDetails = syncDetails;
++    }
+ 
+     console.log(`[IBKR] Sync complete: ${result.imported} imported, ${result.updated || 0} updated, ${result.skipped} skipped, ${result.duplicates} duplicates, ${result.failed} failed`);
+ 
+diff --git a/backend/src/services/brokerSync/index.js b/backend/src/services/brokerSync/index.js
+index 6788a19b..bfc90202 100644
+--- a/backend/src/services/brokerSync/index.js
++++ b/backend/src/services/brokerSync/index.js
+@@ -71,7 +71,8 @@ class BrokerSyncService {
+         tradesImported: result.imported + expiredClosed,
+         tradesSkipped: result.skipped,
+         tradesFailed: result.failed,
+-        duplicatesDetected: result.duplicates
++        duplicatesDetected: result.duplicates,
++        syncDetails: result.syncDetails
+       });
+ 
+       // Update connection status
+diff --git a/backend/src/utils/csvParser.js b/backend/src/utils/csvParser.js
+index af340f98..617f8498 100644
+--- a/backend/src/utils/csvParser.js
++++ b/backend/src/utils/csvParser.js
+@@ -443,6 +443,57 @@ function detectCurrencyColumn(records) {
+   return false;
+ }
+ 
++function getNonUsdCurrencies(records) {
++  if (!records || records.length === 0) {
++    return [];
++  }
++
++  const currencyFieldPatterns = new Set([
++    'currency',
++    'curr',
++    'ccy',
++    'currency_code',
++    'currencycode',
++    'price currency',
++    'currency (price / share)',
++    'currency (result)',
++    'currency (total)',
++    'ibcommissioncurrency',
++    'ib commission currency',
++    'currencyprimary',
++    'currency primary'
++  ]);
++  const validCurrencyCodePattern = /^[A-Z]{3}$/;
++  const currencies = new Set();
++
++  for (const record of records) {
++    for (const fieldName of Object.keys(record)) {
++      const lowerFieldName = fieldName.toLowerCase().trim();
++
++      if (!currencyFieldPatterns.has(lowerFieldName)) {
++        continue;
++      }
++
++      const value = record[fieldName];
++      if (!value || value.toString().trim() === '') {
++        continue;
++      }
++
++      const currencyValue = value.toString().toUpperCase().trim();
++      if (validCurrencyCodePattern.test(currencyValue) && currencyValue !== 'USD') {
++        currencies.add(currencyValue);
++      }
++    }
++  }
++
++  return Array.from(currencies).sort();
++}
++
++function buildCurrencySettingsWarning(currencies) {
++  const currencyList = currencies.length > 0 ? currencies.join(', ') : 'non-USD';
++  return `Imported broker data contains ${currencyList} currency values. Review Settings > Display Currency so reports use your preferred currency.`;
++}
++
+ /**
+  * Account column name patterns for flexible matching (case-insensitive)
+  */
+@@ -2974,12 +3025,19 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
+ 
+     if (hasCurrencyColumn) {
+       console.log(`[CURRENCY] Currency column detected in CSV import`);
++      const nonUsdCurrencies = getNonUsdCurrencies(records);
+ 
+       // Some broker parsers (like Questrade) preserve source currency directly
+       // and do not require USD conversion at import time.
+       const preservesSourceCurrency = broker === 'questrade';
+       if (preservesSourceCurrency) {
+         console.log(`[CURRENCY] ${broker} parser preserves source currency; skipping Pro conversion gate`);
++      } else if (context.allowCurrencyWithoutConversion) {
++        const warning = buildCurrencySettingsWarning(nonUsdCurrencies);
++        console.log(`[CURRENCY] ${warning}`);
++        diagnostics.warnings.push(warning);
++        context.currencyWarning = warning;
++        context.nonUsdCurrencies = nonUsdCurrencies;
+       } else {
+         // Check if user has pro tier access
+         const userId = context.userId;
+diff --git a/frontend/src/views/BrokerSyncView.vue b/frontend/src/views/BrokerSyncView.vue
+index 19005fe3..5b5c13d5 100644
+--- a/frontend/src/views/BrokerSyncView.vue
++++ b/frontend/src/views/BrokerSyncView.vue
+@@ -141,31 +141,38 @@
+                 </tr>
+               </thead>
+               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+-                <tr v-for="log in store.syncLogs" :key="log.id">
+-                  <td class="px-4 py-3 whitespace-nowrap">
+-                    <span class="font-medium text-gray-900 dark:text-white uppercase">{{ log.brokerType }}</span>
+-                  </td>
+-                  <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400 capitalize">
+-                    {{ log.syncType }}
+-                  </td>
+-                  <td class="px-4 py-3 whitespace-nowrap">
+-                    <span
+-                      class="px-2 py-1 text-xs rounded-full"
+-                      :class="getStatusClass(log.status)"
+-                    >
+-                      {{ log.status }}
+-                    </span>
+-                  </td>
+-                  <td class="px-4 py-3 whitespace-nowrap text-gray-900 dark:text-white">
+-                    {{ log.tradesImported || 0 }}
+-                  </td>
+-                  <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
+-                    {{ log.duplicatesDetected || 0 }}
+-                  </td>
+-                  <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
+-                    {{ formatDate(log.startedAt) }}
+-                  </td>
+-                </tr>
++                <template v-for="log in store.syncLogs" :key="log.id">
++                  <tr>
++                    <td class="px-4 py-3 whitespace-nowrap">
++                      <span class="font-medium text-gray-900 dark:text-white uppercase">{{ log.brokerType }}</span>
++                    </td>
++                    <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400 capitalize">
++                      {{ log.syncType }}
++                    </td>
++                    <td class="px-4 py-3 whitespace-nowrap">
++                      <span
++                        class="px-2 py-1 text-xs rounded-full"
++                        :class="getStatusClass(log.status)"
++                      >
++                        {{ log.status }}
++                      </span>
++                    </td>
++                    <td class="px-4 py-3 whitespace-nowrap text-gray-900 dark:text-white">
++                      {{ log.tradesImported || 0 }}
++                    </td>
++                    <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
++                      {{ log.duplicatesDetected || 0 }}
++                    </td>
++                    <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
++                      {{ formatDate(log.startedAt) }}
++                    </td>
++                  </tr>
++                  <tr v-if="log.syncDetails?.warning">
++                    <td colspan="6" class="px-4 pb-3 text-sm text-amber-700 dark:text-amber-300">
++                      {{ log.syncDetails.warning }}
++                    </td>
++                  </tr>
++                </template>
+               </tbody>
+             </table>
+           </div>
