@@ -16,8 +16,12 @@ if [ -n "$cloud_paths" ]; then
 fi
 # Paths are not enough: catch an embedded provider or private repository reference
 # in shared runtime/configuration files before a new filename bypasses the list.
-if git grep -n -i -E 'sequenzy|tradetally-cloud' "$REF" -- backend/src frontend/src backend/package.json frontend/package.json .env.example backend/.env.example > /dev/null; then
+if git grep -n -i -E 'sequenzy|tradetally-cloud|TYPESAFE_API_KEY|JEV_NEWS_MODEL|api[.]typesafe[.]ai|@typesafe-ai/|newsClassificationService|positionNewsService|news_classification_cache' "$REF" -- backend/src frontend/src backend/package.json frontend/package.json .env.example .env.example.native backend/.env.example docker-compose.yaml > /dev/null; then
   echo "[BLOCKED] cloud provider/private-repository reference found in public runtime/configuration"
+  found=1
+fi
+if git grep -n -i -E 'news_classification_cache|TYPESAFE_API_KEY|api[.]typesafe[.]ai' "$REF" -- backend/migrations > /dev/null; then
+  echo "[BLOCKED] hosted news classification migration found in public"
   found=1
 fi
 if [ "$found" -ne 0 ]; then

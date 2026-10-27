@@ -25,7 +25,6 @@ backend/scripts/send_sequenzy_template_previews.js
 backend/scripts/sync_sequenzy_marketing_sequences.js
 backend/scripts/sync_sequenzy_subscribers.js
 backend/src/certs/README.md
-backend/src/certs/apple-root-ca-g3.pem
 backend/src/constants/sequenzyTemplates.js
 backend/src/constants/trialFeedbackOptions.js
 backend/src/controllers/internalCrmSync.controller.js
@@ -116,7 +115,6 @@ backend/tests/services/trialLossRecapService.sampleData.test.js
 backend/tests/services/trialScheduler.sampleData.test.js
 backend/tests/services/trialScheduler.unsubscribe.test.js
 backend/tests/services/twentySyncService.test.js
-backend/tests/utils/appleIapVerification.test.js
 documentation/AZURE_HOSTING_BLUEPRINT.md
 documentation/BROKER_SYNC_BETA_ACCESS.md
 documentation/CLOUD-BRANCHING.md
@@ -238,3 +236,16 @@ scripts/update-cloud-boundaries.sh
 scripts/verify-n8n-content-dedupe.cjs
 frontend/public/sitemap.xml
 backend/tests/routes/internal.routes.test.js
+
+# Hosted Jev classification stays private; these are guard entries only.
+backend/migrations/914_create_news_classification_cache.sql
+backend/src/services/newsClassificationService.js
+backend/src/services/positionNewsService.js
+backend/tests/controllers/analytics.positionNews.test.js
+backend/tests/fixtures/newsClassification.js
+backend/tests/integration/positionNews.int.test.js
+backend/tests/services/newsClassificationService.test.js
+backend/tests/services/positionNewsService.test.js
+backend/tests/services/newsService.classificationRetry.test.js
+frontend/src/components/dashboard/TradeNewsSection.test.js
+documentation/JEV_NEWS_CLASSIFICATION.md

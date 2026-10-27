@@ -82,13 +82,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Start PostgreSQL 16 for tests
-        run: |
-          sudo systemctl start postgresql.service
-          sudo -u postgres psql --set ON_ERROR_STOP=1 --command "CREATE ROLE tradetally WITH LOGIN SUPERUSER PASSWORD 'testpass';"
-          sudo -u postgres createdb --owner=tradetally tradetally_test
-          pg_isready --host=localhost --port=5432
-
       - name: Run backend tests
         run: pnpm --dir backend test
         env:
