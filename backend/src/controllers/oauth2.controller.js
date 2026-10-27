@@ -543,7 +543,7 @@ const revoke = async (req, res) => {
  */
 const listClients = async (req, res) => {
   try {
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = ['admin', 'owner'].includes(req.user.role);
     const createdBy = isAdmin ? null : req.user.id;
 
     const clients = await oauth2Service.listClients(createdBy);
@@ -584,7 +584,7 @@ const registerClient = async (req, res) => {
     }
 
     // Only admins can create trusted clients
-    if (isTrusted && req.user.role !== 'admin') {
+    if (isTrusted && !['admin', 'owner'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Only administrators can create trusted clients' });
     }
 
@@ -595,7 +595,7 @@ const registerClient = async (req, res) => {
       allowedScopes,
       logoUrl,
       websiteUrl,
-      isTrusted: isTrusted && req.user.role === 'admin'
+      isTrusted: isTrusted && ['admin', 'owner'].includes(req.user.role)
     }, req.user.id);
 
     res.status(201).json({
@@ -624,7 +624,7 @@ const deleteClient = async (req, res) => {
   try {
     const { clientId } = req.params;
 
-    const deletedClient = await oauth2Service.deleteClient(clientId, req.user.id);
+    const deletedClient = await oauth2Service.deleteClient(clientId);
 
     if (!deletedClient) {
       return res.status(404).json({ error: 'Client not found or access denied' });

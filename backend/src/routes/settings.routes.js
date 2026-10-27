@@ -56,11 +56,11 @@ router.get('/export', authenticate, settingsController.exportUserData);
 router.post('/import', authenticate, upload.single('file'), settingsController.importUserData);
 
 // Admin Settings Routes
-router.get('/admin/ai', authenticate, settingsController.getAdminAISettings);
+router.get('/admin/ai', requireAdmin, settingsController.getAdminAISettings);
 router.put('/admin/ai', requireAdmin, validate(schemas.adminAiSettings), settingsController.updateAdminAISettings);
-router.get('/admin/cusip-ai', authenticate, settingsController.getAdminCusipAISettings);
+router.get('/admin/cusip-ai', requireAdmin, settingsController.getAdminCusipAISettings);
 router.put('/admin/cusip-ai', requireAdmin, settingsController.updateAdminCusipAISettings);
-router.get('/admin/all', authenticate, settingsController.getAllAdminSettings);
+router.get('/admin/all', requireAdmin, settingsController.getAllAdminSettings);
 
 // Broker Fee Settings Routes
 router.get('/fee-profiles', authenticate, settingsController.getFeeProfiles);

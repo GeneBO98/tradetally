@@ -656,14 +656,14 @@ class OAuth2Service {
   /**
    * Delete client
    */
-  async deleteClient(clientId, userId) {
+  async deleteClient(clientId) {
     const query = `
       DELETE FROM oauth_clients
-      WHERE client_id = $1 AND created_by = $2
+      WHERE client_id = $1
       RETURNING *
     `;
 
-    const result = await db.query(query, [clientId, userId]);
+    const result = await db.query(query, [clientId]);
     return result.rows[0] || null;
   }
 
