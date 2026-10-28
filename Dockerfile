@@ -1,4 +1,4 @@
-ARG NODE_VERSION=24.21.0
+ARG NODE_VERSION=24.22.1
 
 FROM node:${NODE_VERSION}-alpine3.23 AS frontend-builder
 # Avoid illegal-instruction failures when this stage runs under QEMU for arm64.
