@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { authenticate, optionalAuth } = require('../middleware/auth');
+const { authenticate, optionalAuth, requireAdmin } = require('../middleware/auth');
 const { requireCsrf } = require('../middleware/csrf');
 const oauth2Controller = require('../controllers/oauth2.controller');
-const { requiresTier } = require('../middleware/tierAuth');
 
 // Public OAuth2 endpoints (standard OAuth2 spec)
 // These endpoints follow OAuth2 RFC 6749 specification
@@ -52,29 +51,29 @@ router.get('/.well-known/openid-configuration', oauth2Controller.openidConfigura
 router.post('/revoke', oauth2Controller.revoke);
 
 // Protected API endpoints for OAuth client management
-// These require authentication and are used by TradeTally admins/users
+// Application registration and management are restricted to administrators.
 
 /**
  * GET /api/oauth/clients
- * List OAuth2 clients (user's own or all if admin)
- * Requires: Authentication
+ * List OAuth2 clients
+ * Requires: Administrator
  */
-router.get('/api/clients', authenticate, oauth2Controller.listClients);
+router.get('/api/clients', requireAdmin, oauth2Controller.listClients);
 
 /**
  * POST /api/oauth/clients
  * Register a new OAuth2 client
- * Requires: Authentication
+ * Requires: Administrator
  * Body: name, description, redirectUris, allowedScopes, logoUrl, websiteUrl, isTrusted
  */
-router.post('/api/clients', authenticate, requiresTier('pro'), oauth2Controller.registerClient);
+router.post('/api/clients', requireAdmin, oauth2Controller.registerClient);
 
 /**
  * DELETE /api/oauth/clients/:clientId
  * Delete an OAuth2 client
- * Requires: Authentication (must be owner or admin)
+ * Requires: Administrator
  */
-router.delete('/api/clients/:clientId', authenticate, oauth2Controller.deleteClient);
+router.delete('/api/clients/:clientId', requireAdmin, oauth2Controller.deleteClient);
 
 /**
  * GET /api/oauth/authorized-clients

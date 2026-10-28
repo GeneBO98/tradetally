@@ -438,6 +438,7 @@ const userController = {
       }
 
       const user = await User.updateRole(userId, role);
+      clearAuthUserCache(userId);
       res.json({ user, message: `User role updated to ${role}` });
     } catch (error) {
       next(error);
@@ -461,6 +462,7 @@ const userController = {
       }
 
       const user = await User.updateStatus(userId, isActive);
+      clearAuthUserCache(userId);
       res.json({ user, message: `User ${isActive ? 'activated' : 'deactivated'}` });
     } catch (error) {
       next(error);

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const webMentionsController = require('../controllers/webMentions.controller');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const { requiresTier } = require('../middleware/tierAuth');
 
 router.use(authenticate);
@@ -17,6 +17,6 @@ router.get('/sources', webMentionsController.getSources);
 router.get('/presets', webMentionsController.getPresets);
 router.post('/presets', webMentionsController.createPreset);
 router.post('/suggest-terms', webMentionsController.suggestTerms);
-router.post('/sources/refresh', webMentionsController.refreshSources);
+router.post('/sources/refresh', requireAdmin, webMentionsController.refreshSources);
 
 module.exports = router;
