@@ -102,17 +102,18 @@ async function loadLatestRateMapFromDb(base) {
 /**
  * Persist a full daily rate map. Best-effort - never throws.
  */
-async function saveRateMapToDb(base, rateDate, sourceDate, rates) {
+async function saveRateMapToDb(base, rateDate, sourceDate, rates, source = 'frankfurter') {
   try {
     const db = await getDb();
     await db.query(
       `INSERT INTO fx_daily_rates (base_code, rate_date, source_date, rates, source)
-       VALUES ($1, $2, $3, $4::jsonb, 'frankfurter')
+       VALUES ($1, $2, $3, $4::jsonb, $5)
        ON CONFLICT (base_code, rate_date) DO UPDATE SET
          source_date = EXCLUDED.source_date,
          rates = EXCLUDED.rates,
+         source = EXCLUDED.source,
          fetched_at = CURRENT_TIMESTAMP`,
-      [base.toUpperCase(), rateDate, sourceDate || null, JSON.stringify(rates)]
+      [base.toUpperCase(), rateDate, sourceDate || null, JSON.stringify(rates), source]
     );
   } catch (error) {
     console.warn(`[CURRENCY] fx_daily_rates persist failed for ${base}@${rateDate}: ${error.message}`);
@@ -120,8 +121,8 @@ async function saveRateMapToDb(base, rateDate, sourceDate, rates) {
 }
 
 /**
- * Fetch a complete rate map for one base currency from Frankfurter and
- * persist it in fx_daily_rates. The whole map for a day is fetched with a
+ * Fetch a complete rate map for one base currency from Frankfurter (falling
+ * back to AllRatesToday for a current lookup) and persist it in fx_daily_rates. The whole map for a day is fetched with a
  * single API call; later lookups (all pairs, all users) come from the DB.
  * @param {string} base - Base currency (e.g., 'USD')
  * @param {string} date - Date in YYYY-MM-DD format or 'latest' (optional)
@@ -137,6 +138,31 @@ async function fetchAndPersistRateMap(base, date = null) {
     return existing;
   }
 
+  let data;
+  let source = 'frankfurter';
+  try {
+    data = await fetchFrankfurterRateMap(baseUpper, dateParam);
+  } catch (error) {
+    // AllRatesToday publishes the same ECB table keyless, but only the
+    // current one without a key, so a dated lookup stays Frankfurter-only.
+    if (dateParam !== 'latest') throw error;
+    console.warn(`[CURRENCY] Frankfurter failed, falling back to AllRatesToday: ${error.message}`);
+    data = await fetchAllRatesTodayRateMap(baseUpper);
+    source = 'allratestoday';
+  }
+
+  const rates = { [baseUpper]: 1.0, ...data.rates };
+  await saveRateMapToDb(baseUpper, rateDate, data.date || null, rates, source);
+  frankfurterCache.set(`map_${baseUpper}_${rateDate}`, { rates, timestamp: Date.now() });
+  console.log(`[CURRENCY] Stored ${Object.keys(rates).length} ${baseUpper} rates for ${rateDate} (source ${data.date || dateParam}, ${source})`);
+  return rates;
+}
+
+/**
+ * Frankfurter rate map for one base (ECB data, free, no API key).
+ * @returns {Promise<{date: string|null, rates: object}>}
+ */
+async function fetchFrankfurterRateMap(baseUpper, dateParam) {
   const url = `https://api.frankfurter.dev/v1/${dateParam}?base=${baseUpper}`;
   console.log(`[CURRENCY] Fetching Frankfurter rate map: ${url}`);
 
@@ -149,12 +175,29 @@ async function fetchAndPersistRateMap(base, date = null) {
   if (!data || !data.rates || Object.keys(data.rates).length === 0) {
     throw new Error(`No rates available for base ${baseUpper} on ${dateParam}`);
   }
+  return { date: data.date || null, rates: data.rates };
+}
 
-  const rates = { [baseUpper]: 1.0, ...data.rates };
-  await saveRateMapToDb(baseUpper, rateDate, data.date || null, rates);
-  frankfurterCache.set(`map_${baseUpper}_${rateDate}`, { rates, timestamp: Date.now() });
-  console.log(`[CURRENCY] Stored ${Object.keys(rates).length} ${baseUpper} rates for ${rateDate} (source ${data.date || dateParam})`);
-  return rates;
+/**
+ * AllRatesToday rate map for one base (same ECB table, free, no API key;
+ * latest only). Used when Frankfurter is unreachable.
+ * https://allratestoday.com/docs/
+ * @returns {Promise<{date: string|null, rates: object}>}
+ */
+async function fetchAllRatesTodayRateMap(baseUpper) {
+  const url = `https://allratestoday.com/api/open/latest/${baseUpper}`;
+  console.log(`[CURRENCY] Fetching AllRatesToday rate map: ${url}`);
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`AllRatesToday API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  if (!data || data.error || !data.rates || Object.keys(data.rates).length === 0) {
+    throw new Error(`No rates available for base ${baseUpper} on latest${data && data.error ? ` (${data.error})` : ''}`);
+  }
+  return { date: data.date || null, rates: data.rates };
 }
 
 /**
