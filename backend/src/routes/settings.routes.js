@@ -28,6 +28,14 @@ const upload = multer({
 
 router.get('/', authenticate, settingsController.getSettings);
 router.put('/', authenticate, validate(schemas.updateSettings), settingsController.updateSettings);
+// Provider behind the displayed conversions and the attribution it requires,
+// so the UI can credit keyless data wherever converted figures are shown.
+router.get('/fx-source', authenticate, async (req, res, next) => {
+  try {
+    const currencyConverter = require('../utils/currencyConverter');
+    res.json(await currencyConverter.getCurrentRateSource('USD'));
+  } catch (error) { next(error); }
+});
 router.get('/fx-rates', requireAdmin, async (req, res, next) => {
   try { res.json({ rates: await manualFxService.listRates() }); } catch (error) { next(error); }
 });

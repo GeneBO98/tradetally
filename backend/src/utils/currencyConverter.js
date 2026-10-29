@@ -4,6 +4,51 @@ const finnhub = require('./finnhub');
 const frankfurterCache = new Map();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
+// Attribution the UI must show while a provider's keyless data is on screen.
+// AllRatesToday's terms (https://allratestoday.com/terms/#attribution) require
+// a visible, followable link; Frankfurter asks for nothing.
+const RATE_SOURCE_ATTRIBUTION = {
+  allratestoday: { name: 'AllRatesToday', url: 'https://allratestoday.com/' }
+};
+
+/**
+ * Upper bound on one provider round trip (request + body read). A stalled
+ * primary must fail fast enough to reach the fallback provider, and a stalled
+ * fallback must fail fast enough to reach the last stored map.
+ */
+function providerTimeoutMs() {
+  const configured = Number(process.env.FX_PROVIDER_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : 10000;
+}
+
+/**
+ * GET a JSON document with an abort timeout that covers both the request and
+ * the response-body read. Resolves to { response, data }; `data` is null when
+ * the body is not JSON. Rejects with a descriptive error on timeout.
+ */
+async function fetchJsonWithTimeout(url, label) {
+  const controller = new AbortController();
+  const timeoutMs = providerTimeoutMs();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (error) {
+      if (controller.signal.aborted) throw error;
+    }
+    return { response, data };
+  } catch (error) {
+    if (controller.signal.aborted || error?.name === 'AbortError') {
+      throw new Error(`${label} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function todayUTC() {
   return new Date().toISOString().split('T')[0];
 }
@@ -24,6 +69,7 @@ async function manualUsdRates() {
 
 function clearRateCache() {
   frankfurterCache.clear();
+  servedRateSource.clear();
 }
 
 function manualCrossRate(rates, from, to) {
@@ -65,10 +111,12 @@ async function loadRateMapFromDb(base, rateDate) {
     const db = await getDb();
     const date = (!rateDate || rateDate === 'latest') ? todayUTC() : rateDate;
     const result = await db.query(
-      'SELECT rates FROM fx_daily_rates WHERE base_code = $1 AND rate_date = $2',
+      'SELECT rates, source FROM fx_daily_rates WHERE base_code = $1 AND rate_date = $2',
       [base.toUpperCase(), date]
     );
-    return result.rows.length > 0 ? result.rows[0].rates : null;
+    if (result.rows.length === 0) return null;
+    rememberRateSource(base, date, result.rows[0].source);
+    return result.rows[0].rates;
   } catch (error) {
     console.warn(`[CURRENCY] fx_daily_rates lookup failed for ${base}@${rateDate || 'latest'}: ${error.message}`);
     return null;
@@ -85,18 +133,49 @@ async function loadLatestRateMapFromDb(base) {
   try {
     const db = await getDb();
     const result = await db.query(
-      `SELECT rates, rate_date FROM fx_daily_rates
+      `SELECT rates, rate_date, source FROM fx_daily_rates
         WHERE base_code = $1
         ORDER BY rate_date DESC
         LIMIT 1`,
       [base.toUpperCase()]
     );
     if (result.rows.length === 0) return null;
-    return { rates: result.rows[0].rates, rateDate: result.rows[0].rate_date };
+    return { rates: result.rows[0].rates, rateDate: result.rows[0].rate_date, source: result.rows[0].source || null };
   } catch (error) {
     console.warn(`[CURRENCY] fx_daily_rates latest lookup failed for ${base}: ${error.message}`);
     return null;
   }
+}
+
+// Provider behind the map currently served for each base's *current*
+// lookups, so the display layer can attribute converted figures. Updated on
+// every path that hands out a current map: fresh fetch, today's stored row,
+// or the last stored row reused while providers are down.
+const servedRateSource = new Map();
+
+function rememberRateSource(base, rateDate, source) {
+  servedRateSource.set(base.toUpperCase(), {
+    source: source || null,
+    rateDate: rateDate instanceof Date ? rateDate.toISOString().split('T')[0] : rateDate || null
+  });
+}
+
+/**
+ * Which provider's data is behind the current rate map for `base`, and the
+ * attribution the UI must show for it (null when none is required).
+ * Resolves the map first so the answer reflects what is actually being
+ * served, including a reused last-stored map.
+ * @returns {Promise<{source: string|null, rateDate: string|null, attribution: {name: string, url: string}|null}>}
+ */
+async function getCurrentRateSource(base = 'USD') {
+  const baseUpper = String(base || 'USD').toUpperCase();
+  try {
+    await getRateMap(baseUpper);
+  } catch (error) {
+    console.warn(`[CURRENCY] Rate source lookup for ${baseUpper} has no map: ${error.message}`);
+  }
+  const served = servedRateSource.get(baseUpper) || { source: null, rateDate: null };
+  return { ...served, attribution: RATE_SOURCE_ATTRIBUTION[served.source] || null };
 }
 
 /**
@@ -153,7 +232,8 @@ async function fetchAndPersistRateMap(base, date = null) {
 
   const rates = { [baseUpper]: 1.0, ...data.rates };
   await saveRateMapToDb(baseUpper, rateDate, data.date || null, rates, source);
-  frankfurterCache.set(`map_${baseUpper}_${rateDate}`, { rates, timestamp: Date.now() });
+  frankfurterCache.set(`map_${baseUpper}_${rateDate}`, { rates, source, timestamp: Date.now() });
+  if (dateParam === 'latest') rememberRateSource(baseUpper, rateDate, source);
   console.log(`[CURRENCY] Stored ${Object.keys(rates).length} ${baseUpper} rates for ${rateDate} (source ${data.date || dateParam}, ${source})`);
   return rates;
 }
@@ -166,12 +246,11 @@ async function fetchFrankfurterRateMap(baseUpper, dateParam) {
   const url = `https://api.frankfurter.dev/v1/${dateParam}?base=${baseUpper}`;
   console.log(`[CURRENCY] Fetching Frankfurter rate map: ${url}`);
 
-  const response = await fetch(url);
+  const { response, data } = await fetchJsonWithTimeout(url, 'Frankfurter API');
   if (!response.ok) {
     throw new Error(`Frankfurter API error: ${response.status} ${response.statusText}`);
   }
 
-  const data = await response.json();
   if (!data || !data.rates || Object.keys(data.rates).length === 0) {
     throw new Error(`No rates available for base ${baseUpper} on ${dateParam}`);
   }
@@ -188,12 +267,11 @@ async function fetchAllRatesTodayRateMap(baseUpper) {
   const url = `https://allratestoday.com/api/open/latest/${baseUpper}`;
   console.log(`[CURRENCY] Fetching AllRatesToday rate map: ${url}`);
 
-  const response = await fetch(url);
+  const { response, data } = await fetchJsonWithTimeout(url, 'AllRatesToday API');
   if (!response.ok) {
     throw new Error(`AllRatesToday API error: ${response.status} ${response.statusText}`);
   }
 
-  const data = await response.json();
   if (!data || data.error || !data.rates || Object.keys(data.rates).length === 0) {
     throw new Error(`No rates available for base ${baseUpper} on latest${data && data.error ? ` (${data.error})` : ''}`);
   }
@@ -219,12 +297,14 @@ async function getRateMap(base, date = null) {
 
   const cached = frankfurterCache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+    if (isLatest && cached.source !== undefined) rememberRateSource(baseUpper, rateDate, cached.source);
     return { ...cached.rates, ...usableManualMap };
   }
 
   const dbRates = await loadRateMapFromDb(baseUpper, rateDate);
   if (dbRates) {
-    frankfurterCache.set(cacheKey, { rates: dbRates, timestamp: Date.now() });
+    const served = servedRateSource.get(baseUpper);
+    frankfurterCache.set(cacheKey, { rates: dbRates, source: served ? served.source : undefined, timestamp: Date.now() });
     return { ...dbRates, ...usableManualMap };
   }
 
@@ -244,6 +324,8 @@ async function getRateMap(base, date = null) {
       const latest = await loadLatestRateMapFromDb(baseUpper);
       if (latest) {
         console.warn(`[CURRENCY] Serving last stored ${baseUpper} rates from ${latest.rateDate}; ${rateDate} unavailable: ${error.message}`);
+        // The reused map keeps its provider's attribution requirement.
+        rememberRateSource(baseUpper, latest.rateDate, latest.source);
         return latest.rates;
       }
     }
@@ -602,6 +684,7 @@ module.exports = {
   getForexRate,
   getForexRateFromFrankfurter,
   getRateMap,
+  getCurrentRateSource,
   getDailyCrossRate,
   refreshCurrentRates,
   clearRateCache
