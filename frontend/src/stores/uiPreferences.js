@@ -18,6 +18,7 @@ export const SYNCED_KEYS = Object.freeze([
   'dashboardCustomStartDate',
   'dashboardCustomEndDate',
   'dashboardRMode',
+  'maeMfeChartOptions',
   'openPositionsView',
   'analyticsFilters',
   'behavioralAnalyticsFilters',

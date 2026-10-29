@@ -820,10 +820,21 @@ const schemas = {
     modelName: Joi.string().trim().max(200)
   }),
 
+  aiCreateChat: Joi.object({
+    message: Joi.string().trim().max(4000).required(),
+    request_id: Joi.string().trim().max(100).pattern(/^[a-zA-Z0-9_-]+$/),
+    apiKey: Joi.string().trim().max(500),
+    modelName: Joi.string().trim().max(200)
+  }),
+
   aiFollowup: Joi.object({
     message: Joi.string().trim().max(4000).required(),
     apiKey: Joi.string().trim().max(500),
     modelName: Joi.string().trim().max(200)
+  }),
+
+  aiMemoryNote: Joi.object({
+    note: Joi.string().trim().min(3).max(300).required()
   }),
 
   brokerSyncIbkrConnection: Joi.object({

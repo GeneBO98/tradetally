@@ -983,6 +983,80 @@
                             </div>
                         </section>
 
+                        <!-- What the AI should know -->
+                        <section>
+                            <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
+                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                    What the AI should know about you
+                                </h4>
+                            </div>
+                            <div class="pl-4 grid grid-cols-1 gap-6 lg:grid-cols-2">
+                                <div>
+                                    <label for="aboutTrading" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        About my trading
+                                    </label>
+                                    <textarea
+                                        id="aboutTrading"
+                                        v-model="tradingProfileForm.aboutTrading"
+                                        rows="6"
+                                        maxlength="2000"
+                                        class="input w-full"
+                                        placeholder="In your own words: what you trade, your rules, and what you are working on right now. Example: I trade SPX 0DTE with a hard $500 daily loss limit and I am working on not adding to losers."
+                                    ></textarea>
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        Sent with every AI chat, analysis, recommendation, and insight.
+                                        {{ (tradingProfileForm.aboutTrading || '').length }}/2000
+                                    </p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Things the AI should remember
+                                    </label>
+                                    <ul v-if="tradingProfileForm.aiMemoryNotes.length" class="space-y-2 mb-3">
+                                        <li
+                                            v-for="(note, index) in tradingProfileForm.aiMemoryNotes"
+                                            :key="index"
+                                            class="flex items-start gap-2 rounded-md border border-gray-200 dark:border-gray-700 px-3 py-2"
+                                        >
+                                            <span class="flex-1 text-sm text-gray-800 dark:text-gray-200">{{ note }}</span>
+                                            <button
+                                                type="button"
+                                                class="text-xs text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                                                :title="'Remove note'"
+                                                @click="removeMemoryNote(index)"
+                                            >
+                                                Remove
+                                            </button>
+                                        </li>
+                                    </ul>
+                                    <p v-else class="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                                        Short facts the AI carries into every conversation, such as "I overtrade after green days" or "No new positions in the last 30 minutes of the session".
+                                    </p>
+                                    <div class="flex gap-2">
+                                        <input
+                                            v-model="newMemoryNote"
+                                            type="text"
+                                            maxlength="300"
+                                            class="input flex-1"
+                                            placeholder="Add a note (max 300 characters)"
+                                            @keydown.enter.prevent="addMemoryNote"
+                                        />
+                                        <button
+                                            type="button"
+                                            class="btn-secondary"
+                                            :disabled="!newMemoryNote.trim() || tradingProfileForm.aiMemoryNotes.length >= 20"
+                                            @click="addMemoryNote"
+                                        >
+                                            Add
+                                        </button>
+                                    </div>
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        {{ tradingProfileForm.aiMemoryNotes.length }}/20 notes. Save with the button below.
+                                    </p>
+                                </div>
+                            </div>
+                        </section>
+
                         <div class="flex justify-end">
                             <button
                                 type="submit"
@@ -1707,6 +1781,7 @@ const createApiKeyForm = ref({
 
 // Trading profile data
 const tradingProfileLoading = ref(false);
+const newMemoryNote = ref("");
 const tradingProfileForm = ref({
     tradingStrategies: [],
     tradingStyles: [],
@@ -1716,6 +1791,8 @@ const tradingProfileForm = ref({
     averagePositionSize: "medium",
     tradingGoals: [],
     preferredSectors: [],
+    aboutTrading: "",
+    aiMemoryNotes: [],
     postExitExcursionWindowMode: "auto",
     postExitExcursionWindowMinutes: null,
 });
@@ -1867,7 +1944,7 @@ const canManageApiKeys = computed(() => {
 });
 
 // Avatar helpers and methods
-// Mirrors UserMenu.vue's initials fallback so the preview circle stays visually
+// Mirrors Sidebar.vue's initials fallback so the preview circle stays visually
 // consistent with the navbar avatar when no image is set.
 const avatarInitials = computed(() => {
     const u = authStore.user;
@@ -2387,6 +2464,18 @@ function formatSubscriptionStatus(status) {
     return formatted[status] || status;
 }
 
+// AI memory notes (short facts sent with every AI prompt)
+function addMemoryNote() {
+    const note = newMemoryNote.value.replace(/\s+/g, " ").trim();
+    if (!note || tradingProfileForm.value.aiMemoryNotes.length >= 20) return;
+    tradingProfileForm.value.aiMemoryNotes.push(note.slice(0, 300));
+    newMemoryNote.value = "";
+}
+
+function removeMemoryNote(index) {
+    tradingProfileForm.value.aiMemoryNotes.splice(index, 1);
+}
+
 // Trading profile methods
 async function updateTradingProfile() {
     tradingProfileLoading.value = true;
@@ -2415,6 +2504,8 @@ async function fetchTradingProfile() {
             averagePositionSize: profile.averagePositionSize || "medium",
             tradingGoals: profile.tradingGoals || [],
             preferredSectors: profile.preferredSectors || [],
+            aboutTrading: profile.aboutTrading || "",
+            aiMemoryNotes: Array.isArray(profile.aiMemoryNotes) ? profile.aiMemoryNotes : [],
             postExitExcursionWindowMode: profile.postExitExcursionWindowMode || "auto",
             postExitExcursionWindowMinutes: profile.postExitExcursionWindowMinutes || null,
         };

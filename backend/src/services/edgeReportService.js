@@ -359,10 +359,13 @@ class EdgeReportService {
     };
   }
 
-  static buildNarrativePrompt(report) {
-    return `You are a calm, direct trading coach. Using ONLY the structured weekly report below, write a short plain-text coaching summary for the trader. Max 200 words. No emojis. No hype. No markdown, no bullet points, no headings. Do not give financial advice or predict markets. Mention the week's results, the edge (if any), the leak (if any), and end by reinforcing the action item.
+  static buildNarrativePrompt(report, dossierText = '') {
+    const dossierSection = dossierText
+      ? `Trader dossier (who they are, their goals, and known tendencies - use it to make the summary personal, but take the week's numbers only from the report):\n${dossierText}\n\n`
+      : '';
+    return `You are a calm, direct trading coach. Using ONLY the structured weekly report below${dossierText ? ' and the trader dossier' : ''}, write a short plain-text coaching summary for the trader. Max 200 words. No emojis. No hype. No markdown, no bullet points, no headings. Do not give financial advice or predict markets. Mention the week's results, the edge (if any), the leak (if any), tie at least one point back to the trader's goals or a known tendency when the dossier has one, and end by reinforcing the action item.
 
-Weekly report (JSON):
+${dossierSection}Weekly report (JSON):
 ${JSON.stringify(report, null, 2)}
 
 Write the coaching summary now.`;
@@ -407,7 +410,11 @@ Write the coaching summary now.`;
       if (!AIService.isProviderConfigured(settings)) {
         return fallback;
       }
-      const text = await AIService.generateResponse(userId, this.buildNarrativePrompt(report), {
+      const AITraderContext = require('./aiTraderContext');
+      const dossierText = await AITraderContext.render(userId, {
+        sections: ['profile', 'behavior', 'personality', 'playbooks']
+      });
+      const text = await AIService.generateResponse(userId, this.buildNarrativePrompt(report, dossierText), {
         maxTokens: 400
       });
       if (typeof text !== 'string' || !text.trim()) {

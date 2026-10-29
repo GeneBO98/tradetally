@@ -13,10 +13,10 @@
   <div
     v-else
     class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
-    title="Unlimited AI credits (self-hosted)"
+    :title="aiStore.credits.own_provider ? 'Using your own AI provider. No TradeTally credits are used.' : 'Unlimited AI credits (self-hosted)'"
   >
     <SparklesIcon class="h-3.5 w-3.5" />
-    <span>Unlimited</span>
+    <span>{{ aiStore.credits.own_provider ? 'Your AI' : 'Unlimited' }}</span>
   </div>
 </template>
 
@@ -47,7 +47,9 @@ const badgeClass = computed(() => {
 
 const tooltipText = computed(() => {
   if (aiStore.credits.unlimited) {
-    return 'Unlimited AI credits (self-hosted)'
+    return aiStore.credits.own_provider
+      ? 'Using your own AI provider. No TradeTally credits are used.'
+      : 'Unlimited AI credits (self-hosted)'
   }
 
   const remaining = aiStore.credits.remaining ?? 0

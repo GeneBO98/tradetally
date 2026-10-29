@@ -10,6 +10,7 @@ const PortfolioService = require('../services/portfolioService');
 const { parseReportDateRange } = require('../utils/reportDateRange');
 const RetirementService = require('../services/retirementService');
 const DCFValuationService = require('../services/dcfValuationService');
+const ScreenerDiscoverService = require('../services/screenerDiscoverService');
 const plaidIncomeService = require('../services/plaid/plaidIncomeService');
 const db = require('../config/database');
 const { resolveDisplayCurrency, getRatesToDisplay, scaleMoneyFields, FINANCIAL_MONEY_KEYS } = require('../utils/displayCurrency');
@@ -1203,6 +1204,22 @@ const deleteRetirementPlan = async (req, res) => {
  * Get search history
  * GET /api/investments/screener/history
  */
+/**
+ * Starter lists for the screener landing state: strong-pillar stocks with the
+ * lowest 5-year P/E, stocks passing the most pillars, and quality stocks with
+ * earnings in the next two weeks. All derived from cached data.
+ * GET /api/investments/screener/discover?limit=8
+ */
+const getScreenerDiscover = async (req, res) => {
+  try {
+    const data = await ScreenerDiscoverService.getDiscoverLists({ limit: req.query.limit });
+    res.json(data);
+  } catch (error) {
+    console.error('[INVESTMENTS] Screener discover error:', error);
+    res.status(500).json({ error: error.message || 'Failed to load screener starter lists' });
+  }
+};
+
 const getSearchHistory = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20;
@@ -1748,6 +1765,7 @@ module.exports = {
   deleteRetirementPlan,
 
   // Screener
+  getScreenerDiscover,
   getSearchHistory,
   toggleFavorite,
   compareStocks,

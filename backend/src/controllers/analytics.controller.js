@@ -1,4 +1,5 @@
 const { instructionsForPrompt } = require('../utils/aiAnalysisInstructions');
+const AITraderContext = require('../services/aiTraderContext');
 const { sendAIUnavailable } = require('../utils/aiErrorResponse');
 const db = require('../config/database');
 const crypto = require('crypto');
@@ -2843,7 +2844,10 @@ const analyticsController = {
       console.log('[AI] Generating AI recommendations with sector analysis...');
       let recommendations;
       try {
-        recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData) + instructionsForPrompt(userProfileSettings?.ai_analysis_instructions));
+        const dossierText = await AITraderContext.render(req.user.id, {
+          sections: ['profile', 'observed', 'behavior', 'personality', 'edge', 'playbooks', 'risk']
+        });
+        recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData, dossierText) + instructionsForPrompt(userProfileSettings?.ai_analysis_instructions));
         if (!recommendations) {
           throw new Error('AI service returned undefined recommendations');
         }
@@ -3465,9 +3469,17 @@ const analyticsController = {
             return [];
           });
 
+        // -- Trader-dossier insights: tendencies, streaks, discipline --
+        const dossierInsights = await analyticsController
+          .computeDossierInsights(req.user.id)
+          .catch(err => {
+            console.warn('[AI] dossier insights failed:', err.message);
+            return [];
+          });
+
         // Final insights list, sorted by priority desc (higher = more urgent /
         // more time-sensitive). Caller can render top-N or paginate.
-        let summaries = [...contextInsights, edgeInsight].sort(
+        let summaries = [...contextInsights, ...dossierInsights, edgeInsight].sort(
           (a, b) => (b.priority || 0) - (a.priority || 0)
         );
 
@@ -3835,16 +3847,167 @@ const analyticsController = {
   // single batched prompt to keep cost/latency bounded regardless of how many
   // insights are in the list. Falls back to the original deterministic
   // body on any parsing/AI failure so the dashboard never goes blank.
+  /**
+   * Deterministic dashboard insights derived from the trader dossier:
+   * behavioral tendencies (revenge trading, overconfidence, drift), the
+   * active streak, and discipline gaps (missing stops, weak setup grades,
+   * low playbook adherence). Pure given a dossier, so it is unit-testable
+   * via buildDossierInsights().
+   */
+  async computeDossierInsights(userId) {
+    const dossier = await AITraderContext.build(userId, {
+      sections: ['observed', 'behavior', 'personality', 'playbooks']
+    });
+    return analyticsController.buildDossierInsights(dossier);
+  },
+
+  buildDossierInsights(dossier) {
+    if (!dossier) return [];
+    const insights = [];
+    const money = value => `$${Math.abs(Number(value) || 0).toFixed(0)}`;
+    const behavior = dossier.behavior;
+    const observed = dossier.observed;
+    const playbooks = dossier.playbooks;
+    const personality = dossier.personality;
+
+    // Active losing streak: the most time-sensitive thing to say.
+    const streak = behavior?.active_streak;
+    if (streak && streak.type === 'loss' && streak.length >= 3) {
+      insights.push({
+        type: 'streak',
+        priority: 50,
+        headline: `${streak.length} losses in a row`,
+        body: `Your last ${streak.length} trades lost ${streak.total_pnl_usd !== null ? money(streak.total_pnl_usd) : 'money'} combined${behavior.revenge ? ', and revenge trading has followed losses like this before' : ''}. Cut size in half until you book two planned wins.`,
+        source: 'computed',
+        action_label: 'Review recent trades',
+        action_url: '/trades'
+      });
+    } else if (streak && streak.type === 'win' && streak.length >= 4 && behavior?.overconfidence) {
+      insights.push({
+        type: 'streak',
+        priority: 42,
+        headline: `${streak.length} wins in a row, watch your size`,
+        body: `You are ${streak.length} for ${streak.length}${streak.total_pnl_usd !== null ? ` (+${money(streak.total_pnl_usd)})` : ''}. After streaks like this you have sized up about ${Math.round(behavior.overconfidence.avg_size_increase_pct || 0)}%${behavior.overconfidence.ended_in_loss ? ` and ${behavior.overconfidence.ended_in_loss} of ${behavior.overconfidence.events} ended in a loss` : ''}. Keep the next entry at your normal size.`,
+        source: 'computed',
+        action_label: 'See behavioral analytics',
+        action_url: '/metrics/behavioral'
+      });
+    }
+
+    // Revenge trading in the behavior window.
+    if (behavior?.revenge) {
+      const r = behavior.revenge;
+      insights.push({
+        type: 'behavior',
+        priority: 45,
+        headline: `Revenge trading showed up ${r.events} time${r.events === 1 ? '' : 's'}`,
+        body: `In the last ${behavior.window_days} days you re-entered within about ${Math.round(r.avg_window_minutes || 0)} minutes of losses near ${r.avg_trigger_loss_usd !== null ? money(r.avg_trigger_loss_usd) : 'your pain point'}${r.avg_size_increase_pct !== null ? `, sizing up ${Math.round(r.avg_size_increase_pct)}%` : ''}${r.total_additional_loss_usd !== null && r.total_additional_loss_usd < 0 ? `, costing another ${money(r.total_additional_loss_usd)}` : ''}. Set a 30-minute cooldown after any loss over ${r.avg_trigger_loss_usd !== null ? money(r.avg_trigger_loss_usd * 0.5) : 'your daily limit'}.`,
+        source: 'computed',
+        action_label: 'See revenge analysis',
+        action_url: '/metrics/behavioral'
+      });
+    } else if (behavior?.overconfidence && !(streak && streak.type === 'win')) {
+      const o = behavior.overconfidence;
+      insights.push({
+        type: 'behavior',
+        priority: 40,
+        headline: 'You size up after win streaks',
+        body: `${o.events} overconfidence episode${o.events === 1 ? '' : 's'} in the last ${behavior.window_days} days: after about ${Math.round(o.avg_streak_length || 0)} wins you raised size ${Math.round(o.avg_size_increase_pct || 0)}%${o.ended_in_loss ? `, and ${o.ended_in_loss} ended in a loss` : ''}. Fix position size for the day before the first trade.`,
+        source: 'computed',
+        action_label: 'See behavioral analytics',
+        action_url: '/metrics/behavioral'
+      });
+    }
+
+    // Personality drift with real severity.
+    const drift = personality?.drift;
+    if (drift && ['high', 'severe'].includes(String(drift.severity).toLowerCase())) {
+      const change = drift.from && drift.to && drift.from !== drift.to ? `from ${drift.from} to ${drift.to}` : 'from your usual style';
+      insights.push({
+        type: 'behavior',
+        priority: 38,
+        headline: 'Your trading style has drifted',
+        body: `Recent trades moved ${change}${drift.hold_time_pct !== null ? ` (hold time ${drift.hold_time_pct >= 0 ? '+' : ''}${Math.round(drift.hold_time_pct)}%` : ''}${drift.frequency_pct !== null ? `${drift.hold_time_pct !== null ? ', ' : ' ('}frequency ${drift.frequency_pct >= 0 ? '+' : ''}${Math.round(drift.frequency_pct)}%)` : (drift.hold_time_pct !== null ? ')' : '')}. Decide whether this is deliberate; if not, return to the setup you grade best.`,
+        source: 'computed',
+        action_label: 'See personality analysis',
+        action_url: '/metrics/behavioral'
+      });
+    }
+
+    // Discipline: pick the single strongest gap.
+    const discipline = [];
+    if (observed && observed.trades >= 10 && observed.stop_usage_pct !== null && observed.stop_usage_pct < 70) {
+      discipline.push({
+        score: 100 - observed.stop_usage_pct,
+        insight: {
+          type: 'discipline',
+          priority: 36,
+          headline: `Stops recorded on only ${Math.round(observed.stop_usage_pct)}% of trades`,
+          body: `${observed.trades} closed trades in ${observed.window_days} days and ${Math.round(100 - observed.stop_usage_pct)}% had no stop on record${observed.avg_r !== null ? `, with an average of ${observed.avg_r.toFixed(2)}R where risk was defined` : ''}. Log a stop on every entry so R and MAE can tell you what is working.`,
+          source: 'computed',
+          action_label: 'Review trades',
+          action_url: '/trades'
+        }
+      });
+    }
+    const gradeCounts = observed?.grade_counts || {};
+    const graded = Object.values(gradeCounts).reduce((sum, n) => sum + (Number(n) || 0), 0);
+    const weak = (Number(gradeCounts.D) || 0) + (Number(gradeCounts.F) || 0);
+    if (graded >= 10 && weak / graded >= 0.4) {
+      const pct = Math.round((weak / graded) * 100);
+      discipline.push({
+        score: pct,
+        insight: {
+          type: 'discipline',
+          priority: 35,
+          headline: `${pct}% of your setups graded D or F`,
+          body: `${weak} of ${graded} graded trades in the last ${observed.window_days} days scored D or F. Before the next entry, require the setup to meet your A/B criteria or skip it.`,
+          source: 'computed',
+          action_label: 'Review setup quality',
+          action_url: '/trades'
+        }
+      });
+    }
+    if (playbooks?.recent && playbooks.recent.reviews >= 5 && playbooks.recent.followed_plan_pct !== null && playbooks.recent.followed_plan_pct < 60) {
+      discipline.push({
+        score: 100 - playbooks.recent.followed_plan_pct,
+        insight: {
+          type: 'discipline',
+          priority: 37,
+          headline: `Plan followed on ${Math.round(playbooks.recent.followed_plan_pct)}% of reviewed trades`,
+          body: `${playbooks.recent.reviews} playbook reviews in the last ${playbooks.recent.window_days} days, average adherence ${Math.round(playbooks.recent.avg_adherence || 0)}%. Run the checklist before entry, not after, on the next ten trades.`,
+          source: 'computed',
+          action_label: 'Open playbooks',
+          action_url: '/playbooks'
+        }
+      });
+    }
+    if (discipline.length) {
+      discipline.sort((a, b) => b.score - a.score);
+      insights.push(discipline[0].insight);
+    }
+
+    // Cap so the carousel stays focused.
+    return insights.slice(0, 3);
+  },
+
   async enrichInsightsWithAI(userId, insights, ai_analysis_instructions = '') {
     if (!Array.isArray(insights) || insights.length === 0) return insights;
 
     // Pre-strip non-enrichable insights (e.g. system/empty-state). We still
     // return them in the output so ordering and priorities stay intact.
+    const ENRICHABLE_TYPES = new Set(['earnings', 'news', 'edge', 'behavior', 'discipline', 'streak']);
     const enrichable = insights
       .map((ins, idx) => ({ ins, idx }))
-      .filter(({ ins }) => ins.type === 'earnings' || ins.type === 'news' || ins.type === 'edge');
+      .filter(({ ins }) => ENRICHABLE_TYPES.has(ins.type));
 
     if (enrichable.length === 0) return insights;
+
+    // The dossier lets the rewrite reference the trader's goals, limits and
+    // known tendencies instead of generic coaching.
+    const dossierText = await AITraderContext.render(userId, {
+      sections: ['profile', 'observed', 'behavior', 'personality', 'edge', 'playbooks', 'risk']
+    });
 
     const numbered = enrichable.map(({ ins }, i) => ({
       n: i + 1,
@@ -3854,8 +4017,8 @@ const analyticsController = {
       body: ins.body
     }));
 
-    const prompt = `You are a senior trading coach. The user already has the following deterministic insights about their open positions and trading performance. Your job is to rewrite ONLY the BODY text of each insight to be sharper, more analytical, and more useful — keep the same data points but add concrete reasoning and a clearer action.
-
+    const prompt = `You are a senior trading coach. The user already has the following deterministic insights about their open positions, trading performance and tendencies. Your job is to rewrite ONLY the BODY text of each insight to be sharper, more analytical, and more useful — keep the same data points but add concrete reasoning and a clearer action.
+${dossierText ? `\n${dossierText}\n\nUse the dossier to tailor each body: tie actions to the trader's goals, risk limits, playbook rules and known tendencies. Use its numbers only when they support the insight's own facts.\n` : ''}
 Rules — non-negotiable:
 - Return ONLY a valid JSON array, no commentary, no markdown fences, no preface.
 - Each item: {"n": <number>, "body": "<rewritten body>"}.
@@ -3910,16 +4073,21 @@ Respond with the JSON array now.`;
     return out;
   },
 
-  buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData) {
+  buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData, dossierText = '') {
     const sectorAnalysis = sectorData && sectorData.length > 0
       ? `\n\nSector Performance Analysis:\n${sectorData.map(s =>
           `- ${s.industry}: ${s.total_trades} trades, ${s.total_pnl > 0 ? '+' : ''}$${s.total_pnl.toFixed(2)} P&L, ${s.win_rate}% win rate`
         ).join('\n')}`
       : '';
 
-    const tradingProfileInfo = tradingProfile
-      ? `\n\nTrading Profile:\n- Experience: ${tradingProfile.experienceLevel}\n- Risk Tolerance: ${tradingProfile.riskTolerance}\n- Trading Styles: ${tradingProfile.tradingStyles.join(', ')}\n- Strategies: ${tradingProfile.tradingStrategies.join(', ')}`
-      : '';
+    // The shared dossier carries the full profile (declared + observed),
+    // known tendencies, Edge Report, playbooks and risk limits. The short
+    // settings-only block is the fallback when no dossier could be built.
+    const tradingProfileInfo = dossierText
+      ? `\n\n${dossierText}\n\n${AITraderContext.focusGuidelines()}`
+      : (tradingProfile
+        ? `\n\nTrading Profile:\n- Experience: ${tradingProfile.experienceLevel}\n- Risk Tolerance: ${tradingProfile.riskTolerance}\n- Trading Styles: ${tradingProfile.tradingStyles.join(', ')}\n- Strategies: ${tradingProfile.tradingStrategies.join(', ')}\n- Position Size: ${tradingProfile.averagePositionSize}\n- Markets: ${tradingProfile.primaryMarkets.join(', ') || 'Not specified'}\n- Goals: ${tradingProfile.tradingGoals.join(', ') || 'Not specified'}\n- Preferred Sectors: ${tradingProfile.preferredSectors.join(', ') || 'Not specified'}`
+        : '');
 
     return `As a professional trading analyst, provide personalized trading recommendations based on this performance data:
 

@@ -176,7 +176,28 @@ describe('AISessionService follow-up topic guard', () => {
         modelName: 'gpt-5'
       })
     );
+    // The user configured their own OpenAI key, so no credits are charged.
+    expect(AICreditService.useCredits).not.toHaveBeenCalled();
+    expect(AICreditService.hasCredits).toHaveBeenCalledWith('user-1', 0);
+    expect(result.credits_used).toBe(0);
+  });
+
+  test('charges credits when the request runs on the instance AI key', async () => {
+    User.getSettings.mockResolvedValue({});
+    db.query
+      .mockResolvedValueOnce({ rows: [buildActiveSession()] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    AIProvider.generateResponse
+      .mockResolvedValueOnce('{"allowed":true,"reason":"asks about stop placement"}')
+      .mockResolvedValueOnce('Your stop was too tight for the setup.');
+
+    const result = await AISessionService.sendFollowup('session-1', 'user-1', 'Was my stop too tight on this trade?');
+
     expect(AICreditService.useCredits).toHaveBeenCalledWith('user-1', 2);
+    expect(result.credits_used).toBe(2);
   });
 
   test('does not call the checker model when admin has not enabled it', async () => {

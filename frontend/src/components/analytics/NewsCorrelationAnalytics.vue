@@ -54,25 +54,17 @@
       <!-- Insights Section -->
       <div v-if="analytics.insights && analytics.insights.length > 0" class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4 flex items-center">
-            <MdiIcon :icon="bulbIcon" :size="20" class="mr-2 text-yellow-500" />
-            Key Insights
-          </h3>
-          <div class="space-y-3">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Key insights</h3>
+          <dl class="mt-3 divide-y divide-gray-200 dark:divide-gray-700">
             <div
               v-for="(insight, index) in analytics.insights"
               :key="index"
-              class="p-4 rounded-lg border-l-4"
-              :class="{
-                'bg-green-50 border-green-400 dark:bg-green-900/20': insight.level === 'positive',
-                'bg-blue-50 border-blue-400 dark:bg-blue-900/20': insight.level === 'info',
-                'bg-yellow-50 border-yellow-400 dark:bg-yellow-900/20': insight.level === 'warning'
-              }"
+              class="py-3 sm:grid sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-4"
             >
-              <h4 class="font-medium text-gray-900 dark:text-white">{{ insight.title }}</h4>
-              <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">{{ insight.description }}</p>
+              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ insight.title }}</dt>
+              <dd class="mt-1 text-sm text-gray-900 dark:text-gray-100 sm:mt-0">{{ insight.description }}</dd>
             </div>
-          </div>
+          </dl>
         </div>
       </div>
 
@@ -414,7 +406,7 @@ import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import MdiIcon from '@/components/MdiIcon.vue'
-import { mdiRefresh, mdiAlertCircle, mdiLock, mdiLightbulb, mdiChartLine, mdiClose } from '@mdi/js'
+import { mdiRefresh, mdiAlertCircle, mdiLock, mdiChartLine, mdiClose } from '@mdi/js'
 import api from '@/services/api'
 
 const { formatCurrency } = useCurrencyFormatter()
@@ -423,7 +415,6 @@ const { formatCurrency } = useCurrencyFormatter()
 const refreshIcon = mdiRefresh
 const alertIcon = mdiAlertCircle
 const lockIcon = mdiLock
-const bulbIcon = mdiLightbulb
 const chartIcon = mdiChartLine
 const closeIcon = mdiClose
 

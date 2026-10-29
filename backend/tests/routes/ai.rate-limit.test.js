@@ -9,7 +9,9 @@ jest.mock('../../src/controllers/ai.controller', () => ({
   createSession: jest.fn((req, res) => {
     res.status(201).json({ success: true, session_id: 'session-1' });
   }),
+  createChat: jest.fn(),
   getUserSessions: jest.fn(),
+  deleteSession: jest.fn(),
   getTradeAnalyses: jest.fn(),
   deleteTradeAnalysis: jest.fn(),
   deleteTradeAnalyses: jest.fn(),
@@ -17,7 +19,8 @@ jest.mock('../../src/controllers/ai.controller', () => ({
   sendFollowup: jest.fn(),
   closeSession: jest.fn(),
   getCredits: jest.fn(),
-  getCreditHistory: jest.fn()
+  getCreditHistory: jest.fn(),
+  addMemoryNote: jest.fn()
 }));
 
 const express = require('express');

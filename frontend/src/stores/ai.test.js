@@ -4,7 +4,8 @@ import { createPinia, setActivePinia } from 'pinia'
 const { api } = vi.hoisted(() => ({
   api: {
     get: vi.fn(),
-    post: vi.fn()
+    post: vi.fn(),
+    delete: vi.fn()
   }
 }))
 
@@ -23,6 +24,7 @@ describe('AI store session recovery', () => {
     setActivePinia(createPinia())
     api.get.mockReset()
     api.post.mockReset()
+    api.delete.mockReset()
   })
 
   it('recovers a completed session after a gateway timeout', async () => {
@@ -158,5 +160,43 @@ describe('AI store session recovery', () => {
     expect(store.currentSession.followup_count).toBe(1)
     expect(store.messages.at(-1)).toEqual({ role: 'assistant', content: 'Recovered follow-up' })
     expect(store.error).toBeNull()
+  })
+
+  it('starts a chat with the user message shown and charges the chat cost for follow-ups', async () => {
+    api.post.mockResolvedValueOnce({ data: {
+      session_id: 'chat-1',
+      response: 'Your NOW position is down 5%.',
+      trade_summary: { analysis_type: 'chat', title: 'NOW outlook' },
+      max_followups: 50,
+      credits_remaining: 90
+    } })
+
+    const store = await loadStore()
+    store.credits = { allocated: 100, used: 0, remaining: 100, unlimited: false }
+    store.creditCosts = { new_session: 10, followup: 2, chat_message: 3 }
+    await store.createChatSession('NOW outlook?')
+
+    expect(api.post).toHaveBeenCalledWith('/ai/chat', expect.objectContaining({ message: 'NOW outlook?' }))
+    expect(store.messages.map(m => m.role)).toEqual(['user', 'assistant'])
+    expect(store.isChatSession).toBe(true)
+    expect(store.followupCost).toBe(3)
+    expect(store.credits.remaining).toBe(90)
+  })
+
+  it('lets expired sessions accept follow-ups and deletes sessions', async () => {
+    api.get.mockResolvedValueOnce({ data: { session: {
+      id: 'old-1', status: 'expired', followup_count: 5, max_followups: 20,
+      trade_summary: { analysis_type: 'single_trade', trade_id: 'trade-1' }, messages: []
+    } } })
+
+    const store = await loadStore()
+    await store.loadSession('old-1')
+    expect(store.hasActiveSession).toBe(true)
+    expect(store.canAskFollowup).toBe(true)
+
+    api.delete.mockResolvedValueOnce({ data: { success: true } })
+    await store.deleteSession('old-1')
+    expect(api.delete).toHaveBeenCalledWith('/ai/sessions/old-1')
+    expect(store.currentSession).toBeNull()
   })
 })

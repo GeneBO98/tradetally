@@ -35,9 +35,24 @@ describe('FeeProfileSettings', () => {
     })
 
     expect(wrapper.text()).toContain('Tradeify Rithmic')
-    const options = wrapper.find('select[multiple]').findAll('option')
-    expect(options).toHaveLength(1)
-    expect(options[0].text()).toContain('Tradeify')
+    const rows = wrapper.findAll('input[type="checkbox"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].element.checked).toBe(true)
+    expect(rows[0].element.closest('label').textContent).toContain('Tradeify')
+  })
+
+  it('names the profile an account currently uses when it is a different one', () => {
+    const otherProfile = { ...profile, id: 'profile-2', name: 'Lucid Tradovate', accountIds: [], accounts: [] }
+    const wrapper = mount(FeeProfileSettings, {
+      props: {
+        profiles: [profile, otherProfile],
+        accounts: [{ ...accounts[0], feeProfileId: 'profile-1' }]
+      }
+    })
+
+    const cards = wrapper.findAll('article')
+    expect(cards[0].text()).not.toContain('Uses Tradeify Rithmic')
+    expect(cards[1].text()).toContain('Uses Tradeify Rithmic')
   })
 
   it('emits a profile payload with normalized instrument names', async () => {
@@ -57,8 +72,7 @@ describe('FeeProfileSettings', () => {
     const wrapper = mount(FeeProfileSettings, {
       props: { profiles: [profile], accounts }
     })
-    const accountSelect = wrapper.find('select[multiple]')
-    await accountSelect.setValue([])
+    await wrapper.find('input[type="checkbox"]').setValue(false)
 
     expect(wrapper.emitted('assign')?.[0]?.[0]).toEqual({
       profileId: 'profile-1',

@@ -5,6 +5,13 @@
       <p class="text-sm text-gray-600 dark:text-gray-400">
         <span class="font-medium text-gray-900 dark:text-white">{{ pagination.total }}</span>
         {{ pagination.total === 1 ? 'stock' : 'stocks' }} match{{ pagination.total === 1 ? 'es' : '' }} criteria
+        <span
+          v-if="hiddenOutdatedRows > 0"
+          class="text-gray-400 dark:text-gray-500"
+          title="These stocks were scanned with an older 8 Pillars formula and would not match their detail pages. They return after the next scan."
+        >
+          ({{ hiddenOutdatedRows.toLocaleString() }} older results hidden until the rescan)
+        </span>
       </p>
 
       <div class="flex items-center space-x-2">
@@ -143,8 +150,27 @@
       </div>
     </div>
 
+    <!-- Empty State: results hidden because they came from an outdated formula -->
+    <div v-if="results.length === 0 && !loading && outdatedResultsHidden" class="text-center py-12">
+      <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+      <p class="mt-2 text-gray-900 dark:text-white font-medium">
+        {{ isScanRunning ? 'Recalculating scan results' : 'Scan results are outdated' }}
+      </p>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+        <template v-if="isScanRunning">
+          The 8 Pillars formula changed since the last scan. Results reappear here as each stock is recalculated.
+        </template>
+        <template v-else>
+          The 8 Pillars formula changed since the last scan, so its results no longer match
+          what you see on a stock's page. A fresh scan runs automatically at the next daily check.
+        </template>
+      </p>
+    </div>
+
     <!-- Empty State -->
-    <div v-if="results.length === 0 && !loading" class="text-center py-12">
+    <div v-else-if="results.length === 0 && !loading" class="text-center py-12">
       <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
@@ -176,6 +202,15 @@ const pagination = computed(() => scannerStore.pagination)
 const loading = computed(() => scannerStore.loading)
 const sortBy = computed(() => scannerStore.sortBy)
 const pillarNames = scannerStore.pillarNames
+const isScanRunning = computed(() => scannerStore.isScanRunning)
+const hiddenOutdatedRows = computed(() => scannerStore.scanInfo?.hiddenOutdatedRows || 0)
+// True when the latest scan has rows but they were all hidden as outdated
+// (older CALCULATION_VERSION) and no pillar filter is narrowing the list.
+const outdatedResultsHidden = computed(() =>
+  hiddenOutdatedRows.value > 0 &&
+  pagination.value.total === 0 &&
+  scannerStore.selectedPillars.length === 0
+)
 
 function handleSortChange(value) {
   scannerStore.setSort(value)

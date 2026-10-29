@@ -111,6 +111,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/ai-chat',
+      name: 'ai-chat',
+      component: () => import('@/views/AIChatView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/metrics/monthly',
       name: 'monthly-performance',
       component: () => import('@/views/MonthlyPerformanceView.vue'),

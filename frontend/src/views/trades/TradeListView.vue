@@ -1,11 +1,30 @@
 <template>
   <div :class="[isFullWidth ? 'max-w-full px-4 sm:px-6 lg:px-12 mx-auto' : 'content-wrapper', 'py-8 transition-all duration-300']">
-    <!-- Title -->
-    <div class="mb-6">
-      <h1 class="heading-page">Trades</h1>
-      <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
-        A list of all your trades including their details and performance.
-      </p>
+    <!-- Title with filters + Add trade actions -->
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h1 class="heading-page">Trades</h1>
+        <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
+          A list of all your trades including their details and performance.
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button
+          @click="openFiltersModal"
+          class="relative inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          :aria-label="hasActiveFilters ? 'Filters (active)' : 'Filters'"
+        >
+          <FunnelIcon class="h-4 w-4" />
+          <span>Filters</span>
+          <span
+            v-if="hasActiveFilters"
+            class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary-500 ring-2 ring-white dark:ring-gray-900"
+          ></span>
+        </button>
+        <router-link to="/trades/new" class="btn-primary">
+          Add trade
+        </router-link>
+      </div>
     </div>
     
     <!-- Back link: only for drill-downs (e.g. dashboard cards linking here
@@ -151,25 +170,6 @@
 
     <!-- Enrichment Status -->
     <EnrichmentStatus />
-
-    <!-- Action bar: filters icon + Add trade, just above the table -->
-    <div class="mt-6 mb-4 flex items-center justify-end gap-2">
-      <button
-        @click="openFiltersModal"
-        class="relative inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-        :aria-label="hasActiveFilters ? 'Filters (active)' : 'Filters'"
-      >
-        <FunnelIcon class="h-4 w-4" />
-        <span>Filters</span>
-        <span
-          v-if="hasActiveFilters"
-          class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary-500 ring-2 ring-white dark:ring-gray-900"
-        ></span>
-      </button>
-      <router-link to="/trades/new" class="btn-primary">
-        Add trade
-      </router-link>
-    </div>
 
     <!-- Filters modal -->
     <transition

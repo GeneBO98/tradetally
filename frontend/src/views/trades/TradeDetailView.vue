@@ -197,6 +197,15 @@
                   </span>
                   <span>{{ analysis.response_count }} response{{ analysis.response_count === 1 ? '' : 's' }}</span>
                   <button
+                    v-if="isProUser"
+                    @click="continueStoredAIAnalysis(analysis)"
+                    class="inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-60 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                    :disabled="aiStore.generating"
+                    title="Ask follow-up questions on this analysis"
+                  >
+                    <span>Continue</span>
+                  </button>
+                  <button
                     @click="deleteStoredAIAnalysis(analysis)"
                     class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-red-700 hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-900/20"
                     :disabled="deletingStoredAIAnalysisId === analysis.id"
@@ -214,18 +223,21 @@
                 </ul>
               </div>
               <div class="space-y-4">
-                <div
-                  v-for="response in analysis.responses"
-                  :key="response.id"
-                  class="rounded-md bg-gray-50 px-4 py-3 dark:bg-gray-800"
-                >
-                  <div class="mb-2 text-xs text-gray-500 dark:text-gray-400">
-                    {{ formatDateTime(response.created_at) }}
+                <template v-for="response in analysis.responses" :key="response.id">
+                  <div v-if="response.role === 'user'" class="flex justify-end">
+                    <div class="max-w-[85%] rounded-lg bg-primary-600 px-4 py-2 text-white">
+                      <p class="whitespace-pre-wrap text-sm">{{ response.content }}</p>
+                    </div>
                   </div>
-                  <div class="max-h-[65vh] overflow-y-auto pr-2">
-                    <AIReportRenderer :content="response.content" />
+                  <div v-else class="rounded-md bg-gray-50 px-4 py-3 dark:bg-gray-800">
+                    <div class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                      {{ formatDateTime(response.created_at) }}
+                    </div>
+                    <div class="max-h-[65vh] overflow-y-auto pr-2">
+                      <AIReportRenderer :content="response.content" />
+                    </div>
                   </div>
-                </div>
+                </template>
               </div>
             </div>
           </div>
@@ -238,7 +250,7 @@
         variant="card"
         description="Get an AI review of this trade's executions, setup, news, and charts with TradeTally Pro."
       />
-      <div v-else-if="showAIPanel && isProUser" class="card">
+      <div v-else-if="showAIPanel && isProUser" ref="aiPanelRef" class="card">
         <AIConversationPanel
           :trade-id="trade.id"
           title="AI Trade Analysis"
@@ -248,6 +260,7 @@
           start-label="Analyze This Trade"
           loading-text="Analyzing this trade..."
           @session-created="loadStoredAIAnalyses"
+          @followup-sent="loadStoredAIAnalyses"
         />
       </div>
 
@@ -1888,6 +1901,7 @@ const loadingPlaybooks = ref(false)
 const savingAdherenceReview = ref(false)
 const savingManualGradingReview = ref(false)
 const showAIPanel = ref(false)
+const aiPanelRef = ref(null)
 const showShareCard = ref(false)
 const storedAIAnalyses = ref([])
 const storedAIExpanded = ref(false)
@@ -2053,6 +2067,20 @@ function toggleAIPanel() {
   showAIPanel.value = !showAIPanel.value
   if (showAIPanel.value) {
     aiStore.reset()
+  }
+}
+
+// Load a stored analysis into the live panel so the user can keep asking
+// questions; the backend reopens expired sessions with fresh market data.
+async function continueStoredAIAnalysis(analysis) {
+  if (!analysis?.id || aiStore.generating) return
+  try {
+    await aiStore.loadSession(analysis.id)
+    showAIPanel.value = true
+    await nextTick()
+    aiPanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  } catch (error) {
+    showError('Error', 'Could not load that AI analysis')
   }
 }
 

@@ -18,6 +18,24 @@ class StockScannerService {
   static BATCH_DELAY_MS = 2000;     // 2 seconds between batches (conservative for Finnhub limits)
   static MAX_RETRIES = 2;           // Retry failed stocks twice
 
+  // A Russell 2000 symbol list with fewer entries than this is not a real
+  // constituent list (IWM holds ~1,900-2,000 names) and must never be used
+  // or written to the on-disk cache.
+  static MIN_RUSSELL_SYMBOLS = 1000;
+
+  // Scan results older than this, or computed with an older
+  // CALCULATION_VERSION, are considered stale: the list and the detail view
+  // would disagree, so they are hidden and a catch-up scan is scheduled.
+  static STALE_AFTER_DAYS = 100;
+
+  // iShares IWM holdings CSV. The `latest-holdings.csv` path is the current
+  // download link; the legacy `.ajax` link now returns the HTML product page
+  // (with a text/csv content type) and is kept only as a fallback.
+  static ISHARES_IWM_URLS = [
+    'https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/latest-holdings.csv',
+    'https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund'
+  ];
+
   // Currently running scan (for status checking)
   static currentScan = null;
 
@@ -66,47 +84,97 @@ class StockScannerService {
   }
 
   /**
+   * Parse an iShares holdings CSV into ticker symbols.
+   * Returns [] for anything that is not a holdings CSV (e.g. an HTML page),
+   * so callers can fall through to the next source.
+   * @param {string} text - Raw response body
+   * @returns {Array<string>} Ticker symbols
+   */
+  static parseIsharesHoldingsCsv(text) {
+    const body = String(text || '');
+    const trimmed = body.trimStart();
+    if (!trimmed || trimmed.startsWith('<')) {
+      return [];
+    }
+
+    const lines = body.split('\n');
+    // Metadata rows precede a "Ticker,Name,..." header; only rows after it are holdings.
+    const headerIndex = lines.findIndex(line => /^"?Ticker"?\s*,/i.test(line));
+    if (headerIndex === -1) {
+      return [];
+    }
+
+    const unquote = value => String(value ?? '').trim().replace(/"/g, '');
+    // Leading text columns (Ticker, Name, Sector, Asset Class) contain no commas,
+    // so a naive split is safe for them even though money columns are quoted
+    // with thousands separators further right.
+    const headerCols = lines[headerIndex].split(',').map(unquote);
+    const assetClassIndex = headerCols.findIndex(col => /^asset class$/i.test(col));
+
+    const symbols = [];
+    const seen = new Set();
+    for (const line of lines.slice(headerIndex + 1)) {
+      const cols = line.split(',');
+      const ticker = unquote(cols[0]);
+      // Cash and money-market sweep rows (e.g. XTSLA) carry ticker-like codes;
+      // keep only equity holdings when the column is present.
+      if (assetClassIndex !== -1 && !/^equity$/i.test(unquote(cols[assetClassIndex]))) {
+        continue;
+      }
+      // Valid tickers are 1-5 uppercase letters (some have dots like BRK.B)
+      if (ticker && /^[A-Z]{1,5}(\.[A-Z])?$/.test(ticker) && !seen.has(ticker)) {
+        seen.add(ticker);
+        symbols.push(ticker);
+      }
+    }
+    return symbols;
+  }
+
+  /**
    * Fetch Russell 2000 constituents from iShares IWM ETF holdings CSV
    * This is the primary data source for quarterly scans
    * @returns {Promise<Array<string>>} Array of stock symbols
    */
   static async fetchRussell2000FromIShares() {
-    const url = 'https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund';
-
     console.log('[SCANNER] Fetching Russell 2000 from iShares IWM ETF...');
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`iShares fetch failed: HTTP ${response.status}`);
-    }
+    const errors = [];
+    for (const url of this.ISHARES_IWM_URLS) {
+      try {
+        const response = await fetch(url, {
+          headers: { 'Accept': 'text/csv,text/plain;q=0.9,*/*;q=0.1' }
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
 
-    const csvText = await response.text();
+        const symbols = this.parseIsharesHoldingsCsv(await response.text());
+        if (symbols.length < this.MIN_RUSSELL_SYMBOLS) {
+          throw new Error(`parsed only ${symbols.length} symbols (not a holdings CSV)`);
+        }
 
-    // Parse CSV - iShares format has metadata rows, then headers, then data
-    // Ticker is in first column after the header rows
-    const lines = csvText.split('\n');
-    const symbols = [];
+        console.log(`[SCANNER] Parsed ${symbols.length} symbols from iShares CSV`);
 
-    for (const line of lines) {
-      const cols = line.split(',');
-      // Ticker is first column, skip non-stock rows
-      // Valid tickers are 1-5 uppercase letters (some have dots like BRK.B)
-      const ticker = cols[0]?.trim().replace(/"/g, '');
-      if (ticker && /^[A-Z]{1,5}(\.[A-Z])?$/.test(ticker)) {
-        symbols.push(ticker);
+        // Cache to local file for fallback. Only a full list ever reaches this
+        // point, so a bad response can never clobber a good cache.
+        try {
+          const cacheData = { lastUpdated: new Date().toISOString(), symbols };
+          const cachePath = path.join(__dirname, '../data/russell2000.json');
+          fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+          fs.writeFileSync(cachePath, JSON.stringify(cacheData, null, 2));
+          console.log(`[SCANNER] Cached ${symbols.length} symbols to ${cachePath}`);
+        } catch (cacheError) {
+          console.warn(`[SCANNER] Could not write Russell 2000 cache: ${cacheError.message}`);
+        }
+
+        return symbols;
+      } catch (error) {
+        errors.push(`${url}: ${error.message}`);
+        console.warn(`[SCANNER] iShares source failed (${error.message}), trying next source...`);
       }
     }
 
-    console.log(`[SCANNER] Parsed ${symbols.length} symbols from iShares CSV`);
-
-    // Cache to local file for fallback
-    const cacheData = { lastUpdated: new Date().toISOString(), symbols };
-    const cachePath = path.join(__dirname, '../data/russell2000.json');
-    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-    fs.writeFileSync(cachePath, JSON.stringify(cacheData, null, 2));
-    console.log(`[SCANNER] Cached ${symbols.length} symbols to ${cachePath}`);
-
-    return symbols;
+    throw new Error(`iShares fetch failed: ${errors.join('; ')}`);
   }
 
   /**
@@ -121,7 +189,7 @@ class StockScannerService {
     // Try to fetch fresh data from iShares
     try {
       const symbols = await this.fetchRussell2000FromIShares();
-      if (symbols.length >= 1000) {  // IWM holds ~1300-1900 stocks
+      if (symbols.length >= this.MIN_RUSSELL_SYMBOLS) {
         console.log(`[SCANNER] Successfully fetched ${symbols.length} stocks from iShares`);
         console.log('[SCANNER] ========================================');
         return symbols.sort(() => Math.random() - 0.5);  // Shuffle
@@ -135,7 +203,7 @@ class StockScannerService {
     try {
       const cachePath = path.join(__dirname, '../data/russell2000.json');
       const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-      if (cacheData.symbols?.length >= 1000) {
+      if (cacheData.symbols?.length >= this.MIN_RUSSELL_SYMBOLS) {
         const daysSinceUpdate = (Date.now() - new Date(cacheData.lastUpdated)) / (1000 * 60 * 60 * 24);
         console.log(`[SCANNER] Loaded ${cacheData.symbols.length} stocks from cache (${Math.round(daysSinceUpdate)} days old)`);
         console.log('[SCANNER] ========================================');
@@ -625,12 +693,28 @@ class StockScannerService {
 
     const scan = latestScan.rows[0];
     const scanId = scan.id;
+    const currentVersion = EightPillarsService.CALCULATION_VERSION;
 
     // Check if there's a scan currently running (separate from displayed results)
     const runningCheck = await db.query(`
       SELECT id, stocks_analyzed, total_stocks FROM stock_scans WHERE status = 'running' LIMIT 1
     `);
     const runningScan = runningCheck.rows[0] || null;
+
+    // How many of this scan's rows were produced by the current formula. Rows
+    // from an older CALCULATION_VERSION are hidden below: the detail view
+    // recalculates live, so showing them would make list and detail disagree.
+    const versionCheck = await db.query(`
+      SELECT COUNT(*) AS total,
+             COUNT(*) FILTER (WHERE calculation_version = $2) AS current
+      FROM stock_pillar_results
+      WHERE scan_id = $1
+    `, [scanId, currentVersion]);
+    const rowsTotal = parseInt(versionCheck.rows[0]?.total, 10) || 0;
+    const rowsCurrent = parseInt(versionCheck.rows[0]?.current, 10) || 0;
+    const ageDays = (Date.now() - new Date(scan.created_at).getTime()) / (24 * 60 * 60 * 1000);
+    const outdatedFormula = rowsTotal > 0 && rowsCurrent < rowsTotal;
+    const tooOld = ageDays > this.STALE_AFTER_DAYS;
 
     const scanInfo = {
       scanId,
@@ -640,6 +724,13 @@ class StockScannerService {
       status: scan.status,
       completedAt: scan.completed_at,
       isRunning: false,  // Displayed scan is always completed
+      calculationVersion: currentVersion,
+      // Rows hidden because they were computed with an older formula
+      hiddenOutdatedRows: rowsTotal - rowsCurrent,
+      isStale: outdatedFormula || tooOld,
+      staleReason: outdatedFormula
+        ? 'outdated_formula'
+        : (tooOld ? 'too_old' : null),
       // Include running scan progress if one exists
       runningScanProgress: runningScan ? {
         scanId: runningScan.id,
@@ -652,9 +743,9 @@ class StockScannerService {
     };
 
     // Build WHERE clause for pillar filters
-    let whereClause = 'WHERE scan_id = $1';
-    const params = [scanId];
-    let paramCount = 2;
+    let whereClause = 'WHERE scan_id = $1 AND calculation_version = $2';
+    const params = [scanId, currentVersion];
+    let paramCount = 3;
 
     // Add pillar filters - all selected pillars must pass
     if (pillars.length > 0) {
@@ -794,6 +885,57 @@ class StockScannerService {
       // list row can't be refreshed (e.g. no completed scan exists yet).
       console.error(`[SCANNER] Failed to sync scan row for ${analysis.symbol}:`, error.message);
     }
+  }
+
+  /**
+   * Decide whether a catch-up Russell 2000 scan should run now.
+   *
+   * A scan is needed when there is no completed scan within STALE_AFTER_DAYS
+   * whose rows were (mostly) produced by the current CALCULATION_VERSION.
+   * That covers: a fresh install, quarterly scans that failed, and formula
+   * changes that invalidated the last scan's results.
+   *
+   * @returns {Promise<{needed: boolean, reason: string|null, latestScan: Object|null}>}
+   */
+  static async needsRescan() {
+    const running = await db.query(`
+      SELECT id FROM stock_scans WHERE status = 'running' LIMIT 1
+    `);
+    if (running.rows.length > 0 || (this.currentScan && this.currentScan.status === 'running')) {
+      return { needed: false, reason: 'scan_running', latestScan: null };
+    }
+
+    const latest = await db.query(`
+      SELECT s.id, s.created_at, s.completed_at,
+             COUNT(r.id) AS rows_total,
+             COUNT(r.id) FILTER (WHERE r.calculation_version = $1) AS rows_current
+      FROM stock_scans s
+      LEFT JOIN stock_pillar_results r ON r.scan_id = s.id
+      WHERE s.status = 'completed'
+      GROUP BY s.id, s.created_at, s.completed_at
+      ORDER BY s.created_at DESC
+      LIMIT 1
+    `, [EightPillarsService.CALCULATION_VERSION]);
+
+    if (latest.rows.length === 0) {
+      return { needed: true, reason: 'no_completed_scan', latestScan: null };
+    }
+
+    const scan = latest.rows[0];
+    const rowsTotal = parseInt(scan.rows_total, 10) || 0;
+    const rowsCurrent = parseInt(scan.rows_current, 10) || 0;
+    const ageDays = (Date.now() - new Date(scan.created_at).getTime()) / (24 * 60 * 60 * 1000);
+    const latestScan = { id: scan.id, createdAt: scan.created_at, rowsTotal, rowsCurrent, ageDays };
+
+    // Formula mismatch is the more specific reason, so report it first (the
+    // scan results endpoint orders its staleReason the same way).
+    if (rowsTotal === 0 || rowsCurrent / rowsTotal < 0.5) {
+      return { needed: true, reason: 'outdated_formula', latestScan };
+    }
+    if (ageDays > this.STALE_AFTER_DAYS) {
+      return { needed: true, reason: 'too_old', latestScan };
+    }
+    return { needed: false, reason: null, latestScan };
   }
 
   /**

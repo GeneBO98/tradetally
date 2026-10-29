@@ -299,6 +299,15 @@ router.delete('/retirement', investmentsController.deleteRetirementPlan);
  * @desc Get search history
  * @access Pro
  */
+/**
+ * @route GET /api/investments/screener/discover
+ * @desc Starter lists for the screener landing state (lowest P/E among
+ *       strong-pillar stocks, most pillars passed, upcoming earnings)
+ * @query limit - rows per list (default 8, max 25)
+ * @access Pro
+ */
+router.get('/screener/discover', investmentsController.getScreenerDiscover);
+
 router.get('/screener/history', investmentsController.getSearchHistory);
 
 /**

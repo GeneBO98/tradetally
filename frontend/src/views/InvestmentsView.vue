@@ -113,8 +113,27 @@
                         >
                         <span v-else>Analyze</span>
                     </button>
+                    <!-- Dismiss the current analysis and return to the Start here view -->
+                    <button
+                        v-if="investmentsStore.currentAnalysis || searchSymbol"
+                        type="button"
+                        @click="clearScreener"
+                        :disabled="investmentsStore.analysisLoading"
+                        class="btn-secondary px-4 py-3"
+                        title="Clear this analysis and return to the overview"
+                    >
+                        Clear
+                    </button>
                 </div>
             </div>
+
+            <!-- Landing state: starter lists while nothing is being analyzed -->
+            <ScreenerStartPanel
+                v-if="!investmentsStore.currentAnalysis"
+                class="mb-6"
+                @select="analyzeFromHistory"
+                @open-scanner="activeTab = 'scanner'"
+            />
 
             <!-- Current Analysis -->
             <div v-if="investmentsStore.currentAnalysis" class="mb-6 space-y-6">
@@ -249,34 +268,6 @@
                 </div>
             </div>
 
-            <!-- Empty State -->
-            <div
-                v-else-if="!investmentsStore.currentAnalysis"
-                class="text-center py-12"
-            >
-                <svg
-                    class="mx-auto h-12 w-12 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                    ></path>
-                </svg>
-                <h3
-                    class="mt-2 text-sm font-medium text-gray-900 dark:text-white"
-                >
-                    No analysis yet
-                </h3>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Enter a stock symbol above to analyze using the 8 Pillars
-                    methodology.
-                </p>
-            </div>
         </div>
 
         <!-- Holdings Tab -->
@@ -1570,6 +1561,7 @@ import { useVisibilityPolling } from "@/composables/useVisibilityPolling";
 import StockLogo from "@/components/common/StockLogo.vue";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 import IncomeAnalytics from "@/components/investments/IncomeAnalytics.vue";
+import ScreenerStartPanel from "@/components/investments/ScreenerStartPanel.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -2235,6 +2227,16 @@ async function analyzeSymbol() {
     } catch (error) {
         console.error("Analysis failed:", error.response?.data || error);
     }
+}
+
+// Drop the current analysis and any pending DCF state so the screener tab
+// returns to its landing view (Start here panel, saved valuations, history).
+function clearScreener() {
+    searchSymbol.value = "";
+    selectedDcfSymbol.value = "";
+    pendingValuationId.value = null;
+    investmentsStore.clearAnalysis();
+    investmentsStore.clearDCFData();
 }
 
 async function analyzeFromHistory(symbol) {

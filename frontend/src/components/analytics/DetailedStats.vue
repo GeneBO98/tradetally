@@ -85,19 +85,15 @@
           No data available
         </div>
         <div v-else>
-          <!-- Column Headers — must mirror the body row's flex structure
-               (logo w-8, gap-2, symbol w-16, gap-2, trades count) so the
-               header labels sit directly above their values. -->
-          <div class="flex items-center justify-between pb-2 mb-2 border-b border-gray-200 dark:border-gray-700">
-            <div class="flex items-baseline gap-2">
-              <span class="w-8" aria-hidden="true"></span>
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">Symbol</span>
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Trades</span>
-            </div>
-            <div class="flex items-center">
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20 text-right">P&L</span>
-              <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-12 text-right">Win %</span>
-            </div>
+          <!-- Header and rows share one grid template so columns stay aligned
+               and long symbols (broker-prefixed FX pairs, CUSIPs) truncate
+               instead of spilling into the trades column. -->
+          <div class="grid grid-cols-[2rem_minmax(0,1fr)_3.5rem_7rem_3rem] items-center gap-x-2 pb-2 mb-2 border-b border-gray-200 dark:border-gray-700">
+            <span aria-hidden="true"></span>
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Symbol</span>
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Trades</span>
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">P&L</span>
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Win %</span>
           </div>
 
           <!-- Data Rows -->
@@ -105,26 +101,26 @@
             <div
               v-for="symbol in symbolStats.slice(0, 10)"
               :key="symbol.symbol"
-              class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1 cursor-pointer transition-colors"
+              class="grid grid-cols-[2rem_minmax(0,1fr)_3.5rem_7rem_3rem] items-center gap-x-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1 cursor-pointer transition-colors"
               @click="$emit('navigate-symbol', symbol.symbol)"
             >
-              <div class="flex items-center gap-2 min-w-0">
                 <StockLogo
                   :symbol="symbol.symbol"
                   size-class="w-8 h-8"
                 />
-                <span class="font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 w-16">{{ symbol.symbol }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">
+                <span
+                  class="truncate font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400"
+                  :title="symbol.symbol"
+                >{{ symbol.symbol }}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400 text-right tabular-nums">
                   {{ symbol.total_trades }}
                 </span>
-              </div>
-              <div class="flex items-center">
-                <div class="text-sm font-medium w-20 text-right" :class="[
+                <div class="text-sm font-medium text-right whitespace-nowrap tabular-nums" :class="[
                   symbol.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
                 ]">
                   {{ formatCurrency(symbol.total_pnl) }}
                 </div>
-                <div class="w-12 text-right">
+                <div class="text-right">
                   <div class="text-xs text-gray-500 dark:text-gray-400">
                     {{ (symbol.winning_trades / symbol.total_trades * 100).toFixed(0) }}%
                   </div>
@@ -136,7 +132,6 @@
                     {{ winRateExclBERounded(symbol) }}% BE
                   </div>
                 </div>
-              </div>
             </div>
           </div>
         </div>

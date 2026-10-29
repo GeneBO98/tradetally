@@ -229,6 +229,8 @@ class User {
       averagePositionSize: 'average_position_size',
       tradingGoals: 'trading_goals',
       preferredSectors: 'preferred_sectors',
+      aboutTrading: 'about_trading',
+      aiMemoryNotes: 'ai_memory_notes',
       postExitExcursionWindowMode: 'post_exit_excursion_window_mode',
       postExitExcursionWindowMinutes: 'post_exit_excursion_window_minutes',
       statisticsCalculation: 'statistics_calculation',
@@ -261,13 +263,15 @@ class User {
       if (key !== 'user_id' && key !== 'id') {
         const dbColumn = columnMapping[key] || key;
         // For JSONB columns, ensure proper casting and JSON serialization
-        if (dbColumn === 'analytics_chart_layout' || dbColumn === 'dashboard_layout' || dbColumn === 'ui_preferences' || dbColumn === 'breakeven_tolerance_ticks_by_underlying' || dbColumn === 'default_stop_loss_points_by_underlying') {
+        if (dbColumn === 'analytics_chart_layout' || dbColumn === 'dashboard_layout' || dbColumn === 'ui_preferences' || dbColumn === 'ai_memory_notes' || dbColumn === 'breakeven_tolerance_ticks_by_underlying' || dbColumn === 'default_stop_loss_points_by_underlying') {
           fields.push(`${dbColumn} = $${paramCount}::jsonb`);
           // PostgreSQL JSONB requires JSON string, not JavaScript object.
           // ui_preferences is NOT NULL DEFAULT '{}', so coerce null/undefined to an empty object.
           const jsonValue = dbColumn === 'ui_preferences'
             ? JSON.stringify(value ?? {})
-            : (value ? JSON.stringify(value) : null);
+            : dbColumn === 'ai_memory_notes'
+              ? JSON.stringify(Array.isArray(value) ? value : [])
+              : (value ? JSON.stringify(value) : null);
           values.push(jsonValue);
         } else {
           fields.push(`${dbColumn} = $${paramCount}`);

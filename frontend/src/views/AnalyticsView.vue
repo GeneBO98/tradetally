@@ -102,7 +102,7 @@
               </button>
             </div>
             <button
-              @click="showAIPanel = !showAIPanel"
+              @click="toggleAIPanel"
               class="px-3 py-2 text-sm font-medium border rounded-md transition-colors"
               :class="showAIPanel
                 ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700'
@@ -124,6 +124,10 @@
       <!-- AI Conversation Panel -->
       <div v-if="showAIPanel && isProUser" class="card">
         <AIConversationPanel />
+        <p class="px-4 pb-4 text-xs text-gray-500 dark:text-gray-400">
+          Want to ask about something else, like a stock you hold?
+          <router-link to="/ai-chat" class="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400">Open AI Chat</router-link>
+        </p>
       </div>
       <ProUpgradePrompt
         v-else-if="showAIPanel && showProLock"
@@ -463,7 +467,7 @@
       <div class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Hold Time</h3>
-          <div class="h-96 relative">
+          <div class="h-80 relative">
             <canvas ref="performanceByHoldTimeChart" class="absolute inset-0 w-full h-full"></canvas>
           </div>
         </div>
@@ -525,7 +529,7 @@
             <template v-else-if="element.id === 'performance-by-position-size'">
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Position Size ($)</h3>
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Position Size ({{ currencySymbol }})</h3>
           <div class="h-80 relative">
             <canvas
               ref="performanceByPositionSizeChart"
@@ -807,6 +811,16 @@ const aiStore = useAIStore()
 const { selectedAccount } = useGlobalAccountFilter()
 const showAdvanced = ref(false)
 const showAIPanel = ref(false)
+
+// The AI store is shared with the AI Chat page and trade detail panel; only
+// keep a loaded session here if it is a performance analysis.
+function toggleAIPanel() {
+  showAIPanel.value = !showAIPanel.value
+  const analysisType = aiStore.currentSession?.trade_summary?.analysis_type
+  if (showAIPanel.value && (analysisType === 'chat' || analysisType === 'single_trade')) {
+    aiStore.reset()
+  }
+}
 
 // Pro gating. isFreeTier is false-safe: it stays true until the user is
 // loaded and confirmed Pro, so Pro-only data never renders early.
@@ -1404,7 +1418,7 @@ function createPerformanceByPriceChart() {
   // Use R-value data if in R-value mode, otherwise use P&L data
   const chartData = rValueMode.value ? performanceByPriceRData.value : performanceByPriceData.value
   const chartLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L'
-  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L ($)'
+  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : `Total P&L (${currencySymbol.value})`
 
   performanceByPriceChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -1488,7 +1502,7 @@ function createPerformanceByVolumeChart() {
   const ctx = performanceByVolumeChart.value.getContext('2d')
   const labels = chartLabels.value.volume.length > 0 ? chartLabels.value.volume : []
   const chartLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L'
-  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L ($)'
+  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : `Total P&L (${currencySymbol.value})`
 
   performanceByVolumeChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -1572,7 +1586,7 @@ function createPerformanceByPositionSizeChart() {
   const ctx = performanceByPositionSizeChart.value.getContext('2d')
   const labels = chartLabels.value.positionSize?.length > 0 ? chartLabels.value.positionSize : []
   const chartLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L'
-  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L ($)'
+  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : `Total P&L (${currencySymbol.value})`
 
   performanceByPositionSizeChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -1614,7 +1628,7 @@ function createPerformanceByPositionSizeChart() {
         y: {
           title: {
             display: true,
-            text: 'Position Size ($)'
+            text: `Position Size (${currencySymbol.value})`
           }
         }
       },
@@ -1662,7 +1676,7 @@ function createDayOfWeekChart() {
     ? weekdayData.map(d => d.total_r_value || 0)
     : weekdayData.map(d => d.total_pnl || 0)
   const chartLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L'
-  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L ($)'
+  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : `Total P&L (${currencySymbol.value})`
 
   dayOfWeekChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -1746,7 +1760,7 @@ function createPerformanceByHoldTimeChart() {
   // Use R-value data if in R-value mode, otherwise use P&L data
   const chartData = rValueMode.value ? performanceByHoldTimeRData.value : performanceByHoldTimeData.value
   const chartLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L'
-  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L ($)'
+  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : `Total P&L (${currencySymbol.value})`
 
   performanceByHoldTimeChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -1805,6 +1819,8 @@ function createPerformanceByHoldTimeChart() {
       },
       plugins: {
         legend: {
+          // Single series, labeled by the axis title (matches day of week)
+          display: false,
           onClick: null // Disable legend clicking
         },
         tooltip: {
@@ -1936,7 +1952,7 @@ function createDrawdownChart() {
     ? drawdownData.value.map(d => d.r_value_drawdown || 0)
     : drawdownData.value.map(d => d.drawdown)
 
-  const yAxisLabel = rValueMode.value ? 'Drawdown (R)' : 'Drawdown ($)'
+  const yAxisLabel = rValueMode.value ? 'Drawdown (R)' : `Drawdown (${currencySymbol.value})`
 
   // Log drawdown data for debugging
   console.log('Drawdown chart data:', {

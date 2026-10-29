@@ -326,64 +326,93 @@ class NewsCorrelationService {
   }
 
   /**
-   * Generate insights based on the analytics data
+   * Generate insights based on the analytics data. Each insight is one
+   * plain sentence carrying its own numbers and sample size; patterns that
+   * repeat across sentiments are stated once.
    */
-  generateInsights(overallRows, directionRows, accuracyRows) {
+  generateInsights(overallRows, directionRows, _accuracyRows) {
     const insights = [];
+    const MIN_COMBO_TRADES = 10;
+    const MIN_GROUP_TRADES = 5;
+    const pct = value => `${Math.round(value)}%`;
+    const tradesLabel = count => `${count} trade${count === 1 ? '' : 's'}`;
 
-    // Find best performing sentiment/side combinations
-    const sortedPerformance = overallRows
-      .sort((a, b) => parseFloat(b.win_rate) - parseFloat(a.win_rate))
-      .slice(0, 3);
+    // Direction: one statement, not one per sentiment
+    const bias = directionRows
+      .map(row => ({ sentiment: row.news_sentiment, long: parseFloat(row.long_percentage), total: parseInt(row.total_trades) }))
+      .filter(row => row.sentiment && Number.isFinite(row.long) && row.total >= MIN_GROUP_TRADES);
+    if (bias.length > 0) {
+      const breakdown = bias.map(row => `${row.sentiment} ${pct(row.long)}`).join(', ');
+      const allLong = bias.every(row => row.long > 70);
+      const allShort = bias.every(row => row.long < 30);
+      if (bias.length > 1 && (allLong || allShort)) {
+        const side = allLong ? 'long' : 'short';
+        const shares = bias.map(row => (allLong ? row.long : 100 - row.long));
+        insights.push({
+          type: 'bias',
+          level: 'info',
+          title: 'Direction',
+          description: `You go ${side} on ${Math.round(Math.min(...shares))}-${pct(Math.max(...shares))} of trades whatever the news (long share: ${breakdown}). Sentiment isn't changing which way you trade.`,
+          metrics: { side, by_sentiment: Object.fromEntries(bias.map(row => [row.sentiment, row.long])) }
+        });
+      } else {
+        const spread = Math.max(...bias.map(row => row.long)) - Math.min(...bias.map(row => row.long));
+        if (spread >= 25) {
+          insights.push({
+            type: 'bias',
+            level: 'info',
+            title: 'Direction',
+            description: `Your direction shifts with the news. Share of trades taken long: ${breakdown}.`,
+            metrics: { by_sentiment: Object.fromEntries(bias.map(row => [row.sentiment, row.long])) }
+          });
+        }
+      }
+    }
 
-    if (sortedPerformance.length > 0) {
-      const best = sortedPerformance[0];
+    // With vs. against the news
+    const tally = { with: { trades: 0, wins: 0 }, against: { trades: 0, wins: 0 } };
+    overallRows.forEach(row => {
+      const withNews = (row.news_sentiment === 'positive' && row.side === 'long')
+        || (row.news_sentiment === 'negative' && row.side === 'short');
+      const againstNews = (row.news_sentiment === 'positive' && row.side === 'short')
+        || (row.news_sentiment === 'negative' && row.side === 'long');
+      const bucket = withNews ? tally.with : againstNews ? tally.against : null;
+      if (!bucket) return;
+      bucket.trades += parseInt(row.trade_count) || 0;
+      bucket.wins += parseInt(row.profitable_trades) || 0;
+    });
+    if (tally.with.trades >= MIN_GROUP_TRADES && tally.against.trades >= MIN_GROUP_TRADES) {
+      const withRate = (tally.with.wins / tally.with.trades) * 100;
+      const againstRate = (tally.against.wins / tally.against.trades) * 100;
+      const better = Math.abs(withRate - againstRate) < 5
+        ? 'Your results are about the same either way.'
+        : withRate > againstRate ? 'You do better trading with the news.' : 'You do better trading against the news.';
       insights.push({
-        type: 'performance',
-        level: 'positive',
-        title: 'Highest Win Rate Strategy',
-        description: `Your highest win rate (${best.win_rate}%) comes from ${best.side} trades on ${best.news_sentiment} news sentiment`,
+        type: 'alignment',
+        level: 'info',
+        title: 'With vs. against news',
+        description: `Trading with the news (long on positive, short on negative) won ${pct(withRate)} of ${tradesLabel(tally.with.trades)}; trading against it won ${pct(againstRate)} of ${tradesLabel(tally.against.trades)}. ${better}`,
         metrics: {
-          win_rate: parseFloat(best.win_rate),
-          avg_pnl: parseFloat(best.avg_pnl),
-          trade_count: parseInt(best.trade_count)
+          with_news: { trades: tally.with.trades, win_rate: withRate },
+          against_news: { trades: tally.against.trades, win_rate: againstRate }
         }
       });
     }
 
-    // Analyze direction bias
-    directionRows.forEach(row => {
-      const bias = parseFloat(row.long_percentage);
-      if (bias > 70) {
-        insights.push({
-          type: 'bias',
-          level: 'info',
-          title: `Strong Long Bias on ${row.news_sentiment.charAt(0).toUpperCase() + row.news_sentiment.slice(1)} News`,
-          description: `You go long ${bias}% of the time when ${row.news_sentiment} news occurs`,
-          metrics: { bias_percentage: bias }
-        });
-      } else if (bias < 30) {
-        insights.push({
-          type: 'bias', 
-          level: 'info',
-          title: `Strong Short Bias on ${row.news_sentiment.charAt(0).toUpperCase() + row.news_sentiment.slice(1)} News`,
-          description: `You go short ${100 - bias}% of the time when ${row.news_sentiment} news occurs`,
-          metrics: { bias_percentage: 100 - bias }
-        });
-      }
-    });
-
-    // Check for sentiment alignment issues
-    const poorAlignment = accuracyRows.filter(row => parseFloat(row.alignment_percentage) < 40);
-    if (poorAlignment.length > 0) {
+    // Best combination, only with enough trades to mean something
+    const best = overallRows
+      .filter(row => parseInt(row.trade_count) >= MIN_COMBO_TRADES)
+      .sort((a, b) => parseFloat(b.win_rate) - parseFloat(a.win_rate))[0];
+    if (best) {
       insights.push({
-        type: 'warning',
-        level: 'warning',
-        title: 'Low Sentiment Alignment',
-        description: `Some sentiment predictions may not align well with trade outcomes`,
-        metrics: { 
-          low_alignment_combinations: poorAlignment.length,
-          worst_alignment: Math.min(...poorAlignment.map(r => parseFloat(r.alignment_percentage)))
+        type: 'performance',
+        level: 'positive',
+        title: 'Best combination',
+        description: `${best.side.charAt(0).toUpperCase() + best.side.slice(1)} trades on ${best.news_sentiment} news have your highest win rate: ${pct(parseFloat(best.win_rate))} over ${tradesLabel(parseInt(best.trade_count))}.`,
+        metrics: {
+          win_rate: parseFloat(best.win_rate),
+          avg_pnl: parseFloat(best.avg_pnl),
+          trade_count: parseInt(best.trade_count)
         }
       });
     }

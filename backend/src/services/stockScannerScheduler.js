@@ -2,9 +2,16 @@
  * Stock Scanner Scheduler Service
  * Manages the quarterly Russell 2000 8 Pillars scan
  * Scans Russell 2000 stocks and caches results in database
- * Runs at 3 AM on the 1st of each quarter (Jan, Apr, Jul, Oct)
+ *
+ * Two jobs:
+ * - Quarterly scan at 3 AM on the 1st of each quarter (Jan, Apr, Jul, Oct)
+ * - Daily catch-up check at 3:30 AM: runs a scan when the latest completed
+ *   scan is missing, older than STALE_AFTER_DAYS, or was produced by an older
+ *   CALCULATION_VERSION. This is what heals failed quarterly scans and formula
+ *   changes without waiting for the next quarter.
  */
 
+const cron = require('node-cron');
 const CronScheduler = require('./schedulers/CronScheduler');
 const StockScannerService = require('./stockScannerService');
 
@@ -25,6 +32,8 @@ class StockScannerScheduler extends CronScheduler {
       }
     });
     this.enabled = true;
+    this.catchUpJob = null;
+    this.catchUpCron = process.env.STOCK_SCANNER_CATCHUP_CRON || '30 3 * * *'; // Daily at 3:30 AM
   }
 
   /**
@@ -37,6 +46,26 @@ class StockScannerScheduler extends CronScheduler {
     } catch (error) {
       console.error('[SCANNER SCHEDULER] Error initializing:', error);
     }
+  }
+
+  /**
+   * Schedule the daily catch-up check and log, at boot, whether one is due.
+   * The catch-up itself only runs on its cron tick (not at boot) so a dev or
+   * staging restart never kicks off a two-hour scan by itself.
+   */
+  afterSchedule() {
+    this.catchUpJob = cron.schedule(this.catchUpCron, () => this.executeCatchUpScan());
+    console.log(`[SCANNER SCHEDULER] Scheduled daily stale-scan check (${this.catchUpCron})`);
+
+    StockScannerService.needsRescan()
+      .then(({ needed, reason }) => {
+        if (needed) {
+          console.log(`[SCANNER SCHEDULER] Scan results are stale (${reason}); a catch-up scan will run at the next daily check. Admins can trigger one now from the Stock Scanner tab.`);
+        }
+      })
+      .catch(error => {
+        console.warn(`[SCANNER SCHEDULER] Could not check scan freshness: ${error.message}`);
+      });
   }
 
   onTick() {
@@ -65,6 +94,43 @@ class StockScannerScheduler extends CronScheduler {
   }
 
   /**
+   * Daily check: run a Russell 2000 scan only when the latest results are
+   * missing, too old, or computed with an outdated formula.
+   * @returns {Promise<{ran: boolean, reason: string|null}>}
+   */
+  async executeCatchUpScan() {
+    if (!this.enabled) {
+      console.log('[SCANNER SCHEDULER] Scanner is disabled, skipping stale-scan check');
+      return { ran: false, reason: 'disabled' };
+    }
+
+    try {
+      const { needed, reason } = await StockScannerService.needsRescan();
+      if (!needed) {
+        console.log(`[SCANNER SCHEDULER] Scan results are current${reason ? ` (${reason})` : ''}; no catch-up scan needed`);
+        return { ran: false, reason };
+      }
+
+      console.log(`[SCANNER SCHEDULER] Scan results are stale (${reason}); starting catch-up Russell 2000 scan...`);
+      const result = await StockScannerService.runNightlyScan({ russell2000Only: true });
+      console.log('[SCANNER SCHEDULER] Catch-up Russell 2000 scan completed:', result);
+      return { ran: true, reason };
+    } catch (error) {
+      console.error('[SCANNER SCHEDULER] Error during catch-up scan:', error.message);
+      return { ran: false, reason: 'error' };
+    }
+  }
+
+  stop() {
+    super.stop();
+    if (this.catchUpJob) {
+      this.catchUpJob.stop();
+      this.catchUpJob = null;
+      console.log('[SCANNER SCHEDULER] Stopped daily stale-scan check');
+    }
+  }
+
+  /**
    * Enable or disable the scheduler
    * @param {boolean} enabled - Whether to enable the scheduler
    */
@@ -81,7 +147,9 @@ class StockScannerScheduler extends CronScheduler {
     return {
       enabled: this.enabled,
       jobActive: !!this.job,
-      nextRun: this.job ? 'Quarterly (Jan 1, Apr 1, Jul 1, Oct 1 at 3:00 AM)' : 'Not scheduled'
+      catchUpJobActive: !!this.catchUpJob,
+      nextRun: this.job ? 'Quarterly (Jan 1, Apr 1, Jul 1, Oct 1 at 3:00 AM)' : 'Not scheduled',
+      catchUpCheck: this.catchUpJob ? `Daily (${this.catchUpCron})` : 'Not scheduled'
     };
   }
 }

@@ -68,20 +68,26 @@
           class="nav-item group/nav relative"
           :class="[
             isCollapsed ? 'justify-center px-0' : '',
-            $route.name === item.route ? 'nav-item--active' : ''
+            isItemActive(item) ? 'nav-item--active' : ''
           ]"
           :title="isCollapsed ? item.name : ''"
         >
           <span
             class="absolute left-0 top-1.5 bottom-1.5 w-[2px] origin-center rounded-r-sm bg-primary-500 transition-transform duration-200 ease-out"
-            :class="$route.name === item.route ? 'scale-y-100' : 'scale-y-0 group-hover/nav:scale-y-100'"
+            :class="isItemActive(item) ? 'scale-y-100' : 'scale-y-0 group-hover/nav:scale-y-100'"
           ></span>
           <component
             :is="item.icon"
             class="h-5 w-5 shrink-0 transition-colors"
-            :class="$route.name === item.route ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 group-hover/nav:text-gray-600 dark:text-gray-500 dark:group-hover/nav:text-gray-300'"
+            :class="isItemActive(item) ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 group-hover/nav:text-gray-600 dark:text-gray-500 dark:group-hover/nav:text-gray-300'"
           />
           <span v-if="!isCollapsed" class="flex-1">{{ item.name }}</span>
+          <span
+            v-if="!isCollapsed && item.badge === 'pro'"
+            class="shrink-0 rounded-[3px] bg-primary-500/15 px-1.5 py-0 text-[9px] font-bold uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+          >
+            Pro
+          </span>
         </router-link>
 
         <!-- Expandable group -->
@@ -139,7 +145,7 @@
                     :to="sub.to"
                     @click="closeDrawer"
                     class="nav-sub-item group/sub"
-                    :class="$route.name === sub.route ? 'nav-sub-item--active' : ''"
+                    :class="isItemActive(sub) ? 'nav-sub-item--active' : ''"
                     :style="{ animationDelay: `${subIdx * 25}ms` }"
                   >
                     <span class="flex-1 truncate">{{ sub.name }}</span>
@@ -313,25 +319,6 @@
             </router-link>
 
             <router-link
-              to="/settings"
-              @click="closeUserMenu"
-              class="popover-item group/item"
-              :class="{ 'popover-item--active': $route.name === 'settings' }"
-              :style="{ animationDelay: '70ms' }"
-            >
-              <span
-                class="popover-accent"
-                :class="$route.name === 'settings' ? 'scale-y-100' : 'scale-y-0 group-hover/item:scale-y-100'"
-              ></span>
-              <Cog6ToothIcon
-                class="h-4 w-4 shrink-0 transition-colors"
-                :class="$route.name === 'settings' ? 'text-primary-500 dark:text-primary-400' : 'text-gray-400 group-hover/item:text-primary-500 dark:text-gray-500 dark:group-hover/item:text-primary-400'"
-              />
-              <span class="flex-1">Settings</span>
-              <ChevronRightIcon class="popover-chevron" />
-            </router-link>
-
-            <router-link
               v-if="isAdmin"
               to="/admin/users"
               @click="closeUserMenu"
@@ -368,12 +355,30 @@
       </transition>
     </div>
 
+    <!-- Settings link -->
+    <router-link
+      to="/settings"
+      @click="closeDrawer"
+      class="nav-item group/nav border-t border-gray-200/80 dark:border-gray-800/60"
+      :class="[
+        isCollapsed ? 'justify-center px-0' : '',
+        $route.name === 'settings' ? 'nav-item--active' : ''
+      ]"
+      :title="isCollapsed ? 'Settings' : ''"
+    >
+      <Cog6ToothIcon
+        class="h-5 w-5 shrink-0 transition-colors"
+        :class="$route.name === 'settings' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 group-hover/nav:text-gray-600 dark:text-gray-500 dark:group-hover/nav:text-gray-300'"
+      />
+      <span v-if="!isCollapsed" class="flex-1">Settings</span>
+    </router-link>
+
     <!-- API Docs link -->
     <a
       :href="apiDocsUrl"
       target="_blank"
       rel="noopener noreferrer"
-      class="nav-item group/nav border-t border-gray-200/80 dark:border-gray-800/60"
+      class="nav-item group/nav"
       :class="isCollapsed ? 'justify-center px-0' : ''"
       :title="isCollapsed ? 'API Docs' : ''"
     >
@@ -427,6 +432,11 @@ import {
   PresentationChartLineIcon,
   BeakerIcon,
   CalendarIcon,
+  BookOpenIcon,
+  ChatBubbleLeftRightIcon,
+  BriefcaseIcon,
+  BanknotesIcon,
+  UserGroupIcon,
   ArrowUpTrayIcon,
   ShieldCheckIcon,
   ChevronRightIcon,
@@ -486,57 +496,93 @@ const apiDocsUrl = computed(() => {
 
 const navItems = computed(() => {
   const items = [
+    { name: 'Dashboard', icon: HomeIcon, to: '/dashboard', route: 'dashboard' },
     {
-      name: 'Dashboard',
-      icon: HomeIcon,
-      items: [
-        { name: 'Trading Dashboard', to: '/dashboard', route: 'dashboard' },
-        { name: 'Trading Journal', to: '/diary', route: 'diary' },
-        { name: 'Account & Cashflow', to: '/cashflow', route: 'cashflow' },
-        { name: 'Leaderboard', to: '/leaderboard', route: 'leaderboard' },
-        { name: 'Public Trades', to: '/public', route: 'public-trades' },
-        { name: 'Community Forum', href: 'https://tradetally.io/forum', external: true }
-      ]
+      name: 'Trades',
+      icon: ChartBarSquareIcon,
+      to: '/trades',
+      route: 'trades',
+      activeRoutes: ['trade-create', 'trade-detail', 'trade-edit', 'trade-replay']
     },
-    { name: 'Trades', icon: ChartBarSquareIcon, to: '/trades', route: 'trades' },
     {
-      name: 'Metrics',
+      name: 'Journal',
+      icon: BookOpenIcon,
+      to: '/diary',
+      route: 'diary',
+      activeRoutes: ['diary-create', 'diary-edit']
+    },
+    { name: 'Calendar', icon: CalendarIcon, to: '/calendar', route: 'calendar' },
+    { name: 'AI Chat', icon: ChatBubbleLeftRightIcon, to: '/ai-chat', route: 'ai-chat', badge: 'pro' },
+    {
+      name: 'Reports',
       icon: PresentationChartLineIcon,
       items: [
         { name: 'Performance', to: '/metrics', route: 'metrics' },
         { name: 'Monthly', to: '/metrics/monthly', route: 'monthly-performance' },
         { name: 'Edge Report', to: '/metrics/edge-report', route: 'edge-report', badge: 'pro' },
+        { name: 'Trade Management', to: '/analysis/trade-management', route: 'trade-management', badge: 'pro' },
         { name: 'Partial Exits', to: '/metrics/partial-exits', route: 'partial-exit-analytics', badge: 'pro' },
         { name: 'Behavioral', to: '/metrics/behavioral', route: 'behavioral-analytics', badge: 'pro' },
         { name: 'Health', to: '/metrics/health', route: 'health-analytics', badge: 'pro' }
       ]
     },
     {
-      name: 'Analysis',
+      name: 'Strategy',
       icon: BeakerIcon,
       items: [
-        { name: 'Investments', to: '/analysis', route: 'analysis', badge: 'pro' },
-        { name: 'Retirement Planner', to: '/analysis/retirement', route: 'retirement-planner', badge: 'pro' },
-        { name: 'Watchlists', to: '/markets', route: 'markets', badge: 'pro' },
-        { name: 'Trade Management', to: '/analysis/trade-management', route: 'trade-management', badge: 'pro' },
         { name: 'Playbooks & Grading', to: '/analysis/playbooks', route: 'playbooks', badge: 'pro' },
         { name: 'Backtest Sandbox', to: '/analysis/backtest', route: 'backtest', badge: 'pro' },
         { name: 'Prop Firm', to: '/analysis/prop-firm', route: 'prop-firm' }
       ]
     },
-    { name: 'Calendar', icon: CalendarIcon, to: '/calendar', route: 'calendar' },
+    {
+      name: 'Investing',
+      icon: BriefcaseIcon,
+      items: [
+        {
+          name: 'Investments',
+          to: '/analysis',
+          route: 'analysis',
+          badge: 'pro',
+          activeRoutes: ['stock-analysis', 'holding-detail', 'analysis-compare']
+        },
+        { name: 'Watchlists', to: '/markets', route: 'markets', badge: 'pro', activeRoutes: ['watchlist-detail'] },
+        { name: 'Retirement Planner', to: '/analysis/retirement', route: 'retirement-planner', badge: 'pro' }
+      ]
+    },
+    {
+      name: 'Accounts',
+      icon: BanknotesIcon,
+      items: [
+        { name: 'Account & Cashflow', to: '/cashflow', route: 'cashflow' },
+        { name: 'Trading Accounts', to: '/accounts', route: 'accounts' },
+        { name: 'Equity History', to: '/equity-history', route: 'equity-history' }
+      ]
+    },
     {
       name: 'Import',
       icon: ArrowUpTrayIcon,
       items: [
         { name: 'CSV Import', to: '/import', route: 'import' },
-        { name: 'Broker Sync', to: '/broker-sync', route: 'broker-sync' }
+        { name: 'Broker Sync', to: '/broker-sync', route: 'broker-sync', activeRoutes: ['settings-broker-sync'] }
+      ]
+    },
+    {
+      name: 'Community',
+      icon: UserGroupIcon,
+      items: [
+        { name: 'Leaderboard', to: '/leaderboard', route: 'leaderboard' },
+        { name: 'Community Forum', href: 'https://tradetally.io/forum', external: true }
       ]
     }
   ]
 
   return items
 })
+
+// Detail/edit pages (e.g. a single trade) keep their parent menu item highlighted
+const isItemActive = (item) =>
+  route.name === item.route || (item.activeRoutes?.includes(route.name) ?? false)
 
 const showUpgradeCard = computed(() => {
   if (!isBillingEnabled.value) return false
@@ -584,7 +630,7 @@ const roleBadge = computed(() => {
 
 const isGroupActive = (item) => {
   if (!item.items) return false
-  return item.items.some((sub) => route.name === sub.route)
+  return item.items.some(isItemActive)
 }
 
 const isGroupExpanded = (name) => expandedGroups.value[name] === true
@@ -640,7 +686,7 @@ watch(
   (newRoute) => {
     if (!newRoute) return
     navItems.value.forEach((item) => {
-      if (item.items?.some((sub) => sub.route === newRoute)) {
+      if (item.items?.some(isItemActive)) {
         expandedGroups.value[item.name] = true
       }
     })

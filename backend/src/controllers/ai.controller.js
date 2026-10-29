@@ -1,5 +1,6 @@
 const AISessionService = require('../services/aiSessionService');
 const AICreditService = require('../services/aiCreditService');
+const AITraderContext = require('../services/aiTraderContext');
 const { sendAIUnavailable } = require('../utils/aiErrorResponse');
 
 /**
@@ -68,6 +69,99 @@ const aiController = {
         return res.status(404).json({
           success: false,
           error: 'Trade not found',
+          message: error.message
+        });
+      }
+
+      return sendAIUnavailable(res);
+    }
+  },
+
+  /**
+   * Start a free-form AI chat with journal-wide context
+   * POST /api/ai/chat
+   * Body: { message: string, request_id?: string }
+   * Returns: { session_id, title, response, credits_used, credits_remaining }
+   */
+  /**
+   * Save a memory note the assistant proposed (or the user typed) so every
+   * future AI prompt carries it. Notes are managed in Profile > Trading Profile.
+   * POST /api/ai/memory-notes { note }
+   */
+  async addMemoryNote(req, res, next) {
+    try {
+      const User = require('../models/User');
+      const note = String(req.body.note || '').replace(/\s+/g, ' ').trim();
+      if (note.length < 3) {
+        return res.status(400).json({ success: false, error: 'Note is too short' });
+      }
+      if (note.length > AITraderContext.MAX_MEMORY_NOTE_CHARS) {
+        return res.status(400).json({ success: false, error: `Note must be at most ${AITraderContext.MAX_MEMORY_NOTE_CHARS} characters` });
+      }
+
+      const settings = await User.getSettings(req.user.id);
+      const existing = Array.isArray(settings?.ai_memory_notes) ? settings.ai_memory_notes.filter(n => typeof n === 'string') : [];
+      if (existing.some(n => n.toLowerCase() === note.toLowerCase())) {
+        return res.json({ success: true, notes: existing, added: false });
+      }
+      if (existing.length >= AITraderContext.MAX_MEMORY_NOTES) {
+        return res.status(400).json({
+          success: false,
+          error: `You already have ${AITraderContext.MAX_MEMORY_NOTES} memory notes. Remove one in Profile > Trading Profile first.`
+        });
+      }
+
+      const notes = [...existing, note];
+      await User.updateSettings(req.user.id, { aiMemoryNotes: notes });
+      AITraderContext.invalidate(req.user.id);
+      res.status(201).json({ success: true, notes, added: true });
+    } catch (error) {
+      console.error('[AI_CONTROLLER] Error saving memory note:', error.message);
+      next(error);
+    }
+  },
+
+  async createChat(req, res, next) {
+    try {
+      console.log('[AI_CONTROLLER] Creating chat session for user', req.user.id);
+
+      const result = await AISessionService.createChatSession(
+        req.user.id,
+        req.body.message.trim(),
+        {
+          apiKey: req.body.apiKey,
+          modelName: req.body.modelName,
+          request_id: req.body.request_id
+        }
+      );
+
+      res.status(201).json({
+        success: true,
+        ...result
+      });
+    } catch (error) {
+      console.error('[AI_CONTROLLER] Error creating chat session:', error.message);
+
+      if (error.message.includes('Insufficient credits')) {
+        return res.status(402).json({
+          success: false,
+          error: 'Insufficient credits',
+          message: error.message
+        });
+      }
+
+      if (error.message.includes('require a Pro subscription')) {
+        return res.status(403).json({
+          success: false,
+          error: 'Pro subscription required',
+          message: error.message
+        });
+      }
+
+      if (error.code === 'AI_FOLLOWUP_NOT_TRADING_RELATED') {
+        return res.status(400).json({
+          success: false,
+          error: 'Question must be trading-related',
           message: error.message
         });
       }
@@ -203,7 +297,9 @@ const aiController = {
     try {
       const limit = parseInt(req.query.limit) || 10;
 
-      const sessions = await AISessionService.getUserSessions(req.user.id, Math.min(limit, 50));
+      const type = ['chat', 'single_trade', 'performance'].includes(req.query.type) ? req.query.type : undefined;
+
+      const sessions = await AISessionService.getUserSessions(req.user.id, Math.min(limit, 50), { type });
 
       res.json({
         success: true,
@@ -310,6 +406,33 @@ const aiController = {
   },
 
   /**
+   * Delete a session and its messages
+   * DELETE /api/ai/sessions/:id
+   */
+  async deleteSession(req, res, next) {
+    try {
+      const deletedCount = await AISessionService.deleteSession(req.user.id, req.params.id);
+
+      res.json({
+        success: true,
+        deleted_count: deletedCount
+      });
+    } catch (error) {
+      console.error('[AI_CONTROLLER] Error deleting session:', error.message);
+
+      if (error.message.includes('not found')) {
+        return res.status(404).json({
+          success: false,
+          error: 'Session not found',
+          message: error.message
+        });
+      }
+
+      next(error);
+    }
+  },
+
+  /**
    * Close a session
    * POST /api/ai/sessions/:id/close
    * Returns: { success: boolean }
@@ -351,6 +474,17 @@ const aiController = {
     try {
       const credits = await AICreditService.getCredits(req.user.id);
 
+      // A Pro user running AI on their own provider/key is not charged
+      // credits, so report unlimited for gating and display.
+      let ownProvider = false;
+      if (!credits.unlimited && !credits.tier_restricted) {
+        try {
+          ownProvider = (await AISessionService.getAISettings(req.user.id)).user_funded === true;
+        } catch (settingsError) {
+          ownProvider = false; // no usable provider configured
+        }
+      }
+
       res.json({
         success: true,
         credits: {
@@ -359,11 +493,13 @@ const aiController = {
           remaining: credits.remaining,
           period_start: credits.period_start,
           period_end: credits.period_end,
-          unlimited: credits.unlimited || false
+          unlimited: credits.unlimited || ownProvider,
+          own_provider: ownProvider
         },
         costs: {
           new_session: AICreditService.getCost('NEW_SESSION'),
-          followup: AICreditService.getCost('FOLLOWUP')
+          followup: AICreditService.getCost('FOLLOWUP'),
+          chat_message: AICreditService.getCost('CHAT_MESSAGE')
         }
       });
     } catch (error) {

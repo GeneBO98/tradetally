@@ -42,6 +42,9 @@ export const useAIStore = defineStore('ai', () => {
   const messages = ref([])
   const loading = ref(false)
   const generating = ref(false)
+  // Memory note the assistant proposed from the last message; saved only on confirm.
+  const pendingMemoryNote = ref(null)
+  const savingMemoryNote = ref(false)
   const error = ref(null)
 
   // Credit state
@@ -55,20 +58,26 @@ export const useAIStore = defineStore('ai', () => {
 
   const creditCosts = ref({
     new_session: 10,
-    followup: 2
+    followup: 2,
+    chat_message: 2
   })
 
   // Recent sessions
   const recentSessions = ref([])
 
   // Computed properties
+  // Any loaded session can be continued: the backend reopens closed or
+  // expired sessions on the next message.
   const hasActiveSession = computed(() => {
-    return currentSession.value && currentSession.value.status === 'active'
+    return !!currentSession.value
+  })
+
+  const isChatSession = computed(() => {
+    return currentSession.value?.trade_summary?.analysis_type === 'chat'
   })
 
   const canAskFollowup = computed(() => {
     if (!currentSession.value) return false
-    if (currentSession.value.status !== 'active') return false
     return currentSession.value.followup_count < currentSession.value.max_followups
   })
 
@@ -87,10 +96,21 @@ export const useAIStore = defineStore('ai', () => {
     return credits.value.remaining >= creditCosts.value.new_session
   })
 
+  const followupCost = computed(() => {
+    return isChatSession.value
+      ? (creditCosts.value.chat_message ?? creditCosts.value.followup)
+      : creditCosts.value.followup
+  })
+
+  const canStartChat = computed(() => {
+    if (credits.value.unlimited) return true
+    return credits.value.remaining >= (creditCosts.value.chat_message ?? creditCosts.value.followup)
+  })
+
   const canSendFollowup = computed(() => {
     if (!canAskFollowup.value) return false
     if (credits.value.unlimited) return true
-    return credits.value.remaining >= creditCosts.value.followup
+    return credits.value.remaining >= followupCost.value
   })
 
   /**
@@ -227,6 +247,76 @@ export const useAIStore = defineStore('ai', () => {
   }
 
   /**
+   * Start a free-form chat that uses the whole journal as context
+   * @param {string} message - The first message
+   */
+  async function createChatSession(message) {
+    generating.value = true
+    error.value = null
+    const request_id = createRequestId()
+    const recoveryDeadline = Date.now() + AI_SESSION_RECOVERY_TIMEOUT_MS
+
+    currentSession.value = null
+    messages.value = [{
+      role: 'user',
+      content: message,
+      created_at: new Date().toISOString()
+    }]
+
+    try {
+      const response = await api.post('/ai/chat', { message, request_id })
+
+      currentSession.value = {
+        id: response.data.session_id,
+        status: 'active',
+        followup_count: 0,
+        max_followups: response.data.max_followups,
+        trade_summary: response.data.trade_summary,
+        ai_metadata: response.data.ai_metadata || null,
+        expires_at: response.data.expires_at,
+        created_at: response.data.created_at
+      }
+
+      messages.value.push({
+        role: 'assistant',
+        content: response.data.response,
+        trade_query: response.data.trade_query || null,
+        created_at: new Date().toISOString()
+      })
+      pendingMemoryNote.value = response.data.suggested_memory_note || null
+
+      if (response.data.credits_remaining !== undefined && response.data.credits_remaining !== null) {
+        credits.value.remaining = response.data.credits_remaining
+        credits.value.used = credits.value.allocated - response.data.credits_remaining
+      }
+
+      return response.data
+    } catch (err) {
+      if (isRecoverableGatewayError(err)) {
+        console.warn('[AI_STORE] AI chat connection ended before completion; waiting for the backend session', {
+          request_id,
+          status: err.response?.status,
+          code: err.code
+        })
+
+        try {
+          return await recoverCreatedSession(request_id, recoveryDeadline)
+        } catch (recoveryError) {
+          messages.value = []
+          error.value = recoveryError.message
+          throw recoveryError
+        }
+      }
+
+      messages.value = []
+      error.value = analysisErrorMessage(err)
+      throw err
+    } finally {
+      generating.value = false
+    }
+  }
+
+  /**
    * Send a follow-up question
    * @param {string} message - The follow-up question
    */
@@ -257,11 +347,15 @@ export const useAIStore = defineStore('ai', () => {
       messages.value.push({
         role: 'assistant',
         content: response.data.response,
+        trade_query: response.data.trade_query || null,
         created_at: new Date().toISOString()
       })
+      pendingMemoryNote.value = response.data.suggested_memory_note || null
 
       // Update session state
+      currentSession.value.status = 'active'
       currentSession.value.followup_count = response.data.followup_count
+      if (response.data.max_followups) currentSession.value.max_followups = response.data.max_followups
       if (response.data.image_context) currentSession.value.image_context = response.data.image_context
 
       // Update credits
@@ -346,6 +440,26 @@ export const useAIStore = defineStore('ai', () => {
    * Load an existing session
    * @param {string} sessionId - Session ID to load
    */
+  /**
+   * Persist the memory note the assistant proposed. Every later AI prompt
+   * (chat, analysis, insights) carries it via the trader dossier.
+   */
+  async function saveMemoryNote(note = pendingMemoryNote.value) {
+    if (!note) return null
+    savingMemoryNote.value = true
+    try {
+      const response = await api.post('/ai/memory-notes', { note })
+      pendingMemoryNote.value = null
+      return response.data
+    } finally {
+      savingMemoryNote.value = false
+    }
+  }
+
+  function dismissMemoryNote() {
+    pendingMemoryNote.value = null
+  }
+
   async function loadSession(sessionId) {
     loading.value = true
     error.value = null
@@ -379,16 +493,28 @@ export const useAIStore = defineStore('ai', () => {
   /**
    * Fetch user's recent sessions
    */
-  async function fetchRecentSessions(limit = 10) {
+  async function fetchRecentSessions(limit = 10, type = null) {
     try {
-      const response = await api.get('/ai/sessions', {
-        params: { limit }
-      })
+      const params = { limit }
+      if (type) params.type = type
+      const response = await api.get('/ai/sessions', { params })
       recentSessions.value = response.data.sessions
       return response.data.sessions
     } catch (err) {
       console.error('[AI_STORE] Error fetching recent sessions:', err)
       throw err
+    }
+  }
+
+  /**
+   * Permanently delete a session and its messages
+   * @param {string} sessionId - Session ID to delete
+   */
+  async function deleteSession(sessionId) {
+    await api.delete(`/ai/sessions/${sessionId}`)
+    recentSessions.value = recentSessions.value.filter(session => session.id !== sessionId)
+    if (currentSession.value?.id === sessionId) {
+      reset()
     }
   }
 
@@ -411,6 +537,8 @@ export const useAIStore = defineStore('ai', () => {
    * Reset store state (start fresh)
    */
   function reset() {
+    pendingMemoryNote.value = null
+    savingMemoryNote.value = false
     currentSession.value = null
     messages.value = []
     error.value = null
@@ -426,6 +554,10 @@ export const useAIStore = defineStore('ai', () => {
   }
 
   return {
+    pendingMemoryNote,
+    savingMemoryNote,
+    saveMemoryNote,
+    dismissMemoryNote,
     // State
     currentSession,
     messages,
@@ -438,18 +570,23 @@ export const useAIStore = defineStore('ai', () => {
 
     // Computed
     hasActiveSession,
+    isChatSession,
     canAskFollowup,
     followupsRemaining,
     hasCredits,
     canStartSession,
+    canStartChat,
     canSendFollowup,
+    followupCost,
 
     // Actions
     fetchCredits,
     createSession,
+    createChatSession,
     sendFollowup,
     loadSession,
     fetchRecentSessions,
+    deleteSession,
     closeSession,
     reset,
     clearError

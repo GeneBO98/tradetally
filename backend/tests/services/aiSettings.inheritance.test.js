@@ -67,4 +67,19 @@ describe('AI settings inheritance', () => {
       provider: 'claude', apiKey: '', apiUrl: '', model: ''
     });
   });
+
+  describe('user_funded (no TradeTally credits charged)', () => {
+    test.each([
+      ['own key for a different provider', { ai_provider: 'claude', ai_api_key: 'user-key' }, true],
+      ['own key for the instance provider', { ai_provider: 'openai', ai_api_key: 'user-key' }, true],
+      ['keyless local model', { ai_provider: 'lmstudio', ai_api_url: 'http://localhost:1234/v1', ai_model: 'gemma' }, true],
+      ['instance provider without a key (borrows the instance key)', { ai_provider: 'openai', ai_model: 'gpt-5' }, false],
+      ['no provider configured', { ai_provider: null }, false],
+      ['untouched legacy gemini row', { ai_provider: 'gemini' }, false]
+    ])('%s', async (_label, row, expected) => {
+      User.getSettings.mockResolvedValue(row);
+      const settings = await sessions.getAISettings('user-1');
+      expect(settings.user_funded).toBe(expected);
+    });
+  });
 });

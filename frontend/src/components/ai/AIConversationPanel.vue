@@ -94,6 +94,9 @@
 
     <!-- Conversation View -->
     <div v-else-if="aiStore.hasActiveSession" class="flex flex-col h-full">
+      <p v-if="isResumedSession" class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+        Continuing an analysis from {{ resumedFromLabel }}. Your next question includes the trade's current status and fresh market data.
+      </p>
       <!-- Messages Container -->
       <div ref="messagesContainer" class="flex-1 overflow-y-auto space-y-4 mb-4 max-h-[60vh] pr-2">
         <template v-for="(message, index) in aiStore.messages" :key="index">
@@ -152,7 +155,7 @@
             <PaperAirplaneIcon class="h-4 w-4" />
             <span class="hidden sm:inline">Send</span>
             <span v-if="!aiStore.credits.unlimited" class="text-xs opacity-75 hidden sm:inline">
-              ({{ aiStore.creditCosts.followup }})
+              ({{ aiStore.followupCost }})
             </span>
           </button>
         </form>
@@ -202,7 +205,7 @@ import CreditBadge from './CreditBadge.vue'
 
 const aiStore = useAIStore()
 const tradesStore = useTradesStore()
-const emit = defineEmits(['session-created'])
+const emit = defineEmits(['session-created', 'followup-sent'])
 
 const props = defineProps({
   tradeId: {
@@ -259,6 +262,17 @@ const groupContextLabel = computed(() => {
   const legs = group.leg_count ? ` (${group.leg_count} legs)` : ''
   const underlying = group.underlying_symbol ? ` on ${group.underlying_symbol}` : ''
   return `Analyzing: ${label}${legs}${underlying}`
+})
+
+const isResumedSession = computed(() => {
+  const session = aiStore.currentSession
+  if (!session?.created_at) return false
+  return session.status !== 'active' || Date.now() - new Date(session.created_at).getTime() > 24 * 60 * 60 * 1000
+})
+
+const resumedFromLabel = computed(() => {
+  const createdAt = aiStore.currentSession?.created_at
+  return createdAt ? new Date(createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''
 })
 
 function formatModelLabel(metadata) {
@@ -327,6 +341,7 @@ async function sendFollowup() {
 
   try {
     await aiStore.sendFollowup(message)
+    emit('followup-sent', aiStore.currentSession)
   } catch (error) {
     console.error('[AI_PANEL] Error sending follow-up:', error)
     // Restore the message so user can try again

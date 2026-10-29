@@ -40,13 +40,54 @@ class EarningsService {
   }
 
   /**
-   * Fetch earnings from Finnhub and update cache
+   * Enumerate YYYY-MM-DD strings from `from` to `to` inclusive (UTC).
+   */
+  static enumerateDays(from, to) {
+    const days = [];
+    const end = new Date(`${to}T00:00:00Z`).getTime();
+    for (let t = new Date(`${from}T00:00:00Z`).getTime(); t <= end; t += 24 * 60 * 60 * 1000) {
+      days.push(new Date(t).toISOString().split('T')[0]);
+    }
+    return days;
+  }
+
+  /**
+   * Fetch the full calendar for a date window.
+   *
+   * Finnhub caps a single calendar response (observed at 1,500 rows, latest
+   * dates first), so one request for a two-week window silently drops the
+   * nearest days during earnings season. Against Finnhub we fetch one day at
+   * a time and merge. Other providers (FMP) have no such cap and tighter
+   * daily quotas, so they keep the single request.
+   */
+  static async fetchWindow(from, to) {
+    if (!finnhub.isFinnhub) {
+      return (await finnhub.getEarningsCalendar(from, to)) || [];
+    }
+
+    const merged = new Map();
+    for (const day of this.enumerateDays(from, to)) {
+      const rows = (await finnhub.getEarningsCalendar(day, day)) || [];
+      for (const row of rows) {
+        const key = `${String(row.symbol || '').toUpperCase()}|${row.date}`;
+        if (!merged.has(key)) merged.set(key, row);
+      }
+    }
+
+    return [...merged.values()].sort((a, b) =>
+      String(a.date).localeCompare(String(b.date)) ||
+      String(a.symbol || '').localeCompare(String(b.symbol || ''))
+    );
+  }
+
+  /**
+   * Fetch earnings from the market data provider and update cache
    */
   static async fetchAndCache() {
     const { from, to } = this.getDateRange();
 
     try {
-      const allEarnings = await finnhub.getEarningsCalendar(from, to);
+      const allEarnings = await this.fetchWindow(from, to);
 
       // Upsert into cache
       await db.query(

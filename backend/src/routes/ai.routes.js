@@ -63,6 +63,45 @@ router.post('/sessions', authenticate, aiLimiter, validate(schemas.aiCreateSessi
 
 /**
  * @swagger
+ * /api/ai/chat:
+ *   post:
+ *     summary: Start a free-form AI chat that uses the user's whole journal as context
+ *     description: |
+ *       Each message is answered with a fresh snapshot of the user's performance, open positions,
+ *       per-symbol and per-strategy stats, recent trades, and journal entries. Ticker symbols
+ *       mentioned in the message add the user's history on that symbol plus live quote, news,
+ *       and earnings data when market data is configured. Continue the chat with
+ *       POST /api/ai/sessions/{id}/followup.
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - message
+ *             properties:
+ *               message:
+ *                 type: string
+ *               request_id:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Chat session created with the first reply
+ *       400:
+ *         description: Message missing or not trading-related
+ *       402:
+ *         description: Insufficient credits
+ *       403:
+ *         description: Pro subscription required
+ */
+router.post('/chat', authenticate, aiLimiter, validate(schemas.aiCreateChat), aiController.createChat);
+
+/**
+ * @swagger
  * /api/ai/sessions:
  *   get:
  *     summary: Get user's recent AI sessions
@@ -75,6 +114,11 @@ router.post('/sessions', authenticate, aiLimiter, validate(schemas.aiCreateSessi
  *         schema:
  *           type: integer
  *           default: 10
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [chat, single_trade, performance]
  *     responses:
  *       200:
  *         description: Sessions retrieved successfully
@@ -112,9 +156,32 @@ router.get('/sessions/:id', authenticate, aiController.getSession);
 
 /**
  * @swagger
+ * /api/ai/sessions/{id}:
+ *   delete:
+ *     summary: Delete an AI session and its messages
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Session deleted
+ *       404:
+ *         description: Session not found
+ */
+router.delete('/sessions/:id', authenticate, aiController.deleteSession);
+
+/**
+ * @swagger
  * /api/ai/sessions/{id}/followup:
  *   post:
  *     summary: Send a follow-up question in an existing session
+ *     description: Closed or expired sessions are reopened, so older analyses and chats can be continued.
  *     tags: [AI]
  *     security:
  *       - bearerAuth: []
@@ -255,5 +322,30 @@ router.get('/credits', authenticate, aiController.getCredits);
  *         description: Credit history retrieved successfully
  */
 router.get('/credits/history', authenticate, aiController.getCreditHistory);
+
+/**
+ * @swagger
+ * /api/ai/memory-notes:
+ *   post:
+ *     summary: Save a memory note that every AI prompt will carry
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [note]
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 maxLength: 300
+ *     responses:
+ *       201:
+ *         description: Note saved; returns the full list of notes
+ */
+router.post('/memory-notes', authenticate, validate(schemas.aiMemoryNote), aiController.addMemoryNote);
 
 module.exports = router;

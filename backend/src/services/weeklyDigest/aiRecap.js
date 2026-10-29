@@ -25,7 +25,7 @@ async function fetchTradeSummariesForPrompt(userId, startDate, endDate) {
   return rows;
 }
 
-function buildPrompt(agg, trades) {
+function buildPrompt(agg, trades, dossierText = '') {
   const pnl = agg.totalPnL.toFixed(2);
   const winRate = agg.tradeCount > 0
     ? Math.round((agg.winCount / agg.tradeCount) * 100)
@@ -49,8 +49,12 @@ function buildPrompt(agg, trades) {
     return `- ${t.symbol} ${t.side} pnl=${pnlVal} (${pnlPct}) hold=${hold}${strat}`;
   }).join('\n');
 
-  return `You are a trading coach. Write a concise, friendly 2-3 sentence summary of this trader's week. Be specific and reference the data. Do NOT give financial advice. Do NOT use bullet points. Do NOT use markdown. Plain prose only.
+  const dossierSection = dossierText
+    ? `\nAbout this trader (use for tone and to connect the week to their goals or a known tendency; the week's numbers come only from the summary below):\n${dossierText}\n`
+    : '';
 
+  return `You are a trading coach. Write a concise, friendly 2-3 sentence summary of this trader's week. Be specific and reference the data. Do NOT give financial advice. Do NOT use bullet points. Do NOT use markdown. Plain prose only.
+${dossierSection}
 Week summary:
 - Trades: ${agg.tradeCount}
 - Total P&L: $${pnl}
@@ -74,7 +78,9 @@ async function generateRecap(userId, agg, startDate, endDate) {
       return null;
     }
     const trades = await fetchTradeSummariesForPrompt(userId, startDate, endDate);
-    const prompt = buildPrompt(agg, trades);
+    const AITraderContext = require('../aiTraderContext');
+    const dossierText = await AITraderContext.render(userId, { sections: ['profile', 'behavior'] });
+    const prompt = buildPrompt(agg, trades, dossierText);
     const text = await AIService.generateResponse(userId, prompt, {
       maxTokens: 220,
     });

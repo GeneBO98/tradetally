@@ -10,6 +10,18 @@
           <p v-if="stats.trades_with_post_exit_data" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             Continuation = positive difference between after-trade MFE and in-trade MFE. Missed after exit = positive difference between after-trade MFE and realized P&L.
           </p>
+          <button
+            type="button"
+            class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+            :aria-expanded="showGuide"
+            aria-controls="mae-mfe-guide"
+            @click="showGuide = !showGuide"
+          >
+            {{ showGuide ? 'Hide explanation' : 'How to read this' }}
+            <svg class="h-3.5 w-3.5 transition-transform" :class="{ 'rotate-180': showGuide }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
         <div class="flex items-center gap-2 flex-wrap justify-end">
           <span class="text-xs text-gray-500 dark:text-gray-400">Display in</span>
@@ -20,7 +32,7 @@
               :class="displayMode === 'dollars' ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
               @click="displayMode = 'dollars'"
             >
-              Dollars
+              {{ currencyCode }}
             </button>
             <button
               type="button"
@@ -46,6 +58,89 @@
           <span v-if="!hasRValues || !canUsePoints" class="text-xs text-gray-400 dark:text-gray-500">
             {{ !hasRValues && !canUsePoints ? 'R needs stop loss. Points need futures-only trades with qty and point value.' : !hasRValues ? 'R needs stop loss.' : 'Points need futures-only trades with qty and point value.' }}
           </span>
+          <div class="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button
+              type="button"
+              class="px-3 py-1.5 text-xs font-medium transition-colors"
+              :class="chartOptions.hideOutliers ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+              :aria-pressed="chartOptions.hideOutliers"
+              title="Exclude trades whose MAE, MFE, or result is far outside the rest of your trades"
+              @click="setChartOption('hideOutliers', !chartOptions.hideOutliers)"
+            >
+              Hide outliers
+            </button>
+            <button
+              type="button"
+              class="px-3 py-1.5 text-xs font-medium border-l border-gray-200 dark:border-gray-700 transition-colors"
+              :class="chartOptions.logScale ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+              :aria-pressed="chartOptions.logScale"
+              title="Use a logarithmic scale so small and very large moves are both readable"
+              @click="setChartOption('logScale', !chartOptions.logScale)"
+            >
+              Log scale
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Explainer -->
+      <div v-if="showGuide" id="mae-mfe-guide" class="mb-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <section>
+            <h4 class="text-sm font-semibold text-gray-900 dark:text-white">The two measurements</h4>
+            <dl class="mt-2 space-y-2 text-sm text-gray-600 dark:text-gray-400">
+              <div>
+                <dt class="font-medium text-gray-800 dark:text-gray-200">MAE (maximum adverse excursion)</dt>
+                <dd>The furthest a trade moved against you while it was open: the worst unrealized loss, or "heat", you sat through.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-gray-800 dark:text-gray-200">MFE (maximum favorable excursion)</dt>
+                <dd>The furthest a trade moved in your favor while it was open: the most profit that was available at any point.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-gray-800 dark:text-gray-200">After-trade MFE</dt>
+                <dd>The best favorable move from entry through the post-exit window, so you can see what happened after you closed.</dd>
+              </div>
+            </dl>
+            <p class="mt-3 text-sm text-gray-600 dark:text-gray-400">
+              Together they show whether your stops and exits fit how your trades actually move, independent of whether each trade won.
+            </p>
+          </section>
+
+          <section>
+            <h4 class="text-sm font-semibold text-gray-900 dark:text-white">MFE vs. Result</h4>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              Each dot is a trade. Further right means it ran further in your favor; higher means you kept more when you closed.
+            </p>
+            <ul class="mt-2 space-y-1.5 text-sm text-gray-600 dark:text-gray-400 list-disc pl-5">
+              <li><span class="font-medium text-gray-800 dark:text-gray-200">Dashed line:</span> a perfect exit, where you closed at the best price the trade reached.</li>
+              <li><span class="font-medium text-gray-800 dark:text-gray-200">Winners near the line:</span> you captured most of the move.</li>
+              <li><span class="font-medium text-gray-800 dark:text-gray-200">Winners well below the line:</span> you exited early and left profit on the table.</li>
+              <li><span class="font-medium text-gray-800 dark:text-gray-200">Losers far to the right:</span> trades that were in profit before turning into losses. Partial profits or a trailing stop may help.</li>
+              <li><span class="font-medium text-gray-800 dark:text-gray-200">Blue diamonds:</span> after-trade MFE, joined to the trade by a faint line, showing how much further price went after you exited.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h4 class="text-sm font-semibold text-gray-900 dark:text-white">MAE Distribution: Winners</h4>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              How much heat your winning trades took before they worked. Each bar counts winners whose MAE fell in that range.
+            </p>
+            <ul class="mt-2 space-y-1.5 text-sm text-gray-600 dark:text-gray-400 list-disc pl-5">
+              <li>If most winners sit in the first few bars, your good trades rarely go far against you, so a tighter stop would cut losers sooner without costing many winners.</li>
+              <li>Bars on the far right are winners that survived deep drawdowns. A stop tighter than that range would have stopped them out.</li>
+            </ul>
+            <p v-if="winnerMaePercentile" class="mt-3 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
+              In your data, {{ winnerMaePercentile.share }}% of winning trades never went more than <span class="font-semibold">{{ formatValue(winnerMaePercentile.value) }}</span> against you.
+            </p>
+          </section>
+        </div>
+
+        <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm text-gray-600 dark:text-gray-400">
+          <p><span class="font-medium text-gray-800 dark:text-gray-200">Exit efficiency:</span> on winners, the share of the best available move you kept. 100% means you sold the top.</p>
+          <p><span class="font-medium text-gray-800 dark:text-gray-200">Display in:</span> switch between {{ currencyCode }}, futures points, or R-multiples (amounts divided by the risk to your stop) to compare trades of different sizes.</p>
+          <p><span class="font-medium text-gray-800 dark:text-gray-200">Hide outliers:</span> leaves out trades whose MAE, MFE, or result is orders of magnitude beyond the rest, often bad data, from the stats and charts.</p>
+          <p><span class="font-medium text-gray-800 dark:text-gray-200">Log scale:</span> compresses large values so small and very large moves are readable on the same chart.</p>
         </div>
       </div>
 
@@ -119,6 +214,14 @@
           </div>
         </div>
 
+        <p v-if="chartOptions.hideOutliers && outlierTrades.size > 0" class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+          Hiding {{ outlierTrades.size }} outlier trade{{ outlierTrades.size === 1 ? '' : 's' }} ({{ outlierSymbols }}) from the stats and charts.
+          <button type="button" class="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400" @click="setChartOption('hideOutliers', false)">Show all</button>
+        </p>
+        <p v-else-if="chartOptions.hideOutliers" class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+          No outliers found in these trades.
+        </p>
+
         <!-- Charts grid -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <!-- MFE vs Result Scatter Plot -->
@@ -169,6 +272,8 @@ import { useRouter } from 'vue-router'
 import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { useUiPreferencesStore } from '@/stores/uiPreferences'
+import { findOutliers, symlog, inverseSymlog, symlogTicks } from '@/utils/chartScaling'
 
 const props = defineProps({
   filters: { type: Object, default: () => ({}) }
@@ -179,6 +284,30 @@ const trades = ref([])
 const stats = ref({ trades_with_data: 0 })
 const displayMode = ref('dollars')
 const router = useRouter()
+const uiPreferencesStore = useUiPreferencesStore()
+
+// Persisted + synced so the chosen view follows the user across devices.
+const CHART_OPTIONS_KEY = 'maeMfeChartOptions'
+const chartOptions = ref(loadChartOptions())
+
+function loadChartOptions() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(CHART_OPTIONS_KEY) || '{}')
+    return { hideOutliers: stored.hideOutliers === true, logScale: stored.logScale === true }
+  } catch {
+    return { hideOutliers: false, logScale: false }
+  }
+}
+
+function setChartOption(key, value) {
+  chartOptions.value = { ...chartOptions.value, [key]: value }
+  try {
+    localStorage.setItem(CHART_OPTIONS_KEY, JSON.stringify(chartOptions.value))
+    uiPreferencesStore.notifyChanged(CHART_OPTIONS_KEY, chartOptions.value)
+  } catch (e) {
+    console.error('[MAE/MFE] Failed to save chart options:', e)
+  }
+}
 
 let scatterChartInstance = null
 let histogramChartInstance = null
@@ -219,7 +348,41 @@ const perfectExitReferencePlugin = {
 }
 
 // ---- formatting ----
-const { formatCurrency } = useCurrencyFormatter()
+const { formatCurrency, currencyCode } = useCurrencyFormatter()
+
+const unitLabel = computed(() => {
+  if (displayMode.value === 'r') return 'R'
+  if (displayMode.value === 'points') return 'pts'
+  return currencyCode.value
+})
+
+// Below this magnitude the log axis is close to linear (1 currency unit or
+// point, 0.1R).
+const logThreshold = computed(() => (displayMode.value === 'r' ? 0.1 : 1))
+
+function formatAxisTick(value) {
+  const abs = Math.abs(value)
+  if (abs >= 1e6) return `${Number((value / 1e6).toFixed(1))}M`
+  if (abs >= 1e3) return `${Number((value / 1e3).toFixed(1))}k`
+  return `${Number(value.toFixed(abs < 1 ? 2 : 0))}`
+}
+
+function axisScale(title) {
+  const base = {
+    title: { display: true, text: `${title} (${unitLabel.value}${chartOptions.value.logScale ? ', log' : ''})`, color: '#6b7280', font: { size: 11 } },
+    ticks: { color: '#6b7280', font: { size: 10 } },
+    grid: { color: 'rgba(107,114,128,0.1)' }
+  }
+  if (!chartOptions.value.logScale) return base
+  const threshold = logThreshold.value
+  return {
+    ...base,
+    afterBuildTicks(scale) {
+      scale.ticks = symlogTicks(scale.min, scale.max, threshold)
+    },
+    ticks: { ...base.ticks, callback: value => formatAxisTick(inverseSymlog(value, threshold)) }
+  }
+}
 
 function formatPoints(val) {
   if (val == null) return '—'
@@ -251,6 +414,20 @@ function roundMetric(value) {
 
 const hasRValues = computed(() => trades.value.some(t => asNumber(t.risk_amount) > 0))
 
+// Outliers are judged in the current display unit: a trade can be extreme in
+// R (tiny stop distance) without being extreme in currency.
+const outlierTrades = computed(() => findOutliers(trades.value, [
+  t => getTradeValue(t, 'mfe'),
+  t => getTradeValue(t, 'mae'),
+  t => getTradeValue(t, 'pnl')
+]))
+
+const outlierSymbols = computed(() => [...new Set([...outlierTrades.value].map(t => t.symbol))].slice(0, 5).join(', '))
+
+const visibleTrades = computed(() => (
+  chartOptions.value.hideOutliers ? trades.value.filter(t => !outlierTrades.value.has(t)) : trades.value
+))
+
 const canUsePoints = computed(() => (
   trades.value.length > 0 &&
   trades.value.every(t =>
@@ -261,8 +438,8 @@ const canUsePoints = computed(() => (
 ))
 
 const displayStats = computed(() => {
-  const winners = trades.value.filter(t => t.is_winner)
-  const losers = trades.value.filter(t => !t.is_winner)
+  const winners = visibleTrades.value.filter(t => t.is_winner)
+  const losers = visibleTrades.value.filter(t => !t.is_winner)
 
   const winnersAvgMae = average(winners.map(t => getTradeValue(t, 'mae')))
   const losersAvgMfe = average(losers.map(t => getTradeValue(t, 'mfe')))
@@ -271,16 +448,16 @@ const displayStats = computed(() => {
     const captured = getTradeValue(t, 'captured_move')
     return mfe != null && captured != null ? Math.max(0, mfe - captured) : null
   }))
-  const avgMfeVsPnlGap = average(trades.value.map(t => {
+  const avgMfeVsPnlGap = average(visibleTrades.value.map(t => {
     const mfe = getTradeValue(t, 'mfe')
     const pnl = getTradeValue(t, 'pnl')
     return mfe != null && pnl != null ? mfe - pnl : null
   }))
-  const avgPostExitMfeDelta = average(trades.value.map(t => getTradeValue(t, 'post_exit_mfe_delta')))
-  const avgMissedAfterExit = average(trades.value.map(t => getTradeValue(t, 'missed_after_exit')))
+  const avgPostExitMfeDelta = average(visibleTrades.value.map(t => getTradeValue(t, 'post_exit_mfe_delta')))
+  const avgMissedAfterExit = average(visibleTrades.value.map(t => getTradeValue(t, 'missed_after_exit')))
 
   return {
-    trades_with_data: stats.value.trades_with_data || trades.value.length,
+    trades_with_data: visibleTrades.value.length,
     winners_avg_mae: roundMetric(winnersAvgMae),
     losers_avg_mfe: roundMetric(losersAvgMfe),
     avg_profit_left: roundMetric(avgProfitLeft),
@@ -290,8 +467,24 @@ const displayStats = computed(() => {
   }
 })
 
+const showGuide = ref(false)
+
+// 80th percentile of winners' MAE: a data-driven anchor for stop placement
+// in the explainer.
+const winnerMaePercentile = computed(() => {
+  const values = visibleTrades.value
+    .filter(t => t.is_winner)
+    .map(t => getTradeValue(t, 'mae'))
+    .filter(value => value != null)
+    .sort((a, b) => a - b)
+  if (values.length < 5) return null
+  const share = 80
+  const index = Math.ceil((share / 100) * values.length) - 1
+  return { share, value: values[index] }
+})
+
 const exitEfficiency = computed(() => {
-  const winners = trades.value.filter(t => t.is_winner && getBestAvailableMfe(t) > 0)
+  const winners = visibleTrades.value.filter(t => t.is_winner && getBestAvailableMfe(t) > 0)
   if (!winners.length) return null
   const ratios = winners
     .map(t => {
@@ -347,7 +540,7 @@ function destroyCharts() {
 
 function renderCharts() {
   destroyCharts()
-  if (!trades.value.length) return
+  if (!visibleTrades.value.length) return
   renderScatter()
   renderHistogram()
 }
@@ -397,21 +590,31 @@ function renderScatter() {
   if (!scatterChart.value) return
   const ctx = scatterChart.value.getContext('2d')
 
-  const winners = trades.value.filter(t => t.outcome === 'winner' || (!t.outcome && t.is_winner))
-  const partialWinners = trades.value.filter(t => t.outcome === 'partial_winner')
-  const losers = trades.value.filter(t => t.outcome === 'loser' || (!t.outcome && !t.is_winner && Math.abs(asNumber(t.pnl) || 0) >= 0.01))
-  const scratches = trades.value.filter(t => t.outcome === 'scratch' || (!t.outcome && Math.abs(asNumber(t.pnl) || 0) < 0.01))
+  const source = visibleTrades.value
+  const winners = source.filter(t => t.outcome === 'winner' || (!t.outcome && t.is_winner))
+  const partialWinners = source.filter(t => t.outcome === 'partial_winner')
+  const losers = source.filter(t => t.outcome === 'loser' || (!t.outcome && !t.is_winner && Math.abs(asNumber(t.pnl) || 0) >= 0.01))
+  const scratches = source.filter(t => t.outcome === 'scratch' || (!t.outcome && Math.abs(asNumber(t.pnl) || 0) < 0.01))
+
+  // Points are plotted in (optionally) log-transformed units; tooltips read
+  // the raw values.
+  const threshold = logThreshold.value
+  const plot = value => (value == null || !chartOptions.value.logScale ? value : symlog(value, threshold))
 
   const toPoint = t => ({
-    x: getTradeValue(t, 'mfe'),
-    y: getTradeValue(t, 'pnl'),
+    x: plot(getTradeValue(t, 'mfe')),
+    y: plot(getTradeValue(t, 'pnl')),
+    rawX: getTradeValue(t, 'mfe'),
+    rawY: getTradeValue(t, 'pnl'),
     label: t.symbol,
     tradeId: t.id,
     kind: 'in_trade'
   })
   const toPostExitPoint = t => ({
-    x: getTradeValue(t, 'post_exit_mfe'),
-    y: getTradeValue(t, 'pnl'),
+    x: plot(getTradeValue(t, 'post_exit_mfe')),
+    y: plot(getTradeValue(t, 'pnl')),
+    rawX: getTradeValue(t, 'post_exit_mfe'),
+    rawY: getTradeValue(t, 'pnl'),
     label: t.symbol,
     tradeId: t.id,
     kind: 'post_exit',
@@ -423,10 +626,10 @@ function renderScatter() {
   })
   const validPoint = point => point.x != null && point.y != null
 
-  const postExitTrades = trades.value.filter(t => getTradeValue(t, 'post_exit_mfe') != null)
+  const postExitTrades = source.filter(t => getTradeValue(t, 'post_exit_mfe') != null)
   const connectors = postExitTrades.map(t => ([
-    { x: getTradeValue(t, 'mfe'), y: getTradeValue(t, 'pnl') },
-    { x: getTradeValue(t, 'post_exit_mfe'), y: getTradeValue(t, 'pnl') }
+    { x: plot(getTradeValue(t, 'mfe')), y: plot(getTradeValue(t, 'pnl')) },
+    { x: plot(getTradeValue(t, 'post_exit_mfe')), y: plot(getTradeValue(t, 'pnl')) }
   ])).filter(line => validPoint(line[0]) && validPoint(line[1]))
 
   scatterChartInstance = new Chart(ctx, {
@@ -539,24 +742,16 @@ function renderScatter() {
               const fmt = v => formatValue(v)
               if (p.kind === 'post_exit') {
                 const window = p.windowMinutes ? `${p.windowMinutes}m ${p.windowSource || ''}`.trim() : 'configured window'
-                return `${sym}  After-trade MFE: ${fmt(p.x)}  Continuation: ${fmt(p.postExitDelta)}  Missed: ${fmt(p.missedAfterExit)}  Window: ${window}`
+                return `${sym}  After-trade MFE: ${fmt(p.rawX)}  Continuation: ${fmt(p.postExitDelta)}  Missed: ${fmt(p.missedAfterExit)}  Window: ${window}`
               }
-              return `${sym}  In-trade MFE: ${fmt(p.x)}  Result: ${fmt(p.y)}`
+              return `${sym}  In-trade MFE: ${fmt(p.rawX)}  Result: ${fmt(p.rawY)}`
             }
           }
         }
       },
       scales: {
-        x: {
-          title: { display: true, text: displayMode.value === 'r' ? 'MFE (R)' : displayMode.value === 'points' ? 'MFE (pts)' : 'MFE ($)', color: '#6b7280', font: { size: 11 } },
-          ticks: { color: '#6b7280', font: { size: 10 } },
-          grid: { color: 'rgba(107,114,128,0.1)' }
-        },
-        y: {
-          title: { display: true, text: displayMode.value === 'r' ? 'Result (R)' : displayMode.value === 'points' ? 'Result (pts)' : 'Result ($)', color: '#6b7280', font: { size: 11 } },
-          ticks: { color: '#6b7280', font: { size: 10 } },
-          grid: { color: 'rgba(107,114,128,0.1)' }
-        }
+        x: axisScale('MFE'),
+        y: axisScale('Result')
       }
     }
   })
@@ -566,23 +761,29 @@ function renderHistogram() {
   if (!histogramChart.value) return
   const ctx = histogramChart.value.getContext('2d')
 
-  const winners = trades.value.filter(t => t.is_winner)
+  const winners = visibleTrades.value.filter(t => t.is_winner)
   if (!winners.length) return
 
   const values = winners.map(t => getTradeValue(t, 'mae')).filter(value => value != null)
   if (!values.length) return
-  const max = Math.max(...values)
+
+  // Log scale bins evenly in log space so the near-zero cluster spreads out
+  // instead of filling a single bar.
+  const threshold = logThreshold.value
+  const toBinSpace = value => (chartOptions.value.logScale ? symlog(Math.max(0, value), threshold) : value)
+  const fromBinSpace = value => (chartOptions.value.logScale ? inverseSymlog(value, threshold) : value)
+  const max = Math.max(...values.map(toBinSpace))
   const BIN_COUNT = Math.min(10, Math.ceil(Math.sqrt(winners.length)))
   const binSize = max / BIN_COUNT || 1
   const bins = Array(BIN_COUNT).fill(0)
   values.forEach(v => {
-    const idx = Math.min(Math.floor(v / binSize), BIN_COUNT - 1)
+    const idx = Math.min(Math.floor(toBinSpace(v) / binSize), BIN_COUNT - 1)
     bins[idx]++
   })
 
   const labels = bins.map((_, i) => {
-    const lo = i * binSize
-    const hi = (i + 1) * binSize
+    const lo = fromBinSpace(i * binSize)
+    const hi = fromBinSpace((i + 1) * binSize)
     if (displayMode.value === 'r') return `${lo.toFixed(1)}–${hi.toFixed(1)}R`
     if (displayMode.value === 'points') return `${lo.toFixed(1)}–${hi.toFixed(1)} pts`
     return `${formatCurrency(lo)}–${formatCurrency(hi)}`
@@ -617,7 +818,7 @@ function renderHistogram() {
       },
       scales: {
         x: {
-          title: { display: true, text: displayMode.value === 'r' ? 'MAE (R)' : displayMode.value === 'points' ? 'MAE (pts)' : 'MAE ($)', color: '#6b7280', font: { size: 11 } },
+          title: { display: true, text: `MAE (${unitLabel.value}${chartOptions.value.logScale ? ', log bins' : ''})`, color: '#6b7280', font: { size: 11 } },
           ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 30 },
           grid: { display: false }
         },
@@ -645,6 +846,11 @@ watch(displayMode, async (val) => {
   await nextTick()
   renderCharts()
 })
+
+watch(chartOptions, async () => {
+  await nextTick()
+  renderCharts()
+}, { deep: true })
 
 watch(canUsePoints, value => {
   if (!value && displayMode.value === 'points') {

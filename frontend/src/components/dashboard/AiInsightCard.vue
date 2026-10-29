@@ -149,7 +149,10 @@ import {
   mdiChevronLeft,
   mdiChevronRight,
   mdiInformationOutline,
-  mdiAutoFix
+  mdiAutoFix,
+  mdiAccountAlertOutline,
+  mdiClipboardCheckOutline,
+  mdiFire
 } from '@mdi/js'
 
 const props = defineProps({
@@ -199,9 +202,12 @@ const iconPath = computed(() => {
     return mdiNewspaperVariantOutline
   }
   switch (c.type) {
-    case 'earnings': return mdiCalendarClockOutline
-    case 'system':   return mdiInformationOutline
-    default:         return mdiLightbulbOnOutline
+    case 'earnings':   return mdiCalendarClockOutline
+    case 'system':     return mdiInformationOutline
+    case 'behavior':   return mdiAccountAlertOutline
+    case 'discipline': return mdiClipboardCheckOutline
+    case 'streak':     return mdiFire
+    default:           return mdiLightbulbOnOutline
   }
 })
 const iconTintClass = computed(() => {
@@ -217,6 +223,11 @@ const iconTintClass = computed(() => {
       return 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
     case 'system':
       return 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+    case 'behavior':
+    case 'streak':
+      return 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+    case 'discipline':
+      return 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
     default:
       return 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
   }
@@ -230,10 +241,13 @@ const kindLabel = computed(() => {
     return 'News'
   }
   switch (c.type) {
-    case 'earnings': return 'Earnings'
-    case 'system':   return 'Getting started'
-    case 'edge':     return 'Edge'
-    default:         return 'Insight'
+    case 'earnings':   return 'Earnings'
+    case 'system':     return 'Getting started'
+    case 'edge':       return 'Edge'
+    case 'behavior':   return 'Tendency'
+    case 'discipline': return 'Discipline'
+    case 'streak':     return 'Streak'
+    default:           return 'Insight'
   }
 })
 const sourceLabel = computed(() => {
@@ -241,6 +255,7 @@ const sourceLabel = computed(() => {
   if (current.value.source === 'ai') return 'AI generated'
   if (current.value.source === 'context') return 'Open positions'
   if (current.value.source === 'system') return 'Getting started'
+  if (['behavior', 'discipline', 'streak'].includes(current.value.type)) return 'From your trading history'
   return 'Data driven'
 })
 

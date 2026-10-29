@@ -10,7 +10,8 @@ class AICreditService {
   // Credit costs for different actions
   static CREDIT_COSTS = {
     NEW_SESSION: 10,    // Starting a new AI analysis session
-    FOLLOWUP: 2         // Each follow-up question
+    FOLLOWUP: 2,        // Each follow-up question
+    CHAT_MESSAGE: 2     // Each free-form AI chat message
   };
 
   // Default monthly allocation for Pro users
@@ -205,7 +206,7 @@ class AICreditService {
 
   /**
    * Get credit cost for a specific action
-   * @param {string} action - Action type (NEW_SESSION, FOLLOWUP)
+   * @param {string} action - Action type (NEW_SESSION, FOLLOWUP, CHAT_MESSAGE)
    * @returns {number} Credit cost
    */
   static getCost(action) {

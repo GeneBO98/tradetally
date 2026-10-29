@@ -613,6 +613,8 @@ const settingsController = {
             averagePositionSize: 'medium',
             tradingGoals: [],
             preferredSectors: [],
+            aboutTrading: '',
+            aiMemoryNotes: [],
             postExitExcursionWindowMode: 'auto',
             postExitExcursionWindowMinutes: null
           }
@@ -628,6 +630,8 @@ const settingsController = {
         averagePositionSize: settings.average_position_size || 'medium',
         tradingGoals: settings.trading_goals || [],
         preferredSectors: settings.preferred_sectors || [],
+        aboutTrading: settings.about_trading || '',
+        aiMemoryNotes: Array.isArray(settings.ai_memory_notes) ? settings.ai_memory_notes : [],
         postExitExcursionWindowMode: settings.post_exit_excursion_window_mode || 'auto',
         postExitExcursionWindowMinutes: settings.post_exit_excursion_window_minutes || null
       };
@@ -649,6 +653,8 @@ const settingsController = {
         averagePositionSize,
         tradingGoals,
         preferredSectors,
+        aboutTrading,
+        aiMemoryNotes,
         postExitExcursionWindowMode,
         postExitExcursionWindowMinutes
       } = req.body;
@@ -675,7 +681,29 @@ const settingsController = {
         return res.status(400).json({ error: 'Invalid post-exit excursion window mode' });
       }
 
-      const parsedPostExitMinutes = postExitExcursionWindowMinutes === null || postExitExcursionWindowMinutes === ''
+      // Free-text self-description and AI memory notes feed every AI prompt
+      // through the trader dossier, so keep them bounded.
+      const AITraderContext = require('../services/aiTraderContext');
+      if (aboutTrading !== undefined && aboutTrading !== null && typeof aboutTrading !== 'string') {
+        return res.status(400).json({ error: 'aboutTrading must be text' });
+      }
+      const normalizedAbout = typeof aboutTrading === 'string' ? aboutTrading.trim() : '';
+      if (normalizedAbout.length > AITraderContext.MAX_ABOUT_CHARS) {
+        return res.status(400).json({ error: `aboutTrading must be at most ${AITraderContext.MAX_ABOUT_CHARS} characters` });
+      }
+      if (aiMemoryNotes !== undefined && aiMemoryNotes !== null && !Array.isArray(aiMemoryNotes)) {
+        return res.status(400).json({ error: 'aiMemoryNotes must be a list of short notes' });
+      }
+      const normalizedNotes = (Array.isArray(aiMemoryNotes) ? aiMemoryNotes : [])
+        .map(note => (typeof note === 'string' ? note.replace(/\s+/g, ' ').trim() : ''))
+        .filter(Boolean);
+      if (normalizedNotes.length > AITraderContext.MAX_MEMORY_NOTES) {
+        return res.status(400).json({ error: `At most ${AITraderContext.MAX_MEMORY_NOTES} AI memory notes are allowed` });
+      }
+      if (normalizedNotes.some(note => note.length > AITraderContext.MAX_MEMORY_NOTE_CHARS)) {
+        return res.status(400).json({ error: `Each AI memory note must be at most ${AITraderContext.MAX_MEMORY_NOTE_CHARS} characters` });
+      }
+      const parsedPostExitMinutes = postExitExcursionWindowMinutes === null || postExitExcursionWindowMinutes === undefined || postExitExcursionWindowMinutes === ''
         ? null
         : parseInt(postExitExcursionWindowMinutes, 10);
 
@@ -692,11 +720,15 @@ const settingsController = {
         averagePositionSize: averagePositionSize || 'medium',
         tradingGoals: tradingGoals || [],
         preferredSectors: preferredSectors || [],
+        aboutTrading: normalizedAbout || null,
+        aiMemoryNotes: normalizedNotes,
         postExitExcursionWindowMode: postExitExcursionWindowMode || 'auto',
         postExitExcursionWindowMinutes: parsedPostExitMinutes
       };
 
       const updatedSettings = await User.updateSettings(req.user.id, profileData);
+      // Every AI prompt reads the profile through the cached dossier.
+      AITraderContext.invalidate(req.user.id);
       
       res.json({ 
         message: 'Trading profile updated successfully',

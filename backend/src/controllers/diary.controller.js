@@ -734,7 +734,11 @@ const analyzeEntries = async (req, res) => {
     }));
 
     // Create analysis prompt
-    const prompt = createJournalAnalysisPrompt(journalData, startDate, endDate);
+    const AITraderContext = require('../services/aiTraderContext');
+    const dossierText = await AITraderContext.render(userId, {
+      sections: ['profile', 'observed', 'behavior', 'personality', 'playbooks', 'risk']
+    });
+    const prompt = createJournalAnalysisPrompt(journalData, startDate, endDate, dossierText);
 
     // Generate AI analysis
     console.log('[AI] Generating AI analysis for diary entries...');
@@ -803,7 +807,7 @@ const getAnalysisStatus = async (req, res) => {
 };
 
 // Helper function to create the analysis prompt
-const createJournalAnalysisPrompt = (journalData, startDate, endDate) => {
+const createJournalAnalysisPrompt = (journalData, startDate, endDate, dossierText = '') => {
   const entriesText = journalData.map(entry => `
 Date: ${entry.date}
 ${entry.title ? `Title: ${entry.title}` : ''}
@@ -817,9 +821,14 @@ ${entry.tags && entry.tags.length > 0 ? `Tags: ${entry.tags.join(', ')}` : ''}
 ---
   `).join('\n');
 
+  const AITraderContext = require('../services/aiTraderContext');
+  const dossierSection = dossierText
+    ? `${dossierText}\n\n${AITraderContext.focusGuidelines()}\n\n`
+    : '';
+
   return `You are an experienced trading mentor analyzing a trader's journal entries. Please provide a comprehensive analysis and actionable recommendations.
 
-JOURNAL ENTRIES (${startDate} to ${endDate}):
+${dossierSection}JOURNAL ENTRIES (${startDate} to ${endDate}):
 ${entriesText}
 
 Please analyze these journal entries and provide:
@@ -838,7 +847,7 @@ Please analyze these journal entries and provide:
 
 7. **EMOTIONAL DISCIPLINE**: Assessment of emotional control and psychological factors
 
-Please be specific, constructive, and focus on actionable advice. Use a professional but encouraging tone. Format your response clearly with the sections above.`;
+Please be specific, constructive, and focus on actionable advice. Where the journal entries confirm or contradict the trader's dossier (their goals, known tendencies, playbook rules), say so explicitly. Use a professional but encouraging tone. Format your response clearly with the sections above.`;
 };
 
 // General Notes functions

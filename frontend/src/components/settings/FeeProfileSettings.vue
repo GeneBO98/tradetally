@@ -62,21 +62,35 @@
           </div>
 
           <div class="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
-            <label :for="`profile-accounts-${profile.id}`" class="block text-sm font-medium text-gray-800 dark:text-gray-200">Assigned accounts</label>
-            <select
-              :id="`profile-accounts-${profile.id}`"
-              v-model="accountSelections[profile.id]"
-              multiple
-              class="input mt-2 min-h-24 w-full"
-              :disabled="assigningId === profile.id"
-              @change="saveAssignments(profile)"
-            >
-              <option v-for="account in availableAccounts" :key="account.id" :value="account.id">
-                {{ account.accountName }}{{ account.accountIdentifier ? ` (${account.accountIdentifier})` : '' }}
-              </option>
-            </select>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Select one or more accounts. Saving here removes this profile from accounts you deselect.</p>
-            <p v-if="assigningId === profile.id" class="mt-1 text-xs text-primary-600 dark:text-primary-400">Saving assignments...</p>
+            <fieldset :disabled="assigningId === profile.id">
+              <div class="flex items-baseline justify-between gap-3">
+                <legend class="text-sm font-medium text-gray-800 dark:text-gray-200">Assigned accounts</legend>
+                <span v-if="assigningId === profile.id" class="text-xs text-primary-600 dark:text-primary-400">Saving...</span>
+              </div>
+              <ul v-if="availableAccounts.length" class="mt-2 divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-900/30">
+                <li v-for="account in availableAccounts" :key="account.id">
+                  <label class="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                    <input
+                      type="checkbox"
+                      class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800"
+                      :value="account.id"
+                      v-model="accountSelections[profile.id]"
+                      @change="saveAssignments(profile)"
+                    />
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-sm text-gray-900 dark:text-gray-100">{{ account.accountName || account.accountIdentifier }}</span>
+                      <span v-if="account.accountName" class="block truncate font-mono text-xs text-gray-500 dark:text-gray-400">{{ account.accountIdentifier }}</span>
+                    </span>
+                    <span
+                      v-if="otherProfileName(account, profile)"
+                      class="shrink-0 text-xs text-gray-500 dark:text-gray-400"
+                    >Uses {{ otherProfileName(account, profile) }}</span>
+                  </label>
+                </li>
+              </ul>
+              <p v-else class="mt-2 text-sm text-gray-500 dark:text-gray-400">No accounts yet. Accounts appear here once you add them or import trades with an account number.</p>
+              <p v-if="availableAccounts.length" class="mt-2 text-xs text-gray-500 dark:text-gray-400">Changes save right away. Each account uses one fee profile, so checking an account that uses another profile moves it here.</p>
+            </fieldset>
           </div>
         </article>
       </div>
@@ -277,6 +291,12 @@ function submitForm() {
 function saveAssignments(profile) {
   assigningId.value = profile.id
   emit('assign', { profileId: profile.id, accountIds: accountSelections[profile.id] || [] })
+}
+
+// Name of the profile an account currently uses, when it is not this one.
+function otherProfileName(account, profile) {
+  if (!account.feeProfileId || account.feeProfileId === profile.id) return ''
+  return props.profiles.find(item => item.id === account.feeProfileId)?.name || 'another profile'
 }
 
 function brokerLabel(value) {

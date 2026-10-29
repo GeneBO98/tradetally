@@ -14,6 +14,9 @@ export const useInvestmentsStore = defineStore('investments', () => {
   const portfolioAlertSummary = ref(null)
   const portfolioPreferences = ref(null)
   const searchHistory = ref([])
+  // Starter lists for the screener landing state (lowest P/E, most pillars, earnings)
+  const screenerDiscover = ref(null)
+  const screenerDiscoverLoading = ref(false)
   const loading = ref(false)
   const error = ref(null)
   const analysisLoading = ref(false)
@@ -509,6 +512,21 @@ export const useInvestmentsStore = defineStore('investments', () => {
     }
   }
 
+  async function fetchScreenerDiscover({ force = false } = {}) {
+    if (screenerDiscover.value && !force) return screenerDiscover.value
+    screenerDiscoverLoading.value = true
+    try {
+      const response = await api.get('/investments/screener/discover')
+      screenerDiscover.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to load screener starter lists'
+      throw err
+    } finally {
+      screenerDiscoverLoading.value = false
+    }
+  }
+
   async function toggleFavorite(symbol) {
     try {
       const response = await api.post('/investments/screener/favorite', { symbol })
@@ -647,6 +665,8 @@ export const useInvestmentsStore = defineStore('investments', () => {
     portfolioAlertSummary.value = null
     portfolioPreferences.value = null
     searchHistory.value = []
+    screenerDiscover.value = null
+    screenerDiscoverLoading.value = false
     loading.value = false
     error.value = null
     analysisLoading.value = false
@@ -671,6 +691,8 @@ export const useInvestmentsStore = defineStore('investments', () => {
     portfolioAlertSummary,
     portfolioPreferences,
     searchHistory,
+    screenerDiscover,
+    screenerDiscoverLoading,
     loading,
     error,
     analysisLoading,
@@ -727,6 +749,7 @@ export const useInvestmentsStore = defineStore('investments', () => {
 
     // Screener
     fetchSearchHistory,
+    fetchScreenerDiscover,
     toggleFavorite,
     compareStocks,
 
