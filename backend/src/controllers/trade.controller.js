@@ -2,6 +2,7 @@ const Trade = require('../models/Trade');
 const TradeQueries = require('../services/tradeQueries');
 const User = require('../models/User');
 const { parseCSV, detectBrokerFormat, getCsvHeaderLine, getCsvSampleRows } = require('../utils/csvParser');
+const { normalizeImportFile } = require('../utils/csv/fileNormalizer');
 const { uuidv4 } = require('../utils/uuid');
 const db = require('../config/database');
 const logger = require('../utils/logger');
@@ -33,6 +34,21 @@ const TierService = require('../services/tierService');
 const Account = require('../models/Account');
 const { verifyJwtToken, TOKEN_PURPOSES, isTokenSessionValid } = require('../middleware/auth');
 const { escapeCsv } = require('../utils/csvEscape');
+
+// Excel workbooks, zipped exports and HTML reports are converted to CSV bytes
+// once at the upload boundary so detection, parsing and account scanning all
+// see the same text. Unsupported files answer 400 with a format-specific hint.
+function normalizeUploadedImport(req, res) {
+  try {
+    return normalizeImportFile(req.file.buffer, req.file.originalname);
+  } catch (error) {
+    if (error.code === 'UNSUPPORTED_IMPORT_FILE') {
+      res.status(400).json({ error: error.message, code: error.code });
+      return null;
+    }
+    throw error;
+  }
+}
 const { buildExistingTradeIndex, classifyImportTrade } = require('../utils/importDuplicateDetection');
 const { publishInBackground } = require('../events/domainEvents');
 const { publishEnrichmentCompleted } = require('../events/enrichmentEvents');
@@ -1950,8 +1966,10 @@ const tradeController = {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const result = detectImportAccounts(req.file.buffer, req.file.originalname);
-      res.json(result);
+      const upload = normalizeUploadedImport(req, res);
+      if (!upload) return;
+      const result = detectImportAccounts(upload.buffer, upload.fileName);
+      res.json({ ...result, fileName: upload.originalFileName, sourceFormat: upload.sourceFormat });
     } catch (error) {
       console.error('Import account analysis error:', error);
       next(error);
@@ -1971,7 +1989,9 @@ const tradeController = {
       }
 
       const { broker = 'auto' } = req.body;
-      const fileBuffer = normalizeCsvBuffer(req.file.buffer);
+      const upload = normalizeUploadedImport(req, res);
+      if (!upload) return;
+      const fileBuffer = normalizeCsvBuffer(upload.buffer);
 
       console.log('Selected broker:', broker);
       console.log('File name:', req.file.originalname);
@@ -2009,7 +2029,10 @@ const tradeController = {
         detectedHeaders: detectedHeaders.slice(0, 30), // Limit headers to first 30
         rowCount,
         fileName: req.file.originalname,
-        fileSize: req.file.size
+        fileSize: req.file.size,
+        sourceFormat: upload.sourceFormat,
+        sheetName: upload.sheetName || null,
+        archiveEntry: upload.archiveEntry || null
       };
 
       console.log('Validation result:', result);
@@ -2038,6 +2061,14 @@ const tradeController = {
       if (!req.file) {
         console.log('ERROR: No file found in request');
         return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const upload = normalizeUploadedImport(req, res);
+      if (!upload) return;
+      if (upload.sourceFormat !== 'text') {
+        console.log(`Converted ${upload.sourceFormat} upload "${upload.originalFileName}" to CSV` +
+          (upload.sheetName ? ` (sheet "${upload.sheetName}")` : '') +
+          (upload.archiveEntry ? ` (archive entry "${upload.archiveEntry}")` : ''));
       }
 
       const importId = uuidv4();
@@ -2118,8 +2149,10 @@ const tradeController = {
       // Copy file buffer and metadata to prevent issues if request is cleaned up
       // UTF-16 exports are converted to UTF-8 so detection, parsing and the
       // diagnostics we store all see the same text.
-      const fileBuffer = normalizeCsvBuffer(Buffer.from(req.file.buffer));
-      const fileName = req.file.originalname;
+      const fileBuffer = normalizeCsvBuffer(Buffer.from(upload.buffer));
+      // Parsers that key off the file name (Sierra Chart account names) get
+      // the extracted/converted name; import_logs above keeps the original.
+      const fileName = upload.fileName;
       const fileUserId = req.user.id;
 
       // Ensure import continues in background regardless of client connection
