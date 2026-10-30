@@ -308,6 +308,59 @@ describe('plaidFundingService sync auto-approval', () => {
   });
 });
 
+describe('plaidFundingService sync pagination recovery', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    PlaidConnection.upsertTransaction.mockImplementation(async (userId, tx) => ({ id: tx.externalTransactionId, ...tx }));
+    PlaidConnection.findTransactionRule.mockResolvedValue(null);
+  });
+
+  const connection = { id: 'conn-1', userId: 'user-1', accessToken: 'token', lastSyncCursor: 'cursor-start' };
+  const accountMap = new Map([['acct', { id: 'row-1', trackingMode: 'tracked_account', accountType: 'depository', accountSubtype: 'checking', linkedAccountId: null }]]);
+  const page = (ids, nextCursor, hasMore) => ({
+    added: ids.map(id => ({ transaction_id: id, account_id: 'acct', amount: 10, date: '2026-10-01', name: 'Coffee' })),
+    modified: [], removed: [], next_cursor: nextCursor, has_more: hasMore
+  });
+
+  test('restarts from the last completed cursor when Plaid reports a mutation during pagination', async () => {
+    const mutation = new Error('Plaid request failed: TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION');
+    mutation.plaid = { errorCode: 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION' };
+    plaidClient.syncTransactions
+      .mockResolvedValueOnce(page(['a'], 'cursor-page-1', true))
+      .mockRejectedValueOnce(mutation)
+      .mockResolvedValueOnce(page(['a', 'b'], 'cursor-page-1b', true))
+      .mockResolvedValueOnce(page(['c'], 'cursor-end', false));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await plaidFundingService.syncBankTransactions(connection, accountMap);
+
+    expect(result).toEqual({ processedCount: 4, nextCursor: 'cursor-end' });
+    expect(plaidClient.syncTransactions.mock.calls.map(call => call[1]))
+      .toEqual(['cursor-start', 'cursor-page-1', 'cursor-start', 'cursor-page-1b']);
+    warn.mockRestore();
+  });
+
+  test('gives up after repeated mutations so a broken Item does not loop forever', async () => {
+    const mutation = new Error('mutation');
+    mutation.plaid = { errorCode: 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION' };
+    plaidClient.syncTransactions.mockRejectedValue(mutation);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(plaidFundingService.syncBankTransactions(connection, accountMap)).rejects.toThrow('mutation');
+    expect(plaidClient.syncTransactions).toHaveBeenCalledTimes(4);
+    warn.mockRestore();
+  });
+
+  test('treats PRODUCT_NOT_READY as a soft result that keeps the cursor', async () => {
+    const notReady = new Error('not ready');
+    notReady.plaid = { errorCode: 'PRODUCT_NOT_READY' };
+    plaidClient.syncTransactions.mockRejectedValueOnce(notReady);
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    const result = await plaidFundingService.syncBankTransactions(connection, accountMap);
+    expect(result).toEqual({ processedCount: 0, nextCursor: 'cursor-start', notReady: true });
+    log.mockRestore();
+  });
+});
+
 describe('plaidFundingService linkPlaidAccount unification', () => {
   beforeEach(() => {
     jest.clearAllMocks();

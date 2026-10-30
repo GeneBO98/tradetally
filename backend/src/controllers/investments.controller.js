@@ -9,6 +9,7 @@ const HoldingsService = require('../services/holdingsService');
 const PortfolioService = require('../services/portfolioService');
 const { parseReportDateRange } = require('../utils/reportDateRange');
 const RetirementService = require('../services/retirementService');
+const RetirementAffordabilityService = require('../services/retirementAffordabilityService');
 const DCFValuationService = require('../services/dcfValuationService');
 const ScreenerDiscoverService = require('../services/screenerDiscoverService');
 const plaidIncomeService = require('../services/plaid/plaidIncomeService');
@@ -1137,7 +1138,9 @@ const getRetirementPlan = async (req, res) => {
     const result = await RetirementService.get(req.user.id, {
       accounts: req.query.accounts
     });
-    res.json(result);
+    res.json(await RetirementAffordabilityService.attach(result, req.user.id, {
+      months: req.query.affordability_months
+    }));
   } catch (error) {
     console.error('[INVESTMENTS] Retirement plan error:', error);
     res.status(500).json({ error: error.message || 'Failed to get retirement plan' });
@@ -1153,7 +1156,9 @@ const calculateRetirementPlan = async (req, res) => {
     const result = await RetirementService.calculate(req.user.id, req.body, {
       accounts: req.query.accounts
     });
-    res.json(result);
+    res.json(await RetirementAffordabilityService.attach(result, req.user.id, {
+      months: req.query.affordability_months
+    }));
   } catch (error) {
     console.error('[INVESTMENTS] Retirement calculation error:', error);
     const status = /age|return|rate|contribution|spending|target/i.test(error.message) ? 400 : 500;
@@ -1169,12 +1174,12 @@ const saveRetirementPlan = async (req, res) => {
   try {
     const plan = await RetirementService.savePlan(req.user.id, req.body);
     const result = await RetirementService.calculate(req.user.id, plan);
-    res.json({
+    res.json(await RetirementAffordabilityService.attach({
       ...result,
       plan,
       draft_plan: plan,
       has_saved_plan: true
-    });
+    }, req.user.id));
   } catch (error) {
     console.error('[INVESTMENTS] Save retirement plan error:', error);
     const status = /age|return|rate|contribution|spending|target/i.test(error.message) ? 400 : 500;
@@ -1193,6 +1198,84 @@ const deleteRetirementPlan = async (req, res) => {
   } catch (error) {
     console.error('[INVESTMENTS] Delete retirement plan error:', error);
     res.status(500).json({ error: error.message || 'Failed to reset retirement plan' });
+  }
+};
+
+/**
+ * Largest bank transactions in the affordability window with their category.
+ * GET /api/investments/retirement/affordability/transactions
+ */
+const getAffordabilityTransactions = async (req, res) => {
+  try {
+    const transactions = await RetirementAffordabilityService.listTransactions(req.user.id, {
+      months: req.query.months,
+      limit: req.query.limit,
+      category: req.query.category || null
+    });
+    res.json({
+      transactions,
+      categories: RetirementAffordabilityService.CATEGORIES
+    });
+  } catch (error) {
+    console.error('[INVESTMENTS] Affordability transactions error:', error);
+    res.status(500).json({ error: error.message || 'Failed to load transactions' });
+  }
+};
+
+/**
+ * Override the cash-flow category of one transaction.
+ * PUT /api/investments/retirement/affordability/transactions/:transactionId
+ */
+const setAffordabilityTransactionCategory = async (req, res) => {
+  try {
+    const row = await RetirementAffordabilityService.setTransactionCategory(
+      req.user.id,
+      req.params.transactionId,
+      req.body.category
+    );
+    if (!row) return res.status(404).json({ error: 'Transaction not found' });
+    res.json({ transaction: row, updated_ids: row.updated_ids || [row.id] });
+  } catch (error) {
+    console.error('[INVESTMENTS] Affordability category error:', error);
+    const status = /unknown cash-flow category/i.test(error.message) ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Failed to update category' });
+  }
+};
+
+/**
+ * Count or stop counting a linked savings or CD account as retirement savings.
+ * PUT /api/investments/retirement/affordability/accounts/:plaidAccountId
+ */
+const setAffordabilityAccount = async (req, res) => {
+  try {
+    const row = await RetirementAffordabilityService.setAccountRetirementSavings(
+      req.user.id,
+      req.params.plaidAccountId,
+      req.body.include_in_retirement_savings
+    );
+    if (!row) return res.status(404).json({ error: 'Linked account not found' });
+    res.json({ account: row });
+  } catch (error) {
+    console.error('[INVESTMENTS] Affordability account error:', error);
+    res.status(500).json({ error: error.message || 'Failed to update account' });
+  }
+};
+
+/**
+ * Rebuild the affordability summary now, running classification again.
+ * POST /api/investments/retirement/affordability/refresh
+ */
+const refreshAffordability = async (req, res) => {
+  try {
+    RetirementAffordabilityService.invalidate(req.user.id);
+    const summary = await RetirementAffordabilityService.getSummary(req.user.id, {
+      months: req.body?.months,
+      force: true
+    });
+    res.json({ affordability: summary || { available: false, reason: 'no_bank_connection' } });
+  } catch (error) {
+    console.error('[INVESTMENTS] Affordability refresh error:', error);
+    res.status(500).json({ error: error.message || 'Failed to refresh affordability' });
   }
 };
 
@@ -1766,6 +1849,10 @@ module.exports = {
 
   // Screener
   getScreenerDiscover,
+  getAffordabilityTransactions,
+  setAffordabilityTransactionCategory,
+  setAffordabilityAccount,
+  refreshAffordability,
   getSearchHistory,
   toggleFavorite,
   compareStocks,

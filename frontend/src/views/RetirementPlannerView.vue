@@ -63,6 +63,25 @@
       </div>
 
       <div
+        v-if="!retirementStore.hasSavedPlan"
+        data-testid="starter-banner"
+        class="mb-6 rounded-xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
+      >
+        <div class="flex items-start gap-3">
+          <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400" />
+          <div>
+            <p class="text-sm font-semibold text-primary-900 dark:text-primary-200">
+              These are starting assumptions, not your plan yet.
+            </p>
+            <p class="mt-1 text-sm text-primary-800 dark:text-primary-300">
+              Work down the form from your ages to your goal. The projection updates as you type.
+              Save when the status on the right reflects your situation.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div
         v-if="isFiltered"
         class="mb-6 rounded-xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
       >
@@ -80,88 +99,6 @@
         </div>
       </div>
 
-      <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <article class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div class="flex items-center justify-between">
-            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Tracked portfolio today</p>
-            <BanknotesIcon class="h-5 w-5 text-primary-600 dark:text-primary-400" />
-          </div>
-          <p class="mt-3 text-2xl font-bold text-gray-950 dark:text-white">
-            {{ formatCurrency(retirementStore.portfolio?.tracked_portfolio_value || 0, { compact: true }) }}
-          </p>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {{ retirementStore.portfolio?.position_count || 0 }} positions
-            · {{ accountScopeLabel }}
-          </p>
-          <p
-            v-if="retirementStore.portfolio?.price_stale_position_count"
-            class="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400"
-          >
-            {{ retirementStore.portfolio.price_stale_position_count }} quotes are refreshing; recalculate shortly.
-          </p>
-        </article>
-
-        <article class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div class="flex items-center justify-between">
-            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Portfolio goal (amount needed)</p>
-            <ScaleIcon class="h-5 w-5 text-primary-600 dark:text-primary-400" />
-          </div>
-          <p class="mt-3 text-2xl font-bold text-gray-950 dark:text-white">
-            {{ formatCurrency(selectedScenario?.portfolio_goal_at_retirement || 0, { compact: true }) }}
-          </p>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Needed at age {{ form.target_retirement_age }} ·
-            {{ formatCurrency(projection?.goal?.effective_target_today || 0, { compact: true }) }}
-            in today’s purchasing power · {{ selectedInflationLabel }}
-          </p>
-        </article>
-
-        <article class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div class="flex items-center justify-between">
-            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Projected balance (amount you may have)</p>
-            <ArrowTrendingUpIcon class="h-5 w-5 text-primary-600 dark:text-primary-400" />
-          </div>
-          <p class="mt-3 text-2xl font-bold text-gray-950 dark:text-white">
-            {{ formatCurrency(selectedScenario?.projected_balance_at_retirement || 0, { compact: true }) }}
-          </p>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Estimated at age {{ form.target_retirement_age }} using
-            {{ selectedScenario?.label || "the selected scenario" }}
-          </p>
-        </article>
-
-        <article
-          class="rounded-2xl border bg-white p-5 shadow-sm dark:bg-gray-800"
-          :class="selectedScenario?.is_on_track
-            ? 'border-green-200 dark:border-green-800'
-            : 'border-amber-200 dark:border-amber-800'"
-        >
-          <div class="flex items-center justify-between">
-            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Plan status</p>
-            <CheckCircleIcon
-              v-if="selectedScenario?.is_on_track"
-              class="h-5 w-5 text-green-600 dark:text-green-400"
-            />
-            <ExclamationTriangleIcon v-else class="h-5 w-5 text-amber-600 dark:text-amber-400" />
-          </div>
-          <p class="mt-3 text-2xl font-bold text-gray-950 dark:text-white">
-            {{ selectedScenario?.is_on_track ? "On track" : "Needs adjustment" }}
-          </p>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Based on {{ selectedScenario?.label || "the selected scenario" }}
-          </p>
-        </article>
-      </section>
-
-      <div class="mb-6 mt-3 flex items-start gap-2 text-xs leading-5 text-gray-500 dark:text-gray-400">
-        <InformationCircleIcon class="mt-0.5 h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400" />
-        <p>
-          The portfolio goal is what the plan calculates you need. The projected balance is what the
-          selected return scenario estimates you may have. Plan status compares those two amounts in
-          retirement-year dollars.
-        </p>
-      </div>
-
       <section
         v-if="availableAccounts.length > 0"
         ref="accountPickerContainer"
@@ -175,7 +112,7 @@
                 Accounts included in the projection
               </h2>
               <p class="truncate text-xs text-gray-500 dark:text-gray-400">
-                {{ accountScopeLabel }} · temporary preview
+                {{ accountScopeLabel }} · this choice is not saved with the plan
               </p>
             </div>
           </div>
@@ -253,15 +190,13 @@
       </section>
 
       <div class="grid gap-6 xl:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.6fr)]">
-        <form class="space-y-5" @submit.prevent="calculatePreview">
+        <form class="space-y-5" @submit.prevent>
           <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <div class="mb-5 flex items-center gap-3">
-              <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                <CalendarDaysIcon class="h-5 w-5" />
-              </div>
+              <StepBadge :step="1" :icon="CalendarDaysIcon" />
               <div>
-                <h2 class="font-semibold text-gray-950 dark:text-white">Timeline</h2>
-                <p class="text-xs text-gray-500 dark:text-gray-400">When you are starting and where you want to finish.</p>
+                <h2 class="font-semibold text-gray-950 dark:text-white">When</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400">Your age today and the age you want to stop working.</p>
               </div>
             </div>
 
@@ -282,41 +217,266 @@
                 />
               </label>
             </div>
+            <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+              {{ yearsToRetirement }} {{ yearsToRetirement === 1 ? "year" : "years" }} to grow the portfolio.
+            </p>
           </section>
 
           <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <div class="mb-5 flex items-center gap-3">
-              <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                <HomeIcon class="h-5 w-5" />
-              </div>
+              <StepBadge :step="2" :icon="BanknotesIcon" />
               <div>
-                <h2 class="font-semibold text-gray-950 dark:text-white">Set your retirement goal</h2>
+                <h2 class="font-semibold text-gray-950 dark:text-white">What you have</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400">Your starting balance, tracked and untracked.</p>
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <div
+                data-testid="tracked-portfolio"
+                class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40"
+              >
+                <div class="flex items-start justify-between gap-4">
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium text-gray-700 dark:text-gray-200">Tracked in TradeTally</p>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ retirementStore.portfolio?.position_count || 0 }}
+                      {{ (retirementStore.portfolio?.position_count || 0) === 1 ? "position" : "positions" }}
+                      · {{ accountScopeLabel }}
+                    </p>
+                  </div>
+                  <p class="shrink-0 text-xl font-bold text-gray-950 dark:text-white">
+                    {{ formatCurrency(retirementStore.portfolio?.tracked_portfolio_value || 0, { compact: true }) }}
+                  </p>
+                </div>
+                <p
+                  v-if="!retirementStore.portfolio?.position_count"
+                  class="mt-3 text-xs leading-5 text-gray-600 dark:text-gray-300"
+                >
+                  No tracked positions yet. Connect a broker or add investment lots to include them here,
+                  or enter your savings below to plan without them.
+                </p>
+                <div
+                  v-else-if="retirementStore.portfolio?.price_stale_position_count"
+                  class="mt-3 flex items-center justify-between gap-3"
+                >
+                  <p class="text-xs font-medium text-amber-700 dark:text-amber-400">
+                    {{ retirementStore.portfolio.price_stale_position_count }} quotes are still refreshing.
+                  </p>
+                  <button
+                    type="button"
+                    class="text-xs font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+                    :disabled="retirementStore.calculating"
+                    @click="recalculateNow"
+                  >
+                    Refresh now
+                  </button>
+                </div>
+              </div>
+
+              <MoneyField
+                v-model="form.additional_retirement_savings"
+                label="Other retirement savings"
+                :currency-symbol="currencySymbol"
+                help="Retirement assets not tracked in TradeTally, such as a 401(k) or IRA held elsewhere."
+              />
+
+              <div
+                v-if="linkedSavingsAccounts.length > 0"
+                data-testid="linked-savings"
+                class="rounded-xl border border-gray-200 p-3 dark:border-gray-700"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">Linked bank accounts to count as retirement savings</p>
+                  <button
+                    v-if="linkedSavingsTotal > 0"
+                    type="button"
+                    data-testid="use-linked-savings"
+                    class="shrink-0 text-xs font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+                    @click="applySuggestion({ field: 'additional_retirement_savings', value: linkedSavingsTotal })"
+                  >
+                    Use {{ formatCurrency(linkedSavingsTotal, { compact: true }) }}
+                  </button>
+                </div>
+                <ul class="mt-2 space-y-1.5">
+                  <li v-for="account in linkedSavingsAccounts" :key="account.id">
+                    <label class="flex cursor-pointer items-center gap-2 text-xs text-gray-700 dark:text-gray-200">
+                      <input
+                        type="checkbox"
+                        class="h-3.5 w-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900"
+                        :checked="account.include_in_retirement_savings"
+                        :disabled="savingsAccountBusy === account.id"
+                        @change="toggleSavingsAccount(account, $event.target.checked)"
+                      />
+                      <span class="min-w-0 flex-1 truncate">
+                        {{ account.account_name }}<span v-if="account.mask"> ••••{{ account.mask }}</span>
+                        <span class="text-gray-500 dark:text-gray-400"> · {{ account.account_subtype }}</span>
+                      </span>
+                      <span class="shrink-0 font-medium text-gray-900 dark:text-white">
+                        {{ formatCurrency(account.current_balance || 0, { compact: true }) }}
+                      </span>
+                    </label>
+                  </li>
+                </ul>
+              </div>
+
+              <div
+                v-if="affordability?.available && affordability.debt?.count > 0"
+                data-testid="linked-debts"
+                class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-900/20"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <p class="font-semibold text-amber-900 dark:text-amber-200">
+                    Debts: {{ formatCurrency(affordability.debt.total_balance, { compact: true }) }} across
+                    {{ affordability.debt.count }} {{ affordability.debt.count === 1 ? "account" : "accounts" }}
+                  </p>
+                  <p class="shrink-0 text-amber-800 dark:text-amber-300">
+                    {{ formatWholeCurrency(affordability.debt.monthly_minimum_payments) }}/mo minimums
+                  </p>
+                </div>
+                <ul class="mt-1.5 space-y-0.5 text-amber-800 dark:text-amber-300">
+                  <li v-for="item in affordability.debt.items.slice(0, 4)" :key="item.id" class="flex justify-between gap-3">
+                    <span class="truncate">
+                      {{ item.account_name }} · {{ liabilityLabel(item.liability_type) }}<span v-if="item.apr_percent != null"> · {{ formatPercent(item.apr_percent) }} APR</span>
+                      <span v-if="item.is_overdue" class="font-semibold"> · overdue</span>
+                    </span>
+                    <span class="shrink-0">{{ formatCurrency(item.current_balance || 0, { compact: true }) }}</span>
+                  </li>
+                </ul>
+                <p class="mt-1.5 text-amber-800/80 dark:text-amber-300/80">
+                  Debt payments count against what you can save. Paying these off frees that amount for retirement.
+                </p>
+              </div>
+
+              <div class="flex items-center justify-between border-t border-gray-200 pt-3 text-sm dark:border-gray-700">
+                <span class="text-gray-600 dark:text-gray-300">Starting balance</span>
+                <span class="font-semibold text-gray-950 dark:text-white">
+                  {{ formatCurrency(startingBalance, { compact: true }) }}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div class="mb-5 flex items-center gap-3">
+              <StepBadge :step="3" :icon="ArrowTrendingUpIcon" />
+              <div>
+                <h2 class="font-semibold text-gray-950 dark:text-white">What you add</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400">The lever you control most directly.</p>
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <MoneyField
+                v-model="form.monthly_contribution"
+                label="Monthly contribution"
+                :currency-symbol="currencySymbol"
+              />
+              <label class="block">
+                <span class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-200">
+                  Yearly contribution increase
+                </span>
+                <div class="relative">
+                  <input
+                    v-model.number="form.annual_contribution_increase_percent"
+                    class="input pr-10"
+                    type="number"
+                    min="-99"
+                    max="100"
+                    step="0.1"
+                  />
+                  <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-500">%</span>
+                </div>
+                <span class="mt-1.5 block text-xs leading-5 text-gray-500 dark:text-gray-400">
+                  Raise your contribution each year, for example to match expected raises.
+                </span>
+              </label>
+
+              <RetirementCashflowPanel
+                :affordability="affordability"
+                :transactions="retirementStore.affordabilityTransactions"
+                :categories="retirementStore.affordabilityCategories"
+                :loading="retirementStore.affordabilityLoading"
+                :format-currency="formatCurrency"
+                @apply="applySuggestion"
+                @refresh="refreshAffordability"
+                @categorize="categorizeTransaction"
+                @open-review="loadAffordabilityTransactions"
+              />
+            </div>
+          </section>
+
+          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div class="mb-5 flex items-center gap-3">
+              <StepBadge :step="4" :icon="HomeIcon" />
+              <div>
+                <h2 class="font-semibold text-gray-950 dark:text-white">What you want</h2>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
-                  Your spending, income, and withdrawal rate calculate the portfolio goal.
+                  Your retirement spending sets the portfolio goal.
                 </p>
               </div>
             </div>
 
             <div class="space-y-4">
               <MoneyField
-                v-model="form.current_annual_cost_of_living"
-                label="Current yearly cost of living"
-                :currency-symbol="currencySymbol"
-                help="For reference. Your desired retirement spending below is what sets the goal."
-              />
-              <MoneyField
                 v-model="form.desired_annual_retirement_spending"
                 label="Desired yearly retirement spending"
                 :currency-symbol="currencySymbol"
+                help="In today's dollars. The plan adjusts it for inflation."
                 required
               />
-              <MoneyField
-                v-model="form.target_portfolio_balance"
-                label="Minimum portfolio goal override (optional)"
-                :currency-symbol="currencySymbol"
-                :nullable="true"
-                help="Leave blank to use the spending-based goal. Enter a value only to require a higher minimum balance; a lower value will not reduce the calculated goal."
-              />
+
+              <div
+                v-if="affordability?.available && affordability.suggestions?.current_annual_cost_of_living > 0"
+                data-testid="spending-suggestion"
+                class="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300"
+              >
+                <span>
+                  Your linked accounts show about
+                  {{ formatCurrency(affordability.suggestions.current_annual_cost_of_living, { compact: true }) }}
+                  a year in spending and debt payments.
+                </span>
+                <button
+                  type="button"
+                  class="rounded-lg border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  @click="applySuggestion({ field: 'desired_annual_retirement_spending', value: affordability.suggestions.desired_annual_retirement_spending })"
+                >
+                  Use {{ affordability.suggestions.retirement_spending_ratio_percent }}% of spending without debt
+                  ({{ formatCurrency(affordability.suggestions.desired_annual_retirement_spending, { compact: true }) }})
+                </button>
+                <button
+                  type="button"
+                  class="rounded-lg border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  @click="applySuggestion({ field: 'current_annual_cost_of_living', value: affordability.suggestions.current_annual_cost_of_living })"
+                >
+                  Set cost of living
+                </button>
+              </div>
+
+              <details class="group rounded-xl border border-gray-200 dark:border-gray-700" :open="advancedGoalOpen">
+                <summary
+                  class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 marker:content-none hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/40"
+                  @click.prevent="advancedGoalOpen = !advancedGoalOpen"
+                >
+                  <span>Advanced goal options</span>
+                  <ChevronDownIcon class="h-4 w-4 text-gray-500 transition-transform" :class="{ 'rotate-180': advancedGoalOpen }" />
+                </summary>
+                <div class="space-y-4 border-t border-gray-200 px-4 pb-4 pt-4 dark:border-gray-700">
+                  <MoneyField
+                    v-model="form.current_annual_cost_of_living"
+                    label="Current yearly cost of living"
+                    :currency-symbol="currencySymbol"
+                    help="For reference only. It does not change the goal."
+                  />
+                  <MoneyField
+                    v-model="form.target_portfolio_balance"
+                    label="Minimum portfolio goal override"
+                    :currency-symbol="currencySymbol"
+                    :nullable="true"
+                    help="Leave blank to use the spending-based goal. A value here only raises the goal; a lower value will not reduce it."
+                  />
+                </div>
+              </details>
 
               <div
                 v-if="projection?.goal"
@@ -352,6 +512,13 @@
                       <div class="flex items-center justify-between gap-4">
                         <dt class="text-gray-600 dark:text-gray-300">
                           Portfolio needed using a {{ formatPercent(form.withdrawal_rate_percent) }} withdrawal rate
+                          <button
+                            type="button"
+                            class="ml-1 font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+                            @click="scrollToAssumptions"
+                          >
+                            Change
+                          </button>
                         </dt>
                         <dd class="font-medium text-gray-900 dark:text-white">
                           {{ formatCurrency(ongoingPortfolioNeed, { compact: true }) }}
@@ -392,63 +559,30 @@
 
           <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <div class="mb-5 flex items-center gap-3">
-              <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                <ArrowTrendingUpIcon class="h-5 w-5" />
-              </div>
-              <div>
-                <h2 class="font-semibold text-gray-950 dark:text-white">Savings</h2>
-                <p class="text-xs text-gray-500 dark:text-gray-400">What you have outside TradeTally and what you plan to add.</p>
-              </div>
-            </div>
-
-            <div class="space-y-4">
-              <MoneyField
-                v-model="form.additional_retirement_savings"
-                label="Additional retirement savings"
-                :currency-symbol="currencySymbol"
-                help="Use this for retirement assets not tracked in your TradeTally portfolios."
-              />
-              <MoneyField
-                v-model="form.monthly_contribution"
-                label="Monthly contribution"
-                :currency-symbol="currencySymbol"
-              />
-              <label class="block">
-                <span class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-200">
-                  Yearly contribution increase
-                </span>
-                <div class="relative">
-                  <input
-                    v-model.number="form.annual_contribution_increase_percent"
-                    class="input pr-10"
-                    type="number"
-                    min="-99"
-                    max="100"
-                    step="0.1"
-                  />
-                  <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-500">%</span>
-                </div>
-              </label>
-            </div>
-          </section>
-
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <div class="mb-5 flex items-center gap-3">
-              <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                <BuildingLibraryIcon class="h-5 w-5" />
-              </div>
+              <StepBadge :step="5" :icon="BuildingLibraryIcon" />
               <div>
                 <h2 class="font-semibold text-gray-950 dark:text-white">Other retirement income</h2>
-                <p class="text-xs text-gray-500 dark:text-gray-400">Social Security, pension, rental, or other yearly income.</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">Social Security, pension, rental, or other yearly income. Leave at zero if none.</p>
               </div>
             </div>
 
             <div class="space-y-4">
-              <MoneyField
-                v-model="form.other_annual_retirement_income"
-                label="Estimated yearly income"
-                :currency-symbol="currencySymbol"
-              />
+              <div>
+                <MoneyField
+                  v-model="form.other_annual_retirement_income"
+                  label="Estimated yearly income"
+                  :currency-symbol="currencySymbol"
+                />
+                <a
+                  href="https://www.ssa.gov/benefits/calculators/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="mt-1.5 inline-flex items-center text-xs font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+                >
+                  Estimate Social Security benefits
+                  <ArrowTopRightOnSquareIcon class="ml-1.5 h-3.5 w-3.5" />
+                </a>
+              </div>
               <label class="block">
                 <span class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-200">Income starts at age</span>
                 <input
@@ -459,23 +593,15 @@
                   max="100"
                 />
               </label>
-              <a
-                href="https://www.ssa.gov/benefits/calculators/"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center text-sm font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
-              >
-                Estimate Social Security benefits
-                <ArrowTopRightOnSquareIcon class="ml-1.5 h-4 w-4" />
-              </a>
             </div>
           </section>
 
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <section
+            ref="assumptionsSection"
+            class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+          >
             <div class="mb-5 flex items-center gap-3">
-              <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                <AdjustmentsHorizontalIcon class="h-5 w-5" />
-              </div>
+              <StepBadge :step="6" :icon="AdjustmentsHorizontalIcon" />
               <div>
                 <h2 class="font-semibold text-gray-950 dark:text-white">Assumptions</h2>
                 <p class="text-xs text-gray-500 dark:text-gray-400">Starting estimates, not recommendations.</p>
@@ -512,56 +638,124 @@
           </p>
 
           <div class="sticky bottom-4 z-10 rounded-2xl border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/95">
-            <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-              <button
-                type="submit"
-                class="btn-secondary justify-center"
-                :disabled="!formIsValid || retirementStore.calculating"
-              >
-                <ArrowPathIcon class="mr-2 h-4 w-4" :class="{ 'animate-spin': retirementStore.calculating }" />
-                Recalculate
-              </button>
-              <button
-                type="button"
-                class="btn-primary justify-center"
-                :disabled="!formIsValid || retirementStore.saving"
-                @click="savePlan"
-              >
-                <BookmarkSquareIcon class="mr-2 h-4 w-4" />
-                {{ retirementStore.saving ? "Saving..." : hasUnsavedChanges ? "Save plan" : "Plan saved" }}
-              </button>
-            </div>
+            <p
+              data-testid="projection-sync-status"
+              class="mb-2 flex items-center gap-2 px-1 text-xs"
+              :class="projectionOutOfDate ? 'text-amber-700 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'"
+            >
+              <span
+                class="h-1.5 w-1.5 shrink-0 rounded-full"
+                :class="projectionOutOfDate ? 'bg-amber-500' : 'bg-green-500'"
+              ></span>
+              {{ projectionSyncLabel }}
+            </p>
+            <button
+              type="button"
+              class="btn-primary w-full justify-center"
+              :disabled="!formIsValid || retirementStore.saving || retirementStore.calculating"
+              @click="savePlan"
+            >
+              <BookmarkSquareIcon class="mr-2 h-4 w-4" />
+              {{ retirementStore.saving ? "Saving..." : hasUnsavedChanges ? "Save plan" : "Plan saved" }}
+            </button>
           </div>
         </form>
 
         <div class="min-w-0 space-y-6">
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6">
+          <section
+            ref="statusSection"
+            data-testid="plan-status"
+            class="rounded-2xl border bg-white p-5 shadow-sm dark:bg-gray-800 sm:p-6"
+            :class="selectedScenario?.is_on_track
+              ? 'border-green-200 dark:border-green-800'
+              : 'border-amber-200 dark:border-amber-800'"
+          >
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Selected outcome</p>
-                <h2 class="mt-1 text-2xl font-bold text-gray-950 dark:text-white">
-                  {{ selectedScenario?.label || "Custom assumption" }}
-                </h2>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Plan status</p>
+                <div class="mt-1 flex flex-wrap items-center gap-3">
+                  <h2 class="text-3xl font-bold text-gray-950 dark:text-white">
+                    {{ selectedScenario?.is_on_track ? "On track" : "Needs adjustment" }}
+                  </h2>
+                  <span
+                    class="inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold"
+                    :class="selectedScenario?.is_on_track
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                      : 'bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-300'"
+                  >
+                    {{ selectedScenario?.is_on_track ? "Surplus projected" : "Shortfall projected" }}
+                  </span>
+                </div>
+                <p data-testid="status-sentence" class="mt-3 text-base leading-7 text-gray-700 dark:text-gray-200">
+                  {{ statusSentence }}
+                </p>
+                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Based on {{ selectedScenario?.label || "the selected scenario" }} ·
                   {{ formatPercent(selectedScenario?.annual_return_percent) }} return ·
                   {{ selectedInflationLabel }}
                 </p>
+                <div
+                  v-if="viability"
+                  data-testid="viability"
+                  class="mt-4 flex items-start gap-3 rounded-xl border p-3"
+                  :class="viabilityTone.box"
+                >
+                  <component :is="viabilityTone.icon" class="mt-0.5 h-5 w-5 shrink-0" :class="viabilityTone.icon_class" />
+                  <div class="min-w-0">
+                    <p class="text-sm font-semibold" :class="viabilityTone.title">{{ viabilityHeadline }}</p>
+                    <p class="mt-0.5 text-xs leading-5" :class="viabilityTone.body">{{ viabilitySentence }}</p>
+                  </div>
+                </div>
               </div>
-              <div
-                class="inline-flex w-fit items-center rounded-full px-3 py-1 text-sm font-semibold"
-                :class="selectedScenario?.is_on_track
-                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                  : 'bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-300'"
+              <span
+                v-if="projectionOutOfDate"
+                class="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
               >
-                {{ selectedScenario?.is_on_track ? "On track" : "Shortfall projected" }}
-              </div>
+                <ArrowPathIcon class="h-3.5 w-3.5" :class="{ 'animate-spin': retirementStore.calculating }" />
+                Updating to match your inputs
+              </span>
             </div>
 
-            <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="mt-6">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">What the selected path calls for</h3>
+              <div class="mt-3 grid gap-4 lg:grid-cols-3">
+                <ActionCard
+                  title="Monthly saving"
+                  :value="contributionActionValue"
+                  :detail="contributionActionDetail"
+                  :icon="BanknotesIcon"
+                />
+                <ActionCard
+                  title="Timing"
+                  :value="selectedScenario?.estimated_goal_age == null
+                    ? 'Goal not reached by 100'
+                    : `Goal near age ${formatAge(selectedScenario.estimated_goal_age)}`"
+                  :detail="selectedScenario?.estimated_goal_age != null && selectedScenario.estimated_goal_age <= form.target_retirement_age
+                    ? 'The projection reaches the target by your planned retirement age.'
+                    : 'A later retirement date gives contributions more time to compound.'"
+                  :icon="ClockIcon"
+                />
+                <ActionCard
+                  title="Supported spending"
+                  :value="formatCurrency(selectedScenario?.supported_annual_spending_today || 0, { compact: true })"
+                  detail="Estimated yearly spending in today’s dollars, including other retirement income."
+                  :icon="HomeIcon"
+                />
+              </div>
+            </div>
+          </section>
+
+          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6">
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <ResultMetric
-                :label="`Projected balance at age ${form.target_retirement_age}`"
+                label="Portfolio goal (amount needed)"
+                :value="formatCurrency(selectedScenario?.portfolio_goal_at_retirement || 0, { compact: true })"
+                :detail="`Needed at age ${form.target_retirement_age} · ${formatCurrency(projection?.goal?.effective_target_today || 0, { compact: true })} in today’s purchasing power`"
+              />
+              <ResultMetric
+                label="Projected balance (amount you may have)"
                 :value="formatCurrency(selectedScenario?.projected_balance_at_retirement || 0, { compact: true })"
-                :detail="`Estimated amount you may have · ${formatCurrency(selectedScenario?.projected_balance_in_today_dollars || 0, { compact: true })} in today’s purchasing power`"
+                :detail="`Estimated amount you may have at age ${form.target_retirement_age} · ${formatCurrency(selectedScenario?.projected_balance_in_today_dollars || 0, { compact: true })} in today’s purchasing power`"
               />
               <ResultMetric
                 :label="selectedScenario?.is_on_track ? 'Projected surplus' : 'Projected shortfall'"
@@ -572,16 +766,17 @@
                 label="Minimum monthly contribution"
                 :value="selectedScenario?.required_monthly_contribution == null
                   ? 'Not reached'
-                  : formatCurrency(selectedScenario.required_monthly_contribution, { maximumFractionDigits: 0 })"
-                detail="Estimated total per month needed—not an amount added to your current contribution"
+                  : formatWholeCurrency(selectedScenario.required_monthly_contribution)"
+                detail="Estimated total per month needed to reach the goal, not an amount added to your current contribution"
               />
-              <ResultMetric
-                label="Estimated goal age"
-                :value="selectedScenario?.estimated_goal_age == null
-                  ? 'After age 100'
-                  : formatAge(selectedScenario.estimated_goal_age)"
-                detail="At the current contribution"
-              />
+            </div>
+            <div class="mt-4 flex items-start gap-2 text-xs leading-5 text-gray-500 dark:text-gray-400">
+              <InformationCircleIcon class="mt-0.5 h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400" />
+              <p>
+                The portfolio goal is what the plan calculates you need. The projected balance is what the
+                selected return scenario estimates you may have. Plan status compares those two amounts in
+                retirement-year dollars.
+              </p>
             </div>
           </section>
 
@@ -633,7 +828,12 @@
                 <InformationCircleIcon class="h-5 w-5 text-primary-600 dark:text-primary-400" />
               </button>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Select a row to update the status. Hover or focus the heading to see how each scenario is built.
+                <template v-if="hasMultipleScenarios">
+                  Select a row to update the status. Hover or focus the heading to see how each scenario is built.
+                </template>
+                <template v-else>
+                  Hover or focus the heading to see how scenarios are built.
+                </template>
               </p>
 
               <div
@@ -690,7 +890,7 @@
                   <p class="text-sm font-semibold text-gray-900 dark:text-white">Shared by every scenario</p>
                   <ul class="mt-2 grid gap-x-6 gap-y-1 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
                     <li>{{ formatCurrency(projection?.baseline?.starting_balance || 0, { compact: true }) }} starting balance</li>
-                    <li>{{ formatCurrency(form.monthly_contribution || 0, { maximumFractionDigits: 0 }) }} monthly contribution</li>
+                    <li>{{ formatWholeCurrency(form.monthly_contribution || 0) }} monthly contribution</li>
                     <li>{{ formatPercent(form.annual_contribution_increase_percent) }} yearly contribution increase</li>
                     <li>Retirement at age {{ form.target_retirement_age }}</li>
                     <li>{{ formatPercent(form.withdrawal_rate_percent) }} withdrawal rate and the same goal</li>
@@ -702,7 +902,8 @@
                 </div>
               </div>
             </div>
-            <div class="overflow-x-auto rounded-b-2xl">
+
+            <div v-if="hasMultipleScenarios" class="overflow-x-auto rounded-b-2xl">
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-900/40">
                   <tr>
@@ -760,81 +961,60 @@
                 </tbody>
               </table>
             </div>
-          </section>
 
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6">
-            <h2 class="text-lg font-semibold text-gray-950 dark:text-white">What the selected path calls for</h2>
-            <div class="mt-5 grid gap-4 lg:grid-cols-3">
-              <ActionCard
-                title="Monthly saving"
-                :value="contributionActionValue"
-                :detail="contributionActionDetail"
-                :icon="BanknotesIcon"
-              />
-              <ActionCard
-                title="Timing"
-                :value="selectedScenario?.estimated_goal_age == null
-                  ? 'Goal not reached by 100'
-                  : `Goal near age ${formatAge(selectedScenario.estimated_goal_age)}`"
-                :detail="selectedScenario?.estimated_goal_age != null && selectedScenario.estimated_goal_age <= form.target_retirement_age
-                  ? 'The projection reaches the target by your planned retirement age.'
-                  : 'A later retirement date gives contributions more time to compound.'"
-                :icon="ClockIcon"
-              />
-              <ActionCard
-                title="Supported spending"
-                :value="formatCurrency(selectedScenario?.supported_annual_spending_today || 0, { compact: true })"
-                detail="Estimated yearly spending in today’s dollars, including other retirement income."
-                :icon="HomeIcon"
-              />
-            </div>
-          </section>
-
-          <section class="rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-700 dark:bg-gray-800/60">
-            <div class="flex items-start gap-3">
-              <ChartBarIcon class="mt-0.5 h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
-              <div>
-                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Historical scenario quality</h2>
-                <p
-                  v-if="retirementStore.historicalInflation?.unavailable"
-                  class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
-                >
-                  {{ retirementStore.historicalInflation.message }}
-                </p>
-                <p v-if="retirementStore.historicalScenarios.length === 0" class="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                  No historical period currently meets the 80% time and portfolio-value coverage requirement.
-                  Add or refresh tracked holdings to improve coverage.
-                </p>
-                <ul v-else class="mt-2 space-y-1.5 text-sm text-gray-600 dark:text-gray-300">
-                  <li v-for="scenario in retirementStore.historicalScenarios" :key="scenario.key">
-                    {{ scenario.label }}: {{ formatCoverage(scenario) }}
-                    <span>, {{ formatPercent(scenario.inflation_rate_percent) }} historical CPI-U inflation</span>
-                    <span v-if="scenario.includes_recorded_dividends">, recorded dividends included</span>
-                  </li>
-                </ul>
-                <p class="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                  Historical projections illustrate what could happen if a prior annualized return repeated.
-                  Past performance does not predict future results, and taxes, fees, healthcare costs, required
-                  distributions, and account-specific tax treatment are not modeled.
-                </p>
-                <a
-                  href="https://www.bls.gov/cpi/factsheets/cpi-series-ids.htm"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="mt-2 inline-flex items-center text-xs font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
-                >
-                  Historical inflation source: U.S. Bureau of Labor Statistics CPI-U
-                  <ArrowTopRightOnSquareIcon class="ml-1.5 h-3.5 w-3.5" />
-                </a>
-                <a
-                  href="https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-47"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="mt-2 inline-flex items-center text-xs font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
-                >
-                  Read the SEC’s performance-claims guidance
-                  <ArrowTopRightOnSquareIcon class="ml-1.5 h-3.5 w-3.5" />
-                </a>
+            <div class="px-5 py-4 sm:px-6">
+              <div class="flex items-start gap-3">
+                <ChartBarIcon class="mt-0.5 h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
+                <div class="min-w-0 flex-1">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Historical scenario quality</h3>
+                  <p
+                    v-if="retirementStore.historicalInflation?.unavailable && retirementStore.historicalScenarios.length > 0"
+                    class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+                  >
+                    {{ retirementStore.historicalInflation.message }}
+                  </p>
+                  <p v-if="retirementStore.historicalScenarios.length === 0" class="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                    Only the Custom assumption is available. No historical period currently meets the 80% time
+                    and portfolio-value coverage requirement. Add or refresh tracked holdings to improve coverage.
+                  </p>
+                  <ul v-else class="mt-2 space-y-1.5 text-sm text-gray-600 dark:text-gray-300">
+                    <li v-for="scenario in retirementStore.historicalScenarios" :key="scenario.key">
+                      {{ scenario.label }}: {{ formatCoverage(scenario) }}
+                      <span>, {{ formatPercent(scenario.inflation_rate_percent) }} historical CPI-U inflation</span>
+                      <span v-if="scenario.includes_recorded_dividends">, recorded dividends included</span>
+                    </li>
+                  </ul>
+                  <details class="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                    <summary class="cursor-pointer font-semibold text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100">
+                      About historical projections and sources
+                    </summary>
+                    <p class="mt-2">
+                      Historical projections illustrate what could happen if a prior annualized return repeated.
+                      Past performance does not predict future results, and taxes, fees, healthcare costs, required
+                      distributions, and account-specific tax treatment are not modeled.
+                    </p>
+                    <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                      <a
+                        href="https://www.bls.gov/cpi/factsheets/cpi-series-ids.htm"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+                      >
+                        Historical inflation source: U.S. Bureau of Labor Statistics CPI-U
+                        <ArrowTopRightOnSquareIcon class="ml-1.5 h-3.5 w-3.5" />
+                      </a>
+                      <a
+                        href="https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-47"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+                      >
+                        Read the SEC’s performance-claims guidance
+                        <ArrowTopRightOnSquareIcon class="ml-1.5 h-3.5 w-3.5" />
+                      </a>
+                    </div>
+                  </details>
+                </div>
               </div>
             </div>
           </section>
@@ -851,6 +1031,7 @@ import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { useNotification } from '@/composables/useNotification'
 import RetirementProjectionChart from '@/components/investments/RetirementProjectionChart.vue'
+import RetirementCashflowPanel from '@/components/investments/RetirementCashflowPanel.vue'
 import {
   AdjustmentsHorizontalIcon,
   ArrowPathIcon,
@@ -863,11 +1044,11 @@ import {
   CalendarDaysIcon,
   ChartBarIcon,
   CheckCircleIcon,
+  ChevronDownIcon,
   ClockIcon,
   ExclamationTriangleIcon,
   HomeIcon,
   InformationCircleIcon,
-  ScaleIcon,
   TrashIcon
 } from '@heroicons/vue/24/outline'
 
@@ -888,6 +1069,13 @@ const accountPickerOpen = ref(false)
 const accountPickerContainer = ref(null)
 const includedAccountIds = ref([])
 const formError = ref('')
+const advancedGoalOpen = ref(false)
+const assumptionsSection = ref(null)
+const statusSection = ref(null)
+const lastCalculatedKey = ref('')
+const savingsAccountBusy = ref(null)
+let autoRecalculateTimer = null
+const AUTO_RECALCULATE_DELAY_MS = 700
 const form = reactive({
   current_age: 35,
   target_retirement_age: 65,
@@ -947,6 +1135,124 @@ const ongoingPortfolioNeed = computed(() => Math.max(
     - Number(projection.value?.goal?.bridge_reserve_today || 0)
 ))
 
+const yearsToRetirement = computed(() => Math.max(
+  0,
+  Number(form.target_retirement_age) - Number(form.current_age)
+))
+
+const startingBalance = computed(() => {
+  const baseline = Number(projection.value?.baseline?.starting_balance)
+  if (Number.isFinite(baseline) && !projectionOutOfDate.value) return baseline
+  return Number(retirementStore.portfolio?.tracked_portfolio_value || 0)
+    + (Number(form.additional_retirement_savings) || 0)
+})
+
+const hasMultipleScenarios = computed(() => (projection.value?.scenarios || []).length > 1)
+
+const projectionOutOfDate = computed(() => (
+  retirementStore.calculating || JSON.stringify(planPayload()) !== lastCalculatedKey.value
+))
+
+const projectionSyncLabel = computed(() => {
+  if (retirementStore.calculating) return 'Updating the projection...'
+  if (projectionOutOfDate.value) {
+    return formIsValid.value
+      ? 'Inputs changed. The projection updates in a moment.'
+      : 'Fix the highlighted inputs to update the projection.'
+  }
+  return 'Projection matches your inputs.'
+})
+
+const statusSentence = computed(() => {
+  const scenario = selectedScenario.value
+  if (!scenario) return ''
+  const balance = formatCurrency(scenario.projected_balance_at_retirement || 0, { compact: true })
+  const goal = formatCurrency(scenario.portfolio_goal_at_retirement || 0, { compact: true })
+  const gap = formatCurrency(Math.abs(scenario.surplus_shortfall_at_retirement || 0), { compact: true })
+  const age = form.target_retirement_age
+  if (scenario.is_on_track) {
+    return `On this path you reach ${balance} at age ${age}, ${gap} more than the ${goal} you need.`
+  }
+  return `On this path you reach ${balance} of the ${goal} you need at age ${age}, leaving a ${gap} gap.`
+})
+
+const affordability = computed(() => retirementStore.affordability || null)
+
+const linkedSavingsAccounts = computed(() => (
+  (affordability.value?.savings_accounts || []).filter(account => account.account_subtype !== 'checking')
+))
+
+const linkedSavingsTotal = computed(() => round0(
+  linkedSavingsAccounts.value
+    .filter(account => account.include_in_retirement_savings)
+    .reduce((sum, account) => sum + (Number(account.current_balance) || 0), 0)
+))
+
+const viability = computed(() => {
+  if (!affordability.value?.available || !selectedScenario.value) return null
+  return affordability.value.viability?.[selectedScenario.value.key] || null
+})
+
+const viabilityHeadline = computed(() => {
+  switch (viability.value?.status) {
+    case 'on_track': return 'Your current contribution already covers this plan.'
+    case 'affordable': return 'Affordable with what you have left over.'
+    case 'stretch': return 'This plan needs more than your cash flow leaves over.'
+    case 'not_reachable': return 'No monthly amount reaches this goal by age 100.'
+    default: return ''
+  }
+})
+
+const viabilitySentence = computed(() => {
+  const result = viability.value
+  if (!result) return ''
+  const capacity = formatWholeCurrency(result.capacity)
+  if (result.status === 'on_track') {
+    return `You could set aside up to ${capacity} a month based on the last ${affordability.value.cashflow.months_covered} months of linked activity.`
+  }
+  if (result.status === 'affordable') {
+    return `Raising your contribution by ${formatWholeCurrency(result.increase_needed)} to ${formatWholeCurrency(result.required)} a month fits within the ${capacity} a month you could save.`
+  }
+  if (result.status === 'stretch') {
+    const parts = [`It calls for ${formatWholeCurrency(result.required)} a month, ${formatWholeCurrency(result.shortfall_per_month)} more than the ${capacity} you could save.`]
+    const discretionary = affordability.value.cashflow.monthly.discretionary || 0
+    const options = []
+    if (result.spending_cut_percent != null && result.spending_cut_percent < 100) {
+      options.push(`cut discretionary spending by about ${result.spending_cut_percent}%`)
+    } else if (discretionary > 0) {
+      parts.push(`Cutting all ${formatWholeCurrency(discretionary)} a month of discretionary spending would not close it on its own.`)
+    }
+    if (result.suggested_retirement_age) options.push(`retire closer to age ${result.suggested_retirement_age}`)
+    if (options.length > 0) {
+      parts.push(`To close it, ${options.join(' or ')}.`)
+    } else {
+      parts.push('Lower the retirement spending goal or extend the timeline to find a reachable plan.')
+    }
+    return parts.join(' ')
+  }
+  return `You could save up to ${capacity} a month. Lower the goal, extend the timeline, or raise the return assumption to find a reachable plan.`
+})
+
+const viabilityTone = computed(() => {
+  const status = viability.value?.status
+  if (status === 'on_track' || status === 'affordable') {
+    return {
+      box: 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20',
+      icon: CheckCircleIcon,
+      icon_class: 'text-green-600 dark:text-green-400',
+      title: 'text-green-900 dark:text-green-200',
+      body: 'text-green-800 dark:text-green-300'
+    }
+  }
+  return {
+    box: 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20',
+    icon: ExclamationTriangleIcon,
+    icon_class: 'text-amber-600 dark:text-amber-400',
+    title: 'text-amber-900 dark:text-amber-200',
+    body: 'text-amber-800 dark:text-amber-300'
+  }
+})
+
 const formIsValid = computed(() => (
   Number(form.current_age) >= 18
   && Number(form.current_age) <= 99
@@ -976,7 +1282,7 @@ const contributionActionValue = computed(() => {
   const change = selectedScenario.value?.monthly_contribution_change
   if (required == null) return 'Target not reached'
   if (change <= 0) return 'Current amount is sufficient'
-  return `Add ${formatCurrency(change, { maximumFractionDigits: 0 })} monthly`
+  return `Add ${formatWholeCurrency(change)} monthly`
 })
 
 const contributionActionDetail = computed(() => {
@@ -984,7 +1290,26 @@ const contributionActionDetail = computed(() => {
   if (required == null) {
     return 'The current assumptions do not reach the target before age 100.'
   }
-  return `A total monthly contribution of ${formatCurrency(required, { maximumFractionDigits: 0 })} is projected to reach the target.`
+  return `A total monthly contribution of ${formatWholeCurrency(required)} is projected to reach the target.`
+})
+
+const StepBadge = defineComponent({
+  name: 'StepBadge',
+  props: {
+    step: { type: Number, required: true },
+    icon: { type: [Object, Function], required: true }
+  },
+  setup(props) {
+    return () => h('div', {
+      class: 'relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+    }, [
+      h(props.icon, { class: 'h-5 w-5' }),
+      h('span', {
+        class: 'absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-bold leading-none text-white',
+        'aria-label': `Step ${props.step}`
+      }, String(props.step))
+    ])
+  }
 })
 
 const MoneyField = defineComponent({
@@ -1205,25 +1530,62 @@ function validateForm() {
   return !formError.value
 }
 
+function markProjectionCurrent(payload = planPayload()) {
+  lastCalculatedKey.value = JSON.stringify(payload)
+}
+
+function scrollIntoViewIfPossible(element) {
+  if (element && typeof element.scrollIntoView === 'function') {
+    element.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
+}
+
+function scrollToAssumptions() {
+  scrollIntoViewIfPossible(assumptionsSection.value)
+}
+
 async function calculatePreview() {
-  if (!validateForm()) return
+  if (!validateForm()) return false
+  const payload = planPayload()
   try {
-    await retirementStore.calculate(planPayload(), buildAccountParams())
+    const result = await retirementStore.calculate(payload, buildAccountParams())
+    if (result === null) return false
+    markProjectionCurrent(payload)
     if (!projection.value?.scenarios?.some(scenario => scenario.key === selectedScenarioKey.value)) {
       selectedScenarioKey.value = 'custom'
     }
+    return true
   } catch (_) {
     showError('Projection not updated', retirementStore.error)
+    return false
   }
+}
+
+async function recalculateNow() {
+  clearTimeout(autoRecalculateTimer)
+  const updated = await calculatePreview()
+  if (updated) scrollIntoViewIfPossible(statusSection.value)
+}
+
+function scheduleAutoRecalculate() {
+  clearTimeout(autoRecalculateTimer)
+  if (!formIsValid.value) return
+  autoRecalculateTimer = setTimeout(() => {
+    autoRecalculateTimer = null
+    if (!projectionOutOfDate.value || retirementStore.calculating) return
+    calculatePreview()
+  }, AUTO_RECALCULATE_DELAY_MS)
 }
 
 async function savePlan() {
   if (!validateForm()) return
   try {
-    await retirementStore.save(planPayload())
+    const payload = planPayload()
+    await retirementStore.save(payload)
     if (isFiltered.value || hasCustomAccountScope.value) {
-      await retirementStore.calculate(planPayload(), buildAccountParams())
+      await retirementStore.calculate(payload, buildAccountParams())
     }
+    markProjectionCurrent(payload)
     showSuccess('Retirement plan saved', 'Your assumptions will be recalculated against the latest portfolio each time you return.')
   } catch (_) {
     showError('Plan not saved', retirementStore.error)
@@ -1239,6 +1601,7 @@ function confirmReset() {
         await retirementStore.reset()
         const result = await retirementStore.load(buildAccountParams())
         hydrateForm(result.draft_plan)
+        markProjectionCurrent()
         selectedScenarioKey.value = 'custom'
         showSuccess('Retirement plan reset', 'The planner has returned to its starting assumptions.')
       } catch (_) {
@@ -1247,6 +1610,64 @@ function confirmReset() {
     },
     { confirmText: 'Reset plan' }
   )
+}
+
+function round0(value) {
+  return Math.round(Number(value) || 0)
+}
+
+function liabilityLabel(type) {
+  return { credit: 'credit card', mortgage: 'mortgage', student: 'student loan' }[type] || type
+}
+
+function applySuggestion({ field, value }) {
+  if (!(field in form)) return
+  const number = Number(value)
+  if (!Number.isFinite(number)) return
+  form[field] = round0(number)
+  if (field === 'current_annual_cost_of_living') advancedGoalOpen.value = true
+}
+
+async function toggleSavingsAccount(account, include) {
+  savingsAccountBusy.value = account.id
+  try {
+    await retirementStore.setRetirementSavingsAccount(account.id, include)
+  } catch (error) {
+    showError('Account not updated', error.response?.data?.error || error.message)
+  } finally {
+    savingsAccountBusy.value = null
+  }
+}
+
+async function loadAffordabilityTransactions() {
+  try {
+    await retirementStore.fetchAffordabilityTransactions({ months: affordability.value?.cashflow?.months_requested })
+  } catch (error) {
+    showError('Transactions not loaded', error.response?.data?.error || error.message)
+  }
+}
+
+async function categorizeTransaction({ id, category }) {
+  try {
+    await retirementStore.setCashflowCategory(id, category)
+    await refreshAffordability()
+  } catch (error) {
+    showError('Category not saved', error.response?.data?.error || error.message)
+  }
+}
+
+async function refreshAffordability() {
+  try {
+    await retirementStore.refreshAffordability(affordability.value?.cashflow?.months_requested)
+    // Viability depends on the summary, so recalculate to refresh it.
+    await calculatePreview()
+  } catch (error) {
+    showError('Cash flow not refreshed', error.response?.data?.error || error.message)
+  }
+}
+
+function formatWholeCurrency(value) {
+  return formatCurrency(Math.round(Number(value) || 0), { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
 function formatPercent(value) {
@@ -1267,6 +1688,11 @@ function formatCoverage(scenario) {
   return `${time.toFixed(0)}% time · ${value.toFixed(0)}% portfolio value`
 }
 
+watch(() => JSON.stringify(planPayload()), key => {
+  if (initialLoading.value || key === lastCalculatedKey.value) return
+  scheduleAutoRecalculate()
+})
+
 watch(selectedAccount, async () => {
   if (initialLoading.value) return
   console.log('[RETIREMENT PLANNER] Global account filter changed to:', selectedAccount.value || 'All Accounts')
@@ -1283,6 +1709,7 @@ onMounted(async () => {
     await fetchAccounts()
     const result = await retirementStore.load(buildAccountParams())
     hydrateForm(result.draft_plan)
+    markProjectionCurrent()
     resetAccountSelection()
   } catch (_) {
     showError('Retirement planner unavailable', retirementStore.error)
@@ -1292,6 +1719,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(autoRecalculateTimer)
   document.removeEventListener('pointerdown', handleAccountPickerOutsideClick)
 })
 </script>

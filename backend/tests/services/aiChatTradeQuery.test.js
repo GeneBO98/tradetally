@@ -153,7 +153,7 @@ describe('AIChatTradeQuery.resolveFilters', () => {
     expect(result.source).toBe('merged');
     expect(result.filters).toMatchObject({ pnlType: 'loss', startDate: '2026-10-01', endDate: '2026-10-15', tags: ['earnings'] });
     const [prompt, settings, options] = AIProvider.generateResponse.mock.calls[0];
-    expect(prompt).toContain('Today is 2026-10-29');
+    expect(prompt).toContain(`Today is ${AIChatTradeQuery.todayIn('UTC')}`);
     expect(prompt).toContain('strategies: swing, mean_reversion, Opening Range Breakout');
     expect(settings.provider).toBe('openai');
     expect(options).toEqual({ maxTokens: 220, temperature: 0 });

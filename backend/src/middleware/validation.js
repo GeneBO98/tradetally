@@ -999,6 +999,16 @@ const schemas = {
     withdrawal_rate_percent: Joi.number().greater(0).max(20).required()
   }),
 
+  retirementCashflowCategory: Joi.object({
+    category: Joi.string()
+      .valid('income', 'essential', 'discretionary', 'debt_payment', 'savings', 'transfer', 'refund', 'other')
+      .required()
+  }),
+
+  retirementAffordabilityAccount: Joi.object({
+    include_in_retirement_savings: Joi.boolean().required()
+  }),
+
   investmentFavoriteToggle: Joi.object({
     symbol: Joi.string().trim().max(20).required()
   }),

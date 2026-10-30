@@ -119,6 +119,12 @@ class PlaidClient {
         body.transactions = {
           days_requested: 730
         };
+        // Liabilities (credit cards, mortgages, student loans) feed the
+        // retirement affordability check. Optional so Link still succeeds at
+        // institutions that do not support the product.
+        if (process.env.PLAID_ENABLE_LIABILITIES !== 'false') {
+          body.optional_products = ['liabilities'];
+        }
       }
     }
 
@@ -165,6 +171,12 @@ class PlaidClient {
   async getWebhookVerificationKey(keyId) {
     return this.post('/webhook_verification_key/get', {
       key_id: keyId
+    });
+  }
+
+  async getLiabilities(accessToken) {
+    return this.post('/liabilities/get', {
+      access_token: accessToken
     });
   }
 

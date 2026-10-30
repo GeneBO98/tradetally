@@ -103,6 +103,32 @@ describe('retirement store', () => {
     expect(store.portfolio.tracked_portfolio_value).toBe(250000)
   })
 
+  it('keeps affordability from responses and updates it through the affordability endpoints', async () => {
+    api.get.mockResolvedValue({ data: { ...responseData, affordability: { available: true, savings_accounts: [{ id: 'sav', include_in_retirement_savings: false }], viability: { custom: { status: 'affordable' } } } } })
+    api.put.mockResolvedValue({ data: { account: { id: 'sav', include_in_retirement_savings: true } } })
+    api.post.mockResolvedValue({ data: { affordability: { available: true, cashflow: { monthly: { capacity: 900 } } } } })
+    const store = useRetirementStore()
+
+    await store.load()
+    expect(store.affordability.viability.custom.status).toBe('affordable')
+
+    await store.setRetirementSavingsAccount('sav', true)
+    expect(api.put).toHaveBeenCalledWith('/investments/retirement/affordability/accounts/sav', { include_in_retirement_savings: true })
+    expect(store.affordability.savings_accounts[0].include_in_retirement_savings).toBe(true)
+
+    api.get.mockResolvedValueOnce({ data: { transactions: [{ id: 't1', cashflow_category: null }], categories: ['income', 'other'] } })
+    await store.fetchAffordabilityTransactions({ months: 12 })
+    expect(store.affordabilityCategories).toEqual(['income', 'other'])
+    api.put.mockResolvedValueOnce({ data: { transaction: { id: 't1', cashflow_category: 'income' } } })
+    await store.setCashflowCategory('t1', 'income')
+    expect(store.affordabilityTransactions[0]).toMatchObject({ cashflow_category: 'income', cashflow_source: 'user' })
+
+    await store.refreshAffordability(12)
+    expect(api.post).toHaveBeenCalledWith('/investments/retirement/affordability/refresh', { months: 12 })
+    expect(store.affordability.cashflow.monthly.capacity).toBe(900)
+    expect(store.affordability.viability.custom.status).toBe('affordable')
+  })
+
   it('exposes server validation errors', async () => {
     api.post.mockRejectedValue({
       response: { data: { error: 'Retirement age must be later' } }

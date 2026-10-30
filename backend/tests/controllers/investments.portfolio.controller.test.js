@@ -19,6 +19,9 @@ jest.mock('../../src/services/portfolioService', () => ({
   setTarget: jest.fn(),
   evaluateAlerts: jest.fn()
 }));
+jest.mock('../../src/services/retirementAffordabilityService', () => ({
+  attach: jest.fn(async result => result)
+}));
 jest.mock('../../src/services/retirementService', () => ({
   get: jest.fn(),
   calculate: jest.fn(),

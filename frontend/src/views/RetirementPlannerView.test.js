@@ -118,6 +118,10 @@ function createStore() {
       }]
     },
     hasSavedPlan: false,
+    affordability: null,
+    affordabilityTransactions: [],
+    affordabilityCategories: [],
+    affordabilityLoading: false,
     loading: false,
     calculating: false,
     saving: false,
@@ -126,7 +130,11 @@ function createStore() {
     load: vi.fn().mockResolvedValue({ draft_plan: draftPlan }),
     calculate: vi.fn().mockResolvedValue({}),
     save: vi.fn().mockResolvedValue({}),
-    reset: vi.fn().mockResolvedValue(true)
+    reset: vi.fn().mockResolvedValue(true),
+    setRetirementSavingsAccount: vi.fn().mockResolvedValue({}),
+    fetchAffordabilityTransactions: vi.fn().mockResolvedValue([]),
+    setCashflowCategory: vi.fn().mockResolvedValue({}),
+    refreshAffordability: vi.fn().mockResolvedValue({})
   })
 }
 
@@ -147,8 +155,6 @@ describe('RetirementPlannerView', () => {
     expect(wrapper.text()).toContain('Retirement Planner')
     expect(wrapper.text()).toContain('Needs adjustment')
     expect(wrapper.text()).toContain('Shortfall projected')
-    expect(wrapper.text()).toContain('Portfolio goal (amount needed)')
-    expect(wrapper.text()).toContain('Projected balance (amount you may have)')
     expect(wrapper.text()).toContain('Accounts included in the projection')
     expect(wrapper.text()).toContain('Plaid-synced holdings')
     expect(wrapper.text()).toContain('Open long positions')
@@ -161,7 +167,10 @@ describe('RetirementPlannerView', () => {
     expect(wrapper.text()).toContain('Uses matching portfolio returns and historical inflation')
     expect(wrapper.text()).toContain('Historical scenarios do not replay')
     const resultMetrics = wrapper.findAllComponents({ name: 'ResultMetric' })
-    expect(resultMetrics[0].props('detail'))
+    expect(resultMetrics[0].props('label')).toBe('Portfolio goal (amount needed)')
+    const balanceMetric = resultMetrics
+      .find(metric => metric.props('label') === 'Projected balance (amount you may have)')
+    expect(balanceMetric.props('detail'))
       .toContain('Estimated amount you may have')
     const contributionMetric = resultMetrics
       .find(metric => metric.props('label') === 'Minimum monthly contribution')
@@ -175,6 +184,136 @@ describe('RetirementPlannerView', () => {
       .toContain('Historical scenarios use U.S. CPI-U inflation')
     expect(wrapper.text()).toContain('No historical period currently meets')
     expect(mocks.retirementStore.load).toHaveBeenCalledWith({})
+  })
+
+  it('leads with a plain-language status sentence and the starter banner', async () => {
+    const wrapper = shallowMount(RetirementPlannerView)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="starter-banner"]').text())
+      .toContain('These are starting assumptions, not your plan yet.')
+    expect(wrapper.get('[data-testid="status-sentence"]').text())
+      .toBe('On this path you reach $1,200,000 of the $3,140,000 you need at age 65, leaving a $300,000 gap.')
+    expect(wrapper.get('[data-testid="tracked-portfolio"]').text()).toContain('$200,000')
+    expect(wrapper.text()).toContain('Starting balance')
+    expect(wrapper.get('[data-testid="projection-sync-status"]').text())
+      .toBe('Projection matches your inputs.')
+    expect(wrapper.text()).toContain('Only the Custom assumption is available.')
+    expect(wrapper.find('table').exists()).toBe(false)
+
+    const stepHeadings = wrapper.findAll('form h2').map(node => node.text())
+    expect(stepHeadings).toEqual([
+      'When',
+      'What you have',
+      'What you add',
+      'What you want',
+      'Other retirement income',
+      'Assumptions'
+    ])
+  })
+
+  it('hides the starter banner once a plan is saved', async () => {
+    mocks.retirementStore.hasSavedPlan = true
+    const wrapper = shallowMount(RetirementPlannerView)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="starter-banner"]').exists()).toBe(false)
+  })
+
+  it('flags the projection as out of date and recalculates after a pause', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = shallowMount(RetirementPlannerView)
+      await flushPromises()
+      mocks.retirementStore.calculate.mockClear()
+
+      const ageInput = wrapper.findAll('input[type="number"]')[1]
+      await ageInput.setValue(60)
+
+      expect(wrapper.get('[data-testid="projection-sync-status"]').text())
+        .toContain('Inputs changed')
+      expect(wrapper.get('[data-testid="plan-status"]').text())
+        .toContain('Updating to match your inputs')
+      expect(mocks.retirementStore.calculate).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(700)
+      await flushPromises()
+
+      expect(mocks.retirementStore.calculate).toHaveBeenCalledTimes(1)
+      expect(mocks.retirementStore.calculate).toHaveBeenCalledWith(
+        expect.objectContaining({ target_retirement_age: 60 }),
+        {}
+      )
+      expect(wrapper.get('[data-testid="projection-sync-status"]').text())
+        .toBe('Projection matches your inputs.')
+      expect(wrapper.get('[data-testid="plan-status"]').text())
+        .not.toContain('Updating to match your inputs')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not auto-recalculate while inputs are invalid', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = shallowMount(RetirementPlannerView)
+      await flushPromises()
+      mocks.retirementStore.calculate.mockClear()
+
+      const ageInput = wrapper.findAll('input[type="number"]')[1]
+      await ageInput.setValue(30)
+      await vi.advanceTimersByTimeAsync(1000)
+      await flushPromises()
+
+      expect(mocks.retirementStore.calculate).not.toHaveBeenCalled()
+      expect(wrapper.get('[data-testid="projection-sync-status"]').text())
+        .toContain('Fix the highlighted inputs')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows the affordability verdict, linked savings and spending suggestions when Plaid data exists', async () => {
+    mocks.retirementStore.affordability = {
+      available: true,
+      cashflow: { months_requested: 12, months_covered: 6, transaction_count: 120, unclassified_count: 0, classification_sources: { rule: 100, ai: 20, user: 0 }, monthly: { income: 6000, spending: 3900, debt_payments: 400, savings: 500, left_over: 1200, capacity: 1700 } },
+      debt: { total_balance: 8000, monthly_minimum_payments: 250, count: 1, overdue_count: 0, items: [{ id: 'l1', account_name: 'Visa', liability_type: 'credit', apr_percent: 21.5, current_balance: 8000, is_overdue: false }] },
+      savings_accounts: [
+        { id: 'sav', account_name: 'Savings', mask: '1234', account_subtype: 'savings', current_balance: 12000, include_in_retirement_savings: true },
+        { id: 'chk', account_name: 'Checking', mask: '9999', account_subtype: 'checking', current_balance: 3000, include_in_retirement_savings: false }
+      ],
+      suggestions: { monthly_contribution_current_saving: 500, monthly_contribution_capacity: 1700, current_annual_cost_of_living: 51600, desired_annual_retirement_spending: 37440, retirement_spending_ratio_percent: 80, additional_retirement_savings: 12000 },
+      classification: { rules: 100, ai: 20, unclassified: 0, ai_reason: null, ai_enabled: true },
+      viability: { custom: { status: 'stretch', capacity: 1700, required: 2200, increase_needed: 1200, shortfall_per_month: 500, spending_cut_percent: 50, suggested_retirement_age: 69 } }
+    }
+    const wrapper = shallowMount(RetirementPlannerView)
+    await flushPromises()
+
+    const verdict = wrapper.get('[data-testid="viability"]').text()
+    expect(verdict).toContain('This plan needs more than your cash flow leaves over.')
+    expect(verdict).toContain('$2,200 a month, $500 more than the $1,700 you could save')
+    expect(verdict).toContain('cut discretionary spending by about 50% or retire closer to age 69')
+
+    const savings = wrapper.get('[data-testid="linked-savings"]')
+    expect(savings.text()).toContain('Savings ••••1234')
+    expect(savings.text()).not.toContain('Checking')
+    expect(savings.text()).toContain('Use $12,000')
+    expect(wrapper.get('[data-testid="linked-debts"]').text()).toContain('Debts: $8,000 across 1 account')
+    expect(wrapper.get('[data-testid="spending-suggestion"]').text()).toContain('Use 80% of spending without debt')
+
+    await wrapper.get('[data-testid="use-linked-savings"]').trigger('click')
+    const savingsInput = wrapper.findAllComponents({ name: 'MoneyField' })
+      .find(field => field.props('label') === 'Other retirement savings')
+    expect(savingsInput.props('modelValue')).toBe(12000)
+  })
+
+  it('offers to link a bank account when no affordability data exists', async () => {
+    mocks.retirementStore.affordability = { available: false, reason: 'no_bank_connection' }
+    const wrapper = shallowMount(RetirementPlannerView)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="viability"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="linked-savings"]').exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'RetirementCashflowPanel' }).props('affordability'))
+      .toEqual({ available: false, reason: 'no_bank_connection' })
   })
 
   it('shows the scenario explanation from the compare-scenarios heading', async () => {

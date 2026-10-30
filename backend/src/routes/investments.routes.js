@@ -290,6 +290,45 @@ router.put(
  */
 router.delete('/retirement', investmentsController.deleteRetirementPlan);
 
+/**
+ * @route GET /api/investments/retirement/affordability/transactions
+ * @desc Largest Plaid bank transactions in the affordability window with categories
+ * @access Pro
+ */
+router.get(
+  '/retirement/affordability/transactions',
+  investmentsController.getAffordabilityTransactions
+);
+
+/**
+ * @route PUT /api/investments/retirement/affordability/transactions/:transactionId
+ * @desc Override a transaction's cash-flow category
+ * @access Pro
+ */
+router.put(
+  '/retirement/affordability/transactions/:transactionId',
+  validate(schemas.retirementCashflowCategory),
+  investmentsController.setAffordabilityTransactionCategory
+);
+
+/**
+ * @route PUT /api/investments/retirement/affordability/accounts/:plaidAccountId
+ * @desc Count a linked savings or CD account as retirement savings
+ * @access Pro
+ */
+router.put(
+  '/retirement/affordability/accounts/:plaidAccountId',
+  validate(schemas.retirementAffordabilityAccount),
+  investmentsController.setAffordabilityAccount
+);
+
+/**
+ * @route POST /api/investments/retirement/affordability/refresh
+ * @desc Rebuild the cash-flow summary and rerun classification
+ * @access Pro
+ */
+router.post('/retirement/affordability/refresh', investmentsController.refreshAffordability);
+
 // ========================================
 // SCREENER
 // ========================================

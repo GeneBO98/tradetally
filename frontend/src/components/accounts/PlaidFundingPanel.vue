@@ -156,87 +156,74 @@
               <div
                 v-for="plaidAccount in connection.accounts || []"
                 :key="plaidAccount.id"
-                class="px-3 py-2.5"
+                class="px-3 py-2"
               >
-                <div class="flex items-start justify-between gap-2">
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-1.5">
-                      <div class="truncate text-sm font-medium text-gray-900 dark:text-white">
-                        {{ plaidAccount.accountName }}
-                      </div>
-                      <span v-if="plaidAccount.mask" class="shrink-0 text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
-                        ••{{ plaidAccount.mask }}
-                      </span>
-                    </div>
-                    <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                      <span class="capitalize">{{ plaidAccount.accountType || 'account' }}<span v-if="plaidAccount.accountSubtype"> · {{ plaidAccount.accountSubtype }}</span></span>
-                      <span v-if="plaidAccount.currentBalance !== null" class="tabular-nums">
-                        {{ formatCurrency(plaidAccount.currentBalance) }}
-                      </span>
-                    </div>
-                    <div class="mt-1">
-                      <span
-                        v-if="plaidAccount.linkedAccountId"
-                        class="inline-flex items-center gap-1 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                      >
-                        <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-                        </svg>
-                        Linked to {{ plaidAccount.linkedAccountName }}
-                      </span>
-                      <span
-                        v-else
-                        class="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-                      >
-                        Needs linking
-                      </span>
-                    </div>
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <div class="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span class="truncate text-sm font-medium text-gray-900 dark:text-white">
+                      {{ plaidAccount.accountName }}<span v-if="plaidAccount.mask" class="ml-1 text-[11px] font-normal tabular-nums text-gray-500 dark:text-gray-400">••{{ plaidAccount.mask }}</span>
+                    </span>
+                    <span class="text-[11px] text-gray-500 dark:text-gray-400">
+                      <span class="capitalize">{{ plaidAccount.accountSubtype || plaidAccount.accountType || 'account' }}</span>
+                      <span v-if="plaidAccount.currentBalance !== null" class="tabular-nums"> · {{ formatCurrency(plaidAccount.currentBalance) }}</span>
+                    </span>
                   </div>
+                  <span
+                    v-if="plaidAccount.linkedAccountId"
+                    class="inline-flex shrink-0 items-center gap-1 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                  >
+                    <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Linked to {{ plaidAccount.linkedAccountName }}
+                  </span>
+                  <span
+                    v-else
+                    class="inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                  >
+                    Needs linking
+                  </span>
                 </div>
 
-                <!-- Linking controls -->
-                <div class="mt-2 grid gap-1.5 sm:grid-cols-2">
+                <!-- Linking controls: one dense row -->
+                <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <BaseSelect
                     v-model="selectedAccountIds[plaidAccount.id]"
                     :options="accounts"
                     value-key="id"
                     label-key="accountName"
                     placeholder="Select TradeTally account"
+                    size="sm"
+                    class="w-full sm:w-52"
                   />
-
-                  <div class="flex items-center gap-1">
-                    <div class="w-full">
-                      <BaseSelect
-                        v-model="trackingModes[plaidAccount.id]"
-                        :options="[
-                          { value: 'tracked_account', label: 'Track directly' },
-                          { value: 'funding_source', label: 'Funding source' }
-                        ]"
-                      />
-                    </div>
-                    <div class="group relative shrink-0">
-                      <button
-                        type="button"
-                        class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-500 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:text-gray-200"
-                        :aria-label="getTrackingModeHelp(trackingModes[plaidAccount.id]).title"
-                      >
-                        ?
-                      </button>
-                      <div class="pointer-events-none absolute right-0 top-7 z-20 hidden w-64 rounded-lg border border-gray-200 bg-white p-2.5 text-left shadow-lg group-hover:block dark:border-gray-700 dark:bg-gray-900">
-                        <div class="text-xs font-medium text-gray-900 dark:text-white">
-                          {{ getTrackingModeHelp(trackingModes[plaidAccount.id]).title }}
-                        </div>
-                        <p class="mt-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-                          {{ getTrackingModeHelp(trackingModes[plaidAccount.id]).description }}
-                        </p>
+                  <BaseSelect
+                    v-model="trackingModes[plaidAccount.id]"
+                    :options="[
+                      { value: 'tracked_account', label: 'Track directly' },
+                      { value: 'funding_source', label: 'Funding source' }
+                    ]"
+                    size="sm"
+                    class="w-36"
+                  />
+                  <div class="group relative shrink-0">
+                    <button
+                      type="button"
+                      class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-500 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:text-gray-200"
+                      :aria-label="getTrackingModeHelp(trackingModes[plaidAccount.id]).title"
+                    >
+                      ?
+                    </button>
+                    <div class="pointer-events-none absolute left-0 top-6 z-20 hidden w-64 rounded-lg border border-gray-200 bg-white p-2.5 text-left shadow-lg group-hover:block dark:border-gray-700 dark:bg-gray-900">
+                      <div class="text-xs font-medium text-gray-900 dark:text-white">
+                        {{ getTrackingModeHelp(trackingModes[plaidAccount.id]).title }}
                       </div>
+                      <p class="mt-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                        {{ getTrackingModeHelp(trackingModes[plaidAccount.id]).description }}
+                      </p>
                     </div>
                   </div>
-                </div>
-
-                <div class="mt-2 flex flex-wrap gap-1.5">
                   <button
-                    class="inline-flex items-center gap-1 rounded-md bg-primary-600 px-2 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-primary-700 disabled:opacity-60"
+                    class="inline-flex items-center rounded-md bg-primary-600 px-2 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-primary-700 disabled:opacity-60"
                     :disabled="!selectedAccountIds[plaidAccount.id] || linkingAccountId === plaidAccount.id"
                     @click="linkExistingAccount(plaidAccount)"
                   >
@@ -244,7 +231,7 @@
                   </button>
                   <button
                     v-if="!plaidAccount.linkedAccountId"
-                    class="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                    class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
                     :disabled="linkingAccountId === plaidAccount.id"
                     @click="createAndLinkAccount(plaidAccount)"
                   >
@@ -252,7 +239,7 @@
                   </button>
                   <button
                     v-else
-                    class="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-900/20"
+                    class="ml-auto inline-flex items-center rounded-md px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-900/20"
                     :disabled="linkingAccountId === plaidAccount.id"
                     @click="confirmUnlink(plaidAccount)"
                   >
