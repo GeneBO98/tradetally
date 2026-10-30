@@ -103,6 +103,7 @@ export function useAnalytics() {
         'posthog.init(' + JSON.stringify(key) + ', {',
         '  api_host: ' + JSON.stringify(host) + ',',
         '  person_profiles: "identified_only",',
+        '  capture_exceptions: true,',
         '  opt_out_capturing_by_default: true',
         '})'
       ].join('\n')

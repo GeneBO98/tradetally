@@ -393,6 +393,7 @@
     <!-- IBKR Connection Modal -->
     <IBKRConnectionModal
       v-if="showIBKRModal"
+      :reconnecting="reconnectingIbkr"
       @close="closeIBKRModal"
       @save="handleIBKRSave"
       :loading="store.loading"
@@ -488,6 +489,7 @@ const graceEndsAtFormatted = computed(() => {
 const pricingLink = computed(() => `/pricing?redirect=${encodeURIComponent(route.fullPath)}`)
 
 const showIBKRModal = ref(false)
+const reconnectingIbkr = ref(null)
 const showTrading212Modal = ref(false)
 const show_oanda_modal = ref(false)
 const reconnecting_oanda = ref(null)
@@ -676,12 +678,14 @@ watch(() => route.query, async (newQuery) => {
 
 function openIBKRModal() {
   store.clearError()
+  reconnectingIbkr.value = null
   showIBKRModal.value = true
 }
 
 function closeIBKRModal() {
   store.clearError()
   showIBKRModal.value = false
+  reconnectingIbkr.value = null
 }
 
 function openTrading212Modal() {
@@ -725,10 +729,16 @@ async function refreshSchwabAccounts() {
 }
 
 async function handleIBKRSave(credentials) {
+  const wasReconnect = Boolean(reconnectingIbkr.value)
   try {
+    // Same query ID upserts the existing row with the new token and clears
+    // the expired state, so a reconnect is just a re-submit of credentials.
     await store.addIBKRConnection(credentials)
     showIBKRModal.value = false
-    scheduleSuccessMessage('IBKR connection added successfully!')
+    reconnectingIbkr.value = null
+    scheduleSuccessMessage(wasReconnect
+      ? 'IBKR connection updated. Automatic sync will resume on the next schedule.'
+      : 'IBKR connection added successfully!')
   } catch (error) {
     // Error is handled by store
   }
@@ -769,6 +779,14 @@ async function handleReconnect(connection) {
   if (connection.brokerType === 'oanda') {
     reconnecting_oanda.value = connection
     show_oanda_modal.value = true
+    return
+  }
+  if (connection.brokerType === 'ibkr') {
+    // Flex tokens are user-managed: reconnecting means pasting a fresh token
+    // for the same query ID, not an OAuth round trip.
+    store.clearError()
+    reconnectingIbkr.value = connection
+    showIBKRModal.value = true
     return
   }
   if (connection.brokerType !== 'schwab') return

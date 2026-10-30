@@ -137,8 +137,12 @@ class BrokerSyncScheduler {
     } catch (error) {
       console.error(`[BROKER-SCHEDULER] Sync failed for ${connection.id}:`, error.message);
 
-      // Update connection failure status
-      await BrokerConnection.updateAfterFailure(connection.id, error.message);
+      // Update connection failure status. Errors thrown before the sync log
+      // exists (lock contention, pool timeouts) are usually transient and must
+      // not lock the connection into 'error'.
+      await BrokerConnection.updateAfterFailure(connection.id, error.message, {
+        transient: brokerSyncService.isTransientSyncError(error)
+      });
 
       return {
         success: false,

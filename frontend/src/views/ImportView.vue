@@ -69,14 +69,14 @@
                         ref="fileInput"
                         name="file-upload"
                         type="file"
-                        accept=".csv,.txt,.data,text/csv,text/plain,application/octet-stream"
+                        accept=".csv,.txt,.tsv,.plain,.data,.xlsx,.xlsm,.zip,.html,.htm,text/csv,text/plain,text/html,application/octet-stream,application/zip,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         class="sr-only"
                         @change="handleFileSelect"
                       />
                     </label>
                     <p class="pl-1">or drag and drop</p>
                   </div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">CSV, TXT, or Sierra Chart DATA files (up to 50MB)</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">CSV, TXT, Excel (.xlsx), HTML reports, ZIP archives, or Sierra Chart DATA files (up to 50MB)</p>
                 </div>
               </div>
               <div v-if="selectedFile" class="mt-2 flex items-center justify-between">
@@ -2359,8 +2359,24 @@ function clearSelectedFile() {
   }
 }
 
+// Mirrors backend/src/utils/csv/fileNormalizer.js: workbooks, archives and
+// HTML reports are converted to CSV server-side.
+const SUPPORTED_IMPORT_EXTENSION = /\.(csv|txt|tsv|plain|text|data|xlsx|xlsm|zip|html?)$/i
+const UNSUPPORTED_IMPORT_HINTS = {
+  xls: 'Legacy Excel .xls workbooks are not supported. Open the file in Excel and save it as .xlsx or CSV.',
+  pdf: 'PDF statements cannot be imported. Export your trades as CSV or Excel from your broker instead.',
+  png: 'Screenshots cannot be imported. Export your trades as CSV or Excel from your broker instead.',
+  jpg: 'Screenshots cannot be imported. Export your trades as CSV or Excel from your broker instead.',
+  jpeg: 'Screenshots cannot be imported. Export your trades as CSV or Excel from your broker instead.'
+}
+
+function getFileExtension(name) {
+  const match = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/)
+  return match ? match[1] : ''
+}
+
 async function setSelectedFile(file, source = 'picker') {
-  const supportedExtension = file && /\.(csv|txt|data)$/i.test(file.name)
+  const supportedExtension = file && SUPPORTED_IMPORT_EXTENSION.test(file.name)
   if (file && (file.type === 'text/csv' || file.type === 'application/csv' || supportedExtension)) {
     selectedFile.value = file
     error.value = null
@@ -2368,17 +2384,22 @@ async function setSelectedFile(file, source = 'picker') {
     track('import_file_selected', {
       source,
       file_name: file.name,
-      file_size: file.size
+      file_size: file.size,
+      file_extension: getFileExtension(file.name)
     })
     await analyzeSelectedFile(file)
   } else {
-    error.value = 'Please select a valid CSV, TXT, or Sierra Chart DATA file'
+    const extension = getFileExtension(file?.name)
+    error.value = UNSUPPORTED_IMPORT_HINTS[extension]
+      || 'Please select a CSV, TXT, Excel (.xlsx), HTML report, ZIP archive, or Sierra Chart DATA file'
     selectedFile.value = null
     resetFileAnalysis()
     console.log('File rejected - unsupported trade export')
     trackImportValidationFailed('invalid_file_type', {
       file_name: file?.name || '',
-      file_size: file?.size || 0
+      file_size: file?.size || 0,
+      file_extension: extension,
+      file_mime: file?.type || ''
     })
   }
 }
@@ -3484,7 +3505,7 @@ function pollImportStatus(importId) {
               ? `Try using Auto-Detect instead of the "${brokerName}" format`
               : 'Try selecting your specific broker format instead of Auto-Detect',
             'Make sure your file contains actual trade data, not just an account summary or positions',
-            'Verify the file is CSV, TXT, or a Sierra Chart DATA export (not .xlsx or .xls)',
+            'Verify the file is a trade export (CSV, TXT, Excel .xlsx, or a Sierra Chart DATA file), not a PDF statement or screenshot',
             'Check that the file was exported from the correct section of your broker platform'
           ]
           showImportantWarning(

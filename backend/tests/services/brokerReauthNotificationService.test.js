@@ -56,6 +56,43 @@ describe('BrokerReauthNotificationService', () => {
     );
   });
 
+  test('passes a credential failure message and instructions through to the notification and email', async () => {
+    BrokerConnection.markReauthRequired.mockResolvedValue({ id: 'connection-2' });
+    db.query.mockResolvedValue({
+      rows: [{ email: 'ibkr@example.com', display_name: 'Trader', email_notifications: true }]
+    });
+
+    const notified = await BrokerReauthNotificationService.markRequired({
+      id: 'connection-2',
+      userId: 'user-2',
+      brokerType: 'ibkr'
+    }, 'Interactive Brokers', {
+      message: 'Flex Token has expired.',
+      instructions: 'Generate a new token in IBKR.',
+      reauthMode: 'credentials'
+    });
+
+    expect(notified).toBe(true);
+    expect(BrokerConnection.markReauthRequired).toHaveBeenCalledWith('connection-2', 'Flex Token has expired.');
+    expect(NotificationService.sendBrokerReauthRequiredNotification).toHaveBeenCalledWith(
+      'user-2',
+      expect.objectContaining({
+        broker: 'ibkr',
+        broker_name: 'Interactive Brokers',
+        message: 'Flex Token has expired.',
+        instructions: 'Generate a new token in IBKR.',
+        reauth_mode: 'credentials'
+      })
+    );
+    expect(EmailService.sendBrokerReconnectRequiredEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brokerName: 'Interactive Brokers',
+        failureMessage: 'Flex Token has expired.',
+        instructions: 'Generate a new token in IBKR.'
+      })
+    );
+  });
+
   test('does not notify again while the connection is already expired', async () => {
     BrokerConnection.markReauthRequired.mockResolvedValue(null);
 

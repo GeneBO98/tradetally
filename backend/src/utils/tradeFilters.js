@@ -33,15 +33,41 @@ const coercePositive = (value, coerce) => (value ? coerce(value) : undefined);
 const coerceDefined = (value, coerce) =>
   value !== undefined && value !== null && value !== '' ? coerce(value) : undefined;
 
+// Browsers with a non-Latin locale can submit dates in native digits
+// (e.g. Arabic-Indic "٢٠٢٦-١٠-١٩"), which Postgres rejects with a 500.
+// Map any Unicode decimal digit (category Nd) to ASCII, then make sure the
+// value is a date Postgres will accept; otherwise reject with a 400.
+const UNICODE_DIGIT = /\p{Nd}/gu;
+const IS_UNICODE_DIGIT = /^\p{Nd}$/u;
+// Every Nd range is laid out as aligned runs of 0-9, so a digit's value is
+// its distance from the start of its contiguous Nd run, modulo 10.
+function unicodeDigitValue(digit) {
+  const codePoint = digit.codePointAt(0);
+  let offset = 0;
+  while (IS_UNICODE_DIGIT.test(String.fromCodePoint(codePoint - offset - 1))) offset++;
+  return offset % 10;
+}
+function normalizeDateParam(value, name) {
+  if (value === undefined || value === null || value === '') return value;
+  if (typeof value !== 'string') return value;
+  const ascii = value.replace(UNICODE_DIGIT, (digit) => String(unicodeDigitValue(digit)));
+  if (!/^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/.test(ascii) || Number.isNaN(Date.parse(ascii))) {
+    const error = new Error(`Invalid ${name}: "${value}" (expected YYYY-MM-DD)`);
+    error.name = 'ValidationError';
+    throw error;
+  }
+  return ascii;
+}
+
 // One builder per output field. Each receives (query, options) and must
 // reproduce the exact expression the inline blocks used.
 const FIELD_BUILDERS = {
   symbol: (q, o) => (o.normalizeStrings ? ensureString(q.symbol) || undefined : q.symbol),
   symbolExact: (q) => q.symbolExact === 'true',
-  startDate: (q, o) => (o.normalizeStrings ? q.startDate || undefined : q.startDate),
-  endDate: (q, o) => (o.normalizeStrings ? q.endDate || undefined : q.endDate),
-  exitStartDate: (q) => q.exitStartDate,
-  exitEndDate: (q) => q.exitEndDate,
+  startDate: (q, o) => normalizeDateParam(o.normalizeStrings ? q.startDate || undefined : q.startDate, 'startDate'),
+  endDate: (q, o) => normalizeDateParam(o.normalizeStrings ? q.endDate || undefined : q.endDate, 'endDate'),
+  exitStartDate: (q) => normalizeDateParam(q.exitStartDate, 'exitStartDate'),
+  exitEndDate: (q) => normalizeDateParam(q.exitEndDate, 'exitEndDate'),
   tags: (q, o) => (o.rawTagSplit ? splitList(q.tags) : splitTrimmedList(q.tags)),
   strategy: (q, o) => (o.normalizeStrings ? q.strategy || undefined : q.strategy),
   sector: (q, o) => (o.normalizeStrings ? q.sector || undefined : q.sector),

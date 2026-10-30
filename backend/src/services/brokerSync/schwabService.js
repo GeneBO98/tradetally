@@ -629,6 +629,7 @@ class SchwabService {
               price: tx.price,
               quantity: tx.quantity,
               side: tx.side,
+              action: tx.side === 'long' ? 'sell' : 'buy',
               type: 'exit',
               orderId: tx.orderId
             }]
@@ -680,6 +681,7 @@ class SchwabService {
                 price: openPos.price,
                 quantity: matchQty,
                 side: openPos.side,
+                action: openPos.side === 'long' ? 'buy' : 'sell',
                 type: 'entry',
                 orderId: openPos.orderId
               },
@@ -688,6 +690,10 @@ class SchwabService {
                 price: tx.price,
                 quantity: matchQty,
                 side: tx.side,
+                // Schwab's amount sign is not a reliable fill direction for
+                // option legs, so state the action from the position being
+                // closed instead of leaving the P&L engine to guess from side.
+                action: openPos.side === 'long' ? 'sell' : 'buy',
                 type: 'exit',
                 orderId: tx.orderId
               }
@@ -738,6 +744,7 @@ class SchwabService {
               price: pos.price,
               quantity: pos.qty,
               side: pos.side,
+              action: pos.side === 'long' ? 'buy' : 'sell',
               type: 'entry',
               orderId: pos.orderId
             }]
