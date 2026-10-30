@@ -672,9 +672,6 @@
                 <h2 class="text-3xl font-bold text-gray-950 dark:text-white">
                   {{ selectedScenario?.is_on_track ? "On track" : "Needs adjustment" }}
                 </h2>
-                <p data-testid="status-sentence" class="mt-2 text-base leading-7 text-gray-700 dark:text-gray-200">
-                  {{ statusSentence }}
-                </p>
               </div>
               <span
                 v-if="projectionOutOfDate"
@@ -719,6 +716,13 @@
             </div>
 
             <dl class="mt-6 divide-y divide-gray-200 border-t border-gray-200 text-sm dark:divide-gray-700 dark:border-gray-700">
+              <div data-testid="composition-row" class="grid gap-1 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
+                <dt class="text-gray-500 dark:text-gray-400">Where it comes from</dt>
+                <dd class="text-gray-900 dark:text-white">
+                  <span class="font-semibold">{{ compositionRow.value }}</span>
+                  <span class="block text-xs text-gray-500 dark:text-gray-400">{{ compositionRow.detail }}</span>
+                </dd>
+              </div>
               <div class="grid gap-1 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
                 <dt class="text-gray-500 dark:text-gray-400">Monthly contribution</dt>
                 <dd class="text-gray-900 dark:text-white">
@@ -1140,17 +1144,24 @@ const projectionSyncLabel = computed(() => {
   return 'Projection matches your inputs.'
 })
 
-const statusSentence = computed(() => {
-  const scenario = selectedScenario.value
-  if (!scenario) return ''
-  const balance = formatCurrency(scenario.projected_balance_at_retirement || 0, { compact: true })
-  const goal = formatCurrency(scenario.portfolio_goal_at_retirement || 0, { compact: true })
-  const gap = formatCurrency(Math.abs(scenario.surplus_shortfall_at_retirement || 0), { compact: true })
-  const age = form.target_retirement_age
-  if (scenario.is_on_track) {
-    return `On this path you reach ${balance} at age ${age}, ${gap} more than the ${goal} you need.`
+const compositionRow = computed(() => {
+  const starting = Number(projection.value?.baseline?.starting_balance) || 0
+  const contributions = Number(selectedScenario.value?.total_future_contributions) || 0
+  const growth = Number(selectedScenario.value?.projected_investment_growth) || 0
+  const years = yearsToRetirement.value
+  const rate = formatPercent(selectedScenario.value?.annual_return_percent)
+  const compact = value => formatCurrency(value, { compact: true })
+  const value = `${compact(starting)} today, ${compact(contributions)} added, ${compact(growth)} from growth`
+  if (contributions === 0) {
+    return {
+      value,
+      detail: `With nothing added, the result rests entirely on today's ${compact(starting)} compounding at ${rate} for ${years} years.`
+    }
   }
-  return `On this path you reach ${balance} of the ${goal} you need at age ${age}, leaving a ${gap} gap.`
+  return {
+    value,
+    detail: `Today's balance and future contributions compound at ${rate} for ${years} years.`
+  }
 })
 
 const affordability = computed(() => retirementStore.affordability || null)

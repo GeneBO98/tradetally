@@ -88,6 +88,7 @@ function createStore() {
     },
     projection: {
       years_to_retirement: 25,
+      baseline: { starting_balance: 200000 },
       goal: {
         desired_annual_retirement_spending_today: 60000,
         other_annual_retirement_income_today: 0,
@@ -114,6 +115,8 @@ function createStore() {
         monthly_contribution_change: 500,
         estimated_goal_age: 68.5,
         supported_annual_spending_today: 48000,
+        total_future_contributions: 300000,
+        projected_investment_growth: 700000,
         timeline: [{ year: 0, age: 40, balance: 200000 }]
       }]
     },
@@ -187,8 +190,9 @@ describe('RetirementPlannerView', () => {
 
     expect(wrapper.get('[data-testid="starter-banner"]').text())
       .toContain('These are starting assumptions, not your plan yet.')
-    expect(wrapper.get('[data-testid="status-sentence"]').text())
-      .toBe('On this path you reach $1,200,000 of the $3,140,000 you need at age 65, leaving a $300,000 gap.')
+    expect(wrapper.find('[data-testid="status-sentence"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="composition-row"]').text())
+      .toContain('$200,000 today, $300,000 added, $700,000 from growth')
     expect(wrapper.get('[data-testid="tracked-portfolio"]').text()).toContain('$200,000')
     expect(wrapper.text()).toContain('Starting balance')
     expect(wrapper.get('[data-testid="projection-sync-status"]').text())
