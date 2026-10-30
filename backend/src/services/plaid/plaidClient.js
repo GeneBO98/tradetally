@@ -149,6 +149,16 @@ class PlaidClient {
     });
   }
 
+  /**
+   * Permanently remove an Item at Plaid. Stops per-Item billing for every
+   * product attached to it; the access token is invalid afterwards.
+   */
+  async removeItem(accessToken) {
+    return this.post('/item/remove', {
+      access_token: accessToken
+    });
+  }
+
   async getAccounts(accessToken) {
     return this.post('/accounts/get', {
       access_token: accessToken

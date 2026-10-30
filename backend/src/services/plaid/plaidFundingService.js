@@ -62,6 +62,14 @@ function emptyReviewData() {
 
 const MAX_SYNC_RESTARTS = 3;
 
+// Plaid responses that mean the Item is already gone on their side, so the
+// local row can be deleted without a successful /item/remove.
+const ITEM_ALREADY_GONE_CODES = new Set([
+  'ITEM_NOT_FOUND',
+  'INVALID_ACCESS_TOKEN',
+  'ITEM_NO_ERROR'
+]);
+
 class PlaidFundingService {
   ensureConfigured() {
     if (!plaidClient.isConfigured()) {
@@ -188,8 +196,32 @@ class PlaidFundingService {
     });
   }
 
+  /**
+   * Disconnect a Plaid connection. The Item is removed at Plaid first so it
+   * stops accruing per-Item product fees; only then is the local row deleted.
+   * If Plaid reports the Item is already gone the local delete proceeds. Any
+   * other Plaid failure aborts so the user can retry instead of leaving an
+   * orphaned, still-billed Item behind.
+   */
   async deleteConnection(userId, connectionId) {
     await this.ensureSchemaReady();
+    const connection = await PlaidConnection.findById(connectionId, userId, true);
+    if (!connection) {
+      throw new Error('Plaid connection not found');
+    }
+
+    if (connection.accessToken && plaidClient.isConfigured()) {
+      try {
+        await plaidClient.removeItem(connection.accessToken);
+      } catch (error) {
+        if (!ITEM_ALREADY_GONE_CODES.has(error.plaid?.errorCode)) {
+          error.message = `Plaid could not remove this connection (${error.message}). Nothing was deleted; try again in a moment.`;
+          throw error;
+        }
+        console.log(`[PLAID] Item for connection ${connectionId} already removed at Plaid (${error.plaid.errorCode})`);
+      }
+    }
+
     const deleted = await PlaidConnection.delete(connectionId, userId);
     if (!deleted) {
       throw new Error('Plaid connection not found');

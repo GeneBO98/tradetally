@@ -20,6 +20,7 @@ jest.mock('../../src/models/PlaidConnection', () => ({
   markTransactionPending: jest.fn(),
   upsertTransactionRule: jest.fn(),
   deleteTransactionRule: jest.fn(),
+  delete: jest.fn(),
   upsertTransaction: jest.fn(),
   findTransactionRule: jest.fn(),
   markTransactionRuleApplied: jest.fn(),
@@ -33,6 +34,7 @@ jest.mock('../../src/services/plaid/plaidClient', () => ({
   createLinkToken: jest.fn(),
   syncTransactions: jest.fn(),
   getAccounts: jest.fn(),
+  removeItem: jest.fn(),
   env: 'sandbox'
 }));
 
@@ -358,6 +360,50 @@ describe('plaidFundingService sync pagination recovery', () => {
     const result = await plaidFundingService.syncBankTransactions(connection, accountMap);
     expect(result).toEqual({ processedCount: 0, nextCursor: 'cursor-start', notReady: true });
     log.mockRestore();
+  });
+});
+
+describe('plaidFundingService deleteConnection', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    PlaidConnection.hasSchema.mockResolvedValue(true);
+    plaidClient.isConfigured.mockReturnValue(true);
+    PlaidConnection.findById.mockResolvedValue({ id: 'conn-1', userId: 'user-1', accessToken: 'access-token' });
+    PlaidConnection.delete.mockResolvedValue({ id: 'conn-1' });
+  });
+
+  test('removes the Item at Plaid before deleting the local connection', async () => {
+    plaidClient.removeItem.mockResolvedValue({ request_id: 'r' });
+    const result = await plaidFundingService.deleteConnection('user-1', 'conn-1');
+    expect(PlaidConnection.findById).toHaveBeenCalledWith('conn-1', 'user-1', true);
+    expect(plaidClient.removeItem).toHaveBeenCalledWith('access-token');
+    expect(PlaidConnection.delete).toHaveBeenCalledWith('conn-1', 'user-1');
+    expect(result).toEqual({ id: 'conn-1' });
+  });
+
+  test('still deletes locally when Plaid says the Item is already gone', async () => {
+    const gone = new Error('Plaid request failed: ITEM_NOT_FOUND');
+    gone.plaid = { errorCode: 'ITEM_NOT_FOUND' };
+    plaidClient.removeItem.mockRejectedValue(gone);
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    await plaidFundingService.deleteConnection('user-1', 'conn-1');
+    expect(PlaidConnection.delete).toHaveBeenCalledWith('conn-1', 'user-1');
+    log.mockRestore();
+  });
+
+  test('keeps the connection when Plaid removal fails for another reason', async () => {
+    const outage = new Error('Plaid request failed: INTERNAL_SERVER_ERROR');
+    outage.plaid = { errorCode: 'INTERNAL_SERVER_ERROR' };
+    plaidClient.removeItem.mockRejectedValue(outage);
+    await expect(plaidFundingService.deleteConnection('user-1', 'conn-1'))
+      .rejects.toThrow('Nothing was deleted; try again in a moment.');
+    expect(PlaidConnection.delete).not.toHaveBeenCalled();
+  });
+
+  test('throws not found when the connection does not belong to the user', async () => {
+    PlaidConnection.findById.mockResolvedValue(null);
+    await expect(plaidFundingService.deleteConnection('user-1', 'missing')).rejects.toThrow('Plaid connection not found');
+    expect(plaidClient.removeItem).not.toHaveBeenCalled();
   });
 });
 
