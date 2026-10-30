@@ -665,119 +665,98 @@
           <section
             ref="statusSection"
             data-testid="plan-status"
-            class="rounded-2xl border bg-white p-5 shadow-sm dark:bg-gray-800 sm:p-6"
-            :class="selectedScenario?.is_on_track
-              ? 'border-green-200 dark:border-green-800'
-              : 'border-amber-200 dark:border-amber-800'"
+            class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6"
           >
-            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div class="min-w-0">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Plan status</p>
-                <div class="mt-1 flex flex-wrap items-center gap-3">
-                  <h2 class="text-3xl font-bold text-gray-950 dark:text-white">
-                    {{ selectedScenario?.is_on_track ? "On track" : "Needs adjustment" }}
-                  </h2>
-                  <span
-                    class="inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold"
-                    :class="selectedScenario?.is_on_track
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                      : 'bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-300'"
-                  >
-                    {{ selectedScenario?.is_on_track ? "Surplus projected" : "Shortfall projected" }}
-                  </span>
-                </div>
-                <p data-testid="status-sentence" class="mt-3 text-base leading-7 text-gray-700 dark:text-gray-200">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0 max-w-2xl">
+                <h2 class="text-3xl font-bold text-gray-950 dark:text-white">
+                  {{ selectedScenario?.is_on_track ? "On track" : "Needs adjustment" }}
+                </h2>
+                <p data-testid="status-sentence" class="mt-2 text-base leading-7 text-gray-700 dark:text-gray-200">
                   {{ statusSentence }}
                 </p>
-                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                  Based on {{ selectedScenario?.label || "the selected scenario" }} ·
-                  {{ formatPercent(selectedScenario?.annual_return_percent) }} return ·
-                  {{ selectedInflationLabel }}
-                </p>
-                <div
-                  v-if="viability"
-                  data-testid="viability"
-                  class="mt-4 flex items-start gap-3 rounded-xl border p-3"
-                  :class="viabilityTone.box"
-                >
-                  <component :is="viabilityTone.icon" class="mt-0.5 h-5 w-5 shrink-0" :class="viabilityTone.icon_class" />
-                  <div class="min-w-0">
-                    <p class="text-sm font-semibold" :class="viabilityTone.title">{{ viabilityHeadline }}</p>
-                    <p class="mt-0.5 text-xs leading-5" :class="viabilityTone.body">{{ viabilitySentence }}</p>
-                  </div>
-                </div>
               </div>
               <span
                 v-if="projectionOutOfDate"
-                class="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+                class="inline-flex shrink-0 items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
               >
                 <ArrowPathIcon class="h-3.5 w-3.5" :class="{ 'animate-spin': retirementStore.calculating }" />
                 Updating to match your inputs
               </span>
             </div>
 
-            <div class="mt-6">
-              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">What the selected path calls for</h3>
-              <div class="mt-3 grid gap-4 lg:grid-cols-3">
-                <ActionCard
-                  title="Monthly saving"
-                  :value="contributionActionValue"
-                  :detail="contributionActionDetail"
-                  :icon="BanknotesIcon"
-                />
-                <ActionCard
-                  title="Timing"
-                  :value="selectedScenario?.estimated_goal_age == null
-                    ? 'Goal not reached by 100'
-                    : `Goal near age ${formatAge(selectedScenario.estimated_goal_age)}`"
-                  :detail="selectedScenario?.estimated_goal_age != null && selectedScenario.estimated_goal_age <= form.target_retirement_age
-                    ? 'The projection reaches the target by your planned retirement age.'
-                    : 'A later retirement date gives contributions more time to compound.'"
-                  :icon="ClockIcon"
-                />
-                <ActionCard
-                  title="Supported spending"
-                  :value="formatCurrency(selectedScenario?.supported_annual_spending_today || 0, { compact: true })"
-                  detail="Estimated yearly spending in today’s dollars, including other retirement income."
-                  :icon="HomeIcon"
-                />
+            <div class="mt-6" data-testid="goal-bar">
+              <div class="relative h-3 rounded-full bg-gray-200 dark:bg-gray-700">
+                <div
+                  class="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"
+                  :class="selectedScenario?.is_on_track ? 'bg-green-500' : 'bg-amber-500'"
+                  :style="{ width: `${goalBar.balance_percent}%` }"
+                ></div>
+                <div
+                  class="absolute -inset-y-1.5 w-0.5 bg-gray-900 dark:bg-white"
+                  :style="{ left: `calc(${goalBar.goal_percent}% - 1px)` }"
+                  aria-hidden="true"
+                ></div>
+              </div>
+              <div class="mt-2 flex items-start justify-between gap-4 text-sm">
+                <div>
+                  <p class="font-semibold text-gray-950 dark:text-white">
+                    {{ formatCurrency(selectedScenario?.projected_balance_at_retirement || 0, { compact: true }) }} projected at {{ form.target_retirement_age }}
+                  </p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ formatCurrency(selectedScenario?.projected_balance_in_today_dollars || 0, { compact: true }) }} in today's money
+                  </p>
+                </div>
+                <div class="text-right">
+                  <p class="font-semibold text-gray-950 dark:text-white">
+                    {{ formatCurrency(selectedScenario?.portfolio_goal_at_retirement || 0, { compact: true }) }} needed
+                  </p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ formatCurrency(projection?.goal?.effective_target_today || 0, { compact: true }) }} in today's money
+                  </p>
+                </div>
               </div>
             </div>
-          </section>
 
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6">
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <ResultMetric
-                label="Portfolio goal (amount needed)"
-                :value="formatCurrency(selectedScenario?.portfolio_goal_at_retirement || 0, { compact: true })"
-                :detail="`Needed at age ${form.target_retirement_age} · ${formatCurrency(projection?.goal?.effective_target_today || 0, { compact: true })} in today’s purchasing power`"
-              />
-              <ResultMetric
-                label="Projected balance (amount you may have)"
-                :value="formatCurrency(selectedScenario?.projected_balance_at_retirement || 0, { compact: true })"
-                :detail="`Estimated amount you may have at age ${form.target_retirement_age} · ${formatCurrency(selectedScenario?.projected_balance_in_today_dollars || 0, { compact: true })} in today’s purchasing power`"
-              />
-              <ResultMetric
-                :label="selectedScenario?.is_on_track ? 'Projected surplus' : 'Projected shortfall'"
-                :value="formatCurrency(Math.abs(selectedScenario?.surplus_shortfall_at_retirement || 0), { compact: true })"
-                detail="Projected balance minus the portfolio goal, in retirement-year dollars"
-              />
-              <ResultMetric
-                label="Minimum monthly contribution"
-                :value="selectedScenario?.required_monthly_contribution == null
-                  ? 'Not reached'
-                  : formatWholeCurrency(selectedScenario.required_monthly_contribution)"
-                detail="Estimated total per month needed to reach the goal, not an amount added to your current contribution"
-              />
-            </div>
-            <div class="mt-4 flex items-start gap-2 text-xs leading-5 text-gray-500 dark:text-gray-400">
-              <InformationCircleIcon class="mt-0.5 h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400" />
-              <p>
-                The portfolio goal is what the plan calculates you need. The projected balance is what the
-                selected return scenario estimates you may have. Plan status compares those two amounts in
-                retirement-year dollars.
-              </p>
-            </div>
+            <dl class="mt-6 divide-y divide-gray-200 border-t border-gray-200 text-sm dark:divide-gray-700 dark:border-gray-700">
+              <div class="grid gap-1 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
+                <dt class="text-gray-500 dark:text-gray-400">Monthly contribution</dt>
+                <dd class="text-gray-900 dark:text-white">
+                  <span class="font-semibold">{{ contributionRow.value }}</span>
+                  <span v-if="contributionRow.detail" class="block text-xs text-gray-500 dark:text-gray-400">{{ contributionRow.detail }}</span>
+                </dd>
+              </div>
+              <div v-if="viability" data-testid="viability" class="grid gap-1 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
+                <dt class="text-gray-500 dark:text-gray-400">What you can afford</dt>
+                <dd class="text-gray-900 dark:text-white">
+                  <span class="font-semibold" :class="viabilityValueClass">{{ viabilityHeadline }}</span>
+                  <span class="block text-xs text-gray-500 dark:text-gray-400">{{ viabilitySentence }}</span>
+                </dd>
+              </div>
+              <div class="grid gap-1 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
+                <dt class="text-gray-500 dark:text-gray-400">Goal reached</dt>
+                <dd class="text-gray-900 dark:text-white">
+                  <span class="font-semibold">{{ goalAgeRow.value }}</span>
+                  <span v-if="goalAgeRow.detail" class="block text-xs text-gray-500 dark:text-gray-400">{{ goalAgeRow.detail }}</span>
+                </dd>
+              </div>
+              <div class="grid gap-1 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
+                <dt class="text-gray-500 dark:text-gray-400">Yearly spending supported</dt>
+                <dd class="text-gray-900 dark:text-white">
+                  <span class="font-semibold">{{ formatCurrency(selectedScenario?.supported_annual_spending_today || 0, { compact: true }) }} in today's money</span>
+                  <span class="block text-xs text-gray-500 dark:text-gray-400">{{ supportedSpendingDetail }}</span>
+                </dd>
+              </div>
+              <div class="grid gap-1 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
+                <dt class="text-gray-500 dark:text-gray-400">Assumptions</dt>
+                <dd class="text-gray-900 dark:text-white">
+                  <span class="font-semibold">{{ selectedScenario?.label || "Custom assumption" }}</span>
+                  <span class="block text-xs text-gray-500 dark:text-gray-400">
+                    {{ formatPercent(selectedScenario?.annual_return_percent) }} yearly return and {{ selectedInflationLabel }}. Amounts above are in retirement-year dollars unless noted.
+                  </span>
+                </dd>
+              </div>
+            </dl>
           </section>
 
           <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6">
@@ -1043,9 +1022,7 @@ import {
   CalculatorIcon,
   CalendarDaysIcon,
   ChartBarIcon,
-  CheckCircleIcon,
   ChevronDownIcon,
-  ClockIcon,
   ExclamationTriangleIcon,
   HomeIcon,
   InformationCircleIcon,
@@ -1233,24 +1210,53 @@ const viabilitySentence = computed(() => {
   return `You could save up to ${capacity} a month. Lower the goal, extend the timeline, or raise the return assumption to find a reachable plan.`
 })
 
-const viabilityTone = computed(() => {
+const viabilityValueClass = computed(() => {
   const status = viability.value?.status
-  if (status === 'on_track' || status === 'affordable') {
-    return {
-      box: 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20',
-      icon: CheckCircleIcon,
-      icon_class: 'text-green-600 dark:text-green-400',
-      title: 'text-green-900 dark:text-green-200',
-      body: 'text-green-800 dark:text-green-300'
-    }
-  }
+  if (status === 'on_track' || status === 'affordable') return 'text-green-700 dark:text-green-400'
+  return 'text-amber-700 dark:text-amber-400'
+})
+
+const goalBar = computed(() => {
+  const balance = Math.max(0, Number(selectedScenario.value?.projected_balance_at_retirement) || 0)
+  const goal = Math.max(0, Number(selectedScenario.value?.portfolio_goal_at_retirement) || 0)
+  const scale = Math.max(balance, goal) * 1.08 || 1
   return {
-    box: 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20',
-    icon: ExclamationTriangleIcon,
-    icon_class: 'text-amber-600 dark:text-amber-400',
-    title: 'text-amber-900 dark:text-amber-200',
-    body: 'text-amber-800 dark:text-amber-300'
+    balance_percent: Math.min(100, (balance / scale) * 100),
+    goal_percent: Math.min(98, Math.max(2, (goal / scale) * 100))
   }
+})
+
+const contributionRow = computed(() => {
+  const current = Number(form.monthly_contribution) || 0
+  const required = selectedScenario.value?.required_monthly_contribution
+  const value = `${formatWholeCurrency(current)} a month`
+  if (required == null) {
+    return { value, detail: 'No monthly amount reaches the goal before age 100 on this path.' }
+  }
+  if (required <= current) {
+    return { value, detail: `${formatWholeCurrency(required)} a month is enough to reach the goal.` }
+  }
+  return { value, detail: `${formatWholeCurrency(required)} a month is needed, ${formatWholeCurrency(required - current)} more than now.` }
+})
+
+const goalAgeRow = computed(() => {
+  const age = selectedScenario.value?.estimated_goal_age
+  const retirementAge = Number(form.target_retirement_age)
+  if (age == null) return { value: 'Not by age 100', detail: 'At the current contribution and return.' }
+  const rounded = formatAge(age)
+  if (age <= retirementAge) {
+    return { value: `Age ${rounded}`, detail: `${Math.max(0, Math.round(retirementAge - age))} years before you plan to retire.` }
+  }
+  return { value: `Age ${rounded}`, detail: `${Math.round(age - retirementAge)} years after your planned retirement at ${retirementAge}.` }
+})
+
+const supportedSpendingDetail = computed(() => {
+  const supported = Number(selectedScenario.value?.supported_annual_spending_today) || 0
+  const wanted = Number(form.desired_annual_retirement_spending) || 0
+  if (!wanted) return ''
+  const wantedText = formatCurrency(wanted, { compact: true })
+  if (supported >= wanted) return `Covers the ${wantedText} a year you want, including other retirement income.`
+  return `Short of the ${wantedText} a year you want, including other retirement income.`
 })
 
 const formIsValid = computed(() => (
@@ -1275,22 +1281,6 @@ const hasUnsavedChanges = computed(() => {
   if (!retirementStore.plan) return true
   const savedPayload = planPayload(retirementStore.plan)
   return JSON.stringify(planPayload(form)) !== JSON.stringify(savedPayload)
-})
-
-const contributionActionValue = computed(() => {
-  const required = selectedScenario.value?.required_monthly_contribution
-  const change = selectedScenario.value?.monthly_contribution_change
-  if (required == null) return 'Target not reached'
-  if (change <= 0) return 'Current amount is sufficient'
-  return `Add ${formatWholeCurrency(change)} monthly`
-})
-
-const contributionActionDetail = computed(() => {
-  const required = selectedScenario.value?.required_monthly_contribution
-  if (required == null) {
-    return 'The current assumptions do not reach the target before age 100.'
-  }
-  return `A total monthly contribution of ${formatWholeCurrency(required)} is projected to reach the target.`
 })
 
 const StepBadge = defineComponent({
@@ -1380,42 +1370,6 @@ const PercentField = defineComponent({
       props.help
         ? h('span', { class: 'mt-1.5 block text-xs leading-5 text-gray-500 dark:text-gray-400' }, props.help)
         : null
-    ])
-  }
-})
-
-const ResultMetric = defineComponent({
-  name: 'ResultMetric',
-  props: {
-    label: { type: String, required: true },
-    value: { type: String, required: true },
-    detail: { type: String, default: '' }
-  },
-  setup(props) {
-    return () => h('div', { class: 'rounded-xl bg-gray-50 p-4 dark:bg-gray-900/45' }, [
-      h('p', { class: 'text-xs font-medium text-gray-500 dark:text-gray-400' }, props.label),
-      h('p', { class: 'mt-2 text-xl font-bold text-gray-950 dark:text-white' }, props.value),
-      h('p', { class: 'mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400' }, props.detail)
-    ])
-  }
-})
-
-const ActionCard = defineComponent({
-  name: 'ActionCard',
-  props: {
-    title: { type: String, required: true },
-    value: { type: String, required: true },
-    detail: { type: String, required: true },
-    icon: { type: [Object, Function], required: true }
-  },
-  setup(props) {
-    return () => h('article', { class: 'rounded-xl border border-gray-200 p-4 dark:border-gray-700' }, [
-      h('div', { class: 'flex items-center gap-2 text-primary-700 dark:text-primary-300' }, [
-        h(props.icon, { class: 'h-4 w-4' }),
-        h('p', { class: 'text-xs font-semibold uppercase tracking-wider' }, props.title)
-      ]),
-      h('p', { class: 'mt-3 text-base font-bold text-gray-950 dark:text-white' }, props.value),
-      h('p', { class: 'mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400' }, props.detail)
     ])
   }
 })
