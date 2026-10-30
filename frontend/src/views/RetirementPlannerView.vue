@@ -274,31 +274,21 @@
                 </div>
               </div>
 
-              <MoneyField
-                v-model="form.additional_retirement_savings"
-                label="Other retirement savings"
-                :currency-symbol="currencySymbol"
-                help="Retirement assets not tracked in TradeTally, such as a 401(k) or IRA held elsewhere."
-              />
-
               <div
                 v-if="linkedSavingsAccounts.length > 0"
                 data-testid="linked-savings"
-                class="rounded-xl border border-gray-200 p-3 dark:border-gray-700"
+                class="rounded-xl border border-gray-200 p-4 dark:border-gray-700"
               >
-                <div class="flex items-center justify-between gap-3">
-                  <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">Linked bank accounts to count as retirement savings</p>
-                  <button
-                    v-if="linkedSavingsTotal > 0"
-                    type="button"
-                    data-testid="use-linked-savings"
-                    class="shrink-0 text-xs font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
-                    @click="applySuggestion({ field: 'additional_retirement_savings', value: linkedSavingsTotal })"
-                  >
-                    Use {{ formatCurrency(linkedSavingsTotal, { compact: true }) }}
-                  </button>
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <p class="text-sm font-medium text-gray-700 dark:text-gray-200">Linked bank accounts</p>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Tick the ones that are retirement money. Ticked balances are added to your starting balance.</p>
+                  </div>
+                  <p class="shrink-0 text-xl font-bold text-gray-950 dark:text-white">
+                    {{ formatCurrency(linkedSavingsTotal, { compact: true }) }}
+                  </p>
                 </div>
-                <ul class="mt-2 space-y-1.5">
+                <ul class="mt-3 space-y-1.5">
                   <li v-for="account in linkedSavingsAccounts" :key="account.id">
                     <label class="flex cursor-pointer items-center gap-2 text-xs text-gray-700 dark:text-gray-200">
                       <input
@@ -312,13 +302,25 @@
                         {{ account.account_name }}<span v-if="account.mask"> ••••{{ account.mask }}</span>
                         <span class="text-gray-500 dark:text-gray-400"> · {{ account.account_subtype }}</span>
                       </span>
-                      <span class="shrink-0 font-medium text-gray-900 dark:text-white">
+                      <span
+                        class="shrink-0 font-medium"
+                        :class="account.include_in_retirement_savings ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'"
+                      >
                         {{ formatCurrency(account.current_balance || 0, { compact: true }) }}
                       </span>
                     </label>
                   </li>
                 </ul>
               </div>
+
+              <MoneyField
+                v-model="form.additional_retirement_savings"
+                label="Other retirement savings"
+                :currency-symbol="currencySymbol"
+                :help="linkedSavingsAccounts.length > 0
+                  ? 'Anything not tracked or linked above, such as a 401(k) at another provider.'
+                  : 'Retirement assets not tracked in TradeTally, such as a 401(k) or IRA held elsewhere.'"
+              />
 
               <div
                 v-if="affordability?.available && affordability.debt?.count > 0"
@@ -350,7 +352,7 @@
 
               <div class="flex items-center justify-between border-t border-gray-200 pt-3 text-sm dark:border-gray-700">
                 <span class="text-gray-600 dark:text-gray-300">Starting balance</span>
-                <span class="font-semibold text-gray-950 dark:text-white">
+                <span data-testid="starting-balance" class="font-semibold text-gray-950 dark:text-white">
                   {{ formatCurrency(startingBalance, { compact: true }) }}
                 </span>
               </div>
@@ -1125,6 +1127,7 @@ const startingBalance = computed(() => {
   const baseline = Number(projection.value?.baseline?.starting_balance)
   if (Number.isFinite(baseline) && !projectionOutOfDate.value) return baseline
   return Number(retirementStore.portfolio?.tracked_portfolio_value || 0)
+    + linkedSavingsTotal.value
     + (Number(form.additional_retirement_savings) || 0)
 })
 
@@ -1597,6 +1600,7 @@ async function toggleSavingsAccount(account, include) {
   savingsAccountBusy.value = account.id
   try {
     await retirementStore.setRetirementSavingsAccount(account.id, include)
+    await calculatePreview()
   } catch (error) {
     showError('Account not updated', error.response?.data?.error || error.message)
   } finally {

@@ -80,6 +80,29 @@ function normalizePlan(data, existingPlan = null) {
   };
 }
 
+/**
+ * Sum of linked Plaid depository accounts the user ticked as retirement
+ * savings. Zero when Plaid is not set up or the column does not exist yet.
+ */
+async function getLinkedSavingsValue(userId) {
+  try {
+    const result = await db.query(`
+      SELECT COALESCE(SUM(current_balance), 0) AS total
+      FROM plaid_accounts
+      WHERE user_id = $1
+        AND is_active = true
+        AND account_type = 'depository'
+        AND include_in_retirement_savings = true
+    `, [userId]);
+    return Number(result.rows[0]?.total) || 0;
+  } catch (error) {
+    if (error.code !== '42P01' && error.code !== '42703') {
+      console.warn('[RETIREMENT] Could not read linked savings:', error.message);
+    }
+    return 0;
+  }
+}
+
 class RetirementService {
   static getDefaultPlan() {
     return normalizePlan({});
@@ -169,10 +192,11 @@ class RetirementService {
 
   static async calculate(userId, data, options = {}) {
     const plan = normalizePlan(data);
-    const [overview, portfolioHistoricalScenarios, availableAccounts] = await Promise.all([
+    const [overview, portfolioHistoricalScenarios, availableAccounts, linkedSavingsValue] = await Promise.all([
       PortfolioService.getOverview(userId, options),
       PortfolioService.getHistoricalReturnScenarios(userId, options),
-      PortfolioService.getRetirementAccountBreakdown(userId)
+      PortfolioService.getRetirementAccountBreakdown(userId),
+      getLinkedSavingsValue(userId)
     ]);
     const historicalInflation = await HistoricalInflationService.enrichScenarios(
       portfolioHistoricalScenarios
@@ -184,6 +208,7 @@ class RetirementService {
     const projection = calculateRetirementProjection({
       plan,
       tracked_portfolio_value: overview.totalValue || 0,
+      linked_savings_value: linkedSavingsValue,
       historical_scenarios: historicalScenarios,
       as_of_date: new Date()
     });
@@ -194,6 +219,7 @@ class RetirementService {
         scope: scope.length > 0 ? 'filtered' : 'all_accounts',
         accounts: scope,
         tracked_portfolio_value: Number(overview.totalValue) || 0,
+        linked_savings_value: linkedSavingsValue,
         total_cost_basis: Number(overview.totalCostBasis) || 0,
         position_count: Number(overview.positionCount) || 0,
         price_stale_position_count: Number(overview.priceStalePositionCount) || 0,

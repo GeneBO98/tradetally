@@ -303,6 +303,7 @@ function calculateScenario(plan, baseline, scenario, effectiveCurrentAge, months
 function calculateRetirementProjection({
   plan,
   tracked_portfolio_value,
+  linked_savings_value = 0,
   historical_scenarios = [],
   as_of_date = new Date()
 }) {
@@ -318,11 +319,16 @@ function calculateRetirementProjection({
   );
   const yearsToRetirement = monthsToRetirement / MONTHS_PER_YEAR;
   const trackedValue = Math.max(0, toNumber(tracked_portfolio_value));
+  // Linked bank accounts (savings, CDs, HSAs) the user ticked as retirement
+  // money. Lives on the Plaid account row, not the plan, so it follows the
+  // account rather than the saved assumptions.
+  const linkedSavings = Math.max(0, toNumber(linked_savings_value));
   const additionalSavings = Math.max(0, toNumber(plan.additional_retirement_savings));
   const baseline = {
     tracked_portfolio_value: round(trackedValue),
+    linked_savings_value: round(linkedSavings),
     additional_retirement_savings: round(additionalSavings),
-    starting_balance: round(trackedValue + additionalSavings)
+    starting_balance: round(trackedValue + linkedSavings + additionalSavings)
   };
   const goal = calculateGoal(plan, yearsToRetirement, targetAge);
   const scenarioInputs = [{

@@ -59,6 +59,7 @@ describe('RetirementService', () => {
       priceStalePositionCount: 1
     });
     PortfolioService.getHistoricalReturnScenarios.mockResolvedValue([]);
+    db.query.mockResolvedValue({ rows: [{ total: '0' }] });
 
     const result = await RetirementService.calculate('user-1', validPlan);
 
@@ -66,6 +67,35 @@ describe('RetirementService', () => {
     expect(result.portfolio.scope).toBe('all_accounts');
     expect(result.portfolio.price_stale_position_count).toBe(1);
     expect(result.portfolio.available_accounts[0].sources).toEqual(['manual_holdings']);
+    expect(result.portfolio.linked_savings_value).toBe(0);
+    expect(result.projection.baseline.starting_balance).toBe(260000);
+  });
+
+  test('adds ticked linked bank accounts to the starting balance', async () => {
+    PortfolioService.getOverview.mockResolvedValue({ totalValue: 250000, totalCostBasis: 0, positionCount: 1, priceStalePositionCount: 0 });
+    PortfolioService.getHistoricalReturnScenarios.mockResolvedValue([]);
+    db.query.mockResolvedValue({ rows: [{ total: '25000.50' }] });
+
+    const result = await RetirementService.calculate('user-1', validPlan);
+
+    expect(db.query.mock.calls[0][0]).toMatch(/include_in_retirement_savings = true/);
+    expect(result.portfolio.linked_savings_value).toBe(25000.5);
+    expect(result.projection.baseline).toMatchObject({
+      tracked_portfolio_value: 250000,
+      linked_savings_value: 25000.5,
+      additional_retirement_savings: 10000,
+      starting_balance: 285000.5
+    });
+  });
+
+  test('ignores linked savings when the Plaid column is missing', async () => {
+    PortfolioService.getOverview.mockResolvedValue({ totalValue: 250000, totalCostBasis: 0, positionCount: 1, priceStalePositionCount: 0 });
+    PortfolioService.getHistoricalReturnScenarios.mockResolvedValue([]);
+    const missing = new Error('column does not exist');
+    missing.code = '42703';
+    db.query.mockRejectedValue(missing);
+
+    const result = await RetirementService.calculate('user-1', validPlan);
     expect(result.projection.baseline.starting_balance).toBe(260000);
   });
 

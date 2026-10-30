@@ -161,7 +161,7 @@ function assessViability(summary, scenario, plan) {
   };
 }
 
-function buildSuggestions(summary, savingsAccounts) {
+function buildSuggestions(summary) {
   const monthly = summary.monthly;
   const annualSpending = round((monthly.spending + monthly.debt_payments) * 12);
   const annualSpendingWithoutDebt = round(monthly.spending * 12);
@@ -170,12 +170,7 @@ function buildSuggestions(summary, savingsAccounts) {
     monthly_contribution_capacity: round(monthly.capacity, 0),
     current_annual_cost_of_living: annualSpending,
     desired_annual_retirement_spending: round(annualSpendingWithoutDebt * RETIREMENT_SPENDING_RATIO, 0),
-    retirement_spending_ratio_percent: RETIREMENT_SPENDING_RATIO * 100,
-    additional_retirement_savings: round(
-      savingsAccounts
-        .filter(account => account.include_in_retirement_savings)
-        .reduce((sum, account) => sum + (Number(account.current_balance) || 0), 0)
-    )
+    retirement_spending_ratio_percent: RETIREMENT_SPENDING_RATIO * 100
   };
 }
 
@@ -354,7 +349,7 @@ class RetirementAffordabilityService {
       cashflow,
       debt,
       savings_accounts: accounts,
-      suggestions: buildSuggestions(cashflow, accounts),
+      suggestions: buildSuggestions(cashflow),
       classification: {
         ...classification,
         ai_enabled: classification.ai_reason !== 'no_ai_provider' && classification.ai_reason !== 'disabled'

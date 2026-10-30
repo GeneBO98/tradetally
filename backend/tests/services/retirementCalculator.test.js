@@ -117,6 +117,7 @@ describe('retirementCalculator', () => {
     const result = calculateRetirementProjection({
       plan: basePlan,
       tracked_portfolio_value: 150000,
+      linked_savings_value: 25000,
       historical_scenarios: [{
         key: 'historical_5y',
         label: 'Historical 5-year',
@@ -135,7 +136,12 @@ describe('retirementCalculator', () => {
       as_of_date: '2026-01-01'
     });
 
-    expect(result.baseline.starting_balance).toBe(150000);
+    expect(result.baseline.starting_balance).toBe(175000);
+    expect(result.baseline).toMatchObject({
+      tracked_portfolio_value: 150000,
+      linked_savings_value: 25000,
+      starting_balance: 175000 + Number(basePlan.additional_retirement_savings)
+    });
     expect(result.scenarios).toHaveLength(2);
     expect(result.scenarios[0].key).toBe('custom');
     expect(result.scenarios[1].period_years).toBe(5);

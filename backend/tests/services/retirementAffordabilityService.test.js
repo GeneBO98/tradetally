@@ -142,8 +142,7 @@ describe('getSummary and attach', () => {
       monthly_contribution_current_saving: 500,
       monthly_contribution_capacity: 1700,
       current_annual_cost_of_living: 51600,
-      desired_annual_retirement_spending: 37440,
-      additional_retirement_savings: 12000
+      desired_annual_retirement_spending: 37440
     });
     expect(affordability.classification).toMatchObject({ rules: 10, ai: 4, unclassified: 1, ai_enabled: true });
     expect(affordability.viability.custom.status).toBe('affordable');

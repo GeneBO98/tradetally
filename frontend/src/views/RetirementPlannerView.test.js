@@ -296,14 +296,16 @@ describe('RetirementPlannerView', () => {
     const savings = wrapper.get('[data-testid="linked-savings"]')
     expect(savings.text()).toContain('Savings ••••1234')
     expect(savings.text()).not.toContain('Checking')
-    expect(savings.text()).toContain('Use $12,000')
+    expect(savings.text()).toContain('$12,000')
+    expect(savings.text()).toContain('Ticked balances are added to your starting balance.')
     expect(wrapper.get('[data-testid="linked-debts"]').text()).toContain('Debts: $8,000 across 1 account')
     expect(wrapper.get('[data-testid="spending-suggestion"]').text()).toContain('Use 80% of spending without debt')
 
-    await wrapper.get('[data-testid="use-linked-savings"]').trigger('click')
-    const savingsInput = wrapper.findAllComponents({ name: 'MoneyField' })
-      .find(field => field.props('label') === 'Other retirement savings')
-    expect(savingsInput.props('modelValue')).toBe(12000)
+    mocks.retirementStore.calculate.mockClear()
+    await savings.get('input[type="checkbox"]').setValue(false)
+    await flushPromises()
+    expect(mocks.retirementStore.setRetirementSavingsAccount).toHaveBeenCalledWith('sav', false)
+    expect(mocks.retirementStore.calculate).toHaveBeenCalledTimes(1)
   })
 
   it('offers to link a bank account when no affordability data exists', async () => {
