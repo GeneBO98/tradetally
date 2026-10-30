@@ -89,6 +89,7 @@
           </router-link>
           <span>&bull;</span>
           <VersionDisplay />
+          <RateSourceAttribution />
         </div>
         <a
           href="https://www.betterlaunch.co"
@@ -109,6 +110,7 @@
 
 <script setup>
 import VersionDisplay from '@/components/common/VersionDisplay.vue'
+import RateSourceAttribution from '@/components/common/RateSourceAttribution.vue'
 
 defineEmits(['show-support'])
 </script>
