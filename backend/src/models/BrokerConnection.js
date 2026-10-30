@@ -555,6 +555,7 @@ class BrokerConnection {
           last_sync_trades_skipped = $3,
           next_scheduled_sync = $4,
           consecutive_failures = 0,
+          broker_metadata = COALESCE(broker_metadata, '{}'::jsonb) - 'transient_retry_count',
           last_error_at = NULL,
           last_error_message = NULL,
           updated_at = CURRENT_TIMESTAMP
@@ -662,9 +663,47 @@ class BrokerConnection {
   }
 
   /**
-   * Update connection after failed sync
+   * Update connection after failed sync.
+   *
+   * Configuration failures (invalid token, invalid query, auth expired) count
+   * toward consecutive_failures and lock the connection into 'error' on the
+   * third strike so the scheduler stops hammering a broken setup.
+   *
+   * Transient failures (report timeouts, network blips, broker "try again"
+   * codes, database connection timeouts) never escalate: the counter and
+   * status are left alone and the next automatic sync is pushed out with
+   * exponential backoff (30 min, 1 h, 2 h ... capped at 24 h) tracked in
+   * broker_metadata.transient_retry_count. updateAfterSync clears the
+   * counter. Without this distinction a few slow IBKR nights permanently
+   * disabled a connection until the user noticed and reconnected.
    */
-  static async updateAfterFailure(connectionId, errorMessage) {
+  static async updateAfterFailure(connectionId, errorMessage, { transient = false } = {}) {
+    if (transient) {
+      const query = `
+        UPDATE broker_connections
+        SET last_sync_status = 'failed',
+            last_error_at = CURRENT_TIMESTAMP,
+            last_error_message = $2,
+            broker_metadata = COALESCE(broker_metadata, '{}'::jsonb) || jsonb_build_object(
+              'transient_retry_count',
+              COALESCE((broker_metadata->>'transient_retry_count')::int, 0) + 1
+            ),
+            next_scheduled_sync = CASE
+              WHEN auto_sync_enabled THEN NOW() + LEAST(
+                (30 * POWER(2, COALESCE((broker_metadata->>'transient_retry_count')::int, 0)))::int,
+                1440
+              ) * INTERVAL '1 minute'
+              ELSE next_scheduled_sync
+            END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *
+      `;
+      const result = await db.query(query, [connectionId, errorMessage]);
+      if (result.rows.length === 0) return null;
+      return this.formatConnection(result.rows[0], false);
+    }
+
     const query = `
       UPDATE broker_connections
       SET last_sync_status = 'failed',

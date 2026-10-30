@@ -1506,3 +1506,25 @@ describe('IBKR transient error handling', () => {
       });
   });
 });
+
+describe('isTransientSyncError', () => {
+  const { isTransientSyncError } = require('../../src/services/brokerSync/index');
+
+  test('honors the broker service transient flag and known network codes', () => {
+    expect(isTransientSyncError(Object.assign(new Error('x'), { transient: true }))).toBe(true);
+    expect(isTransientSyncError(Object.assign(new Error('x'), { code: 'ECONNRESET' }))).toBe(true);
+    expect(isTransientSyncError(Object.assign(new Error('x'), { errorCode: 'TIMEOUT' }))).toBe(true);
+  });
+
+  test('classifies client and database timeouts as transient', () => {
+    expect(isTransientSyncError(new Error('timeout of 120000ms exceeded'))).toBe(true);
+    expect(isTransientSyncError(new Error('Connection terminated due to connection timeout'))).toBe(true);
+    expect(isTransientSyncError(new Error('timeout exceeded when trying to connect'))).toBe(true);
+  });
+
+  test('leaves configuration errors non-transient', () => {
+    expect(isTransientSyncError(new Error('Flex Token is invalid. Please generate a new token in IBKR.'))).toBe(false);
+    expect(isTransientSyncError(new Error('Schwab authentication expired. Please re-connect your account.'))).toBe(false);
+    expect(isTransientSyncError(null)).toBe(false);
+  });
+});

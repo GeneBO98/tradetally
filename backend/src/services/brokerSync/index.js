@@ -8,6 +8,7 @@ const db = require('../../config/database');
 const AnalyticsCache = require('../analyticsCache');
 const OptionStrategyGroupingService = require('../optionStrategyGroupingService');
 const ibkrService = require('./ibkrService');
+const BrokerReauthNotificationService = require('./brokerReauthNotificationService');
 const schwabService = require('./schwabService');
 const tradestationService = require('./tradestationService');
 const alpacaService = require('./alpacaService');
@@ -20,6 +21,30 @@ const { publishInBackground } = require('../../events/domainEvents');
 
 const IBKR_BACKFILL_RETRY_LIMIT = 3;
 const IBKR_BACKFILL_RETRY_DELAY_MINUTES = 60;
+
+// Failures that say nothing about the user's configuration. Broker services
+// flag their own transient errors; this catches the ones raised below them
+// (HTTP client timeouts, DNS, Postgres pool exhaustion during a long sync).
+const TRANSIENT_ERROR_CODES = new Set(['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNABORTED', 'TIMEOUT']);
+const TRANSIENT_ERROR_PATTERNS = [
+  /timeout/i,
+  /timed out/i,
+  /connection terminated/i,
+  /ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND/,
+  /socket hang up/i,
+  /too many clients/i,
+  /temporarily unavailable/i,
+  /503|502|504/
+];
+
+function isTransientSyncError(error) {
+  if (!error) return false;
+  if (error.transient === true) return true;
+  if (error.code && TRANSIENT_ERROR_CODES.has(error.code)) return true;
+  if (error.errorCode && TRANSIENT_ERROR_CODES.has(error.errorCode)) return true;
+  const message = String(error.message || '');
+  return TRANSIENT_ERROR_PATTERNS.some(pattern => pattern.test(message));
+}
 
 class BrokerSyncService {
   /**
@@ -323,10 +348,11 @@ class BrokerSyncService {
       // Without this we only have the human-friendly message and can't tell
       // an IBKR 1019 ("statement being generated") from a 1011 ("inactive
       // account") after the fact.
+      const transient = isTransientSyncError(error);
       const errorDetails = {
         errorCode: error.errorCode || null,
         rawMessage: error.rawMessage || null,
-        transient: Boolean(error.transient),
+        transient,
         timestamp: new Date().toISOString()
       };
 
@@ -336,23 +362,28 @@ class BrokerSyncService {
         errorDetails
       });
 
-      // Update connection failure status
-      await BrokerConnection.updateAfterFailure(connectionId, error.message);
-
-      // Auto-retry transient failures by bringing next_scheduled_sync
-      // forward to 30 min from now. The scheduler will pick it up on its
-      // next pass. Only retries when auto-sync is enabled and we haven't
-      // already burned through retries (updateAfterFailure caps at 3
-      // consecutive failures, after which the connection is marked 'error').
-      // Manual retries are not auto-rescheduled — the user is watching the
-      // UI and can re-click "Sync Now".
-      if (connection.brokerType !== 'ibkr' && error.transient && syncType === 'scheduled') {
-        try {
-          await BrokerConnection.scheduleTransientRetry(connectionId, 30);
-          console.log(`[BROKER-SYNC] Scheduled transient-failure retry for ${connectionId} in 30 min`);
-        } catch (retryErr) {
-          console.error(`[BROKER-SYNC] Failed to schedule retry: ${retryErr.message}`);
-        }
+      // Update connection failure status. Transient failures never count
+      // toward the 'error' lockout; the model pushes the next automatic sync
+      // out with exponential backoff instead, so a slow broker night is
+      // retried rather than silently disabling the connection. Manual syncs
+      // are not rescheduled: the user is watching the UI and can retry.
+      // IBKR credential errors (expired/invalid Flex token, bad query ID)
+      // cannot succeed on retry. Expire the connection and notify the owner
+      // once, the same way a Schwab refresh-token expiry does, so they learn
+      // about it from an email and the in-app banner instead of a silent
+      // three-strike lockout.
+      let updated = null;
+      if (connection.brokerType === 'ibkr' && ibkrService.isIBKRCredentialError(error)) {
+        await BrokerReauthNotificationService.markRequired(connection, 'Interactive Brokers', {
+          message: error.message,
+          instructions: ibkrService.IBKR_REAUTH_INSTRUCTIONS,
+          reauthMode: 'credentials'
+        });
+      } else {
+        updated = await BrokerConnection.updateAfterFailure(connectionId, error.message, { transient });
+      }
+      if (transient && updated?.nextScheduledSync) {
+        console.log(`[BROKER-SYNC] Transient failure for ${connectionId}; next automatic retry at ${new Date(updated.nextScheduledSync).toISOString()}`);
       }
 
       publishInBackground('broker_sync.completed', {
@@ -578,3 +609,4 @@ class BrokerSyncService {
 }
 
 module.exports = new BrokerSyncService();
+module.exports.isTransientSyncError = isTransientSyncError;

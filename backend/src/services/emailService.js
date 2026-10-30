@@ -482,7 +482,9 @@ class EmailService {
     userId,
     connectionId,
     expiringSoon = false,
-    expiresAt = null
+    expiresAt = null,
+    failureMessage = null,
+    instructions = null
   }) {
     if (!this.isConfigured()) {
       console.log('Email not configured, skipping broker reconnect email');
@@ -504,6 +506,16 @@ class EmailService {
       ? `Your ${safeBrokerName} authorization expires within 24 hours. Reauthorize now to keep TradeTally syncing without interruption. Your existing trades and sync settings will remain unchanged.`
       : `Your ${safeBrokerName} authorization expired, so TradeTally can no longer sync new trades. Your existing trades are safe. Reconnect the account to resume syncing without deleting or re-importing anything.`;
     const actionLabel = expiringSoon ? `Reauthorize ${safeBrokerName}` : `Reconnect ${safeBrokerName}`;
+    // Credential brokers (IBKR) explain exactly which check failed and what
+    // the user must do in the broker's own portal before reconnecting.
+    const detailParagraphs = [failureMessage, instructions]
+      .filter(Boolean)
+      .map(text => `
+      <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        ${escapeHtml(text)}
+      </p>`)
+      .join('');
+    const detailText = [failureMessage, instructions].filter(Boolean).map(text => ` ${text}`).join('');
     const content = `
       <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         ${headline}
@@ -513,7 +525,7 @@ class EmailService {
       </p>
       <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         ${body}
-      </p>
+      </p>${detailParagraphs}
       <div style="text-align: center; margin: 0 0 24px 0;">
         <a href="${reconnectUrl}" style="${this.getButtonStyle()}">
           ${actionLabel}
@@ -533,7 +545,7 @@ class EmailService {
       html: this.getBaseTemplate(subject, content),
       text: expiringSoon
         ? `Your ${brokerName} authorization expires within 24 hours. Reauthorize now to prevent a sync interruption: ${reconnectUrl}`
-        : `Your ${brokerName} authorization expired, so TradeTally can no longer sync new trades. Your existing trades are safe. Reconnect at ${reconnectUrl}.`,
+        : `Your ${brokerName} authorization expired, so TradeTally can no longer sync new trades.${detailText} Your existing trades are safe. Reconnect at ${reconnectUrl}.`,
       headers: {
         'X-Entity-Ref-ID': `broker-reauth-${connectionId}`,
         'Message-ID': `<broker-reauth-${connectionId}-${Date.now()}@tradetally.io>`
