@@ -1455,6 +1455,7 @@ const analyticsController = {
               position_group_id,
               entry_time,
               id,
+              executions, -- POSITION_GROUP_KEY reads it (brokerage order check)
               ${fxUsd('pnl', 't')} as pnl,
               ${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0) as gross_pnl,
               r_value,

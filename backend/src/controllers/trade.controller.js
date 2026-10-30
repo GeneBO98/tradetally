@@ -4629,7 +4629,16 @@ const tradeController = {
           error: error.message
         });
       }
-      
+
+      // Services mark "no provider available / provider down" as 503 so it is
+      // not logged and surfaced as an application fault.
+      if (error.statusCode === 503) {
+        return res.status(503).json({
+          error: 'Chart data unavailable',
+          message: error.message
+        });
+      }
+
       res.status(500).json({
         error: 'Failed to fetch chart data',
         message: error.message
