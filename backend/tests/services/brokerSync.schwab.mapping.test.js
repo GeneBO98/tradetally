@@ -375,6 +375,7 @@ describe('Schwab parseTransactions (full payload -> trades)', () => {
         price: 100.25,
         quantity: 10,
         side: 'long',
+        action: 'buy',
         type: 'entry',
         orderId: '1006200000001'
       },
@@ -383,6 +384,7 @@ describe('Schwab parseTransactions (full payload -> trades)', () => {
         price: 103.75,
         quantity: 10,
         side: 'short', // CLOSING with negative amount maps to a sell-direction execution
+        action: 'sell', // stated explicitly so the P&L engine never infers it from side
         type: 'exit',
         orderId: '1006200000002'
       }

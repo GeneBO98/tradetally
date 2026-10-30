@@ -630,3 +630,78 @@ describe('pnlEngine.computeTradePnl', () => {
     });
   });
 });
+
+describe('pnlEngine.computeTradePnl leg-type precedence', () => {
+  // Schwab broker sync wrote the position side into `side` on closing legs
+  // (a long option trade's sell-to-close carried side: 'long'), so the engine
+  // treated every exit as another opening fill: no P&L, doubled quantity,
+  // entry price averaged with the exit price. An explicit entry/exit type must
+  // win over an ambiguous long/short side.
+  test('exit legs whose side is the position side still close the trade (long option)', () => {
+    const { aggregate } = computeTradePnl({
+      side: 'long',
+      instrumentType: 'option',
+      contractSize: 100,
+      executions: [
+        { datetime: '2019-09-16T13:34:43+0000', price: 0.94, quantity: 25, side: 'long', type: 'entry', commission: 23.9625, fees: 0.82, orderId: 'o1' },
+        { datetime: '2019-09-16T14:49:57+0000', price: 1, quantity: 25, side: 'long', type: 'exit', commission: 23.9625, fees: 0.82, orderId: 'o2' }
+      ],
+      timezone: 'UTC'
+    });
+
+    expect(aggregate.is_fully_closed).toBe(true);
+    nearly(aggregate.quantity, 25);
+    nearly(aggregate.entry_price, 0.94);
+    nearly(aggregate.exit_price, 1);
+    // (1 - 0.94) * 25 * 100 = 150 gross, minus 2 * (23.9625 + 0.82) in costs
+    nearly(aggregate.pnl, 150 - 49.565);
+  });
+
+  test('exit legs whose side is the position side still close the trade (short option)', () => {
+    const { aggregate } = computeTradePnl({
+      side: 'short',
+      instrumentType: 'option',
+      contractSize: 100,
+      executions: [
+        { datetime: '2020-09-14T14:28:14+0000', price: 6.68, quantity: 1, side: 'short', type: 'entry', commission: 0.65, fees: 0.04 },
+        { datetime: '2020-09-14T14:28:52+0000', price: 6.98, quantity: 1, side: 'short', type: 'exit', commission: 0.65, fees: 0.04 }
+      ],
+      timezone: 'UTC'
+    });
+
+    expect(aggregate.is_fully_closed).toBe(true);
+    nearly(aggregate.exit_price, 6.98);
+    // (6.68 - 6.98) * 1 * 100 = -30 gross, minus 1.38 in costs
+    nearly(aggregate.pnl, -31.38);
+  });
+
+  test('an explicit buy/sell action still wins over the leg type', () => {
+    const { aggregate } = computeTradePnl({
+      side: 'long',
+      instrumentType: 'stock',
+      executions: [
+        { datetime: '2026-01-05T10:00:00Z', price: 10, quantity: 100, action: 'buy', side: 'long', type: 'entry' },
+        { datetime: '2026-01-05T14:00:00Z', price: 11, quantity: 100, action: 'sell', side: 'long', type: 'exit' }
+      ],
+      timezone: 'UTC'
+    });
+
+    expect(aggregate.is_fully_closed).toBe(true);
+    nearly(aggregate.pnl, 100);
+  });
+
+  test('a fill-direction side without a leg type is unchanged', () => {
+    const { aggregate } = computeTradePnl({
+      side: 'long',
+      instrumentType: 'stock',
+      executions: [
+        { datetime: '2026-01-05T10:00:00Z', price: 10, quantity: 100, side: 'long' },
+        { datetime: '2026-01-05T14:00:00Z', price: 11, quantity: 100, side: 'short' }
+      ],
+      timezone: 'UTC'
+    });
+
+    expect(aggregate.is_fully_closed).toBe(true);
+    nearly(aggregate.pnl, 100);
+  });
+});

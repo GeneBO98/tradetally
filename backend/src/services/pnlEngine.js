@@ -115,15 +115,30 @@ function hasGroupedShape(executions) {
   ));
 }
 
+function actionFromLegType(type, tradeSide) {
+  const t = String(type || '').toLowerCase();
+  if (t === 'entry') return tradeSide === 'short' ? 'sell' : 'buy';
+  if (t === 'exit') return tradeSide === 'short' ? 'buy' : 'sell';
+  return '';
+}
+
 function deriveAction(execution, tradeSide) {
   const explicit = execution.action || execution.side;
-  if (explicit) return normalizeAction(explicit);
-  if (execution.type) {
-    const t = String(execution.type).toLowerCase();
-    if (t === 'entry') return tradeSide === 'short' ? 'sell' : 'buy';
-    if (t === 'exit') return tradeSide === 'short' ? 'buy' : 'sell';
+  const typeAction = actionFromLegType(execution.type, tradeSide);
+  if (explicit) {
+    const normalized = normalizeAction(explicit);
+    // A `side` of long/short is ambiguous: broker importers have written both
+    // the fill direction (short = sold) and the position side (short trade)
+    // into it. Schwab sync wrote the position side on closing legs, so every
+    // exit looked like another opening fill and the trade never closed. An
+    // explicit entry/exit leg type is unambiguous, so it wins over long/short;
+    // a real buy/sell action still wins over everything.
+    const positionWordOnly = /\b(long|short)\b/.test(normalized)
+      && !/\b(buy|bot|sell|sold|sld)\b/.test(normalized);
+    if (typeAction && positionWordOnly) return typeAction;
+    return normalized;
   }
-  return '';
+  return typeAction;
 }
 
 function isOpeningFill(action, tradeSide) {
