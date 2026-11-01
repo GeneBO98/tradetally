@@ -1006,7 +1006,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], context.sourceTimezone || userTimezone);
     }
 
     if (broker === 'papermoney') {
@@ -1021,7 +1021,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], context.sourceTimezone || userTimezone);
     }
 
     if (broker === 'avatrade') {

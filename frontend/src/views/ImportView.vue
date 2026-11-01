@@ -122,8 +122,8 @@
               </p>
             </div>
 
-            <div v-if="isIbkrImport">
-              <label for="source-timezone" class="label">IBKR report timezone</label>
+            <div v-if="showReportTimezone">
+              <label for="source-timezone" class="label">{{ reportTimezoneLabel }}</label>
               <BaseSelect
                 id="source-timezone"
                 v-model="sourceTimezone"
@@ -131,7 +131,7 @@
                 :options="timezoneSelectGroups"
               />
               <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
-                Select the timezone used by the Date/Time column in the IBKR export. This is separate from the timezone used to display trades in TradeTally.
+                {{ reportTimezoneHelp }}
               </p>
             </div>
 
@@ -681,7 +681,7 @@
             <div>
               <h4 class="font-medium text-gray-900 dark:text-white">ThinkorSwim</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                Export from ThinkorSwim's "Account Statement" section. Only processes trade (TRD) records.
+                Export from ThinkorSwim's "Account Statement" section. Only processes trade (TRD) records. Times are read in the timezone you pick above, since thinkorswim exports them in the platform's local time.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
                 DATE,TIME,TYPE,REF #,DESCRIPTION,Commissions & Fees,Misc Fees<br>
@@ -1695,10 +1695,23 @@ const selectedBrokerLabel = computed(() => {
 })
 
 const ibkrBrokerFormats = new Set(['ibkr', 'ibkr_trade_confirmation'])
-const isIbkrImport = computed(() => {
-  if (ibkrBrokerFormats.has(selectedBroker.value)) return true
-  return selectedBroker.value === 'auto' && ibkrBrokerFormats.has(fileAnalysis.value.detectedBroker)
-})
+// thinkorswim exports (Account Statement and paperMoney) stamp fills with the
+// wall-clock time of the platform's configured timezone, not Eastern.
+const thinkorswimBrokerFormats = new Set(['thinkorswim', 'papermoney'])
+const effectiveImportBroker = computed(() => (
+  selectedBroker.value === 'auto' ? fileAnalysis.value.detectedBroker : selectedBroker.value
+))
+const isIbkrImport = computed(() => ibkrBrokerFormats.has(effectiveImportBroker.value))
+const isThinkorswimImport = computed(() => thinkorswimBrokerFormats.has(effectiveImportBroker.value))
+const showReportTimezone = computed(() => isIbkrImport.value || isThinkorswimImport.value)
+const reportTimezoneLabel = computed(() => (
+  isIbkrImport.value ? 'IBKR report timezone' : 'thinkorswim export timezone'
+))
+const reportTimezoneHelp = computed(() => (
+  isIbkrImport.value
+    ? 'Select the timezone used by the Date/Time column in the IBKR export. This is separate from the timezone used to display trades in TradeTally.'
+    : 'Select the timezone thinkorswim displays trade times in (usually your local time, set under Setup > Application Settings). This is separate from the timezone used to display trades in TradeTally.'
+))
 const timezoneSelectGroups = computed(() => {
   const groups = new Map()
   for (const timezone of TIMEZONE_OPTIONS) {
@@ -1707,7 +1720,24 @@ const timezoneSelectGroups = computed(() => {
   }
   return Array.from(groups, ([label, options]) => ({ label, options }))
 })
-const resolveSourceTimezoneParam = () => isIbkrImport.value ? sourceTimezone.value : null
+const resolveSourceTimezoneParam = () => showReportTimezone.value ? sourceTimezone.value : null
+
+// thinkorswim shows fills in the trader's own local time, so start the selector
+// at their TradeTally display timezone; IBKR reports default to Eastern. Only
+// move the selector while the user has not picked a timezone themselves.
+const defaultReportTimezoneFor = (isThinkorswim) => {
+  if (isThinkorswim) {
+    const userTimezone = authStore.user?.timezone
+    if (userTimezone && userTimezone !== 'UTC') return userTimezone
+  }
+  return 'America/New_York'
+}
+let autoSelectedReportTimezone = sourceTimezone.value
+watch(isThinkorswimImport, (isThinkorswim) => {
+  if (sourceTimezone.value !== autoSelectedReportTimezone) return
+  autoSelectedReportTimezone = defaultReportTimezoneFor(isThinkorswim)
+  sourceTimezone.value = autoSelectedReportTimezone
+}, { immediate: true })
 
 const displayedHeaderPreview = computed(() => fileAnalysis.value.headers.slice(0, 6))
 

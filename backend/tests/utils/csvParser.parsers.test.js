@@ -394,6 +394,61 @@ describe('ThinkorSwim parser', () => {
     ]));
   });
 
+  test('treats negative Misc Fees / Commissions & Fees as costs, not gains', async () => {
+    // Real thinkorswim Account Statement exports write fee columns as negative
+    // numbers (-0.01, -0.65). They must reduce P/L, never inflate it.
+    const negativeFeeCsv = [
+      'Account (Main),,,,,,,,,,,,',
+      'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,,,,,,',
+      '10/30/26,06:51:11,TRD,1008495138036,BOT +1 NDX 100 (Weeklys) 30 OCT 26 28870 CALL @32.80 CBOE,-0.01,-0.65,,,,,,',
+      '10/30/26,06:53:57,TRD,1008495138349,SOLD -1 NDX 100 (Weeklys) 30 OCT 26 28870 CALL @34.30 CBOE,-0.01,-0.65,,,,,,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(negativeFeeCsv), 'thinkorswim', {});
+
+    expectValidResult(result);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].commission).toBeCloseTo(1.32, 2);
+    // (34.30 - 32.80) * 100 - 1.32
+    expect(result.trades[0].pnl).toBeCloseTo(148.68, 2);
+  });
+
+  test('keeps separate round trips separate when trade grouping is disabled', async () => {
+    const twoRoundTripsCsv = [
+      'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees',
+      '10/30/26,07:16:25,TRD,1008496288612,BOT +1 NDX 100 (Weeklys) 30 OCT 26 28670 CALL @53.80 PHLX,-0.01,-0.65',
+      '10/30/26,07:22:21,TRD,1008496289105,SOLD -1 NDX 100 (Weeklys) 30 OCT 26 28670 CALL @45.80 CBOE,-0.01,-0.65',
+      '10/30/26,07:26:41,TRD,1008496289489,BOT +1 NDX 100 (Weeklys) 30 OCT 26 28670 CALL @41.10 CBOE,-0.01,-0.65',
+      '10/30/26,07:29:49,TRD,1008496289729,SOLD -1 NDX 100 (Weeklys) 30 OCT 26 28670 CALL @47.60 PHLX,-0.01,-0.65'
+    ].join('\n');
+
+    const result = await parseCSV(buf(twoRoundTripsCsv), 'thinkorswim', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expect(result.trades).toHaveLength(2);
+    expect(result.trades[0].pnl).toBeCloseTo(-801.32, 2);
+    expect(result.trades[1].pnl).toBeCloseTo(648.68, 2);
+  });
+
+  test('uses the thinkorswim export timezone independently from the user display timezone', async () => {
+    const csv = [
+      'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees',
+      '10/30/26,07:16:25,TRD,1008496288612,BOT +1 NDX 100 (Weeklys) 30 OCT 26 28670 CALL @53.80 PHLX,-0.01,-0.65',
+      '10/30/26,07:22:21,TRD,1008496289105,SOLD -1 NDX 100 (Weeklys) 30 OCT 26 28670 CALL @45.80 CBOE,-0.01,-0.65'
+    ].join('\n');
+
+    const result = await parseCSV(buf(csv), 'thinkorswim', {
+      userTimezone: 'America/New_York',
+      sourceTimezone: 'America/Los_Angeles'
+    });
+
+    expect(result.trades).toHaveLength(1);
+    // 07:16 Pacific is 10:16 Eastern / 14:16 UTC, inside regular hours.
+    expect(result.trades[0].entryTime).toBe('2026-10-30T14:16:25Z');
+    expect(result.trades[0].exitTime).toBe('2026-10-30T14:22:21Z');
+  });
+
   test('matches a later option closing import to an existing open option contract', async () => {
     const closingCsv = [
       'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,Amount,Balance',

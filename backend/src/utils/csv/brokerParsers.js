@@ -319,8 +319,8 @@ const brokerParsers = {
     const dateTime = `${date} ${time}`;
 
     // Parse fees
-    const miscFees = parseFloat((row['Misc Fees'] || '0').replace(/[$,]/g, '')) || 0;
-    const commissionsFees = parseFloat((row['Commissions & Fees'] || '0').replace(/[$,]/g, '')) || 0;
+    const miscFees = Math.abs(parseFloat((row['Misc Fees'] || '0').replace(/[$,]/g, '')) || 0);
+    const commissionsFees = Math.abs(parseFloat((row['Commissions & Fees'] || '0').replace(/[$,]/g, '')) || 0);
 
     return {
       symbol: symbol,

@@ -169,8 +169,8 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       }
 
       // Parse fees
-      const miscFees = parseFloat((record['Misc Fees'] || '0').replace(/[$,]/g, '')) || 0;
-      const commissionsFees = parseFloat((record['Commissions & Fees'] || '0').replace(/[$,]/g, '')) || 0;
+      const miscFees = Math.abs(parseFloat((record['Misc Fees'] || '0').replace(/[$,]/g, '')) || 0);
+      const commissionsFees = Math.abs(parseFloat((record['Commissions & Fees'] || '0').replace(/[$,]/g, '')) || 0);
       const totalFees = miscFees + commissionsFees;
 
       // Determine account identifier - user selection takes priority over CSV column
