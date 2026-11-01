@@ -190,7 +190,8 @@ const defaultColumns = [
   { key: 'heartRate', label: 'Heart Rate', visible: false },
   { key: 'sleepHours', label: 'Sleep Hours', visible: false },
   { key: 'sleepScore', label: 'Sleep Score', visible: false },
-  { key: 'tradingviewLink', label: 'Chart Links', visible: false }
+  { key: 'tradingviewLink', label: 'Chart Links', visible: false },
+  { key: 'images', label: 'Images', visible: false }
 ]
 
 const showMenu = ref(false)

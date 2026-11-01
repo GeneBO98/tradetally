@@ -24,13 +24,15 @@
           >
             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
           </div>
-          <img
+          <button
             v-else
-            :src="authedImage.urlFor(image)"
-            :alt="image.file_name"
-            class="w-full h-auto cursor-pointer hover:opacity-95 transition-opacity duration-200"
+            type="button"
+            :aria-label="`View ${image.file_name}`"
+            class="block w-full hover:opacity-95 transition-opacity duration-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
             @click="openImage(image)"
-          />
+          >
+            <img :src="authedImage.urlFor(image)" :alt="image.file_name" class="w-full h-auto" />
+          </button>
         </div>
         
         <!-- File info bar -->
@@ -58,36 +60,12 @@
     </div>
 
     <!-- Image modal -->
-    <div
+    <TradeImageViewer
       v-if="selectedImage"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
-      @click="closeImage"
-    >
-      <div class="relative max-w-4xl max-h-full p-4">
-        <img
-          :src="authedImage.urlFor(selectedImage)"
-          :alt="selectedImage.file_name"
-          class="max-w-full max-h-full object-contain"
-        />
-        
-        <!-- Close button -->
-        <button
-          type="button"
-          @click="closeImage"
-          class="absolute top-4 right-4 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700"
-        >
-          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-          </svg>
-        </button>
-
-        <!-- Image info -->
-        <div class="absolute bottom-4 left-4 bg-black bg-opacity-50 text-white px-3 py-2 rounded">
-          <p class="text-sm font-medium">{{ selectedImage.file_name }}</p>
-          <p class="text-xs opacity-75">{{ formatFileSize(selectedImage.file_size) }}</p>
-        </div>
-      </div>
-    </div>
+      :image="selectedImage"
+      :src="authedImage.urlFor(selectedImage)"
+      @close="closeImage"
+    />
 
     <!-- Delete confirmation modal -->
     <div
@@ -148,6 +126,7 @@ import { ref, toRef } from 'vue'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthedImage } from '@/composables/useAuthedImage'
 import api from '@/services/api'
+import TradeImageViewer from './TradeImageViewer.vue'
 
 const props = defineProps({
   tradeId: {

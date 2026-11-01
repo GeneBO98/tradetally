@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -27,7 +27,8 @@ const tradesStoreMock = {
       tags: [],
       executions: [],
       instrument_type: 'stock',
-      comment_count: 0
+      comment_count: 0,
+      attachment_urls: ['/api/trades/trade-1/images/first.webp', '/api/trades/trade-1/images/second.webp']
     }
   ],
   currentTrade: null,
@@ -80,7 +81,7 @@ vi.mock('@/composables/useNotification', () => ({
   useNotification: () => ({ showSuccess: vi.fn(), showWarning: vi.fn() })
 }))
 vi.mock('@/services/api', () => ({
-  default: { get: vi.fn().mockResolvedValue({ data: {} }), post: vi.fn().mockResolvedValue({ data: {} }) }
+  default: { defaults: { baseURL: '/api' }, get: vi.fn().mockResolvedValue({ data: {} }), post: vi.fn().mockResolvedValue({ data: {} }) }
 }))
 
 const WIDTHS_KEY = 'tradeListColumnWidths'
@@ -208,5 +209,34 @@ describe('TradeListView column resizing', () => {
 
     expect(wrapper.vm.columnWidths).toEqual({})
     expect(localStorage.getItem(WIDTHS_KEY)).toBeNull()
+  })
+
+  it('adds Images to saved column choices and opens the selected image on demand', async () => {
+    localStorage.setItem('tradeListColumns', JSON.stringify([
+      { key: 'symbol', visible: true }, { key: 'tradingviewLink', visible: true }
+    ]))
+    const wrapper = await mountView()
+    expect(wrapper.vm.tableColumns.find(column => column.key === 'images')).toMatchObject({
+      label: 'Images', visible: false
+    })
+    wrapper.vm.handleColumnsUpdate(wrapper.vm.tableColumns.map(column => ({
+      ...column, visible: column.key === 'symbol' || column.key === 'images'
+    })))
+    await nextTick()
+    const { default: api } = await import('@/services/api')
+    api.get.mockClear()
+    expect(wrapper.findAll('button[aria-label^="View image"]')).toHaveLength(2)
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:second-image'), revokeObjectURL: vi.fn() })
+    await wrapper.get('button[aria-label="View image 2 for AAPL"]').trigger('click')
+    await flushPromises()
+    expect(api.get).toHaveBeenCalledTimes(1)
+    expect(api.get).toHaveBeenCalledWith('/trades/trade-1/images/second.webp', { responseType: 'blob' })
+    expect(document.querySelector('[role="dialog"] img').src).toBe('blob:second-image')
+    document.querySelector('[aria-label="Close image preview"]').click()
+    await nextTick()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    wrapper.unmount()
+    vi.unstubAllGlobals()
   })
 })

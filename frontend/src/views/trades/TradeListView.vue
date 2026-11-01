@@ -970,6 +970,22 @@
                   {{ trade.sleep_score ? Math.round(trade.sleep_score) : '-' }}
                 </td>
 
+                <!-- Uploaded images -->
+                <td v-else-if="column.visible && column.key === 'images'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm']">
+                  <div v-if="trade.attachment_urls?.length" class="flex flex-wrap gap-x-2 gap-y-1">
+                    <button
+                      v-for="(url, index) in trade.attachment_urls"
+                      :key="url"
+                      type="button"
+                      :aria-label="`View image ${index + 1} for ${trade.symbol}`"
+                      class="rounded text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 hover:underline focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      @click.stop="selected_image = { id: url, file_url: url, file_name: `${trade.symbol} — Image ${index + 1}` }"
+                    >Image {{ index + 1 }}</button>
+                  </div>
+                  <span v-else class="text-gray-500 dark:text-gray-400">-</span>
+                </td>
+
                 <!-- TradingView Link Column -->
                 <td v-else-if="column.visible && column.key === 'tradingviewLink'"
                     :class="[getCellPadding, 'whitespace-nowrap']">
@@ -1149,6 +1165,7 @@
       </div>
     </div>
 
+    <TradeImageViewer v-if="selected_image" :image="selected_image" @close="selected_image = null" />
     <BulkTradeAllocationModal
       v-if="allocationEnabled"
       :open="showBulkAllocationModal"
@@ -1193,6 +1210,7 @@ import TagManagement from '@/components/trades/TagManagement.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
 import TradeMarketSessionBadge from '@/components/trades/TradeMarketSessionBadge.vue'
+import TradeImageViewer from '@/components/trades/TradeImageViewer.vue'
 import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -1325,6 +1343,7 @@ const updateTableScrollWidth = () => {
 // Comments dialog
 const showCommentsDialog = ref(false)
 const selectedTrade = ref(null)
+const selected_image = ref(null)
 
 // Bulk selection
 const selectedTrades = ref([])
