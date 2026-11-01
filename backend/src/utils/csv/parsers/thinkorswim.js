@@ -328,11 +328,31 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       console.log(`  → Initial position: ${currentPosition}`);
     }
 
-    for (const transaction of symbolTransactions) {
+    // Fills that cross through flat (e.g. short 5, then buy 50) are split into a
+    // closing leg and an opening leg so each round trip is its own trade. The
+    // split legs are queued back in order and flow through the normal logic.
+    const queue = [...symbolTransactions];
+    while (queue.length > 0) {
+      const transaction = queue.shift();
       const qty = transaction.quantity;
       const prevPosition = currentPosition;
 
-      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+      console.log(`\n${transaction.action} ${qty} @ ${transaction.price} | Position: ${currentPosition}`);
+
+      const signedQty = transaction.action === 'buy' ? qty : -qty;
+      const crossesFlat = currentPosition !== 0
+        && Math.sign(currentPosition + signedQty) === -Math.sign(currentPosition);
+      if (crossesFlat) {
+        const closeQty = Math.abs(currentPosition);
+        const openQty = qty - closeQty;
+        const closeFees = transaction.fees * (closeQty / qty);
+        console.log(`  → [REVERSAL] Splitting ${transaction.action} ${qty} into close ${closeQty} + open ${openQty}`);
+        queue.unshift(
+          { ...transaction, quantity: closeQty, fees: closeFees, isReversalLeg: true },
+          { ...transaction, quantity: openQty, fees: transaction.fees - closeFees, isReversalLeg: true }
+        );
+        continue;
+      }
 
       // Start new trade if going from flat to position
       if (currentPosition === 0) {

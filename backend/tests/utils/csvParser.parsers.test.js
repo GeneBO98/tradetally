@@ -449,6 +449,29 @@ describe('ThinkorSwim parser', () => {
     expect(result.trades[0].exitTime).toBe('2026-10-30T14:22:21Z');
   });
 
+  test('splits a fill that crosses through flat into separate round trips without repair warnings', async () => {
+    // Short 5, then buy 50 (closes 5, opens long 45), then sell 45.
+    const reversalCsv = [
+      'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees',
+      '10/30/26,08:11:40,TRD,1008498863413,SOLD -5 MRVL @200.44,-0.02,',
+      '10/30/26,08:12:05,TRD,1008498863466,BOT +50 MRVL @200.29,,',
+      '10/30/26,08:12:17,TRD,1008498863493,SOLD -45 MRVL @200.29,-0.19,'
+    ].join('\n');
+
+    const result = await parseCSV(buf(reversalCsv), 'thinkorswim', {
+      tradeGroupingSettings: { enabled: false }
+    });
+
+    expectValidResult(result);
+    expect(result.diagnostics.warnings).toEqual([]);
+    expect(result.trades).toHaveLength(2);
+    expect(result.trades[0]).toEqual(expect.objectContaining({ symbol: 'MRVL', side: 'short', quantity: 5 }));
+    expect(result.trades[0].pnl).toBeCloseTo((200.44 - 200.29) * 5 - 0.02, 2);
+    expect(result.trades[1]).toEqual(expect.objectContaining({ symbol: 'MRVL', side: 'long', quantity: 45 }));
+    expect(result.trades[1].pnl).toBeCloseTo(0 - 0.19, 2);
+    expect(result.trades[1].executions.map(e => e.quantity)).toEqual([45, 45]);
+  });
+
   test('matches a later option closing import to an existing open option contract', async () => {
     const closingCsv = [
       'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,Amount,Balance',
