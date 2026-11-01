@@ -3,12 +3,12 @@
     :close-on-backdrop="!saving" :close-on-escape="!saving" :show-close="!saving"
     @update:model-value="!$event && !saving && emit('close')">
     <p class="mb-5 text-sm text-gray-600 dark:text-gray-300">
-      Add the same TradingView chart to {{ trade_ids.length }} selected trade{{ trade_ids.length === 1 ? '' : 's' }}.
+      Add the same chart link to {{ trade_ids.length }} selected trade{{ trade_ids.length === 1 ? '' : 's' }}.
       Existing charts stay attached. Trades with this link are skipped.
     </p>
     <form id="bulk-chart-form" class="space-y-4" @submit.prevent="save">
       <div>
-        <label for="bulk-chart-url" class="label">TradingView link</label>
+        <label for="bulk-chart-url" class="label">Chart link</label>
         <input id="bulk-chart-url" v-model="chart_url" type="url" required maxlength="1000" class="input"
           placeholder="https://www.tradingview.com/x/..." :disabled="saving" />
       </div>

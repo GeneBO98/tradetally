@@ -13,9 +13,8 @@ async function add(user_id, trade_ids, chart_url, chart_title) {
   let url;
   try { url = new URL(chart_url); } catch (_) { /* validated below */ }
   if (typeof chart_url !== 'string' || chart_url.length > 1000 || !url ||
-      !['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.port ||
-      !/(^|\.)tradingview\.com$/i.test(url.hostname) || !/^\/(x|chart)\/[a-zA-Z0-9]+\/?$/.test(url.pathname)) {
-    throw new AppError(400, { error: 'Enter a TradingView snapshot or chart link' });
+      !['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new AppError(400, { error: 'Enter a valid HTTP or HTTPS chart link' });
   }
   if (chart_title != null && (typeof chart_title !== 'string' || chart_title.trim().length > 255)) {
     throw new AppError(400, { error: 'Chart title must be at most 255 characters' });

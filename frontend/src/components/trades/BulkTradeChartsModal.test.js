@@ -13,7 +13,7 @@ function open() {
   })
 }
 
-describe('bulk TradingView chart links', () => {
+describe('bulk chart links', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     post.mockResolvedValue({ data: { updated_trade_count: 2, skipped_trade_count: 0 } })
@@ -45,12 +45,12 @@ describe('bulk TradingView chart links', () => {
   })
 
   it('keeps the modal open and displays server validation errors', async () => {
-    post.mockRejectedValue({ response: { data: { error: 'Enter a TradingView snapshot or chart link' } } })
+    post.mockRejectedValue({ response: { data: { error: 'Enter a valid HTTP or HTTPS chart link' } } })
     const wrapper = open()
     await wrapper.get('#bulk-chart-url').setValue('https://example.com/')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(wrapper.get('[role="alert"]').text()).toContain('TradingView')
+    expect(wrapper.get('[role="alert"]').text()).toContain('valid HTTP or HTTPS chart link')
     expect(wrapper.emitted('saved')).toBeUndefined()
     expect(refresh).not.toHaveBeenCalled()
   })

@@ -31,8 +31,20 @@ describe('bulk chart links', () => {
     expect(AnalyticsCache.invalidate).not.toHaveBeenCalled();
   });
 
-  test.each(['javascript:alert(1)', 'https://tradingview.com.evil.test/x/abc/',
-    'https://example.com/x/abc/', 'https://tradingview.com/', 'not a link', null])('rejects invalid chart link %s', async chart_url => {
+  test.each([
+    'https://placehold.co/2560x1440/png?text=test',
+    'https://charts.example.com/snapshot.png',
+    'http://localhost:8080/charts/426'
+  ])('accepts custom chart links %s', async chart_url => {
+    db.query.mockResolvedValueOnce({ rows: ids.map(id => ({ id })) })
+      .mockResolvedValueOnce({ rows: ids.map(trade_id => ({ trade_id })) });
+    await expect(charts.add('user-1', ids, chart_url)).resolves.toMatchObject({ updated_trade_count: 2 });
+    expect(db.query.mock.calls[1][1]).toEqual(['user-1', ids, chart_url, null]);
+    expect(AnalyticsCache.invalidate).toHaveBeenCalledWith('user-1');
+  });
+
+  test.each(['javascript:alert(1)', 'data:image/png;base64,abcd', 'ftp://example.com/chart.png',
+    'https://user:password@example.com/chart', 'not a link', null])('rejects invalid chart link %s', async chart_url => {
     await expect(charts.add('user-1', ids, chart_url)).rejects.toMatchObject({ statusCode: 400 });
     expect(db.withTransaction).not.toHaveBeenCalled();
   });

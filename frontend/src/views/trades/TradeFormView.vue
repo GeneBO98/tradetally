@@ -2860,7 +2860,7 @@ async function handleChartAdded(chart) {
     }
     trade.value.charts.push(chart)
   }
-  showSuccess('Chart Added', 'TradingView chart added successfully')
+  showSuccess('Chart Added', 'Chart link added successfully')
 }
 
 async function handleChartDeleted(chartId) {

@@ -1,7 +1,7 @@
 <template>
     <div v-if="charts && charts.length > 0" class="space-y-4">
         <h3 class="text-lg font-medium text-gray-900 dark:text-white">
-            TradingView Charts
+            Chart Links
         </h3>
 
         <!-- Charts display - responsive grid -->
@@ -36,13 +36,13 @@
                             <img
                                 v-if="
                                     hasResolvedImage(chart) &&
-                                    !chart._imageError
+                                    !hasImageError(chart)
                                 "
                                 :src="getResolvedImageUrl(chart)"
                                 :alt="
                                     chart.chartTitle ||
                                     chart.chart_title ||
-                                    'TradingView Chart'
+                                    'Chart'
                                 "
                                 class="w-full h-auto cursor-pointer hover:opacity-95 transition-opacity duration-200"
                                 @error="(e) => handleChartImageError(e, chart)"
@@ -52,7 +52,7 @@
                             <div
                                 v-else-if="
                                     getDirectImageUrl(chart) &&
-                                    !chart._imageError &&
+                                    !hasImageError(chart) &&
                                     !authedImage.hasError(chart)
                                 "
                                 class="w-full aspect-video flex items-center justify-center bg-gray-100 dark:bg-gray-700"
@@ -81,12 +81,12 @@
                                 <p
                                     class="text-lg font-medium text-gray-900 dark:text-white mb-2"
                                 >
-                                    TradingView Chart
+                                    Chart Preview Unavailable
                                 </p>
                                 <p
                                     class="text-sm text-gray-600 dark:text-gray-300 mb-4 text-center max-w-md"
                                 >
-                                    Click to view this chart on TradingView
+                                    Open this chart in a new tab
                                 </p>
                                 <div
                                     class="flex items-center space-x-2 text-primary-600 dark:text-primary-400 font-medium"
@@ -190,13 +190,13 @@
                 <img
                     v-if="
                         hasResolvedImage(selectedChart) &&
-                        !selectedChart._imageError
+                        !hasImageError(selectedChart)
                     "
                     :src="getResolvedImageUrl(selectedChart)"
                     :alt="
                         selectedChart.chartTitle ||
                         selectedChart.chart_title ||
-                        'TradingView Chart'
+                        'Chart'
                     "
                     class="max-w-full max-h-[90vh] object-contain mx-auto rounded"
                 />
@@ -206,7 +206,7 @@
                     class="bg-white dark:bg-gray-800 rounded-lg p-12 text-center max-w-2xl mx-auto"
                 >
                     <svg
-                        class="h-24 w-24 mx-auto mb-6 text-blue-500 dark:text-blue-400"
+                        class="h-24 w-24 mx-auto mb-6 text-primary-500 dark:text-primary-400"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -224,18 +224,17 @@
                         {{
                             selectedChart.chartTitle ||
                             selectedChart.chart_title ||
-                            "TradingView Chart"
+                            "Chart"
                         }}
                     </h3>
                     <p class="text-gray-600 dark:text-gray-300 mb-8">
-                        This chart cannot be displayed inline due to
-                        TradingView's security settings.
+                        A preview is unavailable for this link. Open the chart in a new tab to view it.
                     </p>
                     <button
                         @click="openInNewTab(selectedChart)"
                         class="inline-flex items-center space-x-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors"
                     >
-                        <span>Open Chart on TradingView</span>
+                        <span>Open Chart</span>
                         <svg
                             class="h-5 w-5"
                             fill="none"
@@ -275,7 +274,7 @@
                 <div
                     v-if="
                         hasResolvedImage(selectedChart) &&
-                        !selectedChart._imageError
+                        !hasImageError(selectedChart)
                     "
                     class="absolute bottom-4 left-4 bg-black bg-opacity-50 text-white px-4 py-2 rounded"
                 >
@@ -299,7 +298,7 @@
                         rel="noopener noreferrer"
                         class="text-xs opacity-75 hover:opacity-100 underline"
                     >
-                        View on TradingView
+                        Open Chart
                     </a>
                 </div>
             </div>
@@ -429,29 +428,25 @@ function getTradingViewSnapshotProxyUrl(snapshotId) {
     return `${apiBasePath}/trades/tradingview/snapshot/${snapshotId}`;
 }
 
-function isTradingViewUrl(chart) {
-    const chartUrl = chart.chartUrl || chart.chart_url;
-    return chartUrl && chartUrl.match(/tradingview\.com\/x\/([a-zA-Z0-9]+)/i);
-}
-
 function getDirectImageUrl(chart) {
-    const chartUrl = chart.chartUrl || chart.chart_url;
-    if (!chartUrl) return null;
+    const chart_url = chart.chart_url ?? chart.chartUrl;
+    let url;
+    try {
+        url = new URL(chart_url);
+    } catch {
+        return null;
+    }
+    if (!["http:", "https:"].includes(url.protocol)) return null;
 
-    // Try S3 image URL for TradingView
-    const snapshotMatch = chartUrl.match(
-        /tradingview\.com\/x\/([a-zA-Z0-9]+)/i,
-    );
-    if (snapshotMatch) {
-        return getTradingViewSnapshotProxyUrl(snapshotMatch[1]);
+    // TradingView snapshots still need the authenticated image proxy.
+    const snapshot_match = url.pathname.match(/^\/x\/([a-zA-Z0-9]+)\/?$/i);
+    if (/(^|\.)tradingview\.com$/i.test(url.hostname) && snapshot_match) {
+        return getTradingViewSnapshotProxyUrl(snapshot_match[1]);
     }
 
-    // Check if it's already an image URL
-    if (chartUrl.match(/\.(png|jpg|jpeg|gif|webp)(\?.*)?$/i)) {
-        return chartUrl;
-    }
-
-    return null;
+    // Image hosts can serve images without a filename extension. Let the
+    // browser load the URL as an image and show the link fallback on error.
+    return chart_url;
 }
 
 // Fetch /api/-served chart images via axios (sends Authorization header) and
@@ -471,22 +466,6 @@ function hasResolvedImage(chart) {
     return !!authedImage.urlFor(chart);
 }
 
-function getTradingViewImageUrl(chart) {
-    // Return the embed URL for iframe
-    const chartUrl = chart.chartUrl || chart.chart_url;
-    if (!chartUrl) return null;
-
-    // Return TradingView page URL for iframe embedding
-    const snapshotMatch = chartUrl.match(
-        /tradingview\.com\/x\/([a-zA-Z0-9]+)/i,
-    );
-    if (snapshotMatch) {
-        return `https://www.tradingview.com/x/${snapshotMatch[1]}/`;
-    }
-
-    return chartUrl;
-}
-
 function openChart(chart) {
     selectedChart.value = chart;
 }
@@ -502,9 +481,14 @@ function openInNewTab(chart) {
     }
 }
 
+const failed_image_urls = ref(new Set());
+
+function hasImageError(chart) {
+    return failed_image_urls.value.has(getDirectImageUrl(chart));
+}
+
 function handleChartImageError(event, chart) {
-    // Set error flag on the chart object to show placeholder
-    chart._imageError = true;
+    failed_image_urls.value.add(getDirectImageUrl(chart));
 }
 
 async function copyChartUrl(chart) {
