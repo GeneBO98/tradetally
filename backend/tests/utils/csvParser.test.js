@@ -308,6 +308,48 @@ describe('csvParser timezone handling', () => {
     expect(result.trades[0].exitTime).toBe('2026-06-25T04:47:39');
   });
 
+  test('uses the Account Trade History fills from a live thinkorswim Account Statement, not the order history', async () => {
+    // Live exports list every order (working, canceled, filled) under
+    // "Account Order History" and the actual fills under "Account Trade
+    // History". Reading the order section imports canceled orders as skips
+    // and misreads the fills under the wrong columns.
+    const csv = [
+      'Account (Main),,,,,,,,,,,,,,',
+      'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,AMOUNT,BALANCE,,,,,,',
+      '10/30/26,07:07:48,TRD,1008495139818,BOT +20 AMD @517.095,,,,,,,,,,',
+      '10/30/26,07:08:07,TRD,1008495139848,SOLD -20 AMD @517.29,-0.21,,,,,,,,,',
+      'Futures Statements,,,,,,,,,,,,,,',
+      'Trade Date,Exec Date,Exec Time,Type,Ref #,Description,Misc Fees,Commissions & Fees,Amount,Balance,,,,,',
+      ',,,,,,,,,,,,,,',
+      'Account Order History,,,,,,,,,,,,,,',
+      'Notes,,Time Placed,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,PRICE,,TIF,Status',
+      ',,10/30/26 13:03:59,FUTURE,SELL,-1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,28557.50,LMT,DAY,FILLED',
+      ',,10/30/26 13:03:49,FUTURE,BUY,1,TO OPEN,/MNQZ26,DEC 26,,FUTURE,28551.25,LMT,DAY,FILLED',
+      ',,10/30/26 12:40:00,STOCK,BUY,20,TO OPEN,AMD,,,STOCK,500.00,LMT,DAY,CANCELED',
+      ',,10/30/26 07:08:07,STOCK,SELL,-20,TO CLOSE,AMD,,,STOCK,517.29,LMT,DAY,FILLED',
+      ',,10/30/26 07:07:48,STOCK,BUY,20,TO OPEN,AMD,,,STOCK,517.095,LMT,DAY,FILLED',
+      'Account Trade History,,,,,,,,,,,,,,',
+      ',Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type,,',
+      ',10/30/26 13:04:01,FUTURE,SELL,-1,TO CLOSE,/MNQZ26,DEC 26,,FUTURE,28557.50,28557.50,LMT,,',
+      ',10/30/26 13:03:52,FUTURE,BUY,1,TO OPEN,/MNQZ26,DEC 26,,FUTURE,28551.25,28551.25,LMT,,',
+      ',10/30/26 07:08:07,STOCK,SELL,-20,TO CLOSE,AMD,,,STOCK,517.29,517.29,LMT,,',
+      ',10/30/26 07:07:48,STOCK,BUY,20,TO OPEN,AMD,,,STOCK,517.095,517.095,LMT,,'
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(csv), 'auto', { tradeGroupingSettings: { enabled: false } });
+
+    expect(result.diagnostics.detectedBroker).toBe('papermoney');
+    expect(result.diagnostics.skippedRows).toBe(0);
+    expect(result.diagnostics.totalRows).toBe(4);
+    expect(result.trades).toHaveLength(2);
+    const amd = result.trades.find(trade => trade.symbol === 'AMD');
+    expect(amd).toEqual(expect.objectContaining({ side: 'long', quantity: 20, entryPrice: 517.095, exitPrice: 517.29 }));
+    const mnq = result.trades.find(trade => trade.symbol === '/MNQZ26');
+    expect(mnq).toEqual(expect.objectContaining({ side: 'long', quantity: 1, instrumentType: 'future', pointValue: 2 }));
+    // Exec times come from the fills section, not Time Placed.
+    expect(mnq.exitTime).toContain('13:04:01');
+  });
+
   test('auto-detects a multi-section ThinkorSwim/paperMoney Account Statement and parses the Filled Orders section', async () => {
     // The real "Filled Orders" header is buried under a disclaimer and several
     // other sections (>15 lines), past the generic header-sniffer window. The

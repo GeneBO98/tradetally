@@ -304,71 +304,57 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         lowerLine.includes('symbol');
     };
 
-    // Handle PaperMoney CSV files that have multiple sections
+    // Handle thinkorswim / paperMoney CSV files that have multiple sections.
+    // paperMoney exports carry a "Filled Orders" section. Live thinkorswim
+    // Account Statements carry "Account Order History" (every order, including
+    // canceled and working ones, keyed by Time Placed) followed by "Account
+    // Trade History" (the actual fills, keyed by Exec Time). Only the fills
+    // section describes what traded, so prefer it whenever it exists.
     if (broker === 'papermoney') {
       const lines = csvString.split('\n');
 
-      // Find the "Filled Orders" section
-      let filledOrdersStart = -1;
-      let filledOrdersEnd = -1;
+      const isSectionTitle = (line) => {
+        const cells = String(line || '').split(',');
+        const first = cells[0].trim();
+        return cells.length > 1 && first !== '' && !/^\d/.test(first) && cells.slice(1).every(cell => cell.trim() === '');
+      };
+      const isSectionEnd = (line) =>
+        line.trim() === '' ||
+        line.includes('Canceled Orders') ||
+        line.includes('Rolling Strategies') ||
+        isSectionTitle(line) ||
+        isPaperMoneyOrderHeader(line);
 
+      // Every candidate header, with the section title above it (if any).
+      const candidates = [];
       for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes('Filled Orders')) {
-          filledOrdersStart = i + 1; // Skip the "Filled Orders" title line
-          break;
+        if (!isPaperMoneyOrderHeader(lines[i])) continue;
+        let title = '';
+        for (let j = i - 1; j >= 0 && j >= i - 3; j--) {
+          if (isSectionTitle(lines[j])) { title = lines[j].split(',')[0].trim(); break; }
+          if (lines[j].trim() !== '') break;
         }
+        const lower = lines[i].toLowerCase();
+        candidates.push({
+          headerIndex: i,
+          title,
+          isFills: title.toLowerCase().includes('filled orders') ||
+            title.toLowerCase().includes('trade history') ||
+            (lower.includes('exec time') && !lower.includes('status'))
+        });
       }
 
-      if (filledOrdersStart >= 0) {
-        // Find the header line (contains "Exec Time,Spread,Side,Qty")
-        for (let i = filledOrdersStart; i < lines.length; i++) {
-          if (isPaperMoneyOrderHeader(lines[i])) {
-            filledOrdersStart = i;
-            break;
-          }
-        }
-
-        // Find the end of the filled orders section (next empty line or section)
-        for (let i = filledOrdersStart + 1; i < lines.length; i++) {
-          if (lines[i].trim() === '' || lines[i].includes('Canceled Orders') || lines[i].includes('Rolling Strategies')) {
-            filledOrdersEnd = i;
-            break;
-          }
-        }
-
-        if (filledOrdersEnd === -1) {
-          filledOrdersEnd = lines.length;
-        }
-
-        // Extract only the filled orders section
-        csvString = lines.slice(filledOrdersStart, filledOrdersEnd).join('\n');
-        console.log(`[PAPERMONEY] Extracted filled orders section: lines ${filledOrdersStart} to ${filledOrdersEnd}`);
-      } else {
-        // No "Filled Orders" section header - check if the CSV starts directly
-        // with the header row or contains a standalone trade activity table.
-        let headerLineIndex = -1;
-        for (let i = 0; i < lines.length; i++) {
-          if (isPaperMoneyOrderHeader(lines[i])) {
-            headerLineIndex = i;
-            break;
-          }
-        }
-
-        if (headerLineIndex >= 0) {
-          // Find end of data (next empty line or section header)
-          let dataEnd = lines.length;
-          for (let i = headerLineIndex + 1; i < lines.length; i++) {
-            if (lines[i].trim() === '' || lines[i].includes('Canceled Orders') || lines[i].includes('Rolling Strategies')) {
-              dataEnd = i;
-              break;
-            }
-          }
-          csvString = lines.slice(headerLineIndex, dataEnd).join('\n');
-          console.log(`[PAPERMONEY] No section header found, using CSV directly from line ${headerLineIndex} to ${dataEnd}`);
-        } else {
-          throw new Error('Could not find "Filled Orders" section or valid header row in PaperMoney CSV');
-        }
+      if (candidates.length === 0) {
+        throw new Error('Could not find "Filled Orders" section or valid header row in PaperMoney CSV');
       }
+
+      const chosen = candidates.find(candidate => candidate.isFills) || candidates[0];
+      let dataEnd = lines.length;
+      for (let i = chosen.headerIndex + 1; i < lines.length; i++) {
+        if (isSectionEnd(lines[i])) { dataEnd = i; break; }
+      }
+      csvString = lines.slice(chosen.headerIndex, dataEnd).join('\n');
+      console.log(`[PAPERMONEY] Using ${chosen.title || 'untitled'} section: lines ${chosen.headerIndex} to ${dataEnd}${candidates.length > 1 ? ` (${candidates.length} candidate sections)` : ''}`);
     }
 
     // Detect delimiter - check if it's tab-separated (common for Schwab)
