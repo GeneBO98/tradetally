@@ -5,6 +5,7 @@
     <p class="mb-5 text-sm text-gray-600 dark:text-gray-300">
       Add the same chart link to {{ trade_ids.length }} selected trade{{ trade_ids.length === 1 ? '' : 's' }}.
       Existing charts stay attached. Trades with this link are skipped.
+      YouTube recording links are also supported.
     </p>
     <form id="bulk-chart-form" class="space-y-4" @submit.prevent="save">
       <div>

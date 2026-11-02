@@ -14,6 +14,28 @@ function render(chart) {
 
 describe('chart link previews (issue 426)', () => {
   it.each([
+    { chart_url: 'https://www.youtube.com/watch?v=review123&list=unlisted&t=30s' },
+    { chartUrl: 'https://youtu.be/review123?t=30' }
+  ])('shows a video link without attempting an image preview: %o', async chart => {
+    const wrapper = render(chart)
+    await flushPromises()
+    expect(wrapper.text()).toContain('YouTube Video')
+    expect(wrapper.text()).toContain('Watch Video')
+    expect(wrapper.text()).not.toContain('Preview Unavailable')
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.find('.animate-spin').exists()).toBe(false)
+    expect(get).not.toHaveBeenCalled()
+    const chart_url = chart.chart_url ?? chart.chartUrl
+    expect(wrapper.get('a').attributes()).toMatchObject({
+      href: chart_url, target: '_blank', rel: 'noopener noreferrer'
+    })
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    await wrapper.get('a .cursor-pointer').trigger('click')
+    expect(open).toHaveBeenCalledWith(chart_url, '_blank', 'noopener,noreferrer')
+    wrapper.unmount()
+  })
+
+  it.each([
     'https://placehold.co/2560x1440/png?text=test',
     'https://charts.example.com/image?id=426',
     'https://charts.example.com/snapshot.png?download=1#chart'

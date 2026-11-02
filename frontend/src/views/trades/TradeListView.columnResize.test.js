@@ -91,6 +91,7 @@ describe('TradeListView column resizing', () => {
     vi.clearAllMocks()
     setActivePinia(createPinia())
     localStorage.clear()
+    tradesStoreMock.trades[0].chart_urls = []
   })
 
   async function mountView() {
@@ -209,6 +210,24 @@ describe('TradeListView column resizing', () => {
 
     expect(wrapper.vm.columnWidths).toEqual({})
     expect(localStorage.getItem(WIDTHS_KEY)).toBeNull()
+  })
+
+  it('labels YouTube links as videos alongside chart links and preserves their URLs', async () => {
+    const chart_urls = [
+      'https://youtu.be/review123?list=unlisted&t=90',
+      'https://placehold.co/2560x1440/png?text=test',
+      'https://www.youtube.com/watch?v=review456&list=unlisted'
+    ]
+    tradesStoreMock.trades[0].chart_urls = chart_urls
+    localStorage.setItem('tradeListColumns', JSON.stringify([
+      { key: 'symbol', visible: true }, { key: 'tradingviewLink', visible: true }
+    ]))
+    const wrapper = await mountView()
+    const links = wrapper.findAll('tbody a[target="_blank"]')
+    expect(links.map(link => link.text())).toEqual(['Video 1', 'Chart 2', 'Video 3'])
+    expect(links.map(link => link.attributes('href'))).toEqual(chart_urls)
+    expect(links.every(link => link.attributes('rel') === 'noopener noreferrer')).toBe(true)
+    wrapper.unmount()
   })
 
   it('adds Images to saved column choices and opens the selected image on demand', async () => {

@@ -986,7 +986,7 @@
                   <span v-else class="text-gray-500 dark:text-gray-400">-</span>
                 </td>
 
-                <!-- TradingView Link Column -->
+                <!-- Chart and video links -->
                 <td v-else-if="column.visible && column.key === 'tradingviewLink'"
                     :class="[getCellPadding, 'whitespace-nowrap']">
                   <div v-if="trade.chart_urls && trade.chart_urls.length > 0" class="text-sm">
@@ -997,7 +997,7 @@
                         rel="noopener noreferrer"
                         class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
                         @click.stop
-                      >Chart {{ index + 1 }}</a><span v-if="index < trade.chart_urls.length - 1">, </span>
+                      >{{ isYouTubeLink(url) ? 'Video' : 'Chart' }} {{ index + 1 }}</a><span v-if="index < trade.chart_urls.length - 1">, </span>
                     </template>
                   </div>
                   <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
@@ -1219,6 +1219,7 @@ import { getTradeDateOnlyParts } from '@/utils/date'
 import { getTradeGrossPnl, isTradeOpen } from '@/utils/tradePnl'
 import { getTradeSessionBadge } from '@/utils/tradeMarketSession'
 import { newsBadgeTone, tradeBadgeClass } from '@/utils/tradeBadges'
+import { isYouTubeLink } from '@/utils/chartLinks'
 
 const tradesStore = useTradesStore()
 const uiPreferencesStore = useUiPreferencesStore()

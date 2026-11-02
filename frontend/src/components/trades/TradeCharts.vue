@@ -72,6 +72,14 @@
                                     viewBox="0 0 24 24"
                                 >
                                     <path
+                                        v-if="isVideoLink(chart)"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M8 5v14l11-7L8 5z"
+                                    />
+                                    <path
+                                        v-else
                                         stroke-linecap="round"
                                         stroke-linejoin="round"
                                         stroke-width="2"
@@ -81,17 +89,17 @@
                                 <p
                                     class="text-lg font-medium text-gray-900 dark:text-white mb-2"
                                 >
-                                    Chart Preview Unavailable
+                                    {{ isVideoLink(chart) ? 'YouTube Video' : 'Chart Preview Unavailable' }}
                                 </p>
                                 <p
                                     class="text-sm text-gray-600 dark:text-gray-300 mb-4 text-center max-w-md"
                                 >
-                                    Open this chart in a new tab
+                                    {{ isVideoLink(chart) ? 'Open this video on YouTube' : 'Open this chart in a new tab' }}
                                 </p>
                                 <div
                                     class="flex items-center space-x-2 text-primary-600 dark:text-primary-400 font-medium"
                                 >
-                                    <span>Open Chart</span>
+                                    <span>{{ isVideoLink(chart) ? 'Watch Video' : 'Open Chart' }}</span>
                                     <svg
                                         class="h-4 w-4"
                                         fill="none"
@@ -390,6 +398,7 @@ import { ref, toRef } from "vue";
 import { useNotification } from "@/composables/useNotification";
 import { useAuthedImage } from "@/composables/useAuthedImage";
 import api from "@/services/api";
+import { isYouTubeLink } from "@/utils/chartLinks";
 
 const props = defineProps({
     tradeId: {
@@ -428,7 +437,12 @@ function getTradingViewSnapshotProxyUrl(snapshotId) {
     return `${apiBasePath}/trades/tradingview/snapshot/${snapshotId}`;
 }
 
+function isVideoLink(chart) {
+    return isYouTubeLink(chart.chart_url ?? chart.chartUrl);
+}
+
 function getDirectImageUrl(chart) {
+    if (isVideoLink(chart)) return null;
     const chart_url = chart.chart_url ?? chart.chartUrl;
     let url;
     try {

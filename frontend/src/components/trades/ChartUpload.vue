@@ -3,7 +3,7 @@
     <div>
       <label class="label">Chart Links</label>
       <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
-        Add TradingView snapshots or links to your own chart images. You can add multiple charts.
+        Add TradingView snapshots, your own chart images, or YouTube recordings. You can add multiple links.
       </p>
 
       <!-- Chart URL input form -->
@@ -78,7 +78,7 @@
 
     <!-- Help text -->
     <div class="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-      <p>Image links display a preview, including links without a file extension. Other links open in a new tab.</p>
+      <p>Image links display a preview, including links without a file extension. YouTube recordings appear as video links and open in a new tab.</p>
       <p>To get a TradingView chart URL:</p>
       <ol class="list-decimal list-inside ml-2 space-y-1">
         <li>Open your chart on TradingView</li>
