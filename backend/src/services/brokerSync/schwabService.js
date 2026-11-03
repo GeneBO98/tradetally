@@ -18,6 +18,10 @@ const AnalyticsCache = require('../analyticsCache');
 const OptionStrategyGroupingService = require('../optionStrategyGroupingService');
 const db = require('../../config/database');
 
+// 8 alphanumerics + check digit; matches the pattern Trade.create uses to
+// queue CUSIP resolution.
+const CUSIP_PATTERN = /^[A-Z0-9]{8}[0-9]$/;
+
 const SCHWAB_API_BASE = 'https://api.schwabapi.com/trader/v1';
 const BrokerReauthNotificationService = require('./brokerReauthNotificationService');
 const TOKEN_REFRESH_BUFFER = 5 * 60 * 1000; // Refresh 5 minutes before expiration
@@ -1212,6 +1216,7 @@ class SchwabService {
     let duplicates = 0;
 
     const existingTrades = await this.getExistingTrades(userId, trades);
+    await this.annotateCusipAliases(userId, trades);
 
     for (const tradeData of trades) {
       try {
@@ -1509,12 +1514,69 @@ class SchwabService {
     return false;
   }
 
+  /**
+   * Schwab reports delisted equities (ATVI, acquired 2023) by CUSIP rather
+   * than ticker. The first sync stores the CUSIP and the resolver later
+   * renames the trade to its ticker, so on the next sync the incoming CUSIP
+   * no longer equals the stored symbol and every such trade re-imports as a
+   * duplicate. Attach the already-known ticker to each incoming CUSIP trade
+   * so the dedup can compare like with like.
+   */
+  async annotateCusipAliases(userId, trades) {
+    if (!Array.isArray(trades) || trades.length === 0) return new Map();
+
+    const cusips = new Set();
+    for (const trade of trades) {
+      const symbol = String(trade?.symbol || '').toUpperCase();
+      if (CUSIP_PATTERN.test(symbol)) cusips.add(symbol);
+    }
+    if (cusips.size === 0) return new Map();
+
+    let aliases = new Map();
+    try {
+      // A user's own mapping wins over the shared one.
+      const result = await db.query(
+        `SELECT cusip, ticker
+           FROM cusip_mappings
+          WHERE cusip = ANY($1::text[])
+            AND (user_id IS NULL OR user_id = $2)
+          ORDER BY (user_id IS NOT NULL) ASC`,
+        [Array.from(cusips), userId]
+      );
+      for (const row of result.rows) {
+        if (row.ticker) aliases.set(String(row.cusip).toUpperCase(), String(row.ticker).toUpperCase());
+      }
+    } catch (error) {
+      console.warn(`[SCHWAB] CUSIP alias lookup failed; dedup will compare raw symbols only: ${error.message}`);
+      aliases = new Map();
+    }
+
+    for (const trade of trades) {
+      const symbol = String(trade?.symbol || '').toUpperCase();
+      const ticker = aliases.get(symbol);
+      if (ticker && ticker !== symbol) trade.resolvedSymbol = ticker;
+    }
+    return aliases;
+  }
+
   _tradeSymbolsMatch(newTrade, existingTrade) {
     const newSymbol = newTrade.symbol?.toUpperCase();
     const existingSymbol = existingTrade.symbol?.toUpperCase();
 
     if (!newSymbol || !existingSymbol) return false;
     if (existingSymbol === newSymbol) return true;
+
+    // Same instrument under a different name: the incoming CUSIP has already
+    // been resolved to the stored ticker, or the stored row still carries the
+    // CUSIP that the incoming trade reports as its identifier.
+    const newInstrument = newTrade.instrumentType || newTrade.instrument_type || 'stock';
+    const existingInstrument = existingTrade.instrument_type || existingTrade.instrumentType || 'stock';
+    if (newInstrument !== 'option' && existingInstrument !== 'option') {
+      const resolved = newTrade.resolvedSymbol ? String(newTrade.resolvedSymbol).toUpperCase() : null;
+      const cusip = newTrade.cusip ? String(newTrade.cusip).toUpperCase() : null;
+      if (resolved && resolved === existingSymbol) return true;
+      if (cusip && cusip === existingSymbol) return true;
+    }
 
     const newInstrumentType = newTrade.instrumentType || newTrade.instrument_type || 'stock';
     const existingInstrumentType = existingTrade.instrument_type || existingTrade.instrumentType || 'stock';

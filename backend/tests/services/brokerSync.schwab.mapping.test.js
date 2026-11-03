@@ -845,4 +845,68 @@ describe('Schwab dedupe key construction (exit orderId|datetime)', () => {
 
     expect(schwabService.isDuplicateTrade(trade, [otherAccount])).toBe(false);
   });
+
+  // Schwab reports delisted equities by CUSIP. The first sync stored
+  // 00507V109, the resolver renamed it to ATVI, and the next sync re-imported
+  // the same fills because the raw symbols no longer matched.
+  test('a re-synced CUSIP trade matches the row already renamed to its ticker', () => {
+    const trade = buildRoundTripTrade();
+    trade.symbol = '00507V109';
+    trade.cusip = '00507V109';
+    const existing = asExistingRow(buildRoundTripTrade());
+    existing.symbol = 'ATVI';
+
+    // Without a known alias the raw symbols differ and nothing else can tie them together.
+    expect(schwabService.isDuplicateTrade(trade, [existing])).toBe(false);
+
+    trade.resolvedSymbol = 'ATVI';
+    expect(schwabService.isDuplicateTrade(trade, [existing])).toBe(true);
+  });
+
+  test('an incoming ticker trade matches a stored row that still carries its CUSIP', () => {
+    const trade = buildRoundTripTrade();
+    trade.symbol = 'ATVI';
+    trade.cusip = '00507V109';
+    const existing = asExistingRow(buildRoundTripTrade());
+    existing.symbol = '00507V109';
+
+    expect(schwabService.isDuplicateTrade(trade, [existing])).toBe(true);
+  });
+
+  test('CUSIP aliases never bridge option trades to an equity row', () => {
+    const trade = buildRoundTripTrade();
+    trade.symbol = '00507V109';
+    trade.resolvedSymbol = 'ATVI';
+    trade.instrumentType = 'option';
+    const existing = asExistingRow(buildRoundTripTrade());
+    existing.symbol = 'ATVI';
+
+    expect(schwabService.isDuplicateTrade(trade, [existing])).toBe(false);
+  });
+
+  test('annotateCusipAliases attaches known tickers to incoming CUSIP symbols only', async () => {
+    const db = require('../../src/config/database');
+    db.query.mockResolvedValueOnce({ rows: [{ cusip: '00507V109', ticker: 'ATVI' }] });
+
+    const cusipTrade = { symbol: '00507V109' };
+    const tickerTrade = { symbol: 'AAPL' };
+    const unknownCusip = { symbol: '92840Q103' };
+
+    await schwabService.annotateCusipAliases('user-1', [cusipTrade, tickerTrade, unknownCusip]);
+
+    expect(db.query).toHaveBeenCalledTimes(1);
+    expect(db.query.mock.calls[0][1]).toEqual([['00507V109', '92840Q103'], 'user-1']);
+    expect(cusipTrade.resolvedSymbol).toBe('ATVI');
+    expect(tickerTrade.resolvedSymbol).toBeUndefined();
+    expect(unknownCusip.resolvedSymbol).toBeUndefined();
+  });
+
+  test('annotateCusipAliases skips the lookup when no incoming symbol is a CUSIP', async () => {
+    const db = require('../../src/config/database');
+    db.query.mockClear();
+
+    await schwabService.annotateCusipAliases('user-1', [{ symbol: 'AAPL' }, { symbol: 'MSFT' }]);
+
+    expect(db.query).not.toHaveBeenCalled();
+  });
 });
