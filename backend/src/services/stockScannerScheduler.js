@@ -54,6 +54,10 @@ class StockScannerScheduler extends CronScheduler {
    * staging restart never kicks off a two-hour scan by itself.
    */
   afterSchedule() {
+    if (!cron.validate(this.catchUpCron)) {
+      console.warn(`[SCANNER SCHEDULER] Invalid STOCK_SCANNER_CATCHUP_CRON "${this.catchUpCron}"; using the default daily check (30 3 * * *)`);
+      this.catchUpCron = '30 3 * * *';
+    }
     this.catchUpJob = cron.schedule(this.catchUpCron, () => this.executeCatchUpScan());
     console.log(`[SCANNER SCHEDULER] Scheduled daily stale-scan check (${this.catchUpCron})`);
 

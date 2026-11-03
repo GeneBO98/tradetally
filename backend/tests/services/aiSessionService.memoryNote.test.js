@@ -39,17 +39,28 @@ describe('AISessionService memory notes', () => {
     expect(AIProvider.generateResponse).not.toHaveBeenCalled();
 
     AIProvider.generateResponse.mockResolvedValueOnce('{"note":"I never add to a losing position"}');
-    const note = await AISessionService.maybeSuggestMemoryNote('Remember that I never add to losers. Was that trade ok?', { provider: 'openai', apiKey: 'k', modelName: 'gpt', classifier: { enabled: false } });
+    const note = await AISessionService.maybeSuggestMemoryNote('Remember that I never add to losers. Was that trade ok?', { provider: 'openai', apiKey: 'k', modelName: 'gpt', user_funded: true, classifier: { enabled: false } });
     expect(note).toBe('I never add to a losing position');
     const [prompt, , options] = AIProvider.generateResponse.mock.calls[0];
     expect(prompt).toContain('Remember that I never add to losers');
     expect(options).toEqual({ maxTokens: 120, temperature: 0 });
   });
 
+  test('maybeSuggestMemoryNote skips the extra model call on the instance key when no classifier is configured', async () => {
+    const note = await AISessionService.maybeSuggestMemoryNote('Remember that I never add to losers.', { provider: 'gemini', apiKey: 'instance', modelName: 'gemini', user_funded: false, classifier: { enabled: false } });
+    expect(note).toBeNull();
+    expect(AIProvider.generateResponse).not.toHaveBeenCalled();
+
+    AIProvider.generateResponse.mockResolvedValueOnce('{"note":"I never add to losers"}');
+    const withClassifier = await AISessionService.maybeSuggestMemoryNote('Remember that I never add to losers.', { provider: 'gemini', apiKey: 'instance', modelName: 'gemini', user_funded: false, classifier: { enabled: true, provider: 'gemini', modelName: 'gemini-flash' } });
+    expect(withClassifier).toBe('I never add to losers');
+  });
+
   test('maybeSuggestMemoryNote swallows provider errors', async () => {
     AIProvider.generateResponse.mockRejectedValueOnce(new Error('down'));
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    await expect(AISessionService.maybeSuggestMemoryNote("Don't forget I only trade mornings", {})).resolves.toBeNull();
+    await expect(AISessionService.maybeSuggestMemoryNote("Don't forget I only trade mornings", { user_funded: true })).resolves.toBeNull();
+    expect(AIProvider.generateResponse).toHaveBeenCalledTimes(1);
     warn.mockRestore();
   });
 });
@@ -87,7 +98,7 @@ describe('AISessionService.generateChatReply', () => {
     AIProvider.generateResponse
       .mockResolvedValueOnce('Reply')
       .mockResolvedValueOnce('{"note":"I stop trading after two losses"}');
-    const reply = await AISessionService.generateChatReply('user-1', 'Keep in mind I stop after two losses. Did I follow that today?', [], { provider: 'openai' });
+    const reply = await AISessionService.generateChatReply('user-1', 'Keep in mind I stop after two losses. Did I follow that today?', [], { provider: 'openai', user_funded: true });
     expect(reply.suggested_memory_note).toBe('I stop trading after two losses');
     expect(AIProvider.generateResponse).toHaveBeenCalledTimes(2);
   });

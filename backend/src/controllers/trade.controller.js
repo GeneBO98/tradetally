@@ -4882,6 +4882,14 @@ const tradeController = {
       if (!chartUrl || typeof chartUrl !== 'string' || chartUrl.trim().length === 0) {
         return res.status(400).json({ error: 'Chart URL is required' });
       }
+      // Same rules as the bulk chart endpoint: the link is rendered into an
+      // href, so only http(s) without embedded credentials is accepted.
+      let parsedChartUrl;
+      try { parsedChartUrl = new URL(chartUrl.trim()); } catch (_) { /* rejected below */ }
+      if (chartUrl.length > 1000 || !parsedChartUrl ||
+          !['http:', 'https:'].includes(parsedChartUrl.protocol) || parsedChartUrl.username || parsedChartUrl.password) {
+        return res.status(400).json({ error: 'Enter a valid HTTP or HTTPS chart link' });
+      }
 
       // Verify trade belongs to user (findById also returns public trades — reject those)
       const trade = await Trade.findById(tradeId, req.user.id);

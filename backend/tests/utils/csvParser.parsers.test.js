@@ -472,6 +472,30 @@ describe('ThinkorSwim parser', () => {
     expect(result.trades[1].executions.map(e => e.quantity)).toEqual([45, 45]);
   });
 
+  test('re-importing a statement with a reversal does not open a phantom position', async () => {
+    // Same statement as above, but every fill is already on file: the closing
+    // short was stored as-is and the buy 50 was stored as its split legs.
+    const reversalCsv = [
+      'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees',
+      '10/30/26,08:11:40,TRD,1008498863413,SOLD -5 MRVL @200.44,-0.02,',
+      '10/30/26,08:12:05,TRD,1008498863466,BOT +50 MRVL @200.29,,',
+      '10/30/26,08:12:17,TRD,1008498863493,SOLD -45 MRVL @200.29,-0.19,'
+    ].join('\n');
+    const first = await parseCSV(buf(reversalCsv), 'thinkorswim', {
+      tradeGroupingSettings: { enabled: false }
+    });
+    const stored = first.trades.flatMap(trade => trade.executions.map(exec => ({ ...exec })));
+    expect(stored.map(e => e.quantity)).toEqual([5, 5, 45, 45]);
+
+    const again = await parseCSV(buf(reversalCsv), 'thinkorswim', {
+      tradeGroupingSettings: { enabled: false },
+      existingExecutions: { MRVL: stored }
+    });
+
+    expectValidResult(again);
+    expect(again.trades).toEqual([]);
+  });
+
   test('matches a later option closing import to an existing open option contract', async () => {
     const closingCsv = [
       'DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,Amount,Balance',

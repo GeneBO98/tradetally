@@ -295,7 +295,7 @@ const aiController = {
    */
   async getUserSessions(req, res, next) {
     try {
-      const limit = parseInt(req.query.limit) || 10;
+      const limit = Math.max(1, parseInt(req.query.limit) || 10);
 
       const type = ['chat', 'single_trade', 'performance'].includes(req.query.type) ? req.query.type : undefined;
 

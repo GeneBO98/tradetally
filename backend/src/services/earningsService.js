@@ -65,13 +65,30 @@ class EarningsService {
       return (await finnhub.getEarningsCalendar(from, to)) || [];
     }
 
+    // One bad day must not throw away the rest of the window: the whole set
+    // is re-fetched on the next cache miss, so a flaky provider would turn
+    // every request into a full fan-out. Keep what succeeded and only fail
+    // when nothing came back.
     const merged = new Map();
+    const failures = [];
     for (const day of this.enumerateDays(from, to)) {
-      const rows = (await finnhub.getEarningsCalendar(day, day)) || [];
+      let rows;
+      try {
+        rows = (await finnhub.getEarningsCalendar(day, day)) || [];
+      } catch (error) {
+        failures.push(`${day}: ${error.message}`);
+        continue;
+      }
       for (const row of rows) {
         const key = `${String(row.symbol || '').toUpperCase()}|${row.date}`;
         if (!merged.has(key)) merged.set(key, row);
       }
+    }
+    if (failures.length > 0) {
+      if (merged.size === 0) {
+        throw new Error(`Earnings calendar fetch failed for every day in ${from}..${to} (${failures[0]})`);
+      }
+      console.warn(`[EARNINGS] ${failures.length} day(s) failed while fetching ${from}..${to}; keeping ${merged.size} rows. First: ${failures[0]}`);
     }
 
     return [...merged.values()].sort((a, b) =>

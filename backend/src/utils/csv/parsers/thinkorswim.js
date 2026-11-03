@@ -2,6 +2,38 @@ const { isExecutionDuplicateMultiKey } = require('../dedup');
 const { extractAccountFromRecord } = require('../detect');
 const { parseDate, parseDateTime, getExecutionTimeBounds } = require('../shared');
 
+/**
+ * A fill that reversed a position was stored as two executions (closing leg +
+ * opening leg) with the same time, price and action. Treat the raw fill as a
+ * duplicate when stored executions at that time/price add up to its quantity,
+ * so a re-import of the same statement does not open a phantom position.
+ */
+function isReversalSplitDuplicate(execution, keys, context) {
+  if (!execution || !execution.datetime || !context || !context.existingExecutions) return false;
+  const newTime = new Date(execution.datetime).getTime();
+  if (isNaN(newTime)) return false;
+
+  return keys.some(key => {
+    const stored = context.existingExecutions[key];
+    if (!Array.isArray(stored) || stored.length < 2) return false;
+
+    const legs = stored.filter(existing => {
+      if (!existing) return false;
+      const existingDatetime = existing.datetime || existing.entryTime;
+      const existingPrice = existing.price ?? existing.entryPrice;
+      const existingTime = existingDatetime ? new Date(existingDatetime).getTime() : NaN;
+      const existingAction = existing.action || existing.side;
+      if (existingAction && execution.action && existingAction !== execution.action) return false;
+      return !isNaN(existingTime)
+        && Math.abs(existingTime - newTime) <= 1000
+        && Math.abs((existingPrice || 0) - (execution.price || 0)) < 0.01;
+    });
+    if (legs.length < 2) return false;
+
+    const legTotal = legs.reduce((sum, leg) => sum + (Number(leg.quantity) || 0), 0);
+    return Math.abs(legTotal - Number(execution.quantity)) < 1e-6;
+  });
+}
 
 async function parseThinkorswimTransactions(records, existingPositions = {}, context = {}) {
   console.log(`Processing ${records.length} thinkorswim transaction records`);
@@ -331,6 +363,13 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
     // Fills that cross through flat (e.g. short 5, then buy 50) are split into a
     // closing leg and an opening leg so each round trip is its own trade. The
     // split legs are queued back in order and flow through the normal logic.
+    //
+    // On a re-import the earlier closing fill is already stored, so it is
+    // skipped without moving the running position and the raw reversal fill
+    // no longer looks like it crosses flat. It is then compared against the
+    // stored split legs (close + open) and would not match on quantity, which
+    // used to open a phantom position. isReversalSplitDuplicate recognises a
+    // raw fill whose stored legs add up to it.
     const queue = [...symbolTransactions];
     while (queue.length > 0) {
       const transaction = queue.shift();
@@ -383,7 +422,8 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         };
 
         // First, check if this execution exists in ANY existing trade (complete or open)
-        const existsGlobally = isExecutionDuplicateMultiKey(newExecution, duplicateLookupKeys, context);
+        const existsGlobally = isExecutionDuplicateMultiKey(newExecution, duplicateLookupKeys, context)
+          || isReversalSplitDuplicate(newExecution, duplicateLookupKeys, context);
 
         // Then check if it exists in the current trade being built
         // For fresh imports, we trust each CSV row is a unique execution
@@ -492,6 +532,12 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
     }
 
     console.log(`\n${symbol} Final Position: ${currentPosition} ${isOption ? 'contracts' : 'shares'}`);
+    if (currentTrade && currentTrade.totalQuantity <= 0) {
+      // Every fill in this trade was already on file (a re-import), so there
+      // is no position to carry: do not emit an empty open trade.
+      console.log(`  [SKIP] Open trade has no executions (all were duplicates), not creating trade`);
+      currentTrade = null;
+    }
     if (currentTrade) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} ${isOption ? 'contracts' : 'shares'}, ${currentTrade.executions.length} executions`);
 

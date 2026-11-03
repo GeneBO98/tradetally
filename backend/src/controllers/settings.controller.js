@@ -720,11 +720,15 @@ const settingsController = {
         averagePositionSize: averagePositionSize || 'medium',
         tradingGoals: tradingGoals || [],
         preferredSectors: preferredSectors || [],
-        aboutTrading: normalizedAbout || null,
-        aiMemoryNotes: normalizedNotes,
         postExitExcursionWindowMode: postExitExcursionWindowMode || 'auto',
         postExitExcursionWindowMinutes: parsedPostExitMinutes
       };
+      // Memory notes accumulate through AI chat and the self-description is
+      // optional, so a client that does not send these keys (older mobile
+      // builds, partial updates) must not erase them. Only an explicit value
+      // (including null / []) replaces what is stored.
+      if (aboutTrading !== undefined) profileData.aboutTrading = normalizedAbout || null;
+      if (aiMemoryNotes !== undefined) profileData.aiMemoryNotes = normalizedNotes;
 
       const updatedSettings = await User.updateSettings(req.user.id, profileData);
       // Every AI prompt reads the profile through the cached dossier.

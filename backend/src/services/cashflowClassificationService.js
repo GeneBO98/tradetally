@@ -270,10 +270,28 @@ class CashflowClassificationService {
         AND t.pending = false
         AND t.is_removed = false
         AND t.transaction_date >= $2
-        ${onlyUnclassified ? 'AND t.cashflow_category IS NULL' : ''}
+        ${onlyUnclassified ? 'AND t.cashflow_category IS NULL AND t.cashflow_classified_at IS NULL' : ''}
       ORDER BY t.transaction_date DESC, t.id
     `, params);
     return result.rows;
+  }
+
+  /**
+   * Stamp rows the AI looked at but could not classify confidently, so they
+   * are not re-sent to the model on every refresh. The category stays NULL
+   * (shown as "unclassified") and a user override still applies.
+   */
+  static async markAiReviewed(ids) {
+    if (ids.length === 0) return 0;
+    const result = await db.query(`
+      UPDATE plaid_transactions
+      SET cashflow_classified_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ANY($1::uuid[])
+        AND cashflow_category IS NULL
+        AND cashflow_classified_at IS NULL
+    `, [ids]);
+    return result.rowCount;
   }
 
   static async writeCategories(updates, source) {
@@ -330,11 +348,15 @@ class CashflowClassificationService {
     const pending = await this.loadBankTransactions(userId, { months, onlyUnclassified: true });
     if (pending.length === 0) return { classified: 0, skipped: 0, reason: null };
 
+    const AISessionService = require('./aiSessionService');
     let settings;
+    let batchCost = 0;
     try {
-      const AISessionService = require('./aiSessionService');
       const aiSettings = await AISessionService.getAISettings(userId);
       settings = AISessionService.buildClassifierSettings(aiSettings);
+      // Each batch is one model call on the instance key unless the user's own
+      // provider pays for it; charged like other AI actions.
+      batchCost = AISessionService.creditCost('CASHFLOW_CLASSIFY', aiSettings);
     } catch (error) {
       console.log(`[CASHFLOW] AI classification unavailable for ${userId}: ${error.message}`);
       return { classified: 0, skipped: pending.length, reason: 'no_ai_provider' };
@@ -346,6 +368,14 @@ class CashflowClassificationService {
 
     for (let offset = 0; offset < queue.length; offset += AI_BATCH_SIZE) {
       const batch = queue.slice(offset, offset + AI_BATCH_SIZE);
+
+      let creditCheck;
+      try {
+        creditCheck = await AISessionService.checkCredits(userId, batchCost, 'Insufficient AI credits');
+      } catch (error) {
+        console.log(`[CASHFLOW] AI classification stopped for ${userId}: ${error.message}`);
+        return { classified, skipped: pending.length - classified, reason: 'insufficient_credits' };
+      }
       const items = batch.map((transaction, index) => ({
         index,
         direction: Number(transaction.amount) < 0 ? 'in' : 'out',
@@ -371,6 +401,12 @@ class CashflowClassificationService {
         return { classified, skipped: pending.length - classified, reason: 'ai_error' };
       }
 
+      try {
+        await AISessionService.chargeCredits(userId, batchCost, creditCheck);
+      } catch (error) {
+        console.warn('[CASHFLOW] AI credit deduction failed:', error.message);
+      }
+
       const results = parseAiResponse(response, batch.length);
       const updates = results
         .filter(result => result.confidence >= AI_MIN_CONFIDENCE_TO_KEEP)
@@ -380,6 +416,10 @@ class CashflowClassificationService {
           confidence: result.confidence
         }));
       classified += await this.writeCategories(updates, 'ai');
+      // Rows the model could not place stay unclassified but are stamped so
+      // the next refresh does not send them again.
+      const confidentIds = new Set(updates.map(update => update.id));
+      await this.markAiReviewed(batch.map(transaction => transaction.id).filter(id => !confidentIds.has(id)));
     }
 
     return { classified, skipped: pending.length - classified, reason: null };
@@ -426,6 +466,7 @@ class CashflowClassificationService {
           id = $1
           OR (
             $4::boolean
+            AND length(trim($5)) > 0
             AND transaction_source = 'bank'
             AND lower(trim(description)) = lower(trim($5))
             AND COALESCE(cashflow_source, '') <> 'user'

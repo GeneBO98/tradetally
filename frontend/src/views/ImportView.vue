@@ -1725,10 +1725,13 @@ const resolveSourceTimezoneParam = () => showReportTimezone.value ? sourceTimezo
 // thinkorswim shows fills in the trader's own local time, so start the selector
 // at their TradeTally display timezone; IBKR reports default to Eastern. Only
 // move the selector while the user has not picked a timezone themselves.
+// The display timezone (even the schema default, UTC) is what earlier releases
+// used to store thinkorswim times, so defaulting to it keeps a re-import of an
+// old statement lined up with the trades already on file.
 const defaultReportTimezoneFor = (isThinkorswim) => {
   if (isThinkorswim) {
     const userTimezone = authStore.user?.timezone
-    if (userTimezone && userTimezone !== 'UTC') return userTimezone
+    if (userTimezone) return userTimezone
   }
   return 'America/New_York'
 }

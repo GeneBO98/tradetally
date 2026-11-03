@@ -37,7 +37,9 @@ const { computeTradePnl } = require('../src/services/pnlEngine');
 const { getUserTimezone } = require('../src/utils/timezone');
 const AnalyticsCache = require('../src/services/analyticsCache');
 
-const BROKER = 'thinkorswim';
+// Both thinkorswim statement parsers (Account Statement and paperMoney) had the
+// fee sign bug, so repair rows from either.
+const BROKERS = ['thinkorswim', 'papermoney'];
 const BACKUP_TABLE = 'thinkorswim_fee_repair_backup';
 const ENGINE_AGREEMENT_TOLERANCE = 0.05;
 
@@ -132,9 +134,9 @@ async function ensureBackupTable() {
 }
 
 async function loadCandidates(args) {
-  const params = [BROKER];
+  const params = [BROKERS];
   let where = `
-    WHERE t.broker = $1
+    WHERE t.broker = ANY($1::text[])
       AND (
         COALESCE(t.commission, 0) < 0
         OR COALESCE(t.fees, 0) < 0
@@ -319,6 +321,9 @@ async function runRepair(args) {
            exit_commission = $5,
            pnl = $6,
            pnl_percent = $7,
+           quality_grade = NULL,
+           quality_score = NULL,
+           quality_metrics = NULL,
            updated_at = NOW()
          WHERE id = $8 AND user_id = $9`,
         [
@@ -344,6 +349,7 @@ async function runRepair(args) {
   }
 
   await invalidateCaches(touchedUsers);
+  await enqueueQualityBackfill(touchedUsers);
   console.log(`[REPAIR-TOS-FEES] Updated ${updates.length} trades across ${touchedUsers.size} users (snapshots in ${BACKUP_TABLE}).`);
 }
 
@@ -365,7 +371,8 @@ async function runRollback(args) {
       await client.query(
         `UPDATE trades SET
            executions = $1::jsonb, commission = $2, fees = $3, entry_commission = $4,
-           exit_commission = $5, pnl = $6, pnl_percent = $7, updated_at = NOW()
+           exit_commission = $5, pnl = $6, pnl_percent = $7,
+           quality_grade = NULL, quality_score = NULL, quality_metrics = NULL, updated_at = NOW()
          WHERE id = $8 AND user_id = $9`,
         [
           row.executions != null ? JSON.stringify(row.executions) : null,
@@ -385,13 +392,35 @@ async function runRollback(args) {
   }
 
   await invalidateCaches(touchedUsers);
+  await enqueueQualityBackfill(touchedUsers);
   console.log(`[REPAIR-TOS-FEES] Restored ${result.rows.length} trades across ${touchedUsers.size} users.`);
+}
+
+// Fees feed the setup-quality grade, so regrade the touched users through the
+// background worker (same pattern as the data-fix migrations). MAE/MFE are
+// price-only and are left alone.
+async function enqueueQualityBackfill(userIds) {
+  for (const userId of userIds) {
+    try {
+      await db.query(`
+        INSERT INTO job_queue (type, data, priority, user_id, status, created_at)
+        SELECT 'quality_backfill', jsonb_build_object('userId', $1::uuid), 4, $1::uuid, 'pending', NOW()
+        WHERE NOT EXISTS (
+          SELECT 1 FROM job_queue
+          WHERE type = 'quality_backfill' AND user_id = $1::uuid AND status = 'pending'
+        )
+      `, [userId]);
+    } catch (err) {
+      console.warn(`[REPAIR-TOS-FEES] quality_backfill enqueue failed for ${userId}: ${err.message}`);
+    }
+  }
 }
 
 async function invalidateCaches(userIds) {
   for (const userId of userIds) {
     try {
-      await AnalyticsCache.delete(userId);
+      // invalidate() clears the DB-backed and in-memory analytics caches.
+      await AnalyticsCache.invalidate(userId);
     } catch (err) {
       console.warn(`[REPAIR-TOS-FEES] cache invalidation failed for ${userId}: ${err.message}`);
     }

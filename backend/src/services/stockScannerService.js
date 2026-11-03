@@ -27,6 +27,8 @@ class StockScannerService {
   // CALCULATION_VERSION, are considered stale: the list and the detail view
   // would disagree, so they are hidden and a catch-up scan is scheduled.
   static STALE_AFTER_DAYS = 100;
+  // Longest wait between catch-up attempts while scans keep failing
+  static CATCHUP_MAX_BACKOFF_DAYS = 7;
 
   // iShares IWM holdings CSV. The `latest-holdings.csv` path is the current
   // download link; the legacy `.ajax` link now returns the HTML product page
@@ -918,7 +920,7 @@ class StockScannerService {
     `, [EightPillarsService.CALCULATION_VERSION]);
 
     if (latest.rows.length === 0) {
-      return { needed: true, reason: 'no_completed_scan', latestScan: null };
+      return this.withFailureBackoff({ needed: true, reason: 'no_completed_scan', latestScan: null });
     }
 
     const scan = latest.rows[0];
@@ -930,12 +932,54 @@ class StockScannerService {
     // Formula mismatch is the more specific reason, so report it first (the
     // scan results endpoint orders its staleReason the same way).
     if (rowsTotal === 0 || rowsCurrent / rowsTotal < 0.5) {
-      return { needed: true, reason: 'outdated_formula', latestScan };
+      return this.withFailureBackoff({ needed: true, reason: 'outdated_formula', latestScan });
     }
     if (ageDays > this.STALE_AFTER_DAYS) {
-      return { needed: true, reason: 'too_old', latestScan };
+      return this.withFailureBackoff({ needed: true, reason: 'too_old', latestScan });
     }
     return { needed: false, reason: null, latestScan };
+  }
+
+  /**
+   * Hold off a catch-up scan while recent attempts keep failing (bad API key,
+   * holdings source down). Each consecutive failure doubles the wait, from one
+   * day up to CATCHUP_MAX_BACKOFF_DAYS, so a box that can never scan is not
+   * re-running a full Russell 2000 pass every night.
+   */
+  static async withFailureBackoff(decision) {
+    let attempts;
+    try {
+      attempts = await db.query(`
+        SELECT status, created_at
+        FROM stock_scans
+        ORDER BY created_at DESC
+        LIMIT 10
+      `);
+    } catch (error) {
+      console.warn(`[SCANNER] Could not read recent scan attempts: ${error.message}`);
+      return decision;
+    }
+    const rows = attempts?.rows || [];
+    let consecutiveFailures = 0;
+    for (const row of rows) {
+      if (row.status !== 'failed') break;
+      consecutiveFailures += 1;
+    }
+    if (consecutiveFailures === 0) return decision;
+
+    const backoffDays = Math.min(this.CATCHUP_MAX_BACKOFF_DAYS, 2 ** (consecutiveFailures - 1));
+    const sinceLastFailureDays = (Date.now() - new Date(rows[0].created_at).getTime()) / (24 * 60 * 60 * 1000);
+    if (sinceLastFailureDays < backoffDays) {
+      return {
+        needed: false,
+        reason: 'recent_failure',
+        latestScan: decision.latestScan,
+        pendingReason: decision.reason,
+        consecutiveFailures,
+        retryInDays: Math.ceil(backoffDays - sinceLastFailureDays)
+      };
+    }
+    return decision;
   }
 
   /**

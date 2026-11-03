@@ -1540,7 +1540,13 @@ function scheduleAutoRecalculate() {
   if (!formIsValid.value) return
   autoRecalculateTimer = setTimeout(() => {
     autoRecalculateTimer = null
-    if (!projectionOutOfDate.value || retirementStore.calculating) return
+    if (!projectionOutOfDate.value) return
+    // A calculation is already in flight for an older payload; try again once
+    // it settles so the latest edit is not left showing as out of date.
+    if (retirementStore.calculating) {
+      scheduleAutoRecalculate()
+      return
+    }
     calculatePreview()
   }, AUTO_RECALCULATE_DELAY_MS)
 }

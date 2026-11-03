@@ -151,6 +151,31 @@ describe('StockScannerService.needsRescan', () => {
       .mockResolvedValueOnce({ rows: [{ id: 4, created_at: new Date(Date.now() - 10 * DAY_MS), rows_total: '1500', rows_current: '1490' }] });
     await expect(StockScannerService.needsRescan()).resolves.toMatchObject({ needed: false, reason: null });
   });
+
+  test('backs off while recent scan attempts keep failing', async () => {
+    const failed = (daysAgo) => ({ status: 'failed', created_at: new Date(Date.now() - daysAgo * DAY_MS) });
+    // Three consecutive failures, the latest 2 days ago: wait 4 days.
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [failed(2), failed(3), failed(4), { status: 'completed', created_at: new Date(Date.now() - 200 * DAY_MS) }] });
+    const held = await StockScannerService.needsRescan();
+    expect(held).toMatchObject({ needed: false, reason: 'recent_failure', pendingReason: 'no_completed_scan', consecutiveFailures: 3, retryInDays: 2 });
+
+    // Same failures but the latest was 5 days ago: the backoff has elapsed.
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [failed(5), failed(6), failed(7)] });
+    await expect(StockScannerService.needsRescan()).resolves.toMatchObject({ needed: true, reason: 'no_completed_scan' });
+
+    // A completed scan more recent than any failure resets the backoff.
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 4, created_at: new Date(Date.now() - 200 * DAY_MS), rows_total: '1500', rows_current: '1500' }] })
+      .mockResolvedValueOnce({ rows: [{ status: 'completed', created_at: new Date(Date.now() - 200 * DAY_MS) }, failed(201)] });
+    await expect(StockScannerService.needsRescan()).resolves.toMatchObject({ needed: true, reason: 'too_old' });
+  });
 });
 
 describe('StockScannerService.getScanResults version filtering', () => {

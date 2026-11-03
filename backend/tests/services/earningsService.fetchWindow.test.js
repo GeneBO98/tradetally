@@ -67,8 +67,20 @@ describe('EarningsService.fetchWindow', () => {
     expect(params[1]).toBe('2026-10-30');
     expect(JSON.parse(params[2])).toHaveLength(2);
 
-    finnhub.getEarningsCalendar.mockRejectedValueOnce(new Error('rate limited'));
+    // One bad day keeps the rest of the window instead of failing the fetch.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    finnhub.getEarningsCalendar
+      .mockRejectedValueOnce(new Error('rate limited'))
+      .mockResolvedValueOnce([{ symbol: 'BBB', date: '2026-10-30' }]);
+    db.query.mockResolvedValueOnce({ rows: [] });
+    await expect(EarningsService.fetchAndCache()).resolves.toHaveLength(1);
+
+    // Nothing cached when every day fails.
+    finnhub.getEarningsCalendar
+      .mockRejectedValueOnce(new Error('rate limited'))
+      .mockRejectedValueOnce(new Error('rate limited'));
     await expect(EarningsService.fetchAndCache()).resolves.toBeNull();
+    warn.mockRestore();
 
     EarningsService.getDateRange.mockRestore();
   });

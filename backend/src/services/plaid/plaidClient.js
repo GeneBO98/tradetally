@@ -120,9 +120,11 @@ class PlaidClient {
           days_requested: 730
         };
         // Liabilities (credit cards, mortgages, student loans) feed the
-        // retirement affordability check. Optional so Link still succeeds at
-        // institutions that do not support the product.
-        if (process.env.PLAID_ENABLE_LIABILITIES !== 'false') {
+        // retirement affordability check. Opt-in: the Plaid client must be
+        // enabled for the product or /link/token/create rejects the request,
+        // and most self-hosted installs never use it. Optional so Link still
+        // succeeds at institutions that do not support the product.
+        if (process.env.PLAID_ENABLE_LIABILITIES === 'true') {
           body.optional_products = ['liabilities'];
         }
       }

@@ -69,6 +69,28 @@ describe('settingsController trading profile (AI fields)', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: 'Trading profile updated successfully' }));
   });
 
+  test('updateTradingProfile leaves the AI fields alone when a client omits them', async () => {
+    const res = createRes();
+    await settingsController.updateTradingProfile({
+      user: { id: 'u1' },
+      body: { riskTolerance: 'aggressive' }
+    }, res, jest.fn());
+
+    const [, profileData] = User.updateSettings.mock.calls[0];
+    expect(profileData).not.toHaveProperty('aboutTrading');
+    expect(profileData).not.toHaveProperty('aiMemoryNotes');
+
+    // An explicit empty value still clears them.
+    await settingsController.updateTradingProfile({
+      user: { id: 'u1' },
+      body: { aboutTrading: '', aiMemoryNotes: [] }
+    }, createRes(), jest.fn());
+    expect(User.updateSettings).toHaveBeenLastCalledWith('u1', expect.objectContaining({
+      aboutTrading: null,
+      aiMemoryNotes: []
+    }));
+  });
+
   test('updateTradingProfile rejects oversized or malformed AI fields', async () => {
     const cases = [
       { aboutTrading: 'x'.repeat(2001) },

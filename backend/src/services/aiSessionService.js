@@ -1359,6 +1359,10 @@ ${clipped}`;
    */
   static async maybeSuggestMemoryNote(message, aiSettings) {
     if (!this.MEMORY_TRIGGER.test(String(message || ''))) return null;
+    // Without a cheap classifier this falls back to the full work model, which
+    // doubles the model cost of the message. Only pay that on the user's own
+    // provider (self-hosted or user-funded); on the instance key it is skipped.
+    if (!aiSettings?.classifier?.enabled && !aiSettings?.user_funded) return null;
     try {
       const settings = this.buildClassifierSettings(aiSettings);
       const raw = await AIProvider.generateResponse(this.buildMemoryNotePrompt(message), settings, {
