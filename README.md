@@ -6,7 +6,7 @@
 
 **Dominate With Data**
 
-<img width="1920" height="1080" alt="SCR-20260602-jxam" src="https://github.com/user-attachments/assets/4c261e64-6308-4122-b229-3ccc211228be" />
+<img alt="TradeTally dashboard" src=".github/assets/screenshots/dashboard.png" />
 
 A comprehensive trading journal and analytics platform built with Vue.js frontend and Node.js backend. Track your trades, analyze performance, and gain insights into your trading patterns across multiple brokers.
 
@@ -124,15 +124,36 @@ Comprehensive documentation is available at [docs.tradetally.io](https://docs.tr
 
 ## Screenshots
 
-<img width="2794" height="1498" alt="SCR-20260313-kodz" src="https://github.com/user-attachments/assets/05920745-4694-4ec2-aff3-baecb036ec44" />
-<img width="2809" height="1558" alt="SCR-20260313-kogp" src="https://github.com/user-attachments/assets/5601b16d-64f7-47ac-987f-13fdae3f7794" />
-<img width="1257" height="765" alt="SCR-20251016-inwc" src="https://github.com/user-attachments/assets/9e7697b5-39e2-4982-899b-ed5f4a781a30" />
-<img width="1249" height="1320" alt="SCR-20251016-inyh" src="https://github.com/user-attachments/assets/55d893dd-fd82-49a4-9340-2496945e0844" />
-<img width="1243" height="664" alt="SCR-20251016-iohf" src="https://github.com/user-attachments/assets/d0593bdd-e9d0-4d77-86bd-eda7b7c25e71" />
-<img width="1242" height="867" alt="SCR-20251016-ioih" src="https://github.com/user-attachments/assets/8139d229-c1a8-4889-a7e1-2ab598611f24" />
-<img width="1232" height="954" alt="SCR-20251016-iolb" src="https://github.com/user-attachments/assets/19be38eb-c2fa-40a4-843d-b38a5a1129cd" />
-<img width="1301" alt="Leaderboards" src="https://github.com/user-attachments/assets/659c6bf8-4624-4cf1-bb27-0ec80a8dadc7" />
-<img width="1320" alt="Achievements" src="https://github.com/user-attachments/assets/ea2266fe-72ee-4722-99be-f29f3930bdf5" />
+**Analytics**
+
+<img alt="Analytics overview" src=".github/assets/screenshots/analytics.png" />
+
+**Trades**
+
+<img alt="Trade list" src=".github/assets/screenshots/trades.png" />
+
+**Trading Calendar**
+
+<img alt="Trading calendar" src=".github/assets/screenshots/calendar.png" />
+
+**Trading Journal**
+
+<img alt="Trading journal" src=".github/assets/screenshots/journal.png" />
+
+**Trade Management (R-Multiple)**
+
+<img alt="Trade management R-multiple analysis" src=".github/assets/screenshots/trade-management.png" />
+
+**Behavioral Analytics**
+
+<img alt="Revenge trading detection" src=".github/assets/screenshots/behavioral-revenge.png" />
+<img alt="Loss aversion analysis" src=".github/assets/screenshots/behavioral-loss.png" />
+<img alt="Missed profit opportunities" src=".github/assets/screenshots/behavioral-missed.png" />
+
+**Leaderboard & Achievements**
+
+<img alt="Leaderboard" src=".github/assets/screenshots/leaderboard.png" />
+<img alt="Achievements" src=".github/assets/screenshots/achievements.png" />
 
 ## Star History
 
