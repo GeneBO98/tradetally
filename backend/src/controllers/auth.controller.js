@@ -834,7 +834,7 @@ const authController = {
 
   async sendTestEmail(req, res, next) {
     try {
-      if (process.env.NODE_ENV === 'production' && (!req.user || req.user.role !== 'admin')) {
+      if (!['admin', 'owner'].includes(req.user?.role)) {
         return res.status(403).json({ error: 'Admin access required' });
       }
 

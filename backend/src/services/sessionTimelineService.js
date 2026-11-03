@@ -21,11 +21,13 @@ function assertDate(value, name) {
 
 function accountCondition(params, accounts, alias = 't') {
   if (!Array.isArray(accounts) || accounts.length === 0) return '';
+  // Leading space: callers append this directly to other SQL fragments
+  // ("...::date" + "AND ..." produced a syntax error).
   if (accounts.includes('__unsorted__')) {
-    return `AND (${alias}.account_identifier IS NULL OR ${alias}.account_identifier = '')`;
+    return ` AND (${alias}.account_identifier IS NULL OR ${alias}.account_identifier = '')`;
   }
   params.push(accounts);
-  return `AND ${alias}.account_identifier = ANY($${params.length}::text[])`;
+  return ` AND ${alias}.account_identifier = ANY($${params.length}::text[])`;
 }
 
 function localParts(value, timezone) {

@@ -28,6 +28,14 @@ const upload = multer({
 
 router.get('/', authenticate, settingsController.getSettings);
 router.put('/', authenticate, validate(schemas.updateSettings), settingsController.updateSettings);
+// Provider behind the displayed conversions and the attribution it requires,
+// so the UI can credit keyless data wherever converted figures are shown.
+router.get('/fx-source', authenticate, async (req, res, next) => {
+  try {
+    const currencyConverter = require('../utils/currencyConverter');
+    res.json(await currencyConverter.getCurrentRateSource('USD'));
+  } catch (error) { next(error); }
+});
 router.get('/fx-rates', requireAdmin, async (req, res, next) => {
   try { res.json({ rates: await manualFxService.listRates() }); } catch (error) { next(error); }
 });
@@ -56,11 +64,11 @@ router.get('/export', authenticate, settingsController.exportUserData);
 router.post('/import', authenticate, upload.single('file'), settingsController.importUserData);
 
 // Admin Settings Routes
-router.get('/admin/ai', authenticate, settingsController.getAdminAISettings);
+router.get('/admin/ai', requireAdmin, settingsController.getAdminAISettings);
 router.put('/admin/ai', requireAdmin, validate(schemas.adminAiSettings), settingsController.updateAdminAISettings);
-router.get('/admin/cusip-ai', authenticate, settingsController.getAdminCusipAISettings);
+router.get('/admin/cusip-ai', requireAdmin, settingsController.getAdminCusipAISettings);
 router.put('/admin/cusip-ai', requireAdmin, settingsController.updateAdminCusipAISettings);
-router.get('/admin/all', authenticate, settingsController.getAllAdminSettings);
+router.get('/admin/all', requireAdmin, settingsController.getAllAdminSettings);
 
 // Broker Fee Settings Routes
 router.get('/fee-profiles', authenticate, settingsController.getFeeProfiles);

@@ -138,12 +138,21 @@ async function registerVerify(req, res, next) {
       return res.status(400).json({ error: 'Challenge expired or not found. Please try again.' });
     }
 
-    const verification = await verifyRegistrationResponse({
-      response,
-      expectedChallenge,
-      expectedOrigin: getExpectedOrigins(req),
-      expectedRPID: getRpId(req),
-    });
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({
+        response,
+        expectedChallenge,
+        expectedOrigin: getExpectedOrigins(req),
+        expectedRPID: getRpId(req),
+        // Registration options ask for userVerification 'preferred', so an
+        // authenticator that skipped UV is still a valid client response.
+        requireUserVerification: false,
+      });
+    } catch (verifyError) {
+      console.warn('[PASSKEY] Registration verification rejected:', verifyError.message);
+      return res.status(400).json({ error: `Passkey registration failed: ${verifyError.message}` });
+    }
 
     if (!verification.verified || !verification.registrationInfo) {
       return res.status(400).json({ error: 'Passkey registration failed.' });
@@ -220,18 +229,26 @@ async function loginVerify(req, res, next) {
       return res.status(403).json({ error: 'Account is disabled.' });
     }
 
-    const verification = await verifyAuthenticationResponse({
-      response,
-      expectedChallenge,
-      expectedOrigin: getExpectedOrigins(req),
-      expectedRPID: getRpId(req),
-      credential: {
-        id: cred.credential_id,
-        publicKey: Buffer.from(cred.public_key, 'base64url'),
-        counter: Number(cred.counter),
-        transports: cred.transports || [],
-      },
-    });
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response,
+        expectedChallenge,
+        expectedOrigin: getExpectedOrigins(req),
+        expectedRPID: getRpId(req),
+        credential: {
+          id: cred.credential_id,
+          publicKey: Buffer.from(cred.public_key, 'base64url'),
+          counter: Number(cred.counter),
+          transports: cred.transports || [],
+        },
+        // Mirrors the 'preferred' userVerification in loginOptions.
+        requireUserVerification: false,
+      });
+    } catch (verifyError) {
+      console.warn('[PASSKEY] Authentication verification rejected:', verifyError.message);
+      return res.status(400).json({ error: `Passkey verification failed: ${verifyError.message}` });
+    }
 
     if (!verification.verified) {
       return res.status(400).json({ error: 'Passkey verification failed.' });

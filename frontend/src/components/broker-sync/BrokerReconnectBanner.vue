@@ -77,7 +77,11 @@ const alertMessage = computed(() => {
     return 'Reauthorize within 24 hours to keep automatic trade syncing uninterrupted. Existing trades and sync settings will remain unchanged.'
   }
   if (expiredConnections.value.length === 1) {
-    return `${brokerName(expiredConnections.value[0])} authorization has expired. New trades will not sync until the connection is restored. Existing trades are safe.`
+    const connection = expiredConnections.value[0]
+    if (connection.brokerType === 'ibkr') {
+      return 'Your Interactive Brokers Flex token is invalid or expired. Generate a new token in IBKR, then choose Reconnect on the connection to paste it in. Existing trades are safe.'
+    }
+    return `${brokerName(connection)} authorization has expired. New trades will not sync until the connection is restored. Existing trades are safe.`
   }
   return `${expiredConnections.value.length} broker connections require authorization. New trades will not sync until they are restored. Existing trades are safe.`
 })
@@ -89,6 +93,7 @@ const schwabActionLabel = computed(() => hasExpiredConnections.value
 
 function brokerName(connection) {
   if (connection.brokerType === 'schwab') return 'Charles Schwab'
+  if (connection.brokerType === 'ibkr') return 'Interactive Brokers'
   if (connection.brokerType === 'tradestation') return 'TradeStation'
   if (connection.brokerType === 'alpaca') return 'Alpaca'
   return connection.brokerType || 'Broker'

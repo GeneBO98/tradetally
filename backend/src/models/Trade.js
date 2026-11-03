@@ -10,6 +10,7 @@ const { buildTradeDateRangeClause } = require('../utils/tradeDateFilter');
 const OptionStrategyGroupingService = require('../services/optionStrategyGroupingService');
 const { getPublicTradeSqlColumns } = require('../utils/publicTrade');
 const BrokerTradeExclusions = require('../services/brokerTradeExclusions');
+const AppError = require('../utils/AppError');
 /**
  * Round a numeric value to fit database precision
  * DECIMAL(20, 8) allows up to 12 integer digits and 8 decimal places
@@ -32,6 +33,40 @@ function normalizeUnderlyingSymbol(value) {
   if (value === null || value === undefined) return null;
   const normalized = String(value).trim().toUpperCase();
   return normalized || null;
+}
+
+// OCC option symbol: root (1-6 letters, optionally space padded), YYMMDD,
+// C/P, strike * 1000 as 8 digits. e.g. "AAPL  260117C00200000".
+const OCC_SYMBOL_PATTERN = /^([A-Z]{1,6})\s*(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/i;
+function parseOccSymbol(symbol) {
+  const match = String(symbol || '').trim().toUpperCase().match(OCC_SYMBOL_PATTERN);
+  if (!match) return null;
+  const [, root, yy, mm, dd, type, strike] = match;
+  return {
+    underlyingSymbol: root,
+    expirationDate: `20${yy}-${mm}-${dd}`,
+    optionType: type === 'C' ? 'call' : 'put',
+    strikePrice: Number(strike) / 1000
+  };
+}
+
+// Mirror of the trades.check_options_fields constraint, so a bad option
+// payload is rejected with a 400 instead of a Postgres error (500).
+function missingOptionFields({ strikePrice, expirationDate, optionType, underlyingSymbol }) {
+  const missing = [];
+  if (strikePrice === undefined || strikePrice === null || strikePrice === '') missing.push('strikePrice');
+  if (!expirationDate) missing.push('expirationDate');
+  if (!optionType) missing.push('optionType');
+  if (!underlyingSymbol) missing.push('underlyingSymbol');
+  return missing;
+}
+
+function optionFieldsError(missing) {
+  return new AppError(400, {
+    error: 'Validation Error',
+    message: `Option trades require ${missing.join(', ')}`,
+    missing_fields: missing
+  });
 }
 
 function normalizeInstrumentType(instrumentType, symbol = null) {
@@ -155,6 +190,28 @@ class Trade {
         cleanExpirationDate = `20${expMatch[1]}-${expMatch[2]}-${expMatch[3]}`;
         console.log(`[WARNING] Fixed 2-digit year in expirationDate: "${expirationDate}" -> "${cleanExpirationDate}"`);
       }
+    }
+
+    // Options must carry strike/expiration/type/underlying (check_options_fields).
+    // Fill gaps from an OCC-formatted symbol when possible, otherwise reject.
+    let finalStrikePrice = strikePrice;
+    let finalOptionType = optionType || null;
+    let finalUnderlyingSymbol = underlyingSymbol;
+    if (String(instrumentType || '').trim().toLowerCase() === 'option') {
+      const occ = parseOccSymbol(symbol);
+      if (occ) {
+        if (finalStrikePrice === undefined || finalStrikePrice === null || finalStrikePrice === '') finalStrikePrice = occ.strikePrice;
+        if (!cleanExpirationDate) cleanExpirationDate = occ.expirationDate;
+        if (!finalOptionType) finalOptionType = occ.optionType;
+        if (!finalUnderlyingSymbol) finalUnderlyingSymbol = occ.underlyingSymbol;
+      }
+      const missing = missingOptionFields({
+        strikePrice: finalStrikePrice,
+        expirationDate: cleanExpirationDate,
+        optionType: finalOptionType,
+        underlyingSymbol: finalUnderlyingSymbol
+      });
+      if (missing.length) throw optionFieldsError(missing);
     }
 
     // Handle case where entryTime is null but tradeDate is provided (e.g., from imports)
@@ -625,8 +682,8 @@ class Trade {
       roundToDbPrecision(mae), roundToDbPrecision(mfe), confidence || 5,
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
-      instrumentType || 'stock', roundToDbPrecision(strikePrice), cleanExpirationDate, optionType || null,
-      contractSize || (instrumentType === 'option' ? 100 : null), normalizeUnderlyingSymbol(underlyingSymbol),
+      instrumentType || 'stock', roundToDbPrecision(finalStrikePrice), cleanExpirationDate, finalOptionType,
+      contractSize || (instrumentType === 'option' ? 100 : null), normalizeUnderlyingSymbol(finalUnderlyingSymbol),
       contractMonth || null, contractYear || null, roundToDbPrecision(finalTickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       importId || null,
       String(finalOriginalCurrency).toUpperCase(), roundToDbPrecision(finalExchangeRate) || 1.0,
@@ -660,16 +717,16 @@ class Trade {
         side,
         commission: roundToDbPrecision(computedCommission) || 0,
         fees: roundToDbPrecision(computedFees) || 0,
-        strike_price: roundToDbPrecision(strikePrice),
+        strike_price: roundToDbPrecision(finalStrikePrice),
         expiration_date: cleanExpirationDate,
-        option_type: optionType || null,
+        option_type: finalOptionType,
         contract_size: contractSize || (instrumentType === 'option' ? 100 : null),
         contract_month: contractMonth || null,
         contract_year: contractYear || null,
         point_value: roundToDbPrecision(finalPointValue),
         original_currency: String(finalOriginalCurrency).toUpperCase(),
         conid: conid || null,
-        underlying_symbol: normalizeUnderlyingSymbol(underlyingSymbol),
+        underlying_symbol: normalizeUnderlyingSymbol(finalUnderlyingSymbol),
         underlying_asset: finalUnderlyingAsset || null
       });
       if (result.duplicate) return result;
@@ -1332,6 +1389,26 @@ class Trade {
       if (expMatch) {
         updates.expirationDate = `20${expMatch[1]}-${expMatch[2]}-${expMatch[3]}`;
         console.log(`[WARNING] Fixed 2-digit year in expirationDate update: "${updates.expirationDate}"`);
+      }
+    }
+
+    // An update that makes (or keeps) the trade an option must leave every
+    // check_options_fields column populated; reject with 400 before the UPDATE.
+    if (instrumentType === 'option') {
+      const merged = (camel, snake) => (updates[camel] !== undefined ? updates[camel] : currentTrade[snake]);
+      const occ = parseOccSymbol(updates.symbol || currentTrade.symbol);
+      const missing = missingOptionFields({
+        strikePrice: merged('strikePrice', 'strike_price') ?? occ?.strikePrice,
+        expirationDate: merged('expirationDate', 'expiration_date') || occ?.expirationDate,
+        optionType: merged('optionType', 'option_type') || occ?.optionType,
+        underlyingSymbol: merged('underlyingSymbol', 'underlying_symbol') || occ?.underlyingSymbol
+      });
+      if (missing.length) throw optionFieldsError(missing);
+      if (occ) {
+        if (merged('strikePrice', 'strike_price') == null || merged('strikePrice', 'strike_price') === '') updates.strikePrice = occ.strikePrice;
+        if (!merged('expirationDate', 'expiration_date')) updates.expirationDate = occ.expirationDate;
+        if (!merged('optionType', 'option_type')) updates.optionType = occ.optionType;
+        if (!merged('underlyingSymbol', 'underlying_symbol')) updates.underlyingSymbol = occ.underlyingSymbol;
       }
     }
 

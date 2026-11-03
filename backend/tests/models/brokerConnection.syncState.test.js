@@ -78,6 +78,33 @@ describe('BrokerConnection sync state updates', () => {
     expect(params).toEqual(['connection-1', '30']);
   });
 
+  test('a configuration failure counts toward the error lockout', async () => {
+    await BrokerConnection.updateAfterFailure('connection-1', 'Flex Token is invalid.');
+
+    const [query, params] = db.query.mock.calls[0];
+    expect(query).toContain('consecutive_failures = consecutive_failures + 1');
+    expect(query).toContain("WHEN consecutive_failures >= 2 THEN 'error'");
+    expect(params).toEqual(['connection-1', 'Flex Token is invalid.']);
+  });
+
+  test('a transient failure backs off the next automatic sync instead of escalating', async () => {
+    await BrokerConnection.updateAfterFailure('connection-1', 'Timeout waiting for IBKR report generation', { transient: true });
+
+    const [query, params] = db.query.mock.calls[0];
+    expect(query).not.toContain('consecutive_failures = consecutive_failures + 1');
+    expect(query).not.toContain("'error'");
+    expect(query).toContain("'transient_retry_count'");
+    expect(query).toContain('WHEN auto_sync_enabled THEN NOW() + LEAST(');
+    expect(params).toEqual(['connection-1', 'Timeout waiting for IBKR report generation']);
+  });
+
+  test('a successful sync clears the transient retry counter', async () => {
+    await BrokerConnection.updateAfterSync('connection-1', 3, 0, new Date('2026-08-01T10:00:00Z'));
+
+    const [query] = db.query.mock.calls[0];
+    expect(query).toContain("- 'transient_retry_count'");
+  });
+
   test('can clear stale scheduler failures after a successful connection test', async () => {
     await BrokerConnection.updateStatus('connection-1', 'active', 'Connection test successful', true);
 

@@ -9,6 +9,9 @@ const currencyConverter = require('./currencyConverter');
  */
 
 async function resolveDisplayCurrency(userId) {
+  // Public/shared views arrive through optional auth with no user; they are
+  // always rendered in the USD base.
+  if (!userId) return 'USD';
   try {
     const settings = await User.getSettings(userId);
     return (settings?.display_currency || 'USD').toUpperCase();
@@ -319,7 +322,7 @@ async function convertForDisplay(req, payload, { clone = true, raw = false, skip
     payload.display_currency = 'USD';
     return payload;
   }
-  const displayCurrency = await resolveDisplayCurrency(req.user.id);
+  const displayCurrency = await resolveDisplayCurrency(req.user?.id);
   if (displayCurrency === 'USD' && !rowCurrency) {
     payload.display_currency = 'USD';
     return payload;

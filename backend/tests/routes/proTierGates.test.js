@@ -42,7 +42,6 @@ jest.mock('../../src/controllers/edgeReport.controller', () => stubController())
 jest.mock('../../src/controllers/gamification.controller', () => stubController());
 jest.mock('../../src/controllers/trade.controller', () => stubController());
 jest.mock('../../src/controllers/newsEnrichment.controller', () => stubController());
-jest.mock('../../src/controllers/oauth2.controller', () => stubController());
 jest.mock('../../src/controllers/account.controller', () => stubController());
 jest.mock('../../src/controllers/plaid.controller', () => stubController());
 
@@ -60,11 +59,11 @@ function buildApp() {
   app.use('/api/gamification', require('../../src/routes/gamification.routes'));
   app.use('/api/trades', require('../../src/routes/trade.routes'));
   app.use('/api/news-enrichment', require('../../src/routes/newsEnrichment.routes'));
-  app.use('/api/oauth', require('../../src/routes/oauth2.routes'));
   app.use('/api/accounts', require('../../src/routes/account.routes'));
   return app;
 }
 
+// Administrative OAuth client routes are covered by admin.authorization.test.js.
 const PRO_ROUTES = [
   ['get', '/api/analytics/maemfe'],
   ['get', '/api/analytics/maemfe/trades'],
@@ -92,7 +91,6 @@ const PRO_ROUTES = [
   ['put', '/api/trades/t1/health'],
   ['put', '/api/trades/health/bulk'],
   ['post', '/api/news-enrichment/backfill'],
-  ['post', '/api/oauth/api/clients'],
   ['post', '/api/accounts/plaid/link-token'],
   ['post', '/api/accounts/plaid/exchange'],
   ['put', '/api/accounts/plaid/connections/c1'],
@@ -113,8 +111,6 @@ const FREE_ROUTES = [
   ['get', '/api/equity/snapshots'],
   ['get', '/api/diary'],
   ['get', '/api/gamification/leaderboards'],
-  ['get', '/api/oauth/api/clients'],
-  ['delete', '/api/oauth/api/clients/c1'],
   ['get', '/api/accounts/plaid/connections'],
   ['get', '/api/accounts/plaid/balances/history'],
   ['delete', '/api/accounts/plaid/connections/c1'],

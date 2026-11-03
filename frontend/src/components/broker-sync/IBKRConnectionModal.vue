@@ -9,7 +9,7 @@
         <!-- Header -->
         <div class="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-            Connect Interactive Brokers
+            {{ props.reconnecting ? 'Reconnect Interactive Brokers' : 'Connect Interactive Brokers' }}
           </h3>
           <button
             @click="emit('close')"
@@ -47,6 +47,10 @@
           </div>
 
           <!-- Error Message -->
+          <div v-if="props.reconnecting" class="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-800 dark:text-amber-200">
+            Your Flex token no longer works. Generate a new token in IBKR (Performance &amp; Reports &gt; Flex Queries &gt; Flex Web Service Configuration), set "Should Expire After" to 1 Year, and paste it below. Your query ID, trades and sync settings are kept.
+          </div>
+
           <div v-if="props.error" class="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
             <div class="flex">
               <svg class="h-5 w-5 text-red-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
@@ -91,6 +95,8 @@
                 type="text"
                 class="input"
                 placeholder="e.g., 123456"
+                :readonly="Boolean(props.reconnecting)"
+                :class="{ 'opacity-70 cursor-not-allowed': props.reconnecting }"
                 required
               />
             </div>
@@ -204,22 +210,29 @@ const props = defineProps({
   error: {
     type: String,
     default: ''
+  },
+  // Existing connection whose Flex token must be replaced. The query ID is
+  // the upsert key on the backend, so it is shown read-only.
+  reconnecting: {
+    type: Object,
+    default: null
   }
 })
 
 const emit = defineEmits(['close', 'save'])
 
+const existing = props.reconnecting || null
 const form = ref({
-  accountLabel: '',
+  accountLabel: existing?.accountLabel || '',
   flexToken: '',
-  flexQueryId: '',
-  autoSyncEnabled: true,
-  syncFrequency: 'daily',
-  syncTime: '06:00',
-  syncStartDate: null
+  flexQueryId: existing?.ibkrFlexQueryId || '',
+  autoSyncEnabled: existing ? existing.autoSyncEnabled !== false : true,
+  syncFrequency: existing?.syncFrequency || 'daily',
+  syncTime: existing?.syncTime ? String(existing.syncTime).slice(0, 5) : '06:00',
+  syncStartDate: existing?.syncStartDate || null
 })
 
-const activePreset = ref('all')
+const activePreset = ref(existing ? resolveActivePreset(form.value.syncStartDate) : 'all')
 
 function applySyncRangePreset(presetId) {
   activePreset.value = presetId

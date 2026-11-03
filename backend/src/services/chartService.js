@@ -125,7 +125,9 @@ class ChartService {
       }
     }
 
-    const detail = providerErrors.length ? ` ${providerErrors.join('; ')}` : '';
+    const detail = providerErrors.length
+      ? ` ${providerErrors.join('; ')}`
+      : ' Futures charts need a futures data provider (Databento) and none is configured on this server.';
     const error = new Error(`No futures chart data provider could serve ${trade.symbol}.${detail}`);
     error.statusCode = transientProviderFailure || !providerErrors.length ? 503 : 404;
     throw error;

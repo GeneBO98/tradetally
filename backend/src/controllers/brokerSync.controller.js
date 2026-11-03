@@ -218,8 +218,10 @@ const brokerSyncController = {
         syncStartDate
       });
 
-      // Update status to active after validation
-      await BrokerConnection.updateStatus(connection.id, 'active', validation.message);
+      // Update status to active after validation. Re-entering credentials on an
+      // expired connection is the IBKR "reconnect" path, so clear the old
+      // failure so the card and banner stop showing the stale token error.
+      await BrokerConnection.updateStatus(connection.id, 'active', validation.message, true);
 
       // Calculate next sync time if auto-sync enabled
       if (autoSyncEnabled && syncFrequency !== 'manual') {

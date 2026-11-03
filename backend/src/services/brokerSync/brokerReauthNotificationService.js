@@ -71,10 +71,14 @@ class BrokerReauthNotificationService {
   /**
    * Atomically expire a broker connection and notify the owner once.
    */
-  static async markRequired(connection, brokerName = 'Broker') {
+  static async markRequired(connection, brokerName = 'Broker', options = {}) {
     if (!connection?.id || !connection?.userId) return false;
 
-    const message = `${brokerName} authentication expired. Reconnect to resume automatic trade syncing.`;
+    // Brokers with user-managed credentials (IBKR Flex tokens) pass the exact
+    // failure and what to do about it; OAuth brokers use the generic wording.
+    const message = options.message
+      || `${brokerName} authentication expired. Reconnect to resume automatic trade syncing.`;
+    const instructions = options.instructions || null;
     const transitioned = await BrokerConnection.markReauthRequired(connection.id, message);
 
     // Another request already handled this expiration event.
@@ -85,6 +89,8 @@ class BrokerReauthNotificationService {
       broker_name: brokerName,
       connection_id: connection.id,
       message,
+      instructions,
+      reauth_mode: options.reauthMode || 'oauth',
       action_url: '/broker-sync',
       action_label: `Reconnect ${brokerName}`,
       timestamp: new Date().toISOString()
@@ -95,7 +101,7 @@ class BrokerReauthNotificationService {
       notificationData
     );
 
-    await this.sendEmailIfEnabled(connection, brokerName);
+    await this.sendEmailIfEnabled(connection, brokerName, { message, instructions });
 
     return true;
   }
@@ -122,7 +128,9 @@ class BrokerReauthNotificationService {
           userId: connection.userId,
           connectionId: connection.id,
           expiringSoon: options.expiringSoon === true,
-          expiresAt: options.expiresAt || null
+          expiresAt: options.expiresAt || null,
+          failureMessage: options.message || null,
+          instructions: options.instructions || null
         });
       }
     } catch (error) {

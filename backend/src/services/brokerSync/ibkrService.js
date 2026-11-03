@@ -42,6 +42,28 @@ const RETRYABLE_NETWORK_CODES = new Set(['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET',
 // IBKR error codes that mean "try again in a moment" (per official Version 3 error code docs)
 const RETRYABLE_IBKR_CODES = new Set(['1001', '1004', '1005', '1006', '1007', '1008', '1009', '1018', '1019', '1021']);
 
+// Flex Web Service codes that mean the stored credentials can never work
+// again without the user acting in IBKR (new token, fixed query ID, account
+// or IP settings). Retrying these burns IBKR's failure lockout for nothing,
+// so the sync marks the connection expired and notifies the owner instead.
+const IBKR_CREDENTIAL_ERROR_CODES = new Set(['1010', '1011', '1012', '1013', '1014', '1015', '1016', '1020']);
+const IBKR_CREDENTIAL_ERROR_PATTERNS = [
+  /flex token (is|has) (invalid|expired)/i,
+  /check your flex token and query id/i,
+  /query is invalid/i,
+  /ip restriction/i,
+  /legacy flex queries/i
+];
+
+function isIBKRCredentialError(error) {
+  if (!error || error.transient === true) return false;
+  if (error.errorCode && IBKR_CREDENTIAL_ERROR_CODES.has(String(error.errorCode))) return true;
+  const message = String(error.message || '');
+  return IBKR_CREDENTIAL_ERROR_PATTERNS.some(pattern => pattern.test(message));
+}
+
+const IBKR_REAUTH_INSTRUCTIONS = 'Generate a new Flex Web Service token in IBKR (Performance & Reports > Flex Queries > Flex Web Service Configuration), set "Should Expire After" to 1 Year, then open Broker Sync in TradeTally and choose Reconnect to enter it.';
+
 // Phrases in IBKR's <ErrorMessage> text that indicate a transient condition,
 // regardless of whether the numeric ErrorCode is one we know about. IBKR
 // occasionally returns codes outside the documented set with these messages.
@@ -2116,3 +2138,6 @@ class IBKRService {
 }
 
 module.exports = new IBKRService();
+module.exports.isIBKRCredentialError = isIBKRCredentialError;
+module.exports.IBKR_CREDENTIAL_ERROR_CODES = IBKR_CREDENTIAL_ERROR_CODES;
+module.exports.IBKR_REAUTH_INSTRUCTIONS = IBKR_REAUTH_INSTRUCTIONS;

@@ -57,7 +57,7 @@
               Settings
             </button>
             <button
-              v-if="(connection.brokerType === 'schwab' && connection.connectionStatus === 'expired') || connection.brokerType === 'oanda'"
+              v-if="(['schwab', 'ibkr'].includes(connection.brokerType) && connection.connectionStatus === 'expired') || connection.brokerType === 'oanda'"
               @click="emit('reconnect', connection); showMenu = false"
               class="w-full px-4 py-2 text-left text-sm font-medium text-primary-600 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700"
             >

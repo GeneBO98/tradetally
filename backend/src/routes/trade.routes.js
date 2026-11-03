@@ -8,6 +8,7 @@ const multer = require('multer');
 const imageUpload = require('../middleware/upload');
 const { requiresTier } = require('../middleware/tierAuth');
 const { createRateLimiter } = require('../utils/rateLimit');
+const { isSupportedImportFileName, unsupportedFileMessage } = require('../utils/csv/fileNormalizer');
 
 /**
  * @swagger
@@ -28,8 +29,9 @@ const upload = multer({
 
     const name = file.originalname.toLowerCase();
     // Trust supported export extensions — browsers/OSes report delimited and
-    // Sierra Chart files with many different mimetypes.
-    const isTradeExport = /\.(csv|txt|data)$/.test(name);
+    // Sierra Chart files with many different mimetypes. Workbooks, archives and
+    // HTML reports are converted to CSV by the import normalizer.
+    const isTradeExport = isSupportedImportFileName(name);
     const isImage = /\.(jpe?g|png|gif)$/.test(name) && /^image\//.test(file.mimetype);
 
     console.log('File validation:', { isTradeExport, isImage, actualMimetype: file.mimetype });
@@ -38,7 +40,9 @@ const upload = multer({
       return cb(null, true);
     }
     console.log('File rejected - invalid type');
-    cb(new Error('Invalid file type'));
+    const error = new Error(/\.(jpe?g|png|gif)$/.test(name) ? 'Invalid file type' : unsupportedFileMessage(name));
+    error.statusCode = 400;
+    cb(error);
   }
 });
 
