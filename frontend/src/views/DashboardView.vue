@@ -1011,7 +1011,7 @@
                         {{ totalUnrealizedPnLLabel }}
                       </div>
                       <div class="text-xs" :class="pnlClass(totalUnrealizedPnLPercent)">
-                        {{ totalUnrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(totalUnrealizedPnLPercent) }}%
+                        {{ totalUnrealizedPnLPercent > 0 ? '+' : '' }}{{ Number(totalUnrealizedPnLPercent).toFixed(1) }}%
                       </div>
                     </div>
                     <span v-else class="text-xs text-gray-400">-</span>
