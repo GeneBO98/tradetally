@@ -1,17 +1,17 @@
 <template>
   <div v-if="attentionConnections.length > 0" class="content-wrapper pt-4">
     <section
-      class="flex flex-col gap-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-amber-700 dark:bg-amber-900/20"
+      class="flex flex-col gap-4 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-yellow-700 dark:bg-yellow-900/20"
       :role="hasExpiredConnections ? 'alert' : 'status'"
       :aria-live="hasExpiredConnections ? 'assertive' : 'polite'"
     >
       <div class="flex min-w-0 items-start gap-3">
-        <ExclamationTriangleIcon class="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+        <ExclamationTriangleIcon class="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-600 dark:text-yellow-400" />
         <div>
-          <h2 class="text-sm font-semibold text-amber-950 dark:text-amber-100">
+          <h2 class="text-sm font-semibold text-yellow-950 dark:text-yellow-100">
             {{ alertTitle }}
           </h2>
-          <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
+          <p class="mt-1 text-sm text-yellow-800 dark:text-yellow-200">
             {{ alertMessage }}
           </p>
         </div>

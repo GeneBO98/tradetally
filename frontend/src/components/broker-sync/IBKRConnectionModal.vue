@@ -47,13 +47,13 @@
           </div>
 
           <!-- Error Message -->
-          <div v-if="props.reconnecting" class="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-800 dark:text-amber-200">
+          <div v-if="props.reconnecting" class="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-sm text-yellow-800 dark:text-yellow-200">
             Your Flex token no longer works. Generate a new token in IBKR (Performance &amp; Reports &gt; Flex Queries &gt; Flex Web Service Configuration), set "Should Expire After" to 1 Year, and paste it below. Your query ID, trades and sync settings are kept.
           </div>
 
           <div v-if="props.error" class="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
             <div class="flex">
-              <svg class="h-5 w-5 text-red-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+              <svg class="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
               </svg>
               <p class="ml-3 text-sm text-red-700 dark:text-red-300">{{ props.error }}</p>
@@ -113,16 +113,10 @@
               <button
                 type="button"
                 @click="form.autoSyncEnabled = !form.autoSyncEnabled"
-                :class="[
-                  form.autoSyncEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600',
-                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2'
-                ]"
+                :class="[ form.autoSyncEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2' ]"
               >
                 <span
-                  :class="[
-                    form.autoSyncEnabled ? 'translate-x-5' : 'translate-x-0',
-                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
-                  ]"
+                  :class="[ form.autoSyncEnabled ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out' ]"
                 />
               </button>
             </div>
@@ -148,12 +142,7 @@
                   :key="preset.id"
                   type="button"
                   @click="applySyncRangePreset(preset.id)"
-                  :class="[
-                    'px-3 py-1 text-sm rounded-full border transition-colors',
-                    activePreset === preset.id
-                      ? 'bg-primary-700 border-primary-600 text-white'
-                      : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'
-                  ]"
+                  :class="[ 'px-3 py-1 text-sm rounded-full border transition-colors', activePreset === preset.id ? 'bg-primary-700 border-primary-600 text-white' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600' ]"
                 >
                   {{ preset.label }}
                 </button>

@@ -45,9 +45,7 @@
           :key="r.id"
           type="button"
           class="rounded-full border px-3 py-1 text-xs font-medium transition-colors"
-          :class="selectedId === r.id
-            ? 'border-primary-600 bg-primary-700 text-white'
-            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+          :class="selectedId === r.id ? 'border-primary-600 bg-primary-700 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
           @click="selectedId = r.id"
         >
           {{ formatTradeDate(r.period_start, 'MMM dd') }} – {{ formatTradeDate(r.period_end, 'MMM dd') }}

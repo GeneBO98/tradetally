@@ -10,13 +10,13 @@
     >
       <div role="dialog" aria-modal="true"
         v-if="notification"
-        class="modal-panel fixed bottom-4 right-4 z-[70] max-w-sm w-full pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden"
+        class="modal-panel fixed bottom-4 right-4 z-[70] max-w-sm w-full pointer-events-auto overflow-hidden"
       >
         <div class="p-4">
           <div class="flex items-start">
             <div class="flex-shrink-0">
-              <CheckCircleIcon v-if="notification.type === 'success'" class="h-6 w-6 text-green-400" />
-              <XCircleIcon v-else-if="notification.type === 'error'" class="h-6 w-6 text-red-400" />
+              <CheckCircleIcon v-if="notification.type === 'success'" class="h-6 w-6 text-green-700 dark:text-green-400" />
+              <XCircleIcon v-else-if="notification.type === 'error'" class="h-6 w-6 text-red-600 dark:text-red-400" />
               <ExclamationTriangleIcon v-else class="h-6 w-6 text-yellow-400" />
             </div>
             <div class="ml-3 w-0 flex-1">
@@ -31,12 +31,7 @@
                   v-for="action in notification.actions"
                   :key="action.label"
                   @click="handleAction(action)"
-                  :class="[
-                    'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                    action.style === 'primary'
-                      ? 'bg-primary-700 text-white hover:bg-primary-800'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
-                  ]"
+                  :class="[ 'rounded-md px-3 py-1.5 text-xs font-medium transition-colors', action.style === 'primary' ? 'bg-primary-700 text-white hover:bg-primary-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600' ]"
                 >
                   {{ action.label }}
                 </button>

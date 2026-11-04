@@ -61,7 +61,7 @@ const props = defineProps({
 })
 
 const INDICATOR_STYLES = {
-  vwap: { color: '#8b5cf6', title: 'VWAP' },
+  vwap: { color: '#F0812A', title: 'VWAP' },
   ema9: { color: '#0ea5e9', title: 'EMA 9' },
   ema20: { color: '#ec4899', title: 'EMA 20' }
 }
@@ -168,11 +168,11 @@ function createChart() {
   // Futures ticks (0.25, 0.1, 1/32...) drive the price-scale increments
   const tickSize = Number(props.trade?.tick_size)
   const seriesOptions = {
-    upColor: '#10b981',
+    upColor: '#16a34a',
     downColor: '#ef4444',
-    borderUpColor: '#10b981',
+    borderUpColor: '#16a34a',
     borderDownColor: '#ef4444',
-    wickUpColor: '#10b981',
+    wickUpColor: '#16a34a',
     wickDownColor: '#ef4444'
   }
   if (Number.isFinite(tickSize) && tickSize > 0) {
@@ -198,7 +198,7 @@ function createChart() {
   if (props.trade && props.trade.stop_loss != null && nearData(Number(props.trade.stop_loss))) {
     candleSeries.createPriceLine({
       price: Number(props.trade.stop_loss),
-      color: '#f59e0b',
+      color: '#ca8a04',
       lineWidth: 1,
       lineStyle: LightweightCharts.LineStyle.Dashed,
       axisLabelVisible: true,
@@ -208,7 +208,7 @@ function createChart() {
   if (props.trade && props.trade.take_profit != null && nearData(Number(props.trade.take_profit))) {
     candleSeries.createPriceLine({
       price: Number(props.trade.take_profit),
-      color: '#10b981',
+      color: '#16a34a',
       lineWidth: 1,
       lineStyle: LightweightCharts.LineStyle.Dashed,
       axisLabelVisible: true,
@@ -222,7 +222,7 @@ function createChart() {
   ) {
     candleSeries.createPriceLine({
       price: Number(props.trade.strike_price),
-      color: '#a855f7',
+      color: '#F0812A',
       lineWidth: 1,
       lineStyle: LightweightCharts.LineStyle.Dashed,
       axisLabelVisible: true,
@@ -298,7 +298,7 @@ function buildMarkers(visibleBars) {
     return {
       time: anchor.time,
       position: fill.action === 'buy' ? 'belowBar' : 'aboveBar',
-      color: fill.action === 'buy' ? '#10b981' : '#ef4444',
+      color: fill.action === 'buy' ? '#16a34a' : '#ef4444',
       shape: fill.action === 'buy' ? 'arrowUp' : 'arrowDown',
       text: `${fill.action === 'buy' ? 'BUY' : 'SELL'} ${fill.quantity} @ ${currencySymbol.value}${formatPrice(fill.price)}`,
       size: 2

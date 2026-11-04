@@ -101,6 +101,32 @@ describe('design system consistency', () => {
     expect(/\bbadge\b/.test(js)).toBe(true)
   })
 
+  it('uses one warning ramp (yellow) and one win green; no emerald/amber/cyan/teal/sky/rose', () => {
+    const re = /(?:^|[\s"'`:])(?:bg|text|border|ring|from|to|via|divide)-(?:emerald|amber|cyan|teal|sky|rose)-\d+/
+    expect(offenders(f => !PRESENTATION(f.path) && re.test(f.text))).toEqual([])
+  })
+
+  it('keeps purple to the gamification rarity scale', () => {
+    const re = /(?:bg|text|border|ring)-purple-\d+/
+    expect(offenders(f => !PRESENTATION(f.path) && !/[Gg]amification/.test(f.path) && re.test(f.text))).toEqual([])
+  })
+
+  it('only references button classes that exist in main.css', () => {
+    const css = readFileSync(join(ROOT, 'assets', 'main.css'), 'utf8')
+    const defined = new Set([...css.matchAll(/\.(btn[\w-]*)\s*\{/g)].map(m => m[1]))
+    const bad = offenders(f => !PRESENTATION(f.path) && [...f.text.matchAll(/\b(btn-[\w-]+)\b/g)].some(m => !defined.has(m[1])))
+    expect(bad).toEqual([])
+  })
+
+  it('has retired the legacy ring-opacity surface recipe', () => {
+    expect(offenders(f => /ring-black ring-opacity-5/.test(f.text))).toEqual([])
+  })
+
+  it('keeps the shared stylesheets on the surface radius too', () => {
+    const extra = readdirSync(join(ROOT, 'assets')).filter(n => n.endsWith('.css')).map(n => readFileSync(join(ROOT, 'assets', n), 'utf8'))
+    expect(extra.some(t => /rounded-(?:xl|2xl|3xl)\b/.test(t))).toBe(false)
+  })
+
   it('does not redefine shared primitives in scoped styles', () => {
     const re = /<style[^>]*>[\s\S]*?(?:^|\s)\.(?:input|btn(?:-primary|-secondary)?|card|badge|modal-panel)\s*\{/m
     expect(offenders(f => re.test(f.text))).toEqual([])

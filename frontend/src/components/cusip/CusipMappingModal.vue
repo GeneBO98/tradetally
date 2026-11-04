@@ -25,7 +25,7 @@
                   <!-- CUSIP Input -->
                   <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      CUSIP <span class="text-red-500">*</span>
+                      CUSIP <span class="text-red-600 dark:text-red-400">*</span>
                     </label>
                     <input
                       v-model="form.cusip"
@@ -47,7 +47,7 @@
                   <!-- Ticker Input -->
                   <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Ticker Symbol <span class="text-red-500">*</span>
+                      Ticker Symbol <span class="text-red-600 dark:text-red-400">*</span>
                     </label>
                     <input
                       v-model="form.ticker"

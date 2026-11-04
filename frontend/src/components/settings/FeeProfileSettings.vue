@@ -24,7 +24,7 @@
                 <h4 class="heading-card truncate">{{ profile.name }}</h4>
                 <span
                   v-if="profile.isZeroFee"
-                  class="badge bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                  class="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200"
                 >
                   Zero fee
                 </span>
@@ -120,11 +120,11 @@
           </div>
         </div>
 
-        <label class="mt-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-950/20">
+        <label class="mt-5 flex items-start gap-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-900/60 dark:bg-yellow-950/20">
           <input v-model="form.isZeroFee" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500" />
           <span>
-            <span class="block text-sm font-medium text-amber-900 dark:text-amber-100">Zero-fee profile</span>
-            <span class="mt-0.5 block text-xs text-amber-800 dark:text-amber-200">Use for simulated accounts. This explicitly overrides legacy broker settings.</span>
+            <span class="block text-sm font-medium text-yellow-900 dark:text-yellow-100">Zero-fee profile</span>
+            <span class="mt-0.5 block text-xs text-yellow-800 dark:text-yellow-200">Use for simulated accounts. This explicitly overrides legacy broker settings.</span>
           </span>
         </label>
 

@@ -244,7 +244,7 @@
     <div v-if="createdClient" class="modal-overlay flex items-center justify-center p-4">
       <div role="dialog" aria-modal="true" class="modal-panel max-w-2xl w-full p-6">
         <div class="flex items-center space-x-3 mb-4">
-          <CheckCircleIcon class="w-8 h-8 text-green-500" />
+          <CheckCircleIcon class="w-8 h-8 text-green-700 dark:text-green-400" />
           <h3 class="modal-title">
             Application Created Successfully
           </h3>

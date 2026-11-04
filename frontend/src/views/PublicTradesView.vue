@@ -72,11 +72,7 @@
                     {{ trade.side }}
                   </span>
                   <span class="badge"
-                    :class="[
-                      trade.exit_price
-                        ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                        : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400'
-                    ]">
+                    :class="[ trade.exit_price ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400' ]">
                     {{ trade.exit_price ? 'Closed' : 'Open' }}
                   </span>
                 </div>

@@ -164,12 +164,7 @@
                     </p>
                     <p
                         v-if="holding.unrealizedPnLPercent !== undefined"
-                        :class="[
-                            'text-xs',
-                            holding.unrealizedPnL >= 0
-                                ? 'text-green-500'
-                                : 'text-red-500',
-                        ]"
+                        :class="[ 'text-xs', holding.unrealizedPnL >= 0 ? 'text-green-500' : 'text-red-500', ]"
                     >
                         {{ holding.unrealizedPnL >= 0 ? "+" : ""
                         }}{{ holding.unrealizedPnLPercent.toFixed(2) }}%
@@ -184,12 +179,7 @@
                         v-for="tab in tabs"
                         :key="tab.id"
                         @click="activeTab = tab.id"
-                        :class="[
-                            'py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap',
-                            activeTab === tab.id
-                                ? 'border-primary-500 text-primary-700 dark:text-primary-400'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400',
-                        ]"
+                        :class="[ 'py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap', activeTab === tab.id ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400', ]"
                     >
                         {{ tab.name }}
                         <span

@@ -64,12 +64,7 @@
             <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center space-x-3">
                     <div
-                        :class="[
-                            'w-3 h-3 rounded-full',
-                            marketStatus.isOpen
-                                ? 'bg-green-500'
-                                : 'bg-yellow-500',
-                        ]"
+                        :class="[ 'w-3 h-3 rounded-full', marketStatus.isOpen ? 'bg-green-500' : 'bg-yellow-500', ]"
                     ></div>
                     <span class="text-sm text-gray-700 dark:text-gray-300">
                         {{ marketStatus.status }}
@@ -93,10 +88,7 @@
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-3">
                     <div
-                        :class="[
-                            'w-3 h-3 rounded-full',
-                            getConnectionStatusColor(),
-                        ]"
+                        :class="[ 'w-3 h-3 rounded-full', getConnectionStatusColor(), ]"
                     ></div>
                     <span class="text-sm text-gray-700 dark:text-gray-300">
                         {{ getConnectionStatusText() }}
@@ -272,7 +264,7 @@
                                     v-else-if="
                                         alert.is_active && alert.triggered_at
                                     "
-                                    class="badge bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400"
+                                    class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400"
                                 >
                                     Triggered (Repeat)
                                 </span>
@@ -314,7 +306,7 @@
                                         :icon="mdiRepeat"
                                         :size="16"
                                         title="Repeat enabled"
-                                        classes="text-purple-500"
+                                        classes="text-primary-500"
                                     />
                                 </div>
                             </td>

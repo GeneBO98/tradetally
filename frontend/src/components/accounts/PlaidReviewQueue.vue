@@ -6,8 +6,8 @@
         <div class="flex items-center gap-3">
           <h3 class="heading-card">Plaid Review</h3>
           <div v-if="accountId && reviewSummary" class="hidden items-center gap-3 text-xs font-medium sm:flex">
-            <span class="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-              <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+            <span class="inline-flex items-center gap-1.5 text-yellow-600 dark:text-yellow-400">
+              <span class="h-1.5 w-1.5 rounded-full bg-yellow-500"></span>
               <span class="tabular-nums">{{ actionablePendingCount }}</span> pending review
             </span>
             <span class="h-3 w-px bg-gray-200 dark:bg-gray-700"></span>
@@ -40,8 +40,8 @@
 
       <!-- Mobile stats (shown below title on narrow) -->
       <div v-if="accountId && reviewSummary" class="mt-2 flex items-center gap-3 text-xs font-medium sm:hidden">
-        <span class="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-          <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+        <span class="inline-flex items-center gap-1.5 text-yellow-600 dark:text-yellow-400">
+          <span class="h-1.5 w-1.5 rounded-full bg-yellow-500"></span>
           <span class="tabular-nums">{{ actionablePendingCount }}</span> pending review
         </span>
         <span class="tabular-nums text-gray-500 dark:text-gray-400">
@@ -57,9 +57,7 @@
             :key="tab.id"
             type="button"
             class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors"
-            :class="activeTab === tab.id
-              ? 'bg-primary-700 text-white shadow-sm'
-              : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700/50'"
+            :class="activeTab === tab.id ? 'bg-primary-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700/50'"
             @click="activeTab = tab.id"
           >
             {{ tab.label }}
@@ -161,10 +159,7 @@
         v-for="(item, pageIndex) in paginatedItems"
         :key="item.id"
         class="group transition-colors"
-        :class="[
-          expanded[item.id] ? 'bg-gray-50 dark:bg-gray-800/40' : '',
-          selectedIds.has(item.id) ? 'bg-primary-50/70 dark:bg-primary-900/20' : ''
-        ]"
+        :class="[ expanded[item.id] ? 'bg-gray-50 dark:bg-gray-800/40' : '', selectedIds.has(item.id) ? 'bg-primary-50/70 dark:bg-primary-900/20' : '' ]"
       >
         <!-- Primary row -->
         <div
@@ -333,7 +328,7 @@
             Plaid suggested <span class="font-medium capitalize">{{ item.directionGuess }}</span>
             <span v-if="item.confidence">· <span class="tabular-nums">{{ item.confidence }}%</span> confidence</span>
           </div>
-          <div v-else class="mt-2 text-xs font-medium text-amber-600 dark:text-amber-400">
+          <div v-else class="mt-2 text-xs font-medium text-yellow-600 dark:text-yellow-400">
             Direction ambiguous — please choose deposit or withdrawal.
           </div>
         </div>
@@ -397,9 +392,7 @@
         <div class="space-y-1.5 px-5 py-4">
           <label
             class="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors"
-            :class="confirmState.scope === 'single'
-              ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
-              : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40'"
+            :class="confirmState.scope === 'single' ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40'"
           >
             <input
               type="radio"
@@ -420,9 +413,7 @@
           <label
             v-if="hasMatchingExpansion"
             class="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors"
-            :class="confirmState.scope === 'matching'
-              ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
-              : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40'"
+            :class="confirmState.scope === 'matching' ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40'"
           >
             <input
               type="radio"
@@ -697,14 +688,14 @@ function toggleRowSelection(item, index, event) {
 }
 
 function railColor(item) {
-  if (item.pending) return 'bg-amber-400/70'
+  if (item.pending) return 'bg-yellow-400/70'
   if (item.reviewStatus === 'approved') {
     return item.importedTransactionType === 'withdrawal' ? 'bg-red-500/70' : 'bg-green-500/70'
   }
   if (item.reviewStatus === 'rejected') return 'bg-gray-300 dark:bg-gray-600'
   if (item.directionGuess === 'withdrawal') return 'bg-red-400/50'
   if (item.directionGuess === 'deposit') return 'bg-green-400/50'
-  return 'bg-amber-400/70'
+  return 'bg-yellow-400/70'
 }
 
 function amountColor(item) {
@@ -731,7 +722,7 @@ function statusLabel(item) {
 }
 
 function statusClass(item) {
-  if (item.pending) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  if (item.pending) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
   if (item.reviewStatus === 'approved') return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
   if (item.reviewStatus === 'rejected') return 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
   return ''

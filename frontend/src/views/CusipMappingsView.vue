@@ -268,12 +268,7 @@
                                 <div class="space-y-1">
                                     <span
                                         class="badge"
-                                        :class="
-                                            getSourceBadgeClass(
-                                                mapping.resolution_source,
-                                                mapping.is_user_override,
-                                            )
-                                        "
+                                        :class="getSourceBadgeClass( mapping.resolution_source, mapping.is_user_override, )"
                                     >
                                         {{
                                             getSourceLabel(
@@ -642,7 +637,7 @@ const getSourceBadgeClass = (source, isUserOverride) => {
         case "finnhub":
             return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
         case "ai":
-            return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
+            return "bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200";
         case "manual":
             return "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200";
         default:

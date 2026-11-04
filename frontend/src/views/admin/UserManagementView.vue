@@ -385,7 +385,7 @@
                             <span :class="getTierBadgeClass(tierInfo.tier)" class="badge">
                                 {{ tierInfo.tier }}
                             </span>
-                            <span v-if="tierInfo.override" class="text-xs font-medium text-amber-600 dark:text-amber-400">Override active</span>
+                            <span v-if="tierInfo.override" class="text-xs font-medium text-yellow-600 dark:text-yellow-400">Override active</span>
                         </div>
                     </div>
 
@@ -402,13 +402,13 @@
                 </div>
 
                 <!-- Override Info -->
-                <div v-if="tierInfo.override" class="rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3">
-                    <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
+                <div v-if="tierInfo.override" class="rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 p-3">
+                    <p class="text-sm font-medium text-yellow-800 dark:text-yellow-200">
                         Override: {{ tierInfo.override.tier }}
                         <span v-if="tierInfo.override.expires_at"> until {{ formatDate(tierInfo.override.expires_at) }}</span>
                     </p>
-                    <p v-if="tierInfo.override.reason" class="mt-0.5 text-xs text-amber-700 dark:text-amber-300">Reason: {{ tierInfo.override.reason }}</p>
-                    <p v-if="tierInfo.override.created_by_username" class="mt-0.5 text-xs text-amber-700 dark:text-amber-300">Set by: {{ tierInfo.override.created_by_username }}</p>
+                    <p v-if="tierInfo.override.reason" class="mt-0.5 text-xs text-yellow-700 dark:text-yellow-300">Reason: {{ tierInfo.override.reason }}</p>
+                    <p v-if="tierInfo.override.created_by_username" class="mt-0.5 text-xs text-yellow-700 dark:text-yellow-300">Set by: {{ tierInfo.override.created_by_username }}</p>
                 </div>
 
                 <!-- Override Controls -->
@@ -514,7 +514,7 @@ const dangerPillClass =
 const warnPillClass =
     "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400";
 const pendingPillClass =
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-400";
+    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400";
 const mutedPillClass =
     "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
 

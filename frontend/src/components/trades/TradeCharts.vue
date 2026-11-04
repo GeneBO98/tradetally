@@ -6,12 +6,7 @@
 
         <!-- Charts display - responsive grid -->
         <div
-            :class="[
-                'grid gap-6',
-                charts.length === 1
-                    ? 'grid-cols-1 max-w-4xl mx-auto'
-                    : 'grid-cols-1 md:grid-cols-2',
-            ]"
+            :class="[ 'grid gap-6', charts.length === 1 ? 'grid-cols-1 max-w-4xl mx-auto' : 'grid-cols-1 md:grid-cols-2', ]"
         >
             <div v-for="chart in charts" :key="chart.id" class="relative group">
                 <!-- Chart title if provided -->

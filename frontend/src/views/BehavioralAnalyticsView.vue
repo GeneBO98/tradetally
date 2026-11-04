@@ -122,12 +122,7 @@
                         v-for="tab in behavioralTabs"
                         :key="tab.id"
                         @click="activeBehavioralTab = tab.id"
-                        :class="[
-                            'tab',
-                            activeBehavioralTab === tab.id
-                                ? 'tab-active'
-                                : 'tab-inactive'
-                        ]"
+                        :class="[ 'tab', activeBehavioralTab === tab.id ? 'tab-active' : 'tab-inactive' ]"
                     >
                         {{ tab.label }}
                     </button>
@@ -142,14 +137,7 @@
                         v-for="alert in activeAlerts"
                         :key="alert.id"
                         class="card border-l-4"
-                        :class="{
-                            'border-l-red-500 bg-red-50 dark:bg-red-900/10':
-                                alert.alert_type === 'warning',
-                            'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/10':
-                                alert.alert_type === 'recommendation',
-                            'border-l-red-600 bg-red-100 dark:bg-red-900/20':
-                                alert.alert_type === 'blocking',
-                        }"
+                        :class="{ 'border-l-red-500 bg-red-50 dark:bg-red-900/10': alert.alert_type === 'warning', 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/10': alert.alert_type === 'recommendation', 'border-l-red-600 bg-red-100 dark:bg-red-900/20': alert.alert_type === 'blocking', }"
                     >
                         <div class="card-body">
                             <div class="flex items-start justify-between">
@@ -323,26 +311,7 @@
                             <div class="flex-shrink-0">
                                 <div
                                     class="h-8 w-8 rounded-full flex items-center justify-center"
-                                    :class="{
-                                        'bg-green-100 dark:bg-green-900/20':
-                                            parseFloat(
-                                                revengeAnalysis?.statistics
-                                                    ?.total_additional_loss ||
-                                                    0,
-                                            ) < 0,
-                                        'bg-red-100 dark:bg-red-900/20':
-                                            parseFloat(
-                                                revengeAnalysis?.statistics
-                                                    ?.total_additional_loss ||
-                                                    0,
-                                            ) > 0,
-                                        'bg-gray-100 dark:bg-gray-900/20':
-                                            parseFloat(
-                                                revengeAnalysis?.statistics
-                                                    ?.total_additional_loss ||
-                                                    0,
-                                            ) === 0,
-                                    }"
+                                    :class="{ 'bg-green-100 dark:bg-green-900/20': parseFloat( revengeAnalysis?.statistics ?.total_additional_loss || 0, ) < 0, 'bg-red-100 dark:bg-red-900/20': parseFloat( revengeAnalysis?.statistics ?.total_additional_loss || 0, ) > 0, 'bg-gray-100 dark:bg-gray-900/20': parseFloat( revengeAnalysis?.statistics ?.total_additional_loss || 0, ) === 0, }"
                                 >
                                     <svg
                                         class="h-5 w-5"
@@ -515,14 +484,7 @@
                         >
                             <div
                                 class="h-2 rounded-full transition-all duration-300"
-                                :class="{
-                                    'bg-green-600':
-                                        insights.overallRisk.level === 'low',
-                                    'bg-yellow-600':
-                                        insights.overallRisk.level === 'medium',
-                                    'bg-red-600':
-                                        insights.overallRisk.level === 'high',
-                                }"
+                                :class="{ 'bg-green-600': insights.overallRisk.level === 'low', 'bg-yellow-600': insights.overallRisk.level === 'medium', 'bg-red-600': insights.overallRisk.level === 'high', }"
                                 :style="{
                                     width: `${insights.overallRisk.score}%`,
                                 }"
@@ -562,14 +524,7 @@
                             v-for="insight in insights.insights"
                             :key="insight.title"
                             class="p-4 rounded-lg border"
-                            :class="{
-                                'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/10':
-                                    insight.severity === 'high',
-                                'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/10':
-                                    insight.severity === 'medium',
-                                'border-primary-200 bg-primary-50 dark:border-primary-800 dark:bg-primary-900/10':
-                                    insight.severity === 'low',
-                            }"
+                            :class="{ 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/10': insight.severity === 'high', 'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/10': insight.severity === 'medium', 'border-primary-200 bg-primary-50 dark:border-primary-800 dark:bg-primary-900/10': insight.severity === 'low', }"
                         >
                             <h4
                                 class="heading-card"
@@ -962,24 +917,12 @@
                                 )"
                                 :key="trade.tradeId"
                                 class="card p-4 relative"
-                                :class="{
-                                    'ring-2 ring-red-200 dark:ring-red-800':
-                                        index === 0,
-                                    'ring-1 ring-orange-200 dark:ring-orange-800':
-                                        index === 1,
-                                    'ring-1 ring-yellow-200 dark:ring-yellow-800':
-                                        index === 2,
-                                }"
+                                :class="{ 'ring-2 ring-red-200 dark:ring-red-800': index === 0, 'ring-1 ring-orange-200 dark:ring-orange-800': index === 1, 'ring-1 ring-yellow-200 dark:ring-yellow-800': index === 2, }"
                             >
                                 <!-- Rank Badge -->
                                 <div
                                     class="absolute -top-2 -left-2 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                                    :class="{
-                                        'bg-red-500': index === 0,
-                                        'bg-orange-500': index === 1,
-                                        'bg-yellow-500': index === 2,
-                                        'bg-gray-500': index > 2,
-                                    }"
+                                    :class="{ 'bg-red-500': index === 0, 'bg-orange-500': index === 1, 'bg-yellow-500': index === 2, 'bg-gray-500': index > 2, }"
                                 >
                                     {{ index + 1 }}
                                 </div>
@@ -1354,19 +1297,7 @@
                                     >
                                         <div
                                             class="h-2 rounded-full"
-                                            :class="{
-                                                'bg-red-500':
-                                                    trade.exitQualityScore <
-                                                    0.3,
-                                                'bg-yellow-500':
-                                                    trade.exitQualityScore >=
-                                                        0.3 &&
-                                                    trade.exitQualityScore <
-                                                        0.7,
-                                                'bg-green-500':
-                                                    trade.exitQualityScore >=
-                                                    0.7,
-                                            }"
+                                            :class="{ 'bg-red-500': trade.exitQualityScore < 0.3, 'bg-yellow-500': trade.exitQualityScore >= 0.3 && trade.exitQualityScore < 0.7, 'bg-green-500': trade.exitQualityScore >= 0.7, }"
                                             :style="{
                                                 width: `${trade.exitQualityScore * 100}%`,
                                             }"
@@ -1599,19 +1530,11 @@
                                         )
                                     "
                                     class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                                    :class="
-                                        settings.revengeTrading?.enabled
-                                            ? 'bg-primary-600'
-                                            : 'bg-gray-200 dark:bg-gray-700'
-                                    "
+                                    :class="settings.revengeTrading?.enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700'"
                                 >
                                     <span
                                         class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                                        :class="
-                                            settings.revengeTrading?.enabled
-                                                ? 'translate-x-5'
-                                                : 'translate-x-0'
-                                        "
+                                        :class="settings.revengeTrading?.enabled ? 'translate-x-5' : 'translate-x-0'"
                                     ></span>
                                 </button>
                             </div>

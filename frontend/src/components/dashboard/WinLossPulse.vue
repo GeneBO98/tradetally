@@ -157,9 +157,7 @@
         <div class="mt-auto pt-4">
           <div
             class="flex items-center justify-between gap-3 rounded-md border px-4 py-3"
-            :class="profitFactor >= 1
-              ? 'border-green-200 dark:border-green-900/50 bg-green-50/40 dark:bg-green-900/10'
-              : 'border-red-200 dark:border-red-900/50 bg-red-50/40 dark:bg-red-900/10'"
+            :class="profitFactor >= 1 ? 'border-green-200 dark:border-green-900/50 bg-green-50/40 dark:bg-green-900/10' : 'border-red-200 dark:border-red-900/50 bg-red-50/40 dark:bg-red-900/10'"
           >
             <div>
               <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Profit factor</div>

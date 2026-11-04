@@ -72,8 +72,8 @@
                   <div class="text-xs text-gray-500 dark:text-gray-400">Unrealized</div>
                   <div class="text-sm font-medium tabular-nums" :class="[
                   totalUnrealizedPnl >= 0
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-amber-600 dark:text-amber-400'
+                    ? 'text-green-700 dark:text-green-400'
+                    : 'text-yellow-600 dark:text-yellow-400'
                   ]">
                     {{ formatSignedCurrency(totalUnrealizedPnl) }}
                   </div>
@@ -134,8 +134,8 @@
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Unrealized</div>
                 <div class="text-lg font-semibold tabular-nums" :class="[
                   totalUnrealizedPnl >= 0
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-amber-600 dark:text-amber-400'
+                    ? 'text-green-700 dark:text-green-400'
+                    : 'text-yellow-600 dark:text-yellow-400'
                 ]">
                   {{ formatSignedCurrency(totalUnrealizedPnl) }}
                 </div>
@@ -349,11 +349,7 @@
                 </span>
               </div>
             <span class="badge"
-              :class="[
-                !isTradeOpen(trade)
-                  ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                  : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400'
-              ]">
+              :class="[ !isTradeOpen(trade) ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400' ]">
               {{ isTradeOpen(trade) ? 'Open' : 'Closed' }}
             </span>
           </div>
@@ -431,13 +427,7 @@
             <div class="flex items-center justify-between">
               <div class="text-xs text-gray-500 dark:text-gray-400">Quality</div>
               <span class="badge"
-                :class="{
-                  'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.qualityGrade === 'A',
-                  'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B',
-                  'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C',
-                  'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D',
-                  'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F'
-                }">
+                :class="{ 'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                 {{ trade.qualityGrade }}
               </span>
             </div>
@@ -467,14 +457,14 @@
         </div>
 
         <!-- Desktop view (table) -->
-        <div class="hidden md:block shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+        <div class="hidden md:block card overflow-hidden">
         <!-- Top scroll bar wrapper -->
         <div ref="topScroll" class="overflow-x-auto overflow-y-hidden bg-gray-100 dark:bg-gray-800" @scroll="syncBottomScroll" style="height: 17px;">
           <div :style="{width: tableScrollWidth, height: '1px'}"></div>
         </div>
         <!-- Main table wrapper -->
         <div ref="bottomScroll" class="overflow-x-auto relative" @scroll="syncTopScroll">
-          <table class="trade-list-table w-full divide-y divide-gray-300 dark:divide-gray-700" :style="tableLayoutStyle">
+          <table class="trade-list-table w-full divide-y divide-gray-200 dark:divide-gray-700" :style="tableLayoutStyle">
           <!-- Widths live on the colgroup so a drag on one header moves that
                column only, the way a spreadsheet behaves. -->
           <colgroup>
@@ -530,7 +520,7 @@
               <th v-if="hasCustomColumnWidths"></th>
             </tr>
           </thead>
-          <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
             <tr v-for="trade in tradesStore.trades" :key="trade.id"
                 class="hover:bg-gray-50 dark:hover:bg-gray-800">
               <!-- Checkbox Column -->
@@ -729,13 +719,7 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span v-if="trade.qualityGrade"
                     class="badge"
-                    :class="{
-                      'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.qualityGrade === 'A',
-                      'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B',
-                      'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C',
-                      'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D',
-                      'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F'
-                    }">
+                    :class="{ 'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                     {{ trade.qualityGrade }}
                   </span>
                   <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
@@ -755,11 +739,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span class="badge"
-                    :class="[
-                      !isTradeOpen(trade)
-                        ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                        : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400'
-                    ]">
+                    :class="[ !isTradeOpen(trade) ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400' ]">
                     {{ isTradeOpen(trade) ? 'Open' : 'Closed' }}
                   </span>
                 </td>
@@ -1013,7 +993,7 @@
         
       <!-- Pagination (shared for both mobile and desktop) -->
       <div v-if="tradesStore.pagination.totalPages > 1" class="mt-4">
-        <div class="bg-white dark:bg-gray-900 px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 sm:px-6 rounded-lg shadow">
+        <div class="bg-white dark:bg-gray-800 px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 sm:px-6 rounded-lg shadow">
           <div class="flex-1 flex justify-between sm:hidden">
             <button 
               @click="prevPage"
@@ -1059,12 +1039,7 @@
                   v-for="page in visiblePages"
                   :key="page"
                   @click="goToPage(page)"
-                  :class="[
-                    page === tradesStore.pagination.page
-                      ? 'z-10 bg-primary-50 dark:bg-primary-900/20 border-primary-500 text-primary-700 dark:text-primary-400'
-                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700',
-                    'relative inline-flex items-center px-4 py-2 border text-sm font-medium'
-                  ]"
+                  :class="[ page === tradesStore.pagination.page ? 'z-10 bg-primary-50 dark:bg-primary-900/20 border-primary-500 text-primary-700 dark:text-primary-400' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700', 'relative inline-flex items-center px-4 py-2 border text-sm font-medium' ]"
                 >
                   {{ page }}
                 </button>

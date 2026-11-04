@@ -172,15 +172,15 @@ const brokerStyles = computed(() => {
       return {
         name: 'TradeStation',
         abbrev: 'TS',
-        bgClass: 'bg-emerald-100 dark:bg-emerald-900/30',
-        textClass: 'text-emerald-600 dark:text-emerald-400'
+        bgClass: 'bg-green-100 dark:bg-green-900/30',
+        textClass: 'text-green-700 dark:text-green-400'
       }
     case 'alpaca':
       return {
         name: props.connection.brokerEnvironment === 'paper' ? 'Alpaca Paper' : 'Alpaca Live',
         abbrev: props.connection.brokerEnvironment === 'paper' ? 'AP' : 'AL',
-        bgClass: 'bg-cyan-100 dark:bg-cyan-900/30',
-        textClass: 'text-cyan-600 dark:text-cyan-400'
+        bgClass: 'bg-primary-100 dark:bg-primary-900/30',
+        textClass: 'text-primary-700 dark:text-primary-400'
       }
     case 'webull':
       return {

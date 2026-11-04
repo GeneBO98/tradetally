@@ -30,7 +30,7 @@
     <!-- Error State -->
     <div v-else-if="error" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-8">
       <div class="flex">
-        <ExclamationTriangleIcon class="w-5 h-5 text-red-400 mr-2" />
+        <ExclamationTriangleIcon class="w-5 h-5 text-red-600 dark:text-red-400 mr-2" />
         <p class="text-red-800 dark:text-red-200">{{ error }}</p>
       </div>
     </div>
@@ -136,7 +136,7 @@
           <div class="mt-6">
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Title <span v-if="form.entryType === 'diary'" class="font-normal text-gray-500 dark:text-gray-400">(recommended for multiple entries)</span>
-              <span v-if="form.entryType === 'playbook'" class="text-red-500">*</span>
+              <span v-if="form.entryType === 'playbook'" class="text-red-600 dark:text-red-400">*</span>
             </label>
             <input
               type="text"

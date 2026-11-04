@@ -92,11 +92,7 @@
                         >
                             <div
                                 class="text-sm font-medium"
-                                :class="
-                                    day.isCurrentMonth
-                                        ? 'text-gray-900 dark:text-white'
-                                        : 'text-gray-400 dark:text-gray-600'
-                                "
+                                :class="day.isCurrentMonth ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-600'"
                             >
                                 {{ day.day }}
                             </div>

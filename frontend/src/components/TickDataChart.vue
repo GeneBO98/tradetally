@@ -25,7 +25,7 @@
             class="callout-danger"
         >
             <div class="flex">
-                <div class="text-red-500 mr-3">
+                <div class="text-red-600 dark:text-red-400 mr-3">
                     <svg
                         class="w-5 h-5"
                         fill="none"
@@ -74,9 +74,7 @@
                                 >Trend before entry:</span
                             >
                             <span
-                                :class="
-                                    getTrendColor(analysis.price_trend_before)
-                                "
+                                :class="getTrendColor(analysis.price_trend_before)"
                                 class="font-medium"
                             >
                                 {{ formatTrend(analysis.price_trend_before) }}
@@ -87,9 +85,7 @@
                                 >Trend after entry:</span
                             >
                             <span
-                                :class="
-                                    getTrendColor(analysis.price_trend_after)
-                                "
+                                :class="getTrendColor(analysis.price_trend_after)"
                                 class="font-medium"
                             >
                                 {{ formatTrend(analysis.price_trend_after) }}
@@ -123,9 +119,7 @@
                             >
                             <span
                                 class="font-medium"
-                                :class="
-                                    getScoreColor(analysis.entry_timing_score)
-                                "
+                                :class="getScoreColor(analysis.entry_timing_score)"
                             >
                                 {{
                                     (analysis.entry_timing_score * 100).toFixed(

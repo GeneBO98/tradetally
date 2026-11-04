@@ -260,7 +260,7 @@
                   v-else-if="retirementStore.portfolio?.price_stale_position_count"
                   class="mt-3 flex items-center justify-between gap-3"
                 >
-                  <p class="text-xs font-medium text-amber-700 dark:text-amber-400">
+                  <p class="text-xs font-medium text-yellow-700 dark:text-yellow-400">
                     {{ retirementStore.portfolio.price_stale_position_count }} quotes are still refreshing.
                   </p>
                   <button
@@ -325,18 +325,18 @@
               <div
                 v-if="affordability?.available && affordability.debt?.count > 0"
                 data-testid="linked-debts"
-                class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-900/20"
+                class="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-xs dark:border-yellow-800 dark:bg-yellow-900/20"
               >
                 <div class="flex items-center justify-between gap-3">
-                  <p class="font-semibold text-amber-900 dark:text-amber-200">
+                  <p class="font-semibold text-yellow-900 dark:text-yellow-200">
                     Debts: {{ formatCurrency(affordability.debt.total_balance, { compact: true }) }} across
                     {{ affordability.debt.count }} {{ affordability.debt.count === 1 ? "account" : "accounts" }}
                   </p>
-                  <p class="shrink-0 text-amber-800 dark:text-amber-300">
+                  <p class="shrink-0 text-yellow-800 dark:text-yellow-300">
                     {{ formatWholeCurrency(affordability.debt.monthly_minimum_payments) }}/mo minimums
                   </p>
                 </div>
-                <ul class="mt-1.5 space-y-0.5 text-amber-800 dark:text-amber-300">
+                <ul class="mt-1.5 space-y-0.5 text-yellow-800 dark:text-yellow-300">
                   <li v-for="item in affordability.debt.items.slice(0, 4)" :key="item.id" class="flex justify-between gap-3">
                     <span class="truncate">
                       {{ item.account_name }} · {{ liabilityLabel(item.liability_type) }}<span v-if="item.apr_percent != null"> · {{ formatPercent(item.apr_percent) }} APR</span>
@@ -345,7 +345,7 @@
                     <span class="shrink-0">{{ formatCurrency(item.current_balance || 0, { compact: true }) }}</span>
                   </li>
                 </ul>
-                <p class="mt-1.5 text-amber-800/80 dark:text-amber-300/80">
+                <p class="mt-1.5 text-yellow-800/80 dark:text-yellow-300/80">
                   Debt payments count against what you can save. Paying these off frees that amount for retirement.
                 </p>
               </div>
@@ -643,11 +643,11 @@
             <p
               data-testid="projection-sync-status"
               class="mb-2 flex items-center gap-2 px-1 text-xs"
-              :class="projectionOutOfDate ? 'text-amber-700 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'"
+              :class="projectionOutOfDate ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'"
             >
               <span
                 class="h-1.5 w-1.5 shrink-0 rounded-full"
-                :class="projectionOutOfDate ? 'bg-amber-500' : 'bg-green-500'"
+                :class="projectionOutOfDate ? 'bg-yellow-500' : 'bg-green-500'"
               ></span>
               {{ projectionSyncLabel }}
             </p>
@@ -677,7 +677,7 @@
               </div>
               <span
                 v-if="projectionOutOfDate"
-                class="inline-flex shrink-0 items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+                class="inline-flex shrink-0 items-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300"
               >
                 <ArrowPathIcon class="h-3.5 w-3.5" :class="{ 'animate-spin': retirementStore.calculating }" />
                 Updating to match your inputs
@@ -688,7 +688,7 @@
               <div class="relative h-3 rounded-full bg-gray-200 dark:bg-gray-700">
                 <div
                   class="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"
-                  :class="selectedScenario?.is_on_track ? 'bg-green-500' : 'bg-amber-500'"
+                  :class="selectedScenario?.is_on_track ? 'bg-green-500' : 'bg-yellow-500'"
                   :style="{ width: `${goalBar.balance_percent}%` }"
                 ></div>
                 <div
@@ -939,7 +939,7 @@
                     <td class="whitespace-nowrap px-5 py-4 text-right text-sm font-semibold text-gray-900 dark:text-white">
                       {{ formatCurrency(scenario.projected_balance_at_retirement, { compact: true }) }}
                     </td>
-                    <td class="whitespace-nowrap px-5 py-4 text-right text-sm font-semibold" :class="scenario.is_on_track ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'">
+                    <td class="whitespace-nowrap px-5 py-4 text-right text-sm font-semibold" :class="scenario.is_on_track ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'">
                       {{ scenario.is_on_track ? "On track" : "Shortfall" }}
                     </td>
                   </tr>
@@ -954,7 +954,7 @@
                   <h3 class="heading-sub">Historical scenario quality</h3>
                   <p
                     v-if="retirementStore.historicalInflation?.unavailable && retirementStore.historicalScenarios.length > 0"
-                    class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+                    class="mt-2 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200"
                   >
                     {{ retirementStore.historicalInflation.message }}
                   </p>
@@ -1227,7 +1227,7 @@ const viabilitySentence = computed(() => {
 const viabilityValueClass = computed(() => {
   const status = viability.value?.status
   if (status === 'on_track' || status === 'affordable') return 'text-green-700 dark:text-green-400'
-  return 'text-amber-700 dark:text-amber-400'
+  return 'text-yellow-700 dark:text-yellow-400'
 })
 
 const goalBar = computed(() => {

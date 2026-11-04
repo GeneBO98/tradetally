@@ -55,8 +55,8 @@
           {{ emptyDescription }}
         </p>
 
-        <div v-if="!aiStore.canStartSession" class="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
-          <p class="text-amber-800 dark:text-amber-200 text-sm">
+        <div v-if="!aiStore.canStartSession" class="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+          <p class="text-yellow-800 dark:text-yellow-200 text-sm">
             <template v-if="aiStore.credits.unlimited === false && aiStore.credits.remaining <= 0">
               You've used all your AI credits for this month. Credits reset at the start of each month.
             </template>
@@ -160,7 +160,7 @@
           </button>
         </form>
 
-        <p v-if="!aiStore.canSendFollowup && !aiStore.credits.unlimited" class="text-xs text-amber-600 dark:text-amber-400 mt-2">
+        <p v-if="!aiStore.canSendFollowup && !aiStore.credits.unlimited" class="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
           Not enough credits for a follow-up question
         </p>
       </div>

@@ -387,14 +387,14 @@ function getTargetStatusClass(status) {
 const getManagementRBgClass = computed(() => {
   const r = props.analysis?.management_r
   if (r > 0) return 'bg-green-50 dark:bg-green-900/20'
-  if (r < 0) return 'bg-amber-50 dark:bg-amber-900/20'
+  if (r < 0) return 'bg-yellow-50 dark:bg-yellow-900/20'
   return 'bg-gray-50 dark:bg-gray-700/50'
 })
 
 const getManagementRTextClass = computed(() => {
   const r = props.analysis?.management_r
   if (r > 0) return 'text-green-700 dark:text-green-400'
-  if (r < 0) return 'text-amber-600 dark:text-amber-400'
+  if (r < 0) return 'text-yellow-600 dark:text-yellow-400'
   return 'text-gray-600 dark:text-gray-400'
 })
 

@@ -453,9 +453,7 @@
                   v-for="session in marketSessionOptions"
                   :key="session.value"
                   class="cursor-pointer rounded-md px-2 py-2 text-center text-xs font-medium transition-colors"
-                  :class="filters.market_sessions.includes(session.value)
-                    ? 'bg-primary-700 text-white shadow-sm'
-                    : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'"
+                  :class="filters.market_sessions.includes(session.value) ? 'bg-primary-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'"
                 >
                   <input
                     v-model="filters.market_sessions"

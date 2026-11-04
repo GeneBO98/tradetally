@@ -64,7 +64,7 @@
         <!-- Legend -->
         <div class="mt-4 flex flex-wrap gap-4 text-sm">
           <div class="flex items-center">
-            <svg class="w-4 h-4 mr-1 text-emerald-600 dark:text-emerald-500" fill="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 mr-1 text-green-700 dark:text-green-500" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 4l-8 8h5v8h6v-8h5z"/>
             </svg>
             <span class="text-gray-600 dark:text-gray-400">Entry: {{ formatCurrency(trade.entry_price) }}</span>

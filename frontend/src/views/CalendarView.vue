@@ -37,9 +37,7 @@
         <button
           @click="toggleRValue"
           class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-          :class="showRValue
-            ? 'bg-primary-700 text-white hover:bg-primary-800'
-            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
+          :class="showRValue ? 'bg-primary-700 text-white hover:bg-primary-800' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
         >
           {{ showRValue ? `Show ${pnlTypeLabel} (${currencySymbol})` : 'Show R-Value' }}
         </button>
@@ -92,9 +90,7 @@
                     :type="showRValue ? undefined : 'button'"
                     data-testid="calendar-pnl-card"
                     class="card card-mobile-safe min-w-[210px] w-full bg-primary-50 text-left dark:bg-primary-900/15"
-                    :class="showRValue
-                      ? 'cursor-default'
-                      : 'cursor-pointer transition-all hover:border-primary-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:hover:border-primary-700 dark:focus-visible:ring-offset-gray-900'"
+                    :class="showRValue ? 'cursor-default' : 'cursor-pointer transition-all hover:border-primary-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:hover:border-primary-700 dark:focus-visible:ring-offset-gray-900'"
                     :aria-label="showRValue ? undefined : `Currently showing ${pnlTypeLabel}. Switch to ${alternatePnlTypeLabel}.`"
                     :title="showRValue ? undefined : `Switch to ${alternatePnlTypeLabel}`"
                     @click="!showRValue && togglePnlType()"
@@ -223,9 +219,7 @@
     <div v-if="selectedDay" class="modal-overlay overflow-y-auto">
       <div role="dialog" aria-modal="true"
         class="modal-panel mx-auto p-6 transition-all duration-300"
-        :class="isModalExpanded
-          ? 'top-4 w-full max-w-6xl h-[calc(100vh-2rem)]'
-          : 'top-20 w-full max-w-2xl'">
+        :class="isModalExpanded ? 'top-4 w-full max-w-6xl h-[calc(100vh-2rem)]' : 'top-20 w-full max-w-2xl'">
         <div class="h-full flex flex-col">
           <div class="flex justify-between items-center mb-4">
             <h3 class="modal-title">

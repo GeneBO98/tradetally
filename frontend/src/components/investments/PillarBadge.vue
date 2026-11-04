@@ -1,11 +1,6 @@
 <template>
   <div
-    :class="[
-      'rounded-lg p-3 text-center',
-      passed
-        ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800'
-        : 'bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700'
-    ]"
+    :class="[ 'rounded-lg p-3 text-center', passed ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800' : 'bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700' ]"
   >
     <!-- Pass/Fail Icon -->
     <div class="flex justify-center mb-2">

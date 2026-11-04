@@ -203,10 +203,7 @@
             v-for="watchlist in watchlists"
             :key="watchlist.id"
             class="flex items-center p-3 border border-gray-200 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
-            :class="{
-              'border-primary-500 bg-primary-50 dark:bg-primary-900/20':
-                selectedWatchlistId === watchlist.id
-            }"
+            :class="{ 'border-primary-500 bg-primary-50 dark:bg-primary-900/20': selectedWatchlistId === watchlist.id }"
           >
             <input
               type="radio"

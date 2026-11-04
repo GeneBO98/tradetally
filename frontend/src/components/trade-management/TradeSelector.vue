@@ -27,10 +27,7 @@
         v-for="trade in trades"
         :key="trade.id"
         @click="selectTrade(trade)"
-        :class="[
-          'w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left',
-          selectedTradeId === trade.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''
-        ]"
+        :class="[ 'w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left', selectedTradeId === trade.id ? 'bg-primary-50 dark:bg-primary-900/20' : '' ]"
       >
         <div class="flex items-center space-x-4">
           <!-- Trade Number (matches R-Performance chart) -->
@@ -56,14 +53,7 @@
               <!-- Instrument Type Badge -->
               <span
                 v-if="trade.instrument_type && trade.instrument_type !== 'stock'"
-                :class="[
-                  'text-xs px-1.5 py-0.5 rounded font-medium',
-                  trade.instrument_type === 'option'
-                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
-                    : trade.instrument_type === 'future'
-                    ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                ]"
+                :class="[ 'text-xs px-1.5 py-0.5 rounded font-medium', trade.instrument_type === 'option' ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400' : trade.instrument_type === 'future' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400' ]"
               >
                 {{ formatInstrumentType(trade.instrument_type) }}
               </span>
@@ -141,10 +131,7 @@
 
             <!-- Selection Arrow -->
             <svg
-              :class="[
-                'w-5 h-5 transition-transform',
-                selectedTradeId === trade.id ? 'text-primary-700 rotate-90' : 'text-gray-400'
-              ]"
+              :class="[ 'w-5 h-5 transition-transform', selectedTradeId === trade.id ? 'text-primary-700 rotate-90' : 'text-gray-400' ]"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"

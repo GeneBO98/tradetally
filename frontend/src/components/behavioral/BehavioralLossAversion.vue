@@ -131,15 +131,15 @@
                             </div>
 
                             <div
-                                class="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4"
+                                class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4"
                             >
                                 <h4
-                                    class="text-sm font-medium text-purple-800 dark:text-purple-300"
+                                    class="text-sm font-medium text-primary-800 dark:text-primary-300"
                                 >
                                     Hold Time Ratio
                                 </h4>
                                 <p
-                                    class="text-2xl font-bold text-purple-900 dark:text-purple-200"
+                                    class="text-2xl font-bold text-primary-900 dark:text-primary-200"
                                 >
                                     {{
                                         lossAversionData.analysis.holdTimeRatio.toFixed(
@@ -148,7 +148,7 @@
                                     }}x
                                 </p>
                                 <p
-                                    class="text-xs text-purple-700 dark:text-purple-400"
+                                    class="text-xs text-primary-700 dark:text-primary-400"
                                 >
                                     Losers vs Winners
                                 </p>

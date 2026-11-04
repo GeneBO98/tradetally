@@ -24,7 +24,7 @@
           v-if="showMenu"
           ref="menuRef"
           :style="dropdownStyle"
-          class="modal-panel fixed w-full max-w-sm sm:w-96 ring-1 ring-black ring-opacity-5 z-[9999] flex flex-col overflow-hidden"
+          class="modal-panel fixed w-full max-w-sm sm:w-96 z-[9999] flex flex-col overflow-hidden"
         >
           <!-- Header (Fixed) -->
           <div class="p-4 flex-shrink-0 border-b border-gray-200 dark:border-gray-700">
@@ -50,11 +50,7 @@
               @dragover.prevent
               @drop="handleDrop(index)"
               @dragend="handleDragEnd"
-              :class="[
-                'flex items-center justify-between p-2 rounded cursor-move transition-colors',
-                draggedIndex === index ? 'opacity-50' : '',
-                'hover:bg-gray-50 dark:hover:bg-gray-700'
-              ]"
+              :class="[ 'flex items-center justify-between p-2 rounded cursor-move transition-colors', draggedIndex === index ? 'opacity-50' : '', 'hover:bg-gray-50 dark:hover:bg-gray-700' ]"
             >
               <div class="flex items-center space-x-3">
                 <!-- Drag Handle -->

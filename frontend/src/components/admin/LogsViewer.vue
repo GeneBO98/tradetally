@@ -69,12 +69,7 @@
         v-for="level in logLevels"
         :key="level"
         @click="toggleLevel(level)"
-        :class="[
-          'px-3 py-1 text-xs font-medium rounded-full transition-colors',
-          visibleLevels.includes(level)
-            ? getLevelButtonClass(level)
-            : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
-        ]"
+        :class="[ 'px-3 py-1 text-xs font-medium rounded-full transition-colors', visibleLevels.includes(level) ? getLevelButtonClass(level) : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400' ]"
       >
         {{ level }}
       </button>
@@ -100,10 +95,7 @@
             <div
               v-for="(log, index) in filteredLogs"
               :key="index"
-              :class="[
-                'py-1 px-2 rounded hover:bg-gray-800 transition-colors',
-                getLogLineClass(log)
-              ]"
+              :class="[ 'py-1 px-2 rounded hover:bg-gray-800 transition-colors', getLogLineClass(log) ]"
             >
               <div class="flex items-start space-x-2">
                 <span class="text-gray-500 whitespace-nowrap">{{ log.timestamp }}</span>
@@ -251,7 +243,7 @@ function toggleLevel(level) {
 // Get CSS class for log level badge
 function getLevelClass(level) {
   const classes = {
-    DEBUG: 'text-cyan-400',
+    DEBUG: 'text-primary-400',
     INFO: 'text-green-400',
     WARN: 'text-yellow-400',
     ERROR: 'text-red-400'
@@ -262,7 +254,7 @@ function getLevelClass(level) {
 // Get button class for level filter
 function getLevelButtonClass(level) {
   const classes = {
-    DEBUG: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+    DEBUG: 'bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200',
     INFO: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
     WARN: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
     ERROR: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'

@@ -16,9 +16,7 @@
         v-for="trade in availableTrades"
         :key="trade.id"
         class="flex items-center justify-between p-3 border rounded-lg transition-colors"
-        :class="isSelected(trade.id)
-          ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-300 dark:border-primary-700'
-          : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
+        :class="isSelected(trade.id) ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-300 dark:border-primary-700' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
       >
         <div class="flex items-center space-x-3 flex-1">
           <input
@@ -40,7 +38,7 @@
               >
                 {{ (trade.side || '').toUpperCase() }}
               </span>
-              <span v-if="trade.instrument_type === 'option'" class="badge bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
+              <span v-if="trade.instrument_type === 'option'" class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400">
                 OPT
               </span>
             </div>

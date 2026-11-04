@@ -54,17 +54,11 @@
               </div>
               <button
                 @click="rValueMode = !rValueMode"
-                :class="[
-                  rValueMode ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700',
-                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2'
-                ]"
+                :class="[ rValueMode ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2' ]"
                 type="button"
               >
                 <span
-                  :class="[
-                    rValueMode ? 'translate-x-5' : 'translate-x-0',
-                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
-                  ]"
+                  :class="[ rValueMode ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out' ]"
                 />
               </button>
             </div>
@@ -104,9 +98,7 @@
             <button
               @click="toggleAIPanel"
               class="px-3 py-2 text-sm font-medium border rounded-md transition-colors"
-              :class="showAIPanel
-                ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700'
-                : 'text-white bg-primary-700 border-transparent hover:bg-primary-800'"
+              :class="showAIPanel ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700' : 'text-white bg-primary-700 border-transparent hover:bg-primary-800'"
             >
               <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -162,12 +154,7 @@
             v-for="tab in analyticsTabs"
             :key="tab.id"
             @click="activeAnalyticsTab = tab.id"
-            :class="[
-              'tab',
-              activeAnalyticsTab === tab.id
-                ? 'tab-active'
-                : 'tab-inactive'
-            ]"
+            :class="[ 'tab', activeAnalyticsTab === tab.id ? 'tab-active' : 'tab-inactive' ]"
           >
             {{ tab.label }}
           </button>
@@ -193,11 +180,7 @@
         <template #item="{ element }">
           <div
             v-if="element.visible"
-            :class="[
-              getChartSizeClass(element),
-              isCustomizing ? 'ring-2 ring-primary-300 dark:ring-primary-700 rounded-lg transition-all' : '',
-              'overflow-visible'
-            ]"
+            :class="[ getChartSizeClass(element), isCustomizing ? 'ring-2 ring-primary-300 dark:ring-primary-700 rounded-lg transition-all' : '', 'overflow-visible' ]"
           >
             <!-- Drag Handle (only visible in customize mode) -->
             <div v-if="isCustomizing" class="drag-handle flex items-center justify-center py-2 bg-gray-100 dark:bg-gray-800 rounded-t-lg cursor-move hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
@@ -264,9 +247,9 @@
               <h3 class="heading-card">Sector Performance</h3>
               <div v-if="sectorStats.uncategorizedSymbols > 0 || showCompletionMessage" class="mt-2">
                 <div class="flex items-center justify-between text-xs mb-1" 
-                     :class="showCompletionMessage ? 'text-green-700 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
+                     :class="showCompletionMessage ? 'text-green-700 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'">
                   <span>
-                    <MdiIcon v-if="showCompletionMessage" :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
+                    <MdiIcon v-if="showCompletionMessage" :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-700 dark:text-green-400" />
                     {{ showCompletionMessage ? 'All symbols processed!' : 'Processing symbols in background...' }}
                   </span>
                   <span>{{ categorizationProgress.completed }}/{{ categorizationProgress.total }}</span>
@@ -275,10 +258,10 @@
                   {{ sectorStats.symbolsAnalyzed }} categorized, {{ sectorStats.failedSymbols }} failed, {{ sectorStats.uncategorizedSymbols }} pending
                 </div>
                 <div class="w-full rounded-full h-1.5"
-                     :class="showCompletionMessage ? 'bg-green-200 dark:bg-green-800' : 'bg-amber-200 dark:bg-amber-800'">
+                     :class="showCompletionMessage ? 'bg-green-200 dark:bg-green-800' : 'bg-yellow-200 dark:bg-yellow-800'">
                   <div 
                     class="h-1.5 rounded-full transition-all duration-500 ease-out"
-                    :class="showCompletionMessage ? 'bg-green-500 dark:bg-green-400' : 'bg-amber-500 dark:bg-amber-400'"
+                    :class="showCompletionMessage ? 'bg-green-500 dark:bg-green-400' : 'bg-yellow-500 dark:bg-yellow-400'"
                     :style="{ width: `${categorizationProgress.percentage}%` }"
                   ></div>
                 </div>

@@ -30,6 +30,9 @@
   }
 }
 
+@keyframes tt-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tt-modal-in { from { opacity: 0; transform: translateY(6px) scale(0.985); } to { opacity: 1; transform: none; } }
+
 @layer components {
   .btn {
     @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200;
@@ -80,6 +83,11 @@
   }
   .segment-active {
     @apply bg-primary-700 text-white shadow-sm hover:bg-primary-700 hover:text-white dark:hover:bg-primary-700 dark:hover:text-white;
+  }
+
+  /* Bordered square icon button for toolbars (filters, settings, view toggles). */
+  .btn-icon-outline {
+    @apply btn-icon h-10 w-10 border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700;
   }
 
   /* Borderless, low-emphasis button (toolbar icons, tertiary actions). */
@@ -203,6 +211,15 @@
   }
   .modal-panel {
     @apply relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700;
+    animation: tt-modal-in 180ms ease-out;
+  }
+  /* One entrance for every dialog, hand-rolled or BaseModal. */
+  .modal-overlay,
+  .modal-backdrop {
+    animation: tt-fade-in 150ms ease-out;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .modal-overlay, .modal-backdrop, .modal-panel { animation: none; }
   }
   .modal-title {
     @apply text-lg font-semibold text-gray-900 dark:text-white;
@@ -395,10 +412,6 @@
     @apply text-sm font-semibold text-gray-900 dark:text-white;
   }
 
-  .text-data-primary {
-    @apply text-sm font-medium text-gray-900 dark:text-white;
-    @apply sm:text-base;
-  }
 
   .text-data-secondary {
     @apply text-xs text-gray-600 dark:text-gray-400;

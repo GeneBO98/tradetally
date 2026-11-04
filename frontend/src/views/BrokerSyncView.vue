@@ -11,12 +11,12 @@
     <IBKRNoticeBanner />
 
     <!-- Broker sync is becoming a Pro feature: grace-period notice for existing free connections -->
-    <div v-if="showGraceBanner" class="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+    <div v-if="showGraceBanner" class="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
       <div class="flex">
-        <svg class="h-5 w-5 text-amber-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+        <svg class="h-5 w-5 text-yellow-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
         </svg>
-        <div class="ml-3 text-sm text-amber-700 dark:text-amber-300">
+        <div class="ml-3 text-sm text-yellow-700 dark:text-yellow-300">
           <strong>Broker sync is becoming a Pro feature.</strong>
           Your connected brokers will keep syncing until <strong>{{ graceEndsAtFormatted }}</strong>.
           <router-link :to="pricingLink" class="font-medium underline">Upgrade to Pro</router-link>
@@ -26,12 +26,12 @@
     </div>
 
     <!-- Grace window ended: sync paused for free users -->
-    <div v-else-if="showSyncPausedBanner" class="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+    <div v-else-if="showSyncPausedBanner" class="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
       <div class="flex">
-        <svg class="h-5 w-5 text-amber-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+        <svg class="h-5 w-5 text-yellow-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
         </svg>
-        <div class="ml-3 text-sm text-amber-700 dark:text-amber-300">
+        <div class="ml-3 text-sm text-yellow-700 dark:text-yellow-300">
           <strong>Broker sync is paused.</strong>
           Automatic syncing is now a Pro feature.
           <router-link :to="pricingLink" class="font-medium underline">Upgrade to Pro</router-link>
@@ -43,7 +43,7 @@
     <!-- Success/Error Messages -->
     <div v-if="successMessage" class="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
       <div class="flex">
-        <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+        <svg class="h-5 w-5 text-green-700 dark:text-green-400" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
         </svg>
         <p class="ml-3 text-sm text-green-700 dark:text-green-300">{{ successMessage }}</p>
@@ -52,7 +52,7 @@
 
     <div v-if="store.error" class="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
       <div class="flex">
-        <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+        <svg class="h-5 w-5 text-red-600 dark:text-red-400" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
         </svg>
         <p class="ml-3 text-sm text-red-700 dark:text-red-300">{{ store.error }}</p>
@@ -113,13 +113,7 @@
             <!-- Schwab Card -->
             <div
               class="p-6 border-2 rounded-lg transition-colors"
-              :class="[
-                store.schwabConnection
-                  ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
-                  : schwabConnecting
-                    ? 'border-primary-300 dark:border-primary-700 bg-primary-50/50 dark:bg-primary-900/10 cursor-wait'
-                    : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400 cursor-pointer'
-              ]"
+              :class="[ store.schwabConnection ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed' : schwabConnecting ? 'border-primary-300 dark:border-primary-700 bg-primary-50/50 dark:bg-primary-900/10 cursor-wait' : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400 cursor-pointer' ]"
               @click="!store.schwabConnection && !schwabConnecting && handleSchwabConnect()"
             >
               <div class="flex items-center space-x-4">
@@ -146,9 +140,7 @@
             <!-- Trading 212 Card -->
             <div
               class="rounded-lg border-2 p-6 transition-colors"
-              :class="canAddTrading212
-                ? 'cursor-pointer border-dashed border-gray-300 hover:border-primary-500 dark:border-gray-600 dark:hover:border-primary-400'
-                : 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-50 dark:border-gray-700 dark:bg-gray-800'"
+              :class="canAddTrading212 ? 'cursor-pointer border-dashed border-gray-300 hover:border-primary-500 dark:border-gray-600 dark:hover:border-primary-400' : 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-50 dark:border-gray-700 dark:bg-gray-800'"
               @click="canAddTrading212 && openTrading212Modal()"
             >
               <div class="flex items-center space-x-4">
@@ -171,9 +163,9 @@
               @click="canConnectBroker('tradestation') && handleBrokerOAuthConnect('tradestation')"
             >
               <div class="flex items-center space-x-4">
-                <div class="flex-shrink-0 w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center">
+                <div class="flex-shrink-0 w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
                   <div v-if="brokerConnecting.tradestation" class="spinner spinner-sm"></div>
-                  <span v-else class="text-emerald-600 dark:text-emerald-400 font-bold text-lg">TS</span>
+                  <span v-else class="text-green-700 dark:text-green-400 font-bold text-lg">TS</span>
                 </div>
                 <div>
                   <h4 class="heading-card">TradeStation</h4>
@@ -188,9 +180,7 @@
             <div
               v-if="tradovateAvailable"
               class="p-6 border-2 rounded-lg transition-colors"
-              :class="brokerConnecting.tradovate
-                ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
-                : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400 cursor-pointer'"
+              :class="brokerConnecting.tradovate ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed' : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400 cursor-pointer'"
               @click="!brokerConnecting.tradovate && handleBrokerOAuthConnect('tradovate')"
             >
               <div class="flex items-center space-x-4">
@@ -214,9 +204,9 @@
               @click="canConnectBroker('alpaca', 'live') && handleBrokerOAuthConnect('alpaca', { environment: 'live' })"
             >
               <div class="flex items-center space-x-4">
-                <div class="flex-shrink-0 w-12 h-12 bg-cyan-100 dark:bg-cyan-900/30 rounded-lg flex items-center justify-center">
+                <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
                   <div v-if="brokerConnecting.alpacaLive" class="spinner spinner-sm"></div>
-                  <span v-else class="text-cyan-600 dark:text-cyan-400 font-bold text-lg">AL</span>
+                  <span v-else class="text-primary-700 dark:text-primary-400 font-bold text-lg">AL</span>
                 </div>
                 <div>
                   <h4 class="heading-card">Alpaca Live</h4>
@@ -269,8 +259,8 @@
           </div>
 
           <!-- Schwab Note -->
-          <div class="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-            <p class="text-xs text-amber-700 dark:text-amber-300">
+          <div class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <p class="text-xs text-yellow-700 dark:text-yellow-300">
               <strong>Note for former TD Ameritrade users:</strong> The Schwab API only returns trades made natively on Schwab. Historical TD Ameritrade trades are not available via API sync. Use CSV import for complete trade history.
             </p>
           </div>
@@ -347,7 +337,7 @@
                     </span>
                     <details
                       v-if="warningsFromSyncLog(log).length > 0"
-                      class="mt-2 max-w-xs text-xs text-amber-800 dark:text-amber-300"
+                      class="mt-2 max-w-xs text-xs text-yellow-800 dark:text-yellow-300"
                     >
                       <summary class="cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded">
                         View {{ warningsFromSyncLog(log).length }} warning{{ warningsFromSyncLog(log).length === 1 ? '' : 's' }}
@@ -997,7 +987,7 @@ function getStatusLabel(log) {
 
 function getStatusClass(log) {
   if (syncCompletedWithWarnings(log)) {
-    return 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
+    return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'
   }
   switch (log?.status) {
     case 'completed':

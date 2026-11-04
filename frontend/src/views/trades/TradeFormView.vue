@@ -253,9 +253,7 @@
 
           <!-- Live P&L Preview -->
           <div v-if="computedPnlPreview.hasValidData" class="mb-4 p-4 rounded-lg border"
-               :class="computedPnlPreview.value >= 0
-                 ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                 : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'">
+               :class="computedPnlPreview.value >= 0 ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Estimated P&L</p>

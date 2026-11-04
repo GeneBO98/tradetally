@@ -62,7 +62,7 @@
               class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold uppercase"
               :class="connection.targetType === 'investment'
                 ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'"
+                : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'"
             >
               {{ (connection.institutionName || 'P').slice(0, 2) }}
             </div>
@@ -82,7 +82,7 @@
                 </span>
                 <span
                   v-if="needsReconnect(connection)"
-                  class="badge bg-amber-100 uppercase tracking-wide text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                  class="badge bg-yellow-100 uppercase tracking-wide text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
                 >
                   Reconnect needed
                 </span>
@@ -106,13 +106,13 @@
             <!-- Reauth notice -->
             <div
               v-if="needsReconnect(connection)"
-              class="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20"
+              class="flex flex-wrap items-center justify-between gap-2 border-b border-yellow-200 bg-yellow-50 px-3 py-2 dark:border-yellow-800 dark:bg-yellow-900/20"
             >
-              <span class="text-xs text-amber-800 dark:text-amber-300">
+              <span class="text-xs text-yellow-800 dark:text-yellow-300">
                 Bank login needs attention. Reconnect to resume syncing.
               </span>
               <button
-                class="inline-flex items-center gap-1 rounded-md bg-amber-600 px-2 py-1 text-xs font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
+                class="inline-flex items-center gap-1 rounded-md bg-yellow-600 px-2 py-1 text-xs font-medium text-white shadow-sm hover:bg-yellow-700 disabled:opacity-60"
                 :disabled="reconnectingId === connection.id"
                 @click="reconnectConnection(connection)"
               >
@@ -179,7 +179,7 @@
                   </span>
                   <span
                     v-else
-                    class="badge bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                    class="badge bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
                   >
                     Needs linking
                   </span>

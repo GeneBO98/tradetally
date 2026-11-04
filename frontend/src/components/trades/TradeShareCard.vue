@@ -78,9 +78,7 @@
           <button
             type="button"
             class="block w-full px-4 py-2.5 text-left text-sm"
-            :class="isPublic
-              ? 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700'
-              : 'cursor-not-allowed text-gray-400 dark:text-gray-600'"
+            :class="isPublic ? 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700' : 'cursor-not-allowed text-gray-400 dark:text-gray-600'"
             :disabled="!isPublic"
             :title="isPublic ? '' : 'Make the trade public first'"
             @click="copyLinkFromMenu"
@@ -183,7 +181,7 @@ const COLORS = {
   textPrimary: '#f4f4f5',
   textSecondary: '#9ca3af',
   textMuted: '#6b7280',
-  win: '#10b981',
+  win: '#16a34a',
   loss: '#ef4444',
   divider: '#262d36'
 }

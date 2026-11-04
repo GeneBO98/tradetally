@@ -7,22 +7,12 @@
         v-for="valuation in valuations"
         :key="valuation.id"
         @click="$emit('load', valuation)"
-        :class="[
-          'flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors',
-          loadedId === valuation.id
-            ? 'bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500'
-            : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
-        ]"
+        :class="[ 'flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors', loadedId === valuation.id ? 'bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500' : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700' ]"
       >
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-3 flex-wrap">
             <span
-              :class="[
-                'inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold tracking-wide',
-                currentSymbol && valuation.symbol === currentSymbol.toUpperCase()
-                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-              ]"
+              :class="[ 'inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold tracking-wide', currentSymbol && valuation.symbol === currentSymbol.toUpperCase() ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300' ]"
             >
               {{ valuation.symbol }}
             </span>

@@ -405,17 +405,17 @@ const getTypeBadgeClass = (type) => {
     case 'trade_comment':
       return 'bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200'
     case 'achievement_earned':
-      return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+      return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
     case 'level_up':
-      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+      return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
     case 'behavioral_alert':
-      return 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200'
+      return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
     case 'portfolio_alert':
     case 'web_mention_alert':
       return 'bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-200'
     case 'broker_reauth_expiring':
     case 'broker_reauth_required':
-      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200'
+      return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200'
     default:
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
   }
@@ -428,17 +428,17 @@ const getIconBgClass = (type) => {
     case 'trade_comment':
       return 'bg-primary-50 dark:bg-primary-900/20'
     case 'achievement_earned':
-      return 'bg-amber-50 dark:bg-amber-900/20'
+      return 'bg-yellow-50 dark:bg-yellow-900/20'
     case 'level_up':
-      return 'bg-emerald-50 dark:bg-emerald-900/20'
+      return 'bg-green-50 dark:bg-green-900/20'
     case 'behavioral_alert':
-      return 'bg-rose-50 dark:bg-rose-900/20'
+      return 'bg-red-50 dark:bg-red-900/20'
     case 'portfolio_alert':
     case 'web_mention_alert':
       return 'bg-primary-50 dark:bg-primary-900/20'
     case 'broker_reauth_expiring':
     case 'broker_reauth_required':
-      return 'bg-amber-50 dark:bg-amber-900/20'
+      return 'bg-yellow-50 dark:bg-yellow-900/20'
     default:
       return 'bg-gray-50 dark:bg-gray-700'
   }
@@ -451,17 +451,17 @@ const getIconColorClass = (type) => {
     case 'trade_comment':
       return 'text-primary-700 dark:text-primary-400'
     case 'achievement_earned':
-      return 'text-amber-600 dark:text-amber-400'
+      return 'text-yellow-600 dark:text-yellow-400'
     case 'level_up':
-      return 'text-emerald-600 dark:text-emerald-400'
+      return 'text-green-700 dark:text-green-400'
     case 'behavioral_alert':
-      return 'text-rose-600 dark:text-rose-400'
+      return 'text-red-600 dark:text-red-400'
     case 'portfolio_alert':
     case 'web_mention_alert':
       return 'text-primary-700 dark:text-primary-300'
     case 'broker_reauth_expiring':
     case 'broker_reauth_required':
-      return 'text-amber-600 dark:text-amber-400'
+      return 'text-yellow-600 dark:text-yellow-400'
     default:
       return 'text-gray-400'
   }

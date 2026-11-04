@@ -32,7 +32,7 @@
         </span>
         <span
           v-if="replayData.trade.instrument_type === 'option'"
-          class="badge bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
+          class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
         >
           Options Trade
         </span>

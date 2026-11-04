@@ -47,15 +47,15 @@
 
                     <div
                         v-if="backupWarnings.length"
-                        class="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
+                        class="mb-4 rounded-md border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20"
                     >
                         <h4
-                            class="text-sm font-medium text-amber-800 dark:text-amber-300"
+                            class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
                         >
                             Backup Warnings
                         </h4>
                         <ul
-                            class="mt-2 space-y-2 text-sm text-amber-700 dark:text-amber-400"
+                            class="mt-2 space-y-2 text-sm text-yellow-700 dark:text-yellow-400"
                         >
                             <li
                                 v-for="warning in backupWarnings"
@@ -68,15 +68,15 @@
 
                     <div
                         v-if="storageWarnings.length"
-                        class="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
+                        class="mb-4 rounded-md border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20"
                     >
                         <h4
-                            class="text-sm font-medium text-amber-800 dark:text-amber-300"
+                            class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
                         >
                             Storage Warnings
                         </h4>
                         <ul
-                            class="mt-2 space-y-2 text-sm text-amber-700 dark:text-amber-400"
+                            class="mt-2 space-y-2 text-sm text-yellow-700 dark:text-yellow-400"
                         >
                             <li
                                 v-for="warning in storageWarnings"
@@ -107,20 +107,10 @@
                                 @click="toggleBackups"
                                 :disabled="savingSettings"
                                 type="button"
-                                :class="[
-                                    settings.enabled
-                                        ? 'bg-primary-600'
-                                        : 'bg-gray-200 dark:bg-gray-700',
-                                    'relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500',
-                                ]"
+                                :class="[ settings.enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700', 'relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500', ]"
                             >
                                 <span
-                                    :class="[
-                                        settings.enabled
-                                            ? 'translate-x-5'
-                                            : 'translate-x-0',
-                                        'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200',
-                                    ]"
+                                    :class="[ settings.enabled ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200', ]"
                                 />
                             </button>
                         </div>
@@ -410,13 +400,13 @@
 
             <!-- Restore from Backup Card -->
             <div
-                class="card border-2 border-amber-200 dark:border-amber-800"
+                class="card border-2 border-yellow-200 dark:border-yellow-800"
             >
                 <div class="px-4 py-5 sm:p-6">
                     <div class="flex items-start">
                         <div class="flex-shrink-0">
                             <svg
-                                class="h-6 w-6 text-amber-500"
+                                class="h-6 w-6 text-yellow-500"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -455,7 +445,7 @@
                                         @click="$refs.restoreFileInput.click()"
                                         :disabled="restoring"
                                         type="button"
-                                        class="inline-flex items-center px-4 py-2 border border-amber-300 dark:border-amber-600 text-sm font-medium rounded-md text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        class="inline-flex items-center px-4 py-2 border border-yellow-300 dark:border-yellow-600 text-sm font-medium rounded-md text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <svg
                                             class="-ml-1 mr-2 h-4 w-4"
@@ -648,21 +638,13 @@
                             </div>
 
                             <div
-                                class="mt-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md p-3"
-                                :class="
-                                    clearExisting
-                                        ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                                        : ''
-                                "
+                                class="mt-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3"
+                                :class="clearExisting ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' : ''"
                             >
                                 <div class="flex">
                                     <svg
                                         class="h-5 w-5"
-                                        :class="
-                                            clearExisting
-                                                ? 'text-red-400'
-                                                : 'text-amber-400'
-                                        "
+                                        :class="clearExisting ? 'text-red-400' : 'text-yellow-400'"
                                         fill="currentColor"
                                         viewBox="0 0 20 20"
                                     >
@@ -678,7 +660,7 @@
                                             :class="
                                                 clearExisting
                                                     ? 'text-red-800 dark:text-red-300'
-                                                    : 'text-amber-800 dark:text-amber-300'
+                                                    : 'text-yellow-800 dark:text-yellow-300'
                                             "
                                         >
                                             {{
@@ -692,7 +674,7 @@
                                             :class="
                                                 clearExisting
                                                     ? 'text-red-700 dark:text-red-400'
-                                                    : 'text-amber-700 dark:text-amber-400'
+                                                    : 'text-yellow-700 dark:text-yellow-400'
                                             "
                                         >
                                             <ul

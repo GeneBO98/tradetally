@@ -19,10 +19,7 @@
   <aside
     ref="sidebarRef"
     class="sidebar fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-gray-200/80 bg-white shadow-xl transform transition-all duration-300 ease-out lg:translate-x-0 lg:shadow-none dark:border-gray-800/60 dark:bg-gray-900"
-    :class="[
-      collapsed ? 'lg:w-16' : 'lg:w-64',
-      drawerOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-    ]"
+    :class="[ collapsed ? 'lg:w-16' : 'lg:w-64', drawerOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0' ]"
   >
     <!-- Brand header -->
     <div
@@ -66,10 +63,7 @@
           :to="item.to"
           @click="closeDrawer"
           class="nav-item group/nav relative"
-          :class="[
-            isCollapsed ? 'justify-center px-0' : '',
-            isItemActive(item) ? 'nav-item--active' : ''
-          ]"
+          :class="[ isCollapsed ? 'justify-center px-0' : '', isItemActive(item) ? 'nav-item--active' : '' ]"
           :title="isCollapsed ? item.name : ''"
         >
           <span
@@ -95,10 +89,7 @@
           <button
             @click="handleGroupClick(item)"
             class="nav-item group/nav relative w-full"
-            :class="[
-              isCollapsed ? 'justify-center px-0' : '',
-              isGroupActive(item) ? 'nav-item--group-active' : ''
-            ]"
+            :class="[ isCollapsed ? 'justify-center px-0' : '', isGroupActive(item) ? 'nav-item--group-active' : '' ]"
             :title="isCollapsed ? item.name : ''"
           >
             <span
@@ -200,10 +191,7 @@
       <button
         @click.stop="toggleUserMenu"
         class="group flex w-full items-center text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50"
-        :class="[
-          isCollapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-3',
-          userMenuOpen ? 'bg-gray-50 dark:bg-gray-800/50' : ''
-        ]"
+        :class="[ isCollapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-3', userMenuOpen ? 'bg-gray-50 dark:bg-gray-800/50' : '' ]"
         :aria-expanded="userMenuOpen"
         aria-haspopup="true"
         :title="isCollapsed ? displayName : ''"
@@ -360,10 +348,7 @@
       to="/settings"
       @click="closeDrawer"
       class="nav-item group/nav border-t border-gray-200/80 dark:border-gray-800/60"
-      :class="[
-        isCollapsed ? 'justify-center px-0' : '',
-        $route.name === 'settings' ? 'nav-item--active' : ''
-      ]"
+      :class="[ isCollapsed ? 'justify-center px-0' : '', $route.name === 'settings' ? 'nav-item--active' : '' ]"
       :title="isCollapsed ? 'Settings' : ''"
     >
       <Cog6ToothIcon
@@ -745,13 +730,13 @@ onUnmounted(() => {
 
 .nav-item--active {
   background-color: theme('colors.primary.500 / 8%');
-  color: rgb(194 65 12);
+  color: theme('colors.primary.700');
 }
 
 :global(.dark) .nav-item--active,
 .dark .nav-item--active {
   background-color: theme('colors.primary.500 / 12%');
-  color: rgb(253 186 116);
+  color: theme('colors.primary.300');
 }
 
 .nav-item--group-active {
@@ -794,14 +779,14 @@ onUnmounted(() => {
 
 .nav-sub-item--active {
   background-color: theme('colors.primary.500 / 8%');
-  color: rgb(194 65 12);
+  color: theme('colors.primary.700');
   font-weight: 600;
 }
 
 :global(.dark) .nav-sub-item--active,
 .dark .nav-sub-item--active {
   background-color: theme('colors.primary.500 / 12%');
-  color: rgb(253 186 116);
+  color: theme('colors.primary.300');
 }
 
 /* Popover items */

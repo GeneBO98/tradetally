@@ -170,15 +170,15 @@
                             </div>
 
                             <div
-                                class="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4"
+                                class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4"
                             >
                                 <h4
-                                    class="text-sm font-medium text-purple-800 dark:text-purple-300"
+                                    class="text-sm font-medium text-primary-800 dark:text-primary-300"
                                 >
                                     Success Rate
                                 </h4>
                                 <p
-                                    class="text-2xl font-bold text-purple-900 dark:text-purple-200"
+                                    class="text-2xl font-bold text-primary-900 dark:text-primary-200"
                                 >
                                     {{
                                         overconfidenceData.analysis.statistics?.successRate?.toFixed(
@@ -187,7 +187,7 @@
                                     }}%
                                 </p>
                                 <p
-                                    class="text-xs text-purple-700 dark:text-purple-400"
+                                    class="text-xs text-primary-700 dark:text-primary-400"
                                 >
                                     Of oversized trades
                                 </p>
@@ -539,23 +539,7 @@
                                 <div
                                     v-if="event.outcomeTradeDetails"
                                     class="mt-4 p-4 rounded-lg border-2"
-                                    :class="{
-                                        'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800':
-                                            parseFloat(
-                                                event.outcomeTradeDetails.pnl ||
-                                                    0,
-                                            ) < 0,
-                                        'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800':
-                                            parseFloat(
-                                                event.outcomeTradeDetails.pnl ||
-                                                    0,
-                                            ) > 0,
-                                        'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800':
-                                            parseFloat(
-                                                event.outcomeTradeDetails.pnl ||
-                                                    0,
-                                            ) === 0,
-                                    }"
+                                    :class="{ 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800': parseFloat( event.outcomeTradeDetails.pnl || 0, ) < 0, 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800': parseFloat( event.outcomeTradeDetails.pnl || 0, ) > 0, 'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800': parseFloat( event.outcomeTradeDetails.pnl || 0, ) === 0, }"
                                 >
                                     <div class="flex items-center mb-3">
                                         <MdiIcon
@@ -909,23 +893,7 @@
                                             event.outcomeAnalysis.verdict
                                         "
                                         class="mt-4 p-3 rounded-lg border-2"
-                                        :class="{
-                                            'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700':
-                                                event.outcomeAnalysis.verdict
-                                                    .verdict ===
-                                                'true_overconfidence',
-                                            'bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700':
-                                                event.outcomeAnalysis.verdict
-                                                    .verdict ===
-                                                'partial_overconfidence',
-                                            'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700':
-                                                event.outcomeAnalysis.verdict
-                                                    .verdict ===
-                                                'prudent_trade',
-                                            'bg-gray-100 dark:bg-gray-900/30 border-gray-300 dark:border-gray-700':
-                                                event.outcomeAnalysis.verdict
-                                                    .verdict === 'bad_luck',
-                                        }"
+                                        :class="{ 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700': event.outcomeAnalysis.verdict .verdict === 'true_overconfidence', 'bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700': event.outcomeAnalysis.verdict .verdict === 'partial_overconfidence', 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700': event.outcomeAnalysis.verdict .verdict === 'prudent_trade', 'bg-gray-100 dark:bg-gray-900/30 border-gray-300 dark:border-gray-700': event.outcomeAnalysis.verdict .verdict === 'bad_luck', }"
                                     >
                                         <div
                                             class="flex items-center justify-between mb-2"
@@ -1264,12 +1232,7 @@
                                             }}</span>
                                             <svg
                                                 class="w-3 h-3 transition-transform"
-                                                :class="{
-                                                    'rotate-180':
-                                                        expandedOverconfidenceEvents.has(
-                                                            event.id,
-                                                        ),
-                                                }"
+                                                :class="{ 'rotate-180': expandedOverconfidenceEvents.has( event.id, ), }"
                                                 fill="none"
                                                 stroke="currentColor"
                                                 viewBox="0 0 24 24"
@@ -1309,18 +1272,7 @@
                                                 ) in event.streakTradeDetails"
                                                 :key="trade.id"
                                                 class="flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-colors"
-                                                :class="{
-                                                    'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900/20':
-                                                        parseFloat(trade.pnl) >
-                                                        0,
-                                                    'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-700 hover:bg-red-100 dark:hover:bg-red-900/20':
-                                                        parseFloat(trade.pnl) <
-                                                        0,
-                                                    'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600':
-                                                        parseFloat(
-                                                            trade.pnl,
-                                                        ) === 0,
-                                                }"
+                                                :class="{ 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900/20': parseFloat(trade.pnl) > 0, 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-700 hover:bg-red-100 dark:hover:bg-red-900/20': parseFloat(trade.pnl) < 0, 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600': parseFloat( trade.pnl, ) === 0, }"
                                                 @click="$emit('open-trade', trade.id)"
                                             >
                                                 <div

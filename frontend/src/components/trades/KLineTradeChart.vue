@@ -66,7 +66,7 @@
         <span v-if="currency_mismatch">
           Candle and trade currencies differ. Trade markers and P&L measurement are unavailable.
         </span>
-        <span v-else-if="hasPriceMismatch" class="font-medium text-amber-700 dark:text-amber-300">
+        <span v-else-if="hasPriceMismatch" class="font-medium text-yellow-700 dark:text-yellow-300">
           Recorded fill is outside the provider candle range. Marker is pinned to execution time.
         </span>
         <span v-else-if="activeTool === 'pnl'" class="font-medium text-primary-700 dark:text-primary-400">
@@ -90,9 +90,7 @@
             type="button"
             :data-resolution="option.value"
             class="rounded px-2 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-40"
-            :class="selectedResolution === option.value
-              ? 'bg-primary-700 text-white shadow-sm'
-              : 'text-gray-500 hover:bg-white hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white'"
+            :class="selectedResolution === option.value ? 'bg-primary-700 text-white shadow-sm' : 'text-gray-500 hover:bg-white hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white'"
             :disabled="resolutionLoading || !availableResolutions.includes(option.value)"
             :aria-pressed="selectedResolution === option.value"
             :title="availableResolutions.includes(option.value) ? `${option.label} candles` : 'This data source does not provide this resolution'"

@@ -26,7 +26,7 @@
     <!-- Error State -->
     <div v-else-if="error" class="card">
       <div class="card-body text-center py-8">
-        <MdiIcon :icon="alertIcon" :size="48" class="mx-auto text-red-500 mb-4" />
+        <MdiIcon :icon="alertIcon" :size="48" class="mx-auto text-red-600 dark:text-red-400 mb-4" />
         <h3 class="heading-card mb-2">Unable to Load Analytics</h3>
         <p class="text-gray-600 dark:text-gray-400 mb-4">{{ error }}</p>
         <button
@@ -80,11 +80,7 @@
                   <div class="flex items-center">
                     <div 
                       class="w-3 h-3 rounded-full mr-2"
-                      :class="{
-                        'bg-green-500': sentiment === 'positive',
-                        'bg-red-500': sentiment === 'negative',
-                        'bg-gray-500': sentiment === 'neutral'
-                      }"
+                      :class="{ 'bg-green-500': sentiment === 'positive', 'bg-red-500': sentiment === 'negative', 'bg-gray-500': sentiment === 'neutral' }"
                     ></div>
                     <span class="font-medium text-gray-900 dark:text-white capitalize">{{ sentiment }}</span>
                   </div>

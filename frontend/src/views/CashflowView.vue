@@ -314,10 +314,7 @@
                 v-for="account in accounts"
                 :key="account.id"
                 class="p-3 border rounded-lg cursor-pointer transition-colors"
-                :class="[
-                  account.isPrimary ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700',
-                  selectedAccountId === account.id ? 'ring-2 ring-primary-500' : ''
-                ]"
+                :class="[ account.isPrimary ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700', selectedAccountId === account.id ? 'ring-2 ring-primary-500' : '' ]"
                 @click="selectAccount(account.id)"
               >
                 <div class="flex items-start justify-between">
@@ -348,7 +345,7 @@
                     </button>
                     <button
                       @click.stop="confirmDeleteAccount(account)"
-                      class="text-red-400 hover:text-red-600"
+                      class="text-red-600 dark:text-red-400 hover:text-red-600"
                       title="Delete account"
                     >
                       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

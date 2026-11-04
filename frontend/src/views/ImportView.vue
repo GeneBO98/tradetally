@@ -36,10 +36,7 @@
             <div>
               <div
                 class="flex justify-center px-6 pt-8 pb-8 border-2 border-dashed rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                :class="[
-                  isAnalyzingFile ? 'border-primary-400 bg-primary-50/50 dark:bg-primary-900/10 cursor-wait' :
-                  dragOver ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 cursor-pointer' : 'border-gray-300 dark:border-gray-600 hover:border-primary-400 dark:hover:border-primary-500 cursor-pointer'
-                ]"
+                :class="[ isAnalyzingFile ? 'border-primary-400 bg-primary-50/50 dark:bg-primary-900/10 cursor-wait' : dragOver ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 cursor-pointer' : 'border-gray-300 dark:border-gray-600 hover:border-primary-400 dark:hover:border-primary-500 cursor-pointer' ]"
                 tabindex="0"
                 role="button"
                 aria-label="Upload a broker trade export file"
@@ -109,9 +106,7 @@
                   :key="brokerOption.value"
                   type="button"
                   class="flex-shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition"
-                  :class="selectedBroker === brokerOption.value
-                    ? 'bg-primary-700 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-700'"
+                  :class="selectedBroker === brokerOption.value ? 'bg-primary-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-700'"
                   @click="selectQuickBroker(brokerOption.value)"
                 >
                   {{ brokerOption.label }}
@@ -582,9 +577,7 @@
                     <span v-if="cusipLoading">Looking up...</span>
                     <span v-else>Lookup</span>
                   </button>
-                  <div v-if="lookupResult" class="p-3 rounded-md" :class="[
-                    lookupResult.found ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'
-                  ]">
+                  <div v-if="lookupResult" class="p-3 rounded-md" :class="[ lookupResult.found ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20' ]">
                     <p class="text-sm" :class="[
                       lookupResult.found ? 'text-green-800 dark:text-green-400' : 'text-red-800 dark:text-red-400'
                     ]">

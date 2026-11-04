@@ -4,7 +4,7 @@
     <div class="flex items-center justify-between mb-6">
       <div>
         <h3 class="heading-card flex items-center">
-          <SparklesIcon class="w-5 h-5 mr-2 text-purple-600" />
+          <SparklesIcon class="w-5 h-5 mr-2 text-primary-700" />
           AI Journal Analysis
         </h3>
         <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">

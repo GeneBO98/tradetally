@@ -157,9 +157,7 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm">
                                 <span
                                     v-if="item.percent_change !== null"
-                                    :class="
-                                        priceChangeClass(item.percent_change)
-                                    "
+                                    :class="priceChangeClass(item.percent_change)"
                                 >
                                     {{
                                         formatPercentChange(item.percent_change)

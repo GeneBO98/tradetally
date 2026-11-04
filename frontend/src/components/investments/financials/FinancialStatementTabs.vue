@@ -11,23 +11,13 @@
           <div class="inline-flex rounded-md shadow-sm">
             <button
               @click="frequency = 'annual'"
-              :class="[
-                'px-3 py-1 text-sm font-medium rounded-l-md border',
-                frequency === 'annual'
-                  ? 'bg-primary-700 text-white border-primary-600'
-                  : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-              ]"
+              :class="[ 'px-3 py-1 text-sm font-medium rounded-l-md border', frequency === 'annual' ? 'bg-primary-700 text-white border-primary-600' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600' ]"
             >
               Annual
             </button>
             <button
               @click="frequency = 'quarterly'"
-              :class="[
-                'px-3 py-1 text-sm font-medium rounded-r-md border-t border-b border-r',
-                frequency === 'quarterly'
-                  ? 'bg-primary-700 text-white border-primary-600'
-                  : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-              ]"
+              :class="[ 'px-3 py-1 text-sm font-medium rounded-r-md border-t border-b border-r', frequency === 'quarterly' ? 'bg-primary-700 text-white border-primary-600' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600' ]"
             >
               Quarterly
             </button>
@@ -43,12 +33,7 @@
           v-for="tab in tabs"
           :key="tab.id"
           @click="activeTab = tab.id"
-          :class="[
-            'py-4 px-4 text-sm font-medium border-b-2 whitespace-nowrap',
-            activeTab === tab.id
-              ? 'border-primary-500 text-primary-700 dark:text-primary-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-          ]"
+          :class="[ 'py-4 px-4 text-sm font-medium border-b-2 whitespace-nowrap', activeTab === tab.id ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300' ]"
         >
           {{ tab.name }}
         </button>
@@ -64,7 +49,7 @@
 
       <!-- Error State -->
       <div v-else-if="error" class="text-center py-8">
-        <svg class="mx-auto h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="mx-auto h-12 w-12 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <p class="mt-2 text-gray-500 dark:text-gray-400">{{ error }}</p>

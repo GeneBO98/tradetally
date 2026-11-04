@@ -9,12 +9,7 @@
           v-for="p in periods"
           :key="p.value"
           @click="selectPeriod(p.value)"
-          :class="[
-            'px-3 py-1 text-sm rounded-md transition-colors',
-            selectedPeriod === p.value
-              ? 'bg-primary-700 text-white'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-          ]"
+          :class="[ 'px-3 py-1 text-sm rounded-md transition-colors', selectedPeriod === p.value ? 'bg-primary-700 text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700' ]"
         >
           {{ p.label }}
         </button>
@@ -175,11 +170,11 @@ function createChart(candles) {
     })
 
     candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
-      upColor: '#10b981',
+      upColor: '#16a34a',
       downColor: '#ef4444',
-      borderUpColor: '#10b981',
+      borderUpColor: '#16a34a',
       borderDownColor: '#ef4444',
-      wickUpColor: '#10b981',
+      wickUpColor: '#16a34a',
       wickDownColor: '#ef4444',
     })
 

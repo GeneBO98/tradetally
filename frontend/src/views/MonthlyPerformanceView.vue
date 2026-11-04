@@ -194,11 +194,7 @@
                         >
                             <div
                                 class="text-2xl font-bold"
-                                :class="
-                                    yearTotals.metrics.winRate >= 50
-                                        ? 'text-success'
-                                        : 'text-danger'
-                                "
+                                :class="yearTotals.metrics.winRate >= 50 ? 'text-success' : 'text-danger'"
                             >
                                 {{
                                     formatPercentage(yearTotals.metrics.winRate)
@@ -238,11 +234,7 @@
                         >
                             <div
                                 class="text-2xl font-bold"
-                                :class="
-                                    getRValueClass(
-                                        yearTotals.metrics.totalRValue,
-                                    )
-                                "
+                                :class="getRValueClass( yearTotals.metrics.totalRValue, )"
                             >
                                 {{
                                     formatNumber(
@@ -299,11 +291,7 @@
                         <button
                             @click="toggleRValue"
                             class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-                            :class="
-                                showRValue
-                                    ? 'bg-primary-700 text-white hover:bg-primary-800'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                            "
+                            :class="showRValue ? 'bg-primary-700 text-white hover:bg-primary-800' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
                             :title="showRValue ? 'Showing R-multiples (dollar columns hidden)' : 'Show R-multiples and hide dollar columns'"
                         >
                             {{ showRValue ? "Showing R" : "Show R" }}
@@ -392,11 +380,7 @@
                                 <tr
                                     v-for="month in monthlyData"
                                     :key="month.month"
-                                    :class="
-                                        month.trades.total === 0
-                                            ? 'opacity-40'
-                                            : 'hover:bg-gray-50 dark:hover:bg-gray-700'
-                                    "
+                                    :class="month.trades.total === 0 ? 'opacity-40' : 'hover:bg-gray-50 dark:hover:bg-gray-700'"
                                 >
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <span
@@ -458,11 +442,7 @@
                                         >
                                             <span
                                                 class="badge"
-                                                :class="
-                                                    getWinRateBadgeClass(
-                                                        month.metrics.winRate,
-                                                    )
-                                                "
+                                                :class="getWinRateBadgeClass( month.metrics.winRate, )"
                                             >
                                                 {{
                                                     formatPercentage(
@@ -490,11 +470,7 @@
                                     <td
                                         v-if="!showRValue"
                                         class="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold"
-                                        :class="
-                                            month.trades.total > 0
-                                                ? getPnLClass(month.pnl.total)
-                                                : 'text-gray-400'
-                                        "
+                                        :class="month.trades.total > 0 ? getPnLClass(month.pnl.total) : 'text-gray-400'"
                                     >
                                         {{
                                             month.trades.total > 0
@@ -507,11 +483,7 @@
                                     <td
                                         v-if="!showRValue"
                                         class="px-6 py-4 whitespace-nowrap text-right text-sm"
-                                        :class="
-                                            month.trades.total > 0
-                                                ? getPnLClass(month.pnl.average)
-                                                : 'text-gray-400'
-                                        "
+                                        :class="month.trades.total > 0 ? getPnLClass(month.pnl.average) : 'text-gray-400'"
                                     >
                                         {{
                                             month.trades.total > 0
@@ -559,13 +531,7 @@
                                     </td>
                                     <td
                                         class="px-6 py-4 whitespace-nowrap text-center text-sm font-semibold"
-                                        :class="
-                                            month.trades.total > 0
-                                                ? getRValueClass(
-                                                      month.metrics.totalRValue,
-                                                  )
-                                                : 'text-gray-400'
-                                        "
+                                        :class="month.trades.total > 0 ? getRValueClass( month.metrics.totalRValue, ) : 'text-gray-400'"
                                     >
                                         {{
                                             month.trades.total > 0 &&
@@ -609,11 +575,7 @@
                             <button
                                 @click="toggleRValue"
                                 class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-                                :class="
-                                    showRValue
-                                        ? 'bg-primary-700 text-white hover:bg-primary-800'
-                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                                "
+                                :class="showRValue ? 'bg-primary-700 text-white hover:bg-primary-800' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
                             >
                                 {{
                                     showRValue

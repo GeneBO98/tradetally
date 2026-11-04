@@ -1,9 +1,6 @@
 <template>
   <div
-    :class="[
-      'rounded-lg border p-4',
-      colorClasses
-    ]"
+    :class="[ 'rounded-lg border p-4', colorClasses ]"
   >
     <div class="text-center">
       <p class="text-sm font-medium uppercase tracking-wide" :class="labelClass">

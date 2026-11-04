@@ -113,12 +113,7 @@
                         v-for="tab in tabs"
                         :key="tab.key"
                         @click="activeTab = tab.key"
-                        :class="[
-                            'py-3 px-1 border-b-2 font-medium text-sm',
-                            activeTab === tab.key
-                                ? 'border-primary-500 text-primary-700 dark:text-primary-400'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
-                        ]"
+                        :class="[ 'py-3 px-1 border-b-2 font-medium text-sm', activeTab === tab.key ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
                     >
                         <MdiIcon :icon="tab.icon" :size="20" class="mr-2" />
                         {{ tab.name }}
@@ -214,7 +209,7 @@
                                     <MdiIcon
                                         :icon="mdiFire"
                                         :size="24"
-                                        class="text-red-500"
+                                        class="text-red-600 dark:text-red-400"
                                     />
                                 </div>
                                 <div class="ml-5 w-0 flex-1">
@@ -387,12 +382,7 @@
                             <button
                                 @click="checkForNewAchievements"
                                 :disabled="checkingAchievements"
-                                :class="[
-                                    'px-3 py-1 rounded text-xs font-medium transition-colors flex items-center',
-                                    checkingAchievements
-                                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                                        : 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-800',
-                                ]"
+                                :class="[ 'px-3 py-1 rounded text-xs font-medium transition-colors flex items-center', checkingAchievements ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed' : 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-800', ]"
                             >
                                 <div
                                     v-if="checkingAchievements"
@@ -425,13 +415,7 @@
                         v-for="achievement in achievements"
                         :key="achievement.id"
                         :data-achievement-id="achievement.id"
-                        :class="[
-                            'card border-2 transition-all duration-200 hover:shadow-md',
-                            achievement.is_earned
-                                ? 'border-primary-200 dark:border-primary-700 bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/20 dark:to-gray-800'
-                                : 'border-gray-200 dark:border-gray-700',
-                            highlightedAchievementId === achievement.id && 'achievement-highlight',
-                        ]"
+                        :class="[ 'card border-2 transition-all duration-200 hover:shadow-md', achievement.is_earned ? 'border-primary-200 dark:border-primary-700 bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/20 dark:to-gray-800' : 'border-gray-200 dark:border-gray-700', highlightedAchievementId === achievement.id && 'achievement-highlight', ]"
                     >
                         <div class="p-5">
                             <!-- Badge in top right corner -->
@@ -458,41 +442,22 @@
                             <!-- Achievement info -->
                             <div class="flex items-start">
                                 <div
-                                    :class="[
-                                        'w-12 h-12 flex-shrink-0 rounded-full flex items-center justify-center',
-                                        achievement.is_earned
-                                            ? 'bg-primary-100 dark:bg-primary-900'
-                                            : 'bg-gray-100 dark:bg-gray-700',
-                                    ]"
+                                    :class="[ 'w-12 h-12 flex-shrink-0 rounded-full flex items-center justify-center', achievement.is_earned ? 'bg-primary-100 dark:bg-primary-900' : 'bg-gray-100 dark:bg-gray-700', ]"
                                 >
                                     <MdiIcon
                                         :icon="mdiTrophy"
                                         :size="24"
-                                        :class="
-                                            achievement.is_earned
-                                                ? 'text-yellow-500'
-                                                : 'text-gray-400 grayscale opacity-50'
-                                        "
+                                        :class="achievement.is_earned ? 'text-yellow-500' : 'text-gray-400 grayscale opacity-50'"
                                     />
                                 </div>
                                 <div class="ml-4 flex-1">
                                     <h3
-                                        :class="[
-                                            'text-lg font-semibold',
-                                            achievement.is_earned
-                                                ? 'text-gray-900 dark:text-white'
-                                                : 'text-gray-600 dark:text-gray-400',
-                                        ]"
+                                        :class="[ 'text-lg font-semibold', achievement.is_earned ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400', ]"
                                     >
                                         {{ achievement.name }}
                                     </h3>
                                     <span
-                                        :class="[
-                                            'text-sm font-medium',
-                                            achievement.is_earned
-                                                ? 'text-primary-700 dark:text-primary-400'
-                                                : 'text-gray-500 dark:text-gray-500',
-                                        ]"
+                                        :class="[ 'text-sm font-medium', achievement.is_earned ? 'text-primary-700 dark:text-primary-400' : 'text-gray-500 dark:text-gray-500', ]"
                                     >
                                         +{{ achievement.points }} XP
                                     </span>
@@ -500,12 +465,7 @@
                             </div>
 
                             <p
-                                :class="[
-                                    'text-sm mt-3',
-                                    achievement.is_earned
-                                        ? 'text-gray-700 dark:text-gray-300'
-                                        : 'text-gray-500 dark:text-gray-400',
-                                ]"
+                                :class="[ 'text-sm mt-3', achievement.is_earned ? 'text-gray-700 dark:text-gray-300' : 'text-gray-500 dark:text-gray-400', ]"
                             >
                                 {{ achievement.description }}
                             </p>
@@ -575,12 +535,7 @@
                                 </h3>
                                 <button
                                     @click="showFilters = !showFilters"
-                                    :class="[
-                                        'px-3 py-1 rounded text-sm font-medium transition-colors flex items-center',
-                                        showFilters
-                                            ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
-                                            : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600',
-                                    ]"
+                                    :class="[ 'px-3 py-1 rounded text-sm font-medium transition-colors flex items-center', showFilters ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600', ]"
                                 >
                                     <MdiIcon
                                         :icon="mdiFilter"
@@ -886,25 +841,11 @@
                                             entry, index
                                         ) in leaderboard.entries.slice(0, 10)"
                                         :key="entry.user_id"
-                                        :class="[
-                                            'flex items-center justify-between p-3 rounded-lg',
-                                            entry.is_current_user
-                                                ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700'
-                                                : 'bg-gray-50 dark:bg-gray-700',
-                                        ]"
+                                        :class="[ 'flex items-center justify-between p-3 rounded-lg', entry.is_current_user ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700' : 'bg-gray-50 dark:bg-gray-700', ]"
                                     >
                                         <div class="flex items-center">
                                             <div
-                                                :class="[
-                                                    'w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium',
-                                                    index === 0
-                                                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                                                        : index === 1
-                                                          ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200'
-                                                          : index === 2
-                                                            ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
-                                                            : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-400',
-                                                ]"
+                                                :class="[ 'w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium', index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200' : index === 2 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-400', ]"
                                             >
                                                 {{ index + 1 }}
                                             </div>
@@ -1016,25 +957,11 @@
                             <div
                                 v-for="(entry, index) in fullLeaderboardEntries"
                                 :key="entry.user_id"
-                                :class="[
-                                    'flex items-center justify-between p-4 rounded-lg',
-                                    entry.is_current_user
-                                        ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700'
-                                        : 'bg-gray-50 dark:bg-gray-700',
-                                ]"
+                                :class="[ 'flex items-center justify-between p-4 rounded-lg', entry.is_current_user ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700' : 'bg-gray-50 dark:bg-gray-700', ]"
                             >
                                 <div class="flex items-center">
                                     <div
-                                        :class="[
-                                            'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold',
-                                            index === 0
-                                                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                                                : index === 1
-                                                  ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200'
-                                                  : index === 2
-                                                    ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
-                                                    : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-400',
-                                        ]"
+                                        :class="[ 'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold', index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200' : index === 2 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-400', ]"
                                     >
                                         {{ entry.rank || index + 1 }}
                                     </div>
@@ -1643,7 +1570,7 @@ export default {
         const RARITY_TEXT_COLORS = {
             common: "text-slate-500 dark:text-slate-400",
             uncommon: "text-green-700 dark:text-green-400",
-            rare: "text-cyan-600 dark:text-cyan-400",
+            rare: "text-primary-700 dark:text-primary-400",
             epic: "text-purple-600 dark:text-purple-400",
             legendary: "text-primary-700 dark:text-primary-400",
         };

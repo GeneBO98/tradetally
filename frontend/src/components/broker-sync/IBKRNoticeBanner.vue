@@ -9,15 +9,15 @@
   >
     <div
       v-if="!dismissed"
-      class="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg"
+      class="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-lg"
     >
       <div class="flex items-start gap-3">
-        <ExclamationTriangleIcon class="h-5 w-5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+        <ExclamationTriangleIcon class="h-5 w-5 text-yellow-500 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
         <div class="flex-1 min-w-0">
-          <p class="text-sm font-semibold text-amber-800 dark:text-amber-300">
+          <p class="text-sm font-semibold text-yellow-800 dark:text-yellow-300">
             Action Required: IBKR Flex Token &amp; Query Regeneration
           </p>
-          <p class="mt-1 text-sm text-amber-700 dark:text-amber-400">
+          <p class="mt-1 text-sm text-yellow-700 dark:text-yellow-400">
             Due to changes on Interactive Brokers' side, your existing Flex Token and Flex Query may no longer work.
             If your IBKR broker sync is failing, please log in to the
             <a
@@ -31,7 +31,7 @@
         </div>
         <button
           @click="dismiss"
-          class="text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-200 flex-shrink-0"
+          class="text-yellow-500 dark:text-yellow-400 hover:text-yellow-700 dark:hover:text-yellow-200 flex-shrink-0"
           aria-label="Dismiss notice"
         >
           <XMarkIcon class="h-5 w-5" />

@@ -15,11 +15,7 @@
               :key="item.name"
               :to="item.to"
               class="inline-flex items-center px-3 py-2 rounded-md text-sm font-semibold transition-all duration-200"
-              :class="[
-                $route.name === item.route
-                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700'
-              ]"
+              :class="[ $route.name === item.route ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700' ]"
             >
               {{ item.name }}
             </router-link>
@@ -80,11 +76,7 @@
             :to="item.to"
             @click="isMobileMenuOpen = false"
             class="block mx-3 px-4 py-3 rounded-lg text-base font-semibold transition-all duration-200"
-            :class="[
-              $route.name === item.route
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
-            ]"
+            :class="[ $route.name === item.route ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700' ]"
           >
             {{ item.name }}
           </router-link>

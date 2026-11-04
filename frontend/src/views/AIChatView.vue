@@ -35,9 +35,7 @@
               :key="option.value"
               @click="setFilter(option.value)"
               class="flex-1 rounded px-2 py-1 font-medium transition-colors"
-              :class="sessionFilter === option.value
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+              :class="sessionFilter === option.value ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
             >
               {{ option.label }}
             </button>
@@ -55,9 +53,7 @@
             <li v-for="session in aiStore.recentSessions" :key="session.id">
               <div
                 class="group flex items-start gap-2 rounded-md px-2 py-2 transition-colors"
-                :class="aiStore.currentSession?.id === session.id
-                  ? 'bg-primary-50 dark:bg-primary-900/20'
-                  : 'hover:bg-gray-50 dark:hover:bg-gray-800'"
+                :class="aiStore.currentSession?.id === session.id ? 'bg-primary-50 dark:bg-primary-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'"
               >
                 <button class="min-w-0 flex-1 text-left" @click="openSession(session.id)">
                   <p class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ session.title }}</p>
@@ -217,7 +213,7 @@
             <span>Enter to send, Shift+Enter for a new line. AI responses are not financial advice.</span>
             <span v-if="aiStore.currentSession">{{ aiStore.followupsRemaining }} messages left in this conversation</span>
           </div>
-          <p v-if="!hasCreditsForNext && !aiStore.credits.unlimited" class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+          <p v-if="!hasCreditsForNext && !aiStore.credits.unlimited" class="mt-2 text-xs text-yellow-600 dark:text-yellow-400">
             Not enough AI credits for another message. Credits reset at the start of each month.
           </p>
         </div>

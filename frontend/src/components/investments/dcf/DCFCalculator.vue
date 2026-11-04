@@ -242,7 +242,7 @@
 
     <div
       v-if="scenarioWarnings.length"
-      class="mb-6 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-200"
+      class="mb-6 rounded border border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 text-sm text-yellow-900 dark:text-yellow-200"
     >
       <p class="font-medium mb-2">Scenario assumptions need review</p>
       <ul class="space-y-1">
@@ -281,7 +281,7 @@
     <!-- Disclaimer (shown below results) -->
     <div
       v-if="results"
-      class="mb-6 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-200"
+      class="mb-6 rounded border border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 text-sm text-yellow-900 dark:text-yellow-200"
     >
       <p class="font-medium mb-1">Disclaimer — not financial advice</p>
       <p>

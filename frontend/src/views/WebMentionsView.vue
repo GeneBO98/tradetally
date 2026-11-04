@@ -336,9 +336,7 @@
                 :key="rule.id"
                 @click="selectRule(rule)"
                 class="relative w-full text-left p-5 transition-colors"
-                :class="selectedRule?.id === rule.id
-                  ? 'z-10 rounded-md bg-primary-50/80 ring-1 ring-primary-500/55 shadow-[0_0_0_1px_rgba(251,146,60,0.18),0_0_18px_rgba(251,146,60,0.18)] dark:bg-primary-900/20 dark:ring-primary-400/50 dark:shadow-[0_0_0_1px_rgba(251,146,60,0.16),0_0_20px_rgba(251,146,60,0.14)]'
-                  : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'"
+                :class="selectedRule?.id === rule.id ? 'z-10 rounded-md bg-primary-50/80 ring-1 ring-primary-500/55 shadow-[0_0_0_1px_rgba(251,146,60,0.18),0_0_18px_rgba(251,146,60,0.18)] dark:bg-primary-900/20 dark:ring-primary-400/50 dark:shadow-[0_0_0_1px_rgba(251,146,60,0.16),0_0_20px_rgba(251,146,60,0.14)]' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'"
               >
                 <div class="flex items-center justify-between">
                   <p class="font-medium text-gray-900 dark:text-white">{{ rule.name }}</p>
@@ -353,7 +351,7 @@
                   <button
                     @click.stop="toggleRuleEnabled(rule)"
                     class="text-xs"
-                    :class="rule.enabled ? 'text-amber-600 hover:text-amber-800' : 'text-primary-700 hover:text-primary-800'"
+                    :class="rule.enabled ? 'text-yellow-600 hover:text-yellow-800' : 'text-primary-700 hover:text-primary-800'"
                   >
                     {{ rule.enabled ? 'Disable' : 'Enable' }}
                   </button>
@@ -431,7 +429,7 @@
                 </div>
                 <span
                   class="badge"
-                  :class="sourceErrorCount === 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'"
+                  :class="sourceErrorCount === 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'"
                 >
                   {{ connectedSourceCount }}/{{ sources.length }}
                 </span>

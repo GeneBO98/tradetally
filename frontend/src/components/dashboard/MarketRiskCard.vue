@@ -137,7 +137,7 @@ const summaryClasses = computed(() => {
       return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/40 text-red-700 dark:text-red-300'
     case 'caution':
     case 'mixed':
-      return 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/40 text-amber-700 dark:text-amber-300'
+      return 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800/40 text-yellow-700 dark:text-yellow-300'
     default:
       return 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/40 text-green-700 dark:text-green-300'
   }
@@ -148,7 +148,7 @@ function badgeClasses(status) {
     case 'red':
       return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
     case 'amber':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
     case 'green':
       return 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
     default:

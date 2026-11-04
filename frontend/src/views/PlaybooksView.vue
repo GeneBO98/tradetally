@@ -42,9 +42,7 @@
                 :key="playbook.id"
                 @click="selectPlaybook(playbook)"
                 class="w-full text-left rounded-lg border px-4 py-4 transition"
-                :class="selectedPlaybookId === playbook.id
-                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 dark:border-primary-400'
-                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
+                :class="selectedPlaybookId === playbook.id ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 dark:border-primary-400' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
               >
                 <div class="flex items-start justify-between gap-4">
                   <div>
@@ -220,9 +218,7 @@
                 <div class="grid gap-3 sm:grid-cols-2">
                   <label
                     class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3"
-                    :class="form.reviewMode === 'checklist'
-                      ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
-                      : 'border-gray-200 dark:border-gray-700'"
+                    :class="form.reviewMode === 'checklist' ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700'"
                   >
                     <input v-model="form.reviewMode" value="checklist" type="radio" class="mt-1 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500" />
                     <span>
@@ -232,9 +228,7 @@
                   </label>
                   <label
                     class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3"
-                    :class="form.reviewMode === 'score'
-                      ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
-                      : 'border-gray-200 dark:border-gray-700'"
+                    :class="form.reviewMode === 'score' ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700'"
                   >
                     <input v-model="form.reviewMode" value="score" type="radio" class="mt-1 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500" />
                     <span>

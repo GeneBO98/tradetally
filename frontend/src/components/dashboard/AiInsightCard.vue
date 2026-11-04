@@ -114,9 +114,7 @@
             :key="`dot-${i}`"
             type="button"
             class="h-1.5 rounded-full transition-all"
-            :class="i === index
-              ? 'w-6 bg-primary-500'
-              : 'w-1.5 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500'"
+            :class="i === index ? 'w-6 bg-primary-500' : 'w-1.5 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500'"
             :title="`Insight ${i + 1}`"
             @click="index = i"
           />
@@ -220,14 +218,14 @@ const iconTintClass = computed(() => {
   }
   switch (c.type) {
     case 'earnings':
-      return 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+      return 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400'
     case 'system':
       return 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
     case 'behavior':
     case 'streak':
       return 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
     case 'discipline':
-      return 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+      return 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400'
     default:
       return 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
   }

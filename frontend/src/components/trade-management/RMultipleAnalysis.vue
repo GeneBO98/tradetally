@@ -91,7 +91,7 @@
           <!-- Actual bar (foreground) -->
           <div
             class="absolute h-full rounded-full transition-all duration-500"
-            :class="analysis.actual_r >= 0 ? 'bg-emerald-500 dark:bg-emerald-600' : 'bg-red-500 dark:bg-red-600'"
+            :class="analysis.actual_r >= 0 ? 'bg-green-500 dark:bg-green-600' : 'bg-red-500 dark:bg-red-600'"
             :style="{ width: `${Math.min(100, Math.max(0, (analysis.actual_r / maxR) * 100))}%` }"
           ></div>
           <!-- Labels -->

@@ -17,7 +17,7 @@
 
         <!-- Error State -->
         <div v-else-if="error" class="text-center py-8">
-          <ExclamationTriangleIcon class="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <ExclamationTriangleIcon class="w-16 h-16 text-red-600 dark:text-red-400 mx-auto mb-4" />
           <h2 class="heading-section mb-2">Authorization Error</h2>
           <p class="text-red-600 dark:text-red-400 mb-4">{{ error }}</p>
           <button @click="$router.push('/')" class="btn-secondary">
@@ -75,7 +75,7 @@
                 :key="scope.name"
                 class="flex items-start"
               >
-                <CheckCircleIcon class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
+                <CheckCircleIcon class="w-5 h-5 text-green-700 dark:text-green-400 mr-2 flex-shrink-0 mt-0.5" />
                 <div>
                   <p class="text-sm font-medium text-gray-900 dark:text-white">{{ scope.title }}</p>
                   <p class="text-xs text-gray-600 dark:text-gray-400">{{ scope.description }}</p>

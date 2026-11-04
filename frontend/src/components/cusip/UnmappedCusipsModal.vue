@@ -33,7 +33,7 @@
         <div class="px-4 pb-4 sm:px-6 sm:pb-6">
           <!-- Empty State -->
           <div v-if="unmappedCusips.length === 0" class="text-center py-8">
-            <CheckCircleIcon class="h-16 w-16 text-green-500 mx-auto mb-4" />
+            <CheckCircleIcon class="h-16 w-16 text-green-700 dark:text-green-400 mx-auto mb-4" />
             <h3 class="heading-card mb-2">
               All CUSIPs Mapped!
             </h3>

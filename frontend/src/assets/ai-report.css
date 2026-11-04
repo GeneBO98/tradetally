@@ -8,12 +8,9 @@
 
 /* Individual section card */
 .ai-report-card {
-  @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden transition-shadow duration-200;
+  @apply card overflow-hidden;
 }
 
-.ai-report-card:hover {
-  @apply shadow-md;
-}
 
 /* Card header */
 .ai-report-card-header {
@@ -33,7 +30,7 @@
 }
 
 .ai-report-card-title {
-  @apply text-xl font-semibold text-gray-900 dark:text-white m-0;
+  @apply heading-card m-0;
 }
 
 /* Card body */

@@ -66,9 +66,7 @@
                   type="button"
                   @click="form.instrument = 'stock'"
                   class="h-full px-3 py-0 text-sm font-medium"
-                  :class="form.instrument === 'stock'
-                    ? 'bg-primary-700 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+                  :class="form.instrument === 'stock' ? 'bg-primary-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
                 >
                   Stocks
                 </button>
@@ -77,9 +75,7 @@
                   @click="futuresAvailable && (form.instrument = 'future')"
                   :disabled="!futuresAvailable"
                   class="h-full px-3 py-0 text-sm font-medium border-l border-gray-300 dark:border-gray-600"
-                  :class="form.instrument === 'future'
-                    ? 'bg-primary-700 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed'"
+                  :class="form.instrument === 'future' ? 'bg-primary-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed'"
                   :title="futuresAvailable ? '' : 'Requires a Databento API key on the server (DATABENTO_API_KEY)'"
                 >
                   Futures

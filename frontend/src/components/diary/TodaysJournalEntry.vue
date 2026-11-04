@@ -74,10 +74,7 @@
           <div
             v-for="(contentPart, idx) in splitContent(entry.content)"
             :key="idx"
-            :class="[
-              'text-sm text-gray-700 dark:text-gray-300 prose prose-sm max-w-none dark:prose-invert',
-              splitContent(entry.content).length > 1 ? 'bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg mb-3 last:mb-0' : ''
-            ]"
+            :class="[ 'text-sm text-gray-700 dark:text-gray-300 prose prose-sm max-w-none dark:prose-invert', splitContent(entry.content).length > 1 ? 'bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg mb-3 last:mb-0' : '' ]"
           >
             <div
               v-if="!expanded && contentPart.length > 200"

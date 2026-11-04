@@ -91,10 +91,7 @@
             </td>
             <td class="px-4 py-3 whitespace-nowrap text-center">
               <span
-                :class="[
-                  'inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium',
-                  getPillarsPassedClass(stock.pillarsPassed)
-                ]"
+                :class="[ 'inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium', getPillarsPassedClass(stock.pillarsPassed) ]"
               >
                 {{ stock.pillarsPassed }}/8
               </span>

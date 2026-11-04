@@ -82,19 +82,19 @@ const tabs = computed(() => {
 }
 
 .admin-tab--active {
-  color: rgb(194 65 12);
-  border-bottom-color: rgb(240 129 42);
+  color: theme('colors.primary.700');
+  border-bottom-color: theme('colors.primary.500');
 }
 
 :global(.dark) .admin-tab--active,
 .dark .admin-tab--active {
-  color: rgb(253 186 116);
-  border-bottom-color: rgb(251 146 60);
+  color: theme('colors.primary.300');
+  border-bottom-color: theme('colors.primary.400');
 }
 
 .admin-tab--active:hover,
 :global(.dark) .admin-tab--active:hover,
 .dark .admin-tab--active:hover {
-  border-bottom-color: rgb(240 129 42);
+  border-bottom-color: theme('colors.primary.500');
 }
 </style>

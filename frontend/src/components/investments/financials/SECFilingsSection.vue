@@ -65,12 +65,7 @@
           <div class="flex items-center space-x-4">
             <!-- Form Type Badge -->
             <span
-              :class="[
-                'px-2 py-1 text-xs font-bold rounded',
-                filing.formType === '10-K'
-                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                  : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-              ]"
+              :class="[ 'px-2 py-1 text-xs font-bold rounded', filing.formType === '10-K' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' ]"
             >
               {{ filing.formType }}
             </span>
@@ -131,10 +126,7 @@
             <div>
               <p class="text-xs text-gray-500 dark:text-gray-400">Net Income</p>
               <p
-                :class="[
-                  'text-sm font-medium',
-                  getValueClass(filing.highlights?.netIncome)
-                ]"
+                :class="[ 'text-sm font-medium', getValueClass(filing.highlights?.netIncome) ]"
               >
                 {{ formatLargeNumber(filing.highlights?.netIncome) }}
               </p>
@@ -154,10 +146,7 @@
             <div>
               <p class="text-xs text-gray-500 dark:text-gray-400">Operating Cash Flow</p>
               <p
-                :class="[
-                  'text-sm font-medium',
-                  getValueClass(filing.highlights?.operatingCashFlow)
-                ]"
+                :class="[ 'text-sm font-medium', getValueClass(filing.highlights?.operatingCashFlow) ]"
               >
                 {{ formatLargeNumber(filing.highlights?.operatingCashFlow) }}
               </p>

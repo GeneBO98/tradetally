@@ -6,10 +6,7 @@
       :disabled="disabled"
       @click.stop="toggleOpen"
       class="input w-full text-left flex items-center justify-between"
-      :class="[
-        { 'opacity-60 cursor-not-allowed': disabled },
-        size === 'sm' ? 'input-sm' : ''
-      ]"
+      :class="[ { 'opacity-60 cursor-not-allowed': disabled }, size === 'sm' ? 'input-sm' : '' ]"
     >
       <span class="truncate" :class="(selectedOption || hasValue) ? '' : 'text-gray-400 dark:text-gray-500'">
         {{ displayLabel }}

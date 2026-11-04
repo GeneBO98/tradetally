@@ -37,9 +37,7 @@
             >
               <StarIcon
                 class="h-8 w-8 transition-colors"
-                :class="(hoverRating || form.rating) >= star
-                  ? 'text-yellow-400 fill-yellow-400'
-                  : 'text-gray-300 dark:text-gray-600'"
+                :class="(hoverRating || form.rating) >= star ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300 dark:text-gray-600'"
               />
             </button>
           </div>

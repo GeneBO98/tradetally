@@ -101,20 +101,10 @@
                             @click="
                                 form.autoSyncEnabled = !form.autoSyncEnabled
                             "
-                            :class="[
-                                form.autoSyncEnabled
-                                    ? 'bg-primary-600'
-                                    : 'bg-gray-200 dark:bg-gray-600',
-                                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2',
-                            ]"
+                            :class="[ form.autoSyncEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
                         >
                             <span
-                                :class="[
-                                    form.autoSyncEnabled
-                                        ? 'translate-x-5'
-                                        : 'translate-x-0',
-                                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                                ]"
+                                :class="[ form.autoSyncEnabled ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out', ]"
                             />
                         </button>
                     </div>
@@ -174,12 +164,7 @@
                                 :key="preset.id"
                                 type="button"
                                 @click="applySyncRangePreset(preset.id)"
-                                :class="[
-                                    'px-3 py-1 text-sm rounded-full border transition-colors',
-                                    activePreset === preset.id
-                                        ? 'bg-primary-700 border-primary-600 text-white'
-                                        : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600',
-                                ]"
+                                :class="[ 'px-3 py-1 text-sm rounded-full border transition-colors', activePreset === preset.id ? 'bg-primary-700 border-primary-600 text-white' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600', ]"
                             >
                                 {{ preset.label }}
                             </button>
@@ -259,9 +244,7 @@
                                 </div>
                                 <span
                                     class="text-xs font-medium"
-                                    :class="isAccountExcluded(account.account_identifier)
-                                        ? 'text-gray-500 dark:text-gray-400'
-                                        : 'text-primary-700 dark:text-primary-400'"
+                                    :class="isAccountExcluded(account.account_identifier) ? 'text-gray-500 dark:text-gray-400' : 'text-primary-700 dark:text-primary-400'"
                                 >
                                     {{ isAccountExcluded(account.account_identifier) ? 'Excluded' : 'Included' }}
                                 </span>

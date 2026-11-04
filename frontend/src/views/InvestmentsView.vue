@@ -35,23 +35,13 @@
             <nav class="-mb-px flex space-x-8">
                 <button
                     @click="activeTab = 'screener'"
-                    :class="[
-                        'py-4 px-1 border-b-2 font-medium text-sm',
-                        activeTab === 'screener'
-                            ? 'border-primary-500 text-primary-700 dark:text-primary-400'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
-                    ]"
+                    :class="[ 'py-4 px-1 border-b-2 font-medium text-sm', activeTab === 'screener' ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
                 >
                     Stock Screener
                 </button>
                 <button
                     @click="activeTab = 'holdings'"
-                    :class="[
-                        'py-4 px-1 border-b-2 font-medium text-sm',
-                        activeTab === 'holdings'
-                            ? 'border-primary-500 text-primary-700 dark:text-primary-400'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
-                    ]"
+                    :class="[ 'py-4 px-1 border-b-2 font-medium text-sm', activeTab === 'holdings' ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
                 >
                     Holdings
                     <span
@@ -63,23 +53,13 @@
                 </button>
                 <button
                     @click="activeTab = 'scanner'"
-                    :class="[
-                        'py-4 px-1 border-b-2 font-medium text-sm',
-                        activeTab === 'scanner'
-                            ? 'border-primary-500 text-primary-700 dark:text-primary-400'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
-                    ]"
+                    :class="[ 'py-4 px-1 border-b-2 font-medium text-sm', activeTab === 'scanner' ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
                 >
                     Stock Scanner
                 </button>
                 <button
                     @click="activeTab = 'income'"
-                    :class="[
-                        'py-4 px-1 border-b-2 font-medium text-sm',
-                        activeTab === 'income'
-                            ? 'border-primary-500 text-primary-700 dark:text-primary-400'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
-                    ]"
+                    :class="[ 'py-4 px-1 border-b-2 font-medium text-sm', activeTab === 'income' ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
                 >
                     Income
                 </button>
@@ -198,12 +178,7 @@
                     </h2>
                     <button
                         @click="showFavoritesOnly = !showFavoritesOnly"
-                        :class="[
-                            'text-sm px-3 py-1 rounded-md',
-                            showFavoritesOnly
-                                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300'
-                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700',
-                        ]"
+                        :class="[ 'text-sm px-3 py-1 rounded-md', showFavoritesOnly ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700', ]"
                     >
                         {{
                             showFavoritesOnly
@@ -236,11 +211,7 @@
                         <div class="flex items-center space-x-3">
                             <button
                                 @click.stop="toggleFavorite(item.symbol)"
-                                :class="
-                                    item.isFavorite
-                                        ? 'text-yellow-500'
-                                        : 'text-gray-400 hover:text-yellow-500'
-                                "
+                                :class="item.isFavorite ? 'text-yellow-500' : 'text-gray-400 hover:text-yellow-500'"
                             >
                                 <svg
                                     class="w-5 h-5"
@@ -306,10 +277,7 @@
                             {{ formatCurrency(investmentsStore.portfolioOverview.totalReturn) }}
                         </p>
                         <p
-                            :class="[
-                                'text-xs mt-2',
-                                portfolioOverviewReturn >= 0 ? 'text-green-500' : 'text-red-500',
-                            ]"
+                            :class="[ 'text-xs mt-2', portfolioOverviewReturn >= 0 ? 'text-green-500' : 'text-red-500', ]"
                         >
                             {{ formatPercent(investmentsStore.portfolioOverview.totalReturnPercent) }}
                         </p>
@@ -384,12 +352,7 @@
                                     :key="period"
                                     @click="setPortfolioPeriod(period)"
                                     :disabled="investmentsStore.portfolioLoading"
-                                    :class="[
-                                        'px-3 py-1.5 text-xs rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-                                        portfolioPeriod === period
-                                            ? 'bg-primary-700 text-white border-primary-600'
-                                            : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 hover:text-primary-600',
-                                    ]"
+                                    :class="[ 'px-3 py-1.5 text-xs rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed', portfolioPeriod === period ? 'bg-primary-700 text-white border-primary-600' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 hover:text-primary-600', ]"
                                 >
                                     {{ monthPresetOptions.find(option => option.value === period)?.label || period }}
                                 </button>
@@ -979,12 +942,7 @@
                                         <tr
                                             v-for="row in accountComparisonRows"
                                             :key="row.value"
-                                            :class="[
-                                                'cursor-pointer transition-colors',
-                                                selectedComparisonAccounts.has(row.value)
-                                                    ? 'bg-primary-50 dark:bg-primary-900/20 border-l-4 border-primary-500'
-                                                    : 'hover:bg-gray-50 dark:hover:bg-gray-700/60 border-l-4 border-transparent',
-                                            ]"
+                                            :class="[ 'cursor-pointer transition-colors', selectedComparisonAccounts.has(row.value) ? 'bg-primary-50 dark:bg-primary-900/20 border-l-4 border-primary-500' : 'hover:bg-gray-50 dark:hover:bg-gray-700/60 border-l-4 border-transparent', ]"
                                             @click="toggleComparisonAccount(row.value)"
                                         >
                                             <td class="px-3 py-2">
@@ -1487,10 +1445,7 @@
                         v-for="watchlist in watchlists"
                         :key="watchlist.id"
                         class="flex items-center p-3 border border-gray-200 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
-                        :class="{
-                            'border-primary-500 bg-primary-50 dark:bg-primary-900/20':
-                                selectedWatchlistId === watchlist.id,
-                        }"
+                        :class="{ 'border-primary-500 bg-primary-50 dark:bg-primary-900/20': selectedWatchlistId === watchlist.id, }"
                     >
                         <input
                             type="radio"

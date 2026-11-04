@@ -41,7 +41,7 @@
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                   <p class="text-base font-semibold text-gray-900 dark:text-white">{{ item.symbol }}</p>
-                  <span class="badge bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-800">
+                  <span class="badge bg-yellow-50 text-yellow-700 ring-1 ring-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:ring-yellow-800">
                     Needs review
                   </span>
                 </div>

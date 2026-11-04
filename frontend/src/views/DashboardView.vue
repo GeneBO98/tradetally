@@ -21,9 +21,7 @@
               <div class="flex items-center">
                 <div 
                   class="w-2 h-2 rounded-full mr-2"
-                  :class="[
-                    marketStatus.isOpen ? 'bg-green-500' : 'bg-red-500'
-                  ]"
+                  :class="[ marketStatus.isOpen ? 'bg-green-500' : 'bg-red-500' ]"
                 ></div>
                 <span class="text-gray-600 dark:text-gray-400">
                   {{ marketStatus.status }}
@@ -44,7 +42,7 @@
           <div class="relative" data-dropdown="timeRange">
             <button
               @click.stop="showTimeRangeDropdown = !showTimeRangeDropdown"
-              class="relative w-10 h-10 inline-flex items-center justify-center rounded-md border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              class="btn-icon-outline relative"
               type="button"
               :title="`Date range: ${getSelectedTimeRangeText()}`"
               aria-label="Date range filter"
@@ -123,10 +121,8 @@
           </button>
           <button
             @click="isCustomizing = !isCustomizing"
-            class="w-10 h-10 inline-flex items-center justify-center rounded-md border transition-colors"
-            :class="isCustomizing
-              ? 'bg-primary-700 text-white border-primary-600 hover:bg-primary-800'
-              : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'"
+            class="btn-icon-outline"
+            :class="isCustomizing ? '!bg-primary-700 !text-white !border-primary-700 hover:!bg-primary-800' : ''"
             :title="isCustomizing ? 'Exit customize mode' : 'Customize dashboard'"
             :aria-label="isCustomizing ? 'Exit customize mode' : 'Customize dashboard'"
           >
@@ -159,13 +155,13 @@
     <!-- Sample data banner: shown when user has sample trades -->
     <div
       v-if="!initialLoading && hasSampleData && authStore.onboardingStep >= 6"
-      class="card bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 mb-6"
+      class="card bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 mb-6"
     >
       <div class="card-body">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm font-medium text-amber-900 dark:text-amber-100">You're exploring with sample data.</p>
-            <p class="mt-0.5 text-sm text-amber-700 dark:text-amber-300">Import your own trades or remove the sample data when you're ready.</p>
+            <p class="text-sm font-medium text-yellow-900 dark:text-yellow-100">You're exploring with sample data.</p>
+            <p class="mt-0.5 text-sm text-yellow-700 dark:text-yellow-300">Import your own trades or remove the sample data when you're ready.</p>
           </div>
           <div class="flex items-center gap-2 flex-shrink-0 ml-4">
             <RouterLink
@@ -401,11 +397,7 @@
         <template #item="{ element }">
           <div
             class="relative"
-            :class="{
-              'opacity-50': isCustomizing && !element.visible,
-              'hidden': getSectionDefinition(element.id)?.location === 'rail'
-                || (!element.visible && !isCustomizing)
-            }"
+            :class="{ 'opacity-50': isCustomizing && !element.visible, 'hidden': getSectionDefinition(element.id)?.location === 'rail' || (!element.visible && !isCustomizing) }"
           >
             <!-- Customize-mode header: drag handle, title, visibility toggle -->
             <div
@@ -430,9 +422,7 @@
               <button
                 type="button"
                 class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-colors"
-                :class="element.visible
-                  ? 'text-primary-700 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30'
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                :class="element.visible ? 'text-primary-700 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
                 :title="element.visible ? 'Hide section' : 'Show section'"
                 @click="toggleSectionVisibility(element.id)"
               >
@@ -594,9 +584,7 @@
                           :aria-pressed="open_positions_view === view.id"
                           @click="set_open_positions_view(view.id)"
                           class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-                          :class="open_positions_view === view.id
-                            ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-white'
-                            : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+                          :class="open_positions_view === view.id ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-white' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
                         >
                           {{ view.label }}
                         </button>
@@ -646,9 +634,7 @@
                     ]">
                       {{ formatSignedPositionAmount(getOptionPnL(position).unrealizedPnL, position) }}
                     </div>
-                    <div class="text-xs font-medium" :class="[
-                      getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
-                    ]">
+                    <div class="text-xs font-medium" :class="[ getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500' ]">
                       {{ getOptionPnL(position).unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
                     </div>
                   </template>
@@ -660,9 +646,7 @@
                   ]">
                     {{ formatSignedPositionAmount(position.unrealizedPnL, position) }}
                   </div>
-                  <div class="text-xs font-medium" :class="[
-                    position.unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
-                  ]">
+                  <div class="text-xs font-medium" :class="[ position.unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500' ]">
                     {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
                   </div>
                 </div>
@@ -1113,7 +1097,7 @@
                     <div class="mt-1 space-y-2">
                       <div>
                         <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Gross</div>
-                        <dd class="text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
+                        <dd class="text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap text-mono-num" :class="[
                           dashboardGrossPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                         ]">
                           {{ formatCurrency(dashboardGrossPnl) }}
@@ -1306,7 +1290,7 @@
                       <!-- Center label below the arc -->
                       <div class="absolute bottom-0 left-0 right-0 flex justify-center pointer-events-none" style="margin-bottom: 0.25rem;">
                         <div class="text-center">
-                          <div class="text-3xl font-bold text-gray-900 dark:text-white">
+                          <div class="text-3xl font-bold text-gray-900 dark:text-white text-mono-num">
                             {{ computedWinRate }}%
                           </div>
                           <div class="table-th">
@@ -1321,7 +1305,7 @@
                         class="flex items-center gap-1.5 text-sm cursor-pointer hover:opacity-80 transition-opacity"
                         @click="navigateToTradesByPnLType('profit')"
                       >
-                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
                         <span class="text-gray-600 dark:text-gray-400">{{ parseInt(analytics?.summary?.winningTrades) || 0 }} Wins</span>
                       </button>
                       <button
@@ -1473,7 +1457,7 @@
                             </span>
                           </div>
                           <div v-else class="text-sm text-gray-500 dark:text-gray-400 italic py-2 flex items-center">
-                            <MdiIcon :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
+                            <MdiIcon :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-700 dark:text-green-400" />
                             No losing trades found
                           </div>
                         </div>
@@ -1574,9 +1558,7 @@
               <button
                 type="button"
                 class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-colors"
-                :class="newsRailUserVisible
-                  ? 'text-primary-700 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30'
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                :class="newsRailUserVisible ? 'text-primary-700 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
                 :title="newsRailUserVisible ? 'Hide news rail' : 'Show news rail'"
                 @click="toggleSectionVisibility('news-rail')"
               >

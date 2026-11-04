@@ -28,7 +28,7 @@
       <template v-if="scanInfo.isStale">
         <span class="text-gray-400 dark:text-gray-500">|</span>
         <span
-          class="text-amber-700 dark:text-amber-400"
+          class="text-yellow-700 dark:text-yellow-400"
           :title="scanInfo.staleReason === 'outdated_formula'
             ? 'The 8 Pillars formula changed after this scan ran. A fresh scan runs at the next daily check.'
             : 'This scan is more than a quarter old. A fresh scan runs at the next daily check.'"

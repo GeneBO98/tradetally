@@ -31,14 +31,7 @@
           <div
             v-for="challenge in group.challenges"
             :key="challenge.id"
-            :class="[
-              'card flex flex-col p-5 border',
-              challenge.user_status === 'completed'
-                ? 'border-green-200 dark:border-green-800'
-                : challenge.user_status === 'active'
-                  ? 'border-primary-200 dark:border-primary-800'
-                  : 'border-transparent'
-            ]"
+            :class="[ 'card flex flex-col p-5 border', challenge.user_status === 'completed' ? 'border-green-200 dark:border-green-800' : challenge.user_status === 'active' ? 'border-primary-200 dark:border-primary-800' : 'border-transparent' ]"
           >
             <div class="flex items-start justify-between gap-3">
               <div class="flex items-center gap-3 min-w-0">
@@ -71,10 +64,7 @@
               </div>
               <div class="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
                 <div
-                  :class="[
-                    'h-full rounded-full transition-all duration-700',
-                    challenge.user_status === 'completed' ? 'bg-green-500' : 'bg-primary-500'
-                  ]"
+                  :class="[ 'h-full rounded-full transition-all duration-700', challenge.user_status === 'completed' ? 'bg-green-500' : 'bg-primary-500' ]"
                   :style="{ width: progressPercent(challenge) + '%' }"
                 ></div>
               </div>

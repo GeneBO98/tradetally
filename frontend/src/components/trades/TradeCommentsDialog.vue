@@ -128,7 +128,7 @@
                                                 @click="
                                                     deleteComment(comment.id)
                                                 "
-                                                class="text-xs text-red-500 hover:text-red-700 transition-colors"
+                                                class="text-xs text-red-600 dark:text-red-400 hover:text-red-700 transition-colors"
                                             >
                                                 Delete
                                             </button>

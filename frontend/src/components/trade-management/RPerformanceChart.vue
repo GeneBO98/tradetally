@@ -136,7 +136,7 @@
         <!-- Legend -->
         <div class="mt-4 flex flex-wrap justify-center gap-6 text-sm">
           <div class="flex items-center">
-            <span class="w-6 h-1 rounded-full bg-emerald-600 dark:bg-emerald-500 mr-2"></span>
+            <span class="w-6 h-1 rounded-full bg-green-600 dark:bg-green-500 mr-2"></span>
             <span class="text-gray-600 dark:text-gray-400">Actual Performance (Net)</span>
           </div>
           <div class="flex items-center">

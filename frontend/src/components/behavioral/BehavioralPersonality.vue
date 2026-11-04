@@ -44,10 +44,10 @@
                         class="text-center py-12"
                     >
                         <div
-                            class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-900/20 mb-4"
+                            class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900/20 mb-4"
                         >
                             <svg
-                                class="w-8 h-8 text-purple-600 dark:text-purple-400"
+                                class="w-8 h-8 text-primary-700 dark:text-primary-400"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -119,7 +119,7 @@
                                         Performance Score
                                     </p>
                                     <p
-                                        class="text-2xl font-bold text-purple-600 dark:text-purple-400"
+                                        class="text-2xl font-bold text-primary-700 dark:text-primary-400"
                                     >
                                         {{
                                             parseFloat(

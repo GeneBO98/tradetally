@@ -11,9 +11,7 @@
       :key="trade.id"
       :to="`/trades/${trade.id}`"
       class="inline-flex items-center px-3 py-1.5 rounded-lg border transition-all hover:shadow-md"
-      :class="trade.pnl >= 0
-        ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 hover:border-green-300 dark:hover:border-green-700'
-        : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 hover:border-red-300 dark:hover:border-red-700'"
+      :class="trade.pnl >= 0 ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 hover:border-green-300 dark:hover:border-green-700' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 hover:border-red-300 dark:hover:border-red-700'"
     >
       <div class="flex items-center space-x-2">
         <span

@@ -80,7 +80,7 @@ describe('BrokerSyncView sync outcomes', () => {
     })
   })
 
-  it('renders warning completions in amber without changing completed polling semantics', async () => {
+  it('renders warning completions in yellow without changing completed polling semantics', async () => {
     const wrapper = shallowMount(BrokerSyncView, {
       global: {
         stubs: {
@@ -94,7 +94,7 @@ describe('BrokerSyncView sync outcomes', () => {
     const successBadge = wrapper.findAll('span').find(node => node.text() === 'completed')
 
     expect(warningBadge).toBeTruthy()
-    expect(warningBadge.classes()).toContain('bg-amber-100')
+    expect(warningBadge.classes()).toContain('bg-yellow-100')
     expect(successBadge).toBeTruthy()
     expect(successBadge.classes()).toContain('bg-green-100')
     expect(wrapper.text()).toContain('Jul 31, 2026, 18:00:00')

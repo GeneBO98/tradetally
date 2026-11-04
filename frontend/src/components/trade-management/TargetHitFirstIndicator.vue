@@ -10,23 +10,13 @@
         <div class="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
           <button
             @click="setMode('auto')"
-            :class="[
-              'px-2 py-1 text-xs font-medium rounded-md transition-colors',
-              mode === 'auto'
-                ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-            ]"
+            :class="[ 'px-2 py-1 text-xs font-medium rounded-md transition-colors', mode === 'auto' ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
           >
             Auto (API)
           </button>
           <button
             @click="setMode('manual')"
-            :class="[
-              'px-2 py-1 text-xs font-medium rounded-md transition-colors',
-              mode === 'manual'
-                ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-            ]"
+            :class="[ 'px-2 py-1 text-xs font-medium rounded-md transition-colors', mode === 'manual' ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
           >
             Manual
           </button>
@@ -129,8 +119,7 @@
         v-if="hasAnySelection"
         @click="clearAllSelections"
         :disabled="saving"
-        class="w-full px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400
-               hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+        class="w-full px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
       >
         Clear all selections
       </button>

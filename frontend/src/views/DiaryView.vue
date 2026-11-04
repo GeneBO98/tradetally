@@ -16,48 +16,28 @@
             <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1 min-w-max">
               <button
                 @click="currentView = 'list'"
-                :class="[
-                  'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center',
-                  currentView === 'list'
-                    ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                ]"
+                :class="[ 'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center', currentView === 'list' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
               >
                 <ListBulletIcon class="w-4 h-4 mr-1" />
                 List
               </button>
               <button
                 @click="currentView = 'calendar'"
-                :class="[
-                  'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center',
-                  currentView === 'calendar'
-                    ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                ]"
+                :class="[ 'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center', currentView === 'calendar' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
               >
                 <CalendarDaysIcon class="w-4 h-4 mr-1" />
                 Calendar
               </button>
               <button
                 @click="currentView = 'templates'"
-                :class="[
-                  'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center',
-                  currentView === 'templates'
-                    ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                ]"
+                :class="[ 'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center', currentView === 'templates' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
               >
                 <DocumentTextIcon class="w-4 h-4 mr-1" />
                 Templates
               </button>
               <button
                 @click="currentView = 'analysis'"
-                :class="[
-                  'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center',
-                  currentView === 'analysis'
-                    ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                ]"
+                :class="[ 'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center', currentView === 'analysis' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
               >
                 <SparklesIcon class="w-4 h-4 mr-1" />
                 AI Analysis
@@ -228,7 +208,7 @@
 
       <!-- Error State -->
       <div v-else-if="error" class="text-center py-12">
-        <ExclamationTriangleIcon class="w-12 h-12 text-red-400 mx-auto mb-4" />
+        <ExclamationTriangleIcon class="w-12 h-12 text-red-600 dark:text-red-400 mx-auto mb-4" />
         <p class="text-red-600 dark:text-red-400">{{ error }}</p>
         <button @click="loadEntries" class="btn-primary mt-4">Try Again</button>
       </div>
@@ -262,12 +242,7 @@
                 </span>
                 
                 <span
-                  :class="[
-                    'px-2 py-1 text-xs font-medium rounded-full',
-                    entry.entry_type === 'diary'
-                      ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-800 dark:text-primary-400'
-                      : 'bg-purple-100 dark:bg-purple-900/20 text-purple-800 dark:text-purple-400'
-                  ]"
+                  :class="[ 'px-2 py-1 text-xs font-medium rounded-full', entry.entry_type === 'diary' ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-800 dark:text-primary-400' : 'bg-primary-100 dark:bg-primary-900/20 text-primary-800 dark:text-primary-400' ]"
                 >
                   {{ entry.entry_type === 'diary' ? 'Diary' : 'Playbook' }}
                 </span>
@@ -315,10 +290,7 @@
             <div
               v-for="(contentPart, idx) in splitContent(entry.content)"
               :key="idx"
-              :class="[
-                'text-sm text-gray-700 dark:text-gray-300 prose prose-sm max-w-none dark:prose-invert',
-                splitContent(entry.content).length > 1 ? 'bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg mb-3 last:mb-0' : ''
-              ]"
+              :class="[ 'text-sm text-gray-700 dark:text-gray-300 prose prose-sm max-w-none dark:prose-invert', splitContent(entry.content).length > 1 ? 'bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg mb-3 last:mb-0' : '' ]"
               v-html="truncateHtml(parseMarkdown(contentPart), 300)"
             ></div>
           </div>
@@ -348,7 +320,7 @@
           </div>
 
           <div v-if="entry.linked_trades && entry.linked_trades.length > 0" class="mb-3">
-            <span class="text-xs font-medium text-purple-600 dark:text-purple-400 mr-2">Linked Trades:</span>
+            <span class="text-xs font-medium text-primary-700 dark:text-primary-400 mr-2">Linked Trades:</span>
             <LinkedTradesList :trade-ids="entry.linked_trades" />
           </div>
 
@@ -451,21 +423,13 @@
             v-for="day in calendarDays"
             :key="`${day.date.getMonth()}-${day.date.getDate()}`"
             class="relative min-h-[100px] p-2 border border-gray-200 dark:border-gray-600"
-            :class="{
-              'bg-gray-50 dark:bg-gray-700': !day.isCurrentMonth,
-              'bg-primary-50 dark:bg-primary-900': day.isToday,
-              'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700': day.isCurrentMonth
-            }"
+            :class="{ 'bg-gray-50 dark:bg-gray-700': !day.isCurrentMonth, 'bg-primary-50 dark:bg-primary-900': day.isToday, 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700': day.isCurrentMonth }"
             @click="selectDate(day.date)"
           >
             <!-- Day Number -->
             <div
               class="text-sm font-medium mb-1"
-              :class="{
-                'text-gray-400': !day.isCurrentMonth,
-                'text-primary-700 dark:text-primary-400': day.isToday,
-                'text-gray-900 dark:text-white': day.isCurrentMonth && !day.isToday
-              }"
+              :class="{ 'text-gray-400': !day.isCurrentMonth, 'text-primary-700 dark:text-primary-400': day.isToday, 'text-gray-900 dark:text-white': day.isCurrentMonth && !day.isToday }"
             >
               {{ day.date.getDate() }}
             </div>

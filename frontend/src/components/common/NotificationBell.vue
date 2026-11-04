@@ -96,11 +96,11 @@
                   />
                   <TrophyIcon
                     v-else-if="notification.type === 'achievement_earned'"
-                    class="h-5 w-5 text-amber-500"
+                    class="h-5 w-5 text-yellow-500"
                   />
                   <ArrowTrendingUpIcon
                     v-else-if="notification.type === 'level_up' || notification.type === 'portfolio_alert'"
-                    class="h-5 w-5 text-emerald-500"
+                    class="h-5 w-5 text-green-700 dark:text-green-400"
                   />
                   <BellIcon
                     v-else-if="notification.type === 'web_mention_alert'"
@@ -108,7 +108,7 @@
                   />
                   <ArrowPathIcon
                     v-else-if="['broker_reauth_expiring', 'broker_reauth_required'].includes(notification.type)"
-                    class="h-5 w-5 text-amber-500"
+                    class="h-5 w-5 text-yellow-500"
                   />
                   <BellIcon v-else class="h-5 w-5 text-gray-400" />
                 </div>

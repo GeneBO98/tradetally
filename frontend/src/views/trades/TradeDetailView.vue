@@ -327,9 +327,7 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Option Type</dt>
                   <dd class="mt-1">
                     <span class="badge"
-                      :class="[
-                        'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                      ]">
+                      :class="[ 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' ]">
                       {{ trade.option_type.toUpperCase() }}
                     </span>
                   </dd>
@@ -448,11 +446,7 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Status</dt>
                   <dd class="mt-1">
                     <span class="badge"
-                      :class="[
-                        trade.exit_time
-                          ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                          : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400'
-                      ]">
+                      :class="[ trade.exit_time ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400' ]">
                       {{ trade.exit_time ? 'Closed' : 'Open' }}
                     </span>
                   </dd>
@@ -475,13 +469,7 @@
                   <dd class="mt-1">
                     <div v-if="trade.qualityGrade" class="flex items-center space-x-3">
                       <span class="px-3 py-1 inline-flex text-sm font-semibold rounded"
-                        :class="{
-                          'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.qualityGrade === 'A',
-                          'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B',
-                          'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C',
-                          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D',
-                          'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F'
-                        }">
+                        :class="{ 'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                         Grade {{ trade.qualityGrade }}
                       </span>
                       <span v-if="trade.qualityScore" class="text-sm text-gray-600 dark:text-gray-400">
@@ -561,13 +549,7 @@
 
               <div class="space-y-4">
                 <div v-for="metric in qualityBreakdown" :key="metric.key" class="border-l-4 pl-4 py-2"
-                  :class="[
-                    metric.excluded ? 'border-gray-300 dark:border-gray-600' :
-                    metric.score >= 0.8 ? 'border-primary-500' :
-                    metric.score >= 0.6 ? 'border-primary-300' :
-                    metric.score >= 0.4 ? 'border-yellow-400' :
-                    'border-gray-300 dark:border-gray-600'
-                  ]">
+                  :class="[ metric.excluded ? 'border-gray-300 dark:border-gray-600' : metric.score >= 0.8 ? 'border-primary-500' : metric.score >= 0.6 ? 'border-primary-300' : metric.score >= 0.4 ? 'border-yellow-400' : 'border-gray-300 dark:border-gray-600' ]">
                   <div class="flex items-center justify-between mb-2">
                     <div>
                       <h4 class="heading-sub">{{ metric.label }}</h4>
@@ -578,12 +560,7 @@
                         No data
                       </div>
                       <div v-else class="text-sm font-semibold"
-                        :class="[
-                          metric.score >= 0.8 ? 'text-primary-700 dark:text-primary-400' :
-                          metric.score >= 0.6 ? 'text-primary-700 dark:text-primary-300' :
-                          metric.score >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
-                          'text-gray-500 dark:text-gray-400'
-                        ]">
+                        :class="[ metric.score >= 0.8 ? 'text-primary-700 dark:text-primary-400' : metric.score >= 0.6 ? 'text-primary-700 dark:text-primary-300' : metric.score >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400' ]">
                         {{ (metric.score * 100).toFixed(0) }}%
                       </div>
                       <div class="text-xs text-gray-500 dark:text-gray-400">
@@ -593,12 +570,7 @@
                   </div>
                   <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                     <div v-if="!metric.excluded" class="h-2 rounded-full transition-all"
-                      :class="[
-                        metric.score >= 0.8 ? 'bg-primary-500' :
-                        metric.score >= 0.6 ? 'bg-primary-300' :
-                        metric.score >= 0.4 ? 'bg-yellow-400' :
-                        'bg-gray-400'
-                      ]"
+                      :class="[ metric.score >= 0.8 ? 'bg-primary-500' : metric.score >= 0.6 ? 'bg-primary-300' : metric.score >= 0.4 ? 'bg-yellow-400' : 'bg-gray-400' ]"
                       :style="{ width: (metric.score * 100) + '%' }">
                     </div>
                   </div>
@@ -662,13 +634,7 @@
                   <span
                     v-if="trade.setupQuality?.grade"
                     class="inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold"
-                    :class="{
-                      'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.setupQuality.grade === 'A',
-                      'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.setupQuality.grade === 'B',
-                      'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.setupQuality.grade === 'C',
-                      'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.setupQuality.grade === 'D',
-                      'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.setupQuality.grade === 'F'
-                    }"
+                    :class="{ 'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.setupQuality.grade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.setupQuality.grade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.setupQuality.grade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.setupQuality.grade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.setupQuality.grade === 'F' }"
                   >
                     Grade {{ trade.setupQuality.grade }}
                   </span>
@@ -803,7 +769,7 @@
                         >
                           {{ savingAdherenceReview ? 'Saving...' : 'Save Playbook Review' }}
                         </button>
-                        <p v-if="selectedAdherencePlaybook?.isActive === false" class="text-xs text-amber-600 dark:text-amber-400">
+                        <p v-if="selectedAdherencePlaybook?.isActive === false" class="text-xs text-yellow-600 dark:text-yellow-400">
                           Archived playbooks remain visible on old reviews but cannot be used for new submissions.
                         </p>
                       </div>
@@ -827,9 +793,7 @@
                           v-for="rule in selectedAdherenceReview.ruleResults"
                           :key="rule.key"
                           class="rounded-lg border px-3 py-3"
-                          :class="rule.passed
-                            ? 'border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10'
-                            : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'"
+                          :class="rule.passed ? 'border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10' : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'"
                         >
                           <div class="flex items-center justify-between gap-4">
                             <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
@@ -962,7 +926,7 @@
                         >
                           {{ savingManualGradingReview ? 'Saving...' : 'Save Manual Grade' }}
                         </button>
-                        <p v-if="selectedManualGradingProfile?.isActive === false" class="text-xs text-amber-600 dark:text-amber-400">
+                        <p v-if="selectedManualGradingProfile?.isActive === false" class="text-xs text-yellow-600 dark:text-yellow-400">
                           Archived grading profiles remain visible on old reviews but cannot be used for new submissions.
                         </p>
                       </div>
@@ -986,9 +950,7 @@
                           v-for="rule in selectedManualGradingReview.ruleResults"
                           :key="rule.key"
                           class="rounded-lg border px-3 py-3"
-                          :class="rule.passed
-                            ? 'border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10'
-                            : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'"
+                          :class="rule.passed ? 'border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10' : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'"
                         >
                           <div class="flex items-center justify-between gap-4">
                             <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
@@ -1453,7 +1415,7 @@
                             </button>
                             <button
                               @click="deleteTradeComment(comment.id)"
-                              class="text-xs text-red-500 hover:text-red-700 transition-colors"
+                              class="text-xs text-red-600 dark:text-red-400 hover:text-red-700 transition-colors"
                             >
                               Delete
                             </button>
@@ -1631,11 +1593,7 @@
               <div class="space-y-4">
                 <div v-for="(article, index) in trade.news_events" :key="index" 
                      class="border-l-4 pl-4 py-3"
-                     :class="[
-                       article.sentiment === 'positive' ? 'border-green-400' :
-                       article.sentiment === 'negative' ? 'border-red-400' :
-                       'border-gray-400'
-                     ]">
+                     :class="[ article.sentiment === 'positive' ? 'border-green-400' : article.sentiment === 'negative' ? 'border-red-400' : 'border-gray-400' ]">
                   <div class="flex items-start justify-between">
                     <h4 class="heading-sub mb-2">
                       {{ article.headline }}

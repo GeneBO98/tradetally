@@ -48,12 +48,7 @@
           :key="item.symbol"
           @mousedown.prevent="selectItem(item)"
           @mouseenter="highlightedIndex = index"
-          :class="[
-            'px-3 py-2 cursor-pointer text-sm flex items-center justify-between',
-            index === highlightedIndex
-              ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
-              : 'text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700'
-          ]"
+          :class="[ 'px-3 py-2 cursor-pointer text-sm flex items-center justify-between', index === highlightedIndex ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700' ]"
           role="option"
           :aria-selected="index === highlightedIndex"
         >
@@ -76,9 +71,7 @@
           <span
             v-if="item.source === 'user_trades' || item.asset_type === 'crypto'"
             class="badge flex-shrink-0 ml-2"
-            :class="item.asset_type === 'crypto'
-              ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
-              : 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300'"
+            :class="item.asset_type === 'crypto' ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300'"
           >
             {{ item.asset_type === 'crypto' ? 'Crypto' : 'Traded' }}
           </span>

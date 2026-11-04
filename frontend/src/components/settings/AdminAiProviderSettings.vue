@@ -190,11 +190,7 @@
 
                     <fieldset
                         class="mt-6 space-y-6"
-                        :class="
-                            !form.classifierEnabled
-                                ? 'opacity-60'
-                                : ''
-                        "
+                        :class="!form.classifierEnabled ? 'opacity-60' : ''"
                         :disabled="!form.classifierEnabled"
                     >
                         <div

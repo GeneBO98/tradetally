@@ -11,7 +11,7 @@
             <button class="btn btn-primary" @click="reloadApp">
               Reload
             </button>
-            <button class="btn btn-outline" @click="clearRuntimeError">
+            <button class="btn-secondary" @click="clearRuntimeError">
               Dismiss
             </button>
           </div>
@@ -116,7 +116,7 @@
         </div>
 
         <div v-if="supportSent" class="text-center py-6">
-          <svg class="w-12 h-12 mx-auto text-green-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-12 h-12 mx-auto text-green-700 dark:text-green-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <h4 class="heading-card mb-1">Message Sent</h4>
@@ -148,7 +148,7 @@
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" @click="showSupportModal = false" class="btn btn-outline">Cancel</button>
+            <button type="button" @click="showSupportModal = false" class="btn-secondary">Cancel</button>
             <button type="submit" :disabled="supportSending" class="btn btn-primary">
               <span v-if="supportSending" class="spinner spinner-xs spinner-current inline-block mr-2"></span>
               {{ supportSending ? 'Sending...' : 'Send Message' }}

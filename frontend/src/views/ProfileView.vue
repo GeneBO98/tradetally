@@ -20,12 +20,7 @@
                     ]"
                     :key="tab.id"
                     @click="activeTab = tab.id"
-                    :class="[
-                        'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm',
-                        activeTab === tab.id
-                            ? 'border-primary-500 text-primary-700 dark:text-primary-400'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
-                    ]"
+                    :class="[ 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm', activeTab === tab.id ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
                 >
                     {{ tab.label }}
                 </button>
@@ -168,11 +163,7 @@
                                     v-model="profileForm.email"
                                     type="email"
                                     :disabled="!twoFactorStatus.enabled"
-                                    :class="
-                                        twoFactorStatus.enabled
-                                            ? 'input'
-                                            : 'input bg-gray-50 dark:bg-gray-700'
-                                    "
+                                    :class="twoFactorStatus.enabled ? 'input' : 'input bg-gray-50 dark:bg-gray-700'"
                                 />
                                 <p
                                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
@@ -454,11 +445,7 @@
                                 </p>
                             </div>
                             <span
-                                :class="
-                                    getSubscriptionStatusClass(
-                                        subscription.subscription.status,
-                                    )
-                                "
+                                :class="getSubscriptionStatusClass( subscription.subscription.status, )"
                                 class="px-3 py-1 rounded-full text-sm font-medium"
                             >
                                 {{
@@ -622,7 +609,7 @@
 
                     <div
                         v-if="billingStatus.billing_available && !canManageApiKeys"
-                        class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200"
+                        class="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900 dark:border-yellow-900/40 dark:bg-yellow-950/30 dark:text-yellow-200"
                     >
                         API keys are available with a Pro subscription.
                         Upgrade to create personal integrations and external
@@ -870,12 +857,7 @@
                                             :key="strategy"
                                             type="button"
                                             @click="toggleChip(tradingProfileForm.tradingStrategies, strategy)"
-                                            :class="[
-                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
-                                                tradingProfileForm.tradingStrategies.includes(strategy)
-                                                    ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800'
-                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
-                                            ]"
+                                            :class="[ 'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900', tradingProfileForm.tradingStrategies.includes(strategy) ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500' ]"
                                         >
                                             {{ strategy }}
                                         </button>
@@ -893,12 +875,7 @@
                                             :key="style"
                                             type="button"
                                             @click="toggleChip(tradingProfileForm.tradingStyles, style)"
-                                            :class="[
-                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
-                                                tradingProfileForm.tradingStyles.includes(style)
-                                                    ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800'
-                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
-                                            ]"
+                                            :class="[ 'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900', tradingProfileForm.tradingStyles.includes(style) ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500' ]"
                                         >
                                             {{ style }}
                                         </button>
@@ -916,12 +893,7 @@
                                             :key="market"
                                             type="button"
                                             @click="toggleChip(tradingProfileForm.primaryMarkets, market)"
-                                            :class="[
-                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
-                                                tradingProfileForm.primaryMarkets.includes(market)
-                                                    ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800'
-                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
-                                            ]"
+                                            :class="[ 'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900', tradingProfileForm.primaryMarkets.includes(market) ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500' ]"
                                         >
                                             {{ market }}
                                         </button>
@@ -939,12 +911,7 @@
                                             :key="goal"
                                             type="button"
                                             @click="toggleChip(tradingProfileForm.tradingGoals, goal)"
-                                            :class="[
-                                                'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
-                                                tradingProfileForm.tradingGoals.includes(goal)
-                                                    ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800'
-                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
-                                            ]"
+                                            :class="[ 'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900', tradingProfileForm.tradingGoals.includes(goal) ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500' ]"
                                         >
                                             {{ goal }}
                                         </button>
@@ -970,12 +937,7 @@
                                         :key="sector"
                                         type="button"
                                         @click="toggleChip(tradingProfileForm.preferredSectors, sector)"
-                                        :class="[
-                                            'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
-                                            tradingProfileForm.preferredSectors.includes(sector)
-                                                ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800'
-                                                : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
-                                        ]"
+                                        :class="[ 'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900', tradingProfileForm.preferredSectors.includes(sector) ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500' ]"
                                     >
                                         {{ sector }}
                                     </button>

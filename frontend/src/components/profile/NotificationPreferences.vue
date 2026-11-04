@@ -18,7 +18,7 @@
 
       <!-- Error State -->
       <div v-else-if="error" class="text-center py-8">
-        <MdiIcon :icon="alertIcon" :size="48" class="mx-auto text-red-500 mb-4" />
+        <MdiIcon :icon="alertIcon" :size="48" class="mx-auto text-red-600 dark:text-red-400 mb-4" />
         <p class="text-red-600 dark:text-red-400 mb-4">{{ error }}</p>
         <button
           @click="fetchPreferences"

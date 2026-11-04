@@ -99,19 +99,13 @@
               </div>
               <button
                 type="button"
-                :class="[
-                  form.auto_sync_enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600',
-                  'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2'
-                ]"
+                :class="[ form.auto_sync_enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600', 'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2' ]"
                 role="switch"
                 :aria-checked="form.auto_sync_enabled"
                 @click="form.auto_sync_enabled = !form.auto_sync_enabled"
               >
                 <span
-                  :class="[
-                    form.auto_sync_enabled ? 'translate-x-5' : 'translate-x-0',
-                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition'
-                  ]"
+                  :class="[ form.auto_sync_enabled ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition' ]"
                 />
               </button>
             </div>
@@ -128,12 +122,7 @@
                   v-for="preset in syncRangePresets"
                   :key="preset.id"
                   type="button"
-                  :class="[
-                    'rounded-full border px-3 py-1 text-sm transition-colors',
-                    activePreset === preset.id
-                      ? 'border-primary-600 bg-primary-700 text-white'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
-                  ]"
+                  :class="[ 'rounded-full border px-3 py-1 text-sm transition-colors', activePreset === preset.id ? 'border-primary-600 bg-primary-700 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600' ]"
                   @click="applySyncRangePreset(preset.id)"
                 >
                   {{ preset.label }}

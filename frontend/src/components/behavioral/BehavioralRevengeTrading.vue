@@ -341,12 +341,7 @@
                                                 }}</span>
                                                 <svg
                                                     class="w-3 h-3 transition-transform"
-                                                    :class="{
-                                                        'rotate-180':
-                                                            expandedEvents.has(
-                                                                event.id,
-                                                            ),
-                                                    }"
+                                                    :class="{ 'rotate-180': expandedEvents.has( event.id, ), }"
                                                     fill="none"
                                                     stroke="currentColor"
                                                     viewBox="0 0 24 24"
@@ -377,14 +372,7 @@
                                                     pattern.pattern_type + index
                                                 "
                                                 class="p-3 rounded-lg border-l-4 cursor-pointer transition-colors"
-                                                :class="{
-                                                    'bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-orange-400':
-                                                        pattern.pattern_type ===
-                                                        'same_symbol_revenge',
-                                                    'bg-purple-50 dark:bg-purple-900/10 hover:bg-purple-100 dark:hover:bg-purple-900/20 border-purple-400':
-                                                        pattern.pattern_type ===
-                                                        'emotional_reactive_trading',
-                                                }"
+                                                :class="{ 'bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-orange-400': pattern.pattern_type === 'same_symbol_revenge', 'bg-primary-50 dark:bg-primary-900/10 hover:bg-primary-100 dark:hover:bg-primary-900/20 border-primary-400': pattern.pattern_type === 'emotional_reactive_trading', }"
                                                 @click="
                                                     $emit('open-trade', pattern.trade_id)
                                                 "
@@ -413,7 +401,7 @@
                                                         </span>
                                                         <span
                                                             v-else
-                                                            class="text-sm font-medium text-purple-800 dark:text-purple-400 flex items-center"
+                                                            class="text-sm font-medium text-primary-800 dark:text-primary-400 flex items-center"
                                                         >
                                                             <MdiIcon
                                                                 :icon="
@@ -699,14 +687,7 @@
 
                                                 <div
                                                     class="text-xs"
-                                                    :class="{
-                                                        'text-orange-600 dark:text-orange-400':
-                                                            pattern.pattern_type ===
-                                                            'same_symbol_revenge',
-                                                        'text-purple-600 dark:text-purple-400':
-                                                            pattern.pattern_type ===
-                                                            'emotional_reactive_trading',
-                                                    }"
+                                                    :class="{ 'text-orange-600 dark:text-orange-400': pattern.pattern_type === 'same_symbol_revenge', 'text-primary-700 dark:text-primary-400': pattern.pattern_type === 'emotional_reactive_trading', }"
                                                 >
                                                     <span
                                                         v-if="
@@ -763,15 +744,7 @@
                                     <!-- Outcome Summary -->
                                     <div
                                         class="mt-4 p-3 rounded-lg border-t border-gray-200 dark:border-gray-600 pt-4"
-                                        :class="{
-                                            'bg-red-50 dark:bg-red-900/10':
-                                                event.outcome_type === 'loss',
-                                            'bg-green-50 dark:bg-green-900/10':
-                                                event.outcome_type === 'profit',
-                                            'bg-gray-50 dark:bg-gray-900/10':
-                                                event.outcome_type ===
-                                                'neutral',
-                                        }"
+                                        :class="{ 'bg-red-50 dark:bg-red-900/10': event.outcome_type === 'loss', 'bg-green-50 dark:bg-green-900/10': event.outcome_type === 'profit', 'bg-gray-50 dark:bg-gray-900/10': event.outcome_type === 'neutral', }"
                                     >
                                         <div
                                             class="flex items-center justify-between mb-2"
@@ -1115,11 +1088,7 @@
                                         >
                                             <button
                                                 @click="$emit('go-to-page', page)"
-                                                :class="[
-                                                    page === pagination.page
-                                                        ? 'relative z-10 inline-flex items-center bg-primary-700 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
-                                                        : 'relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700',
-                                                ]"
+                                                :class="[ page === pagination.page ? 'relative z-10 inline-flex items-center bg-primary-700 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600' : 'relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700', ]"
                                             >
                                                 {{ page }}
                                             </button>

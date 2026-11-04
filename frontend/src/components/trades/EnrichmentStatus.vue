@@ -61,7 +61,7 @@
       class="border-t border-gray-200 dark:border-gray-700 px-4 py-3"
     >
       <div class="flex items-start gap-2">
-        <ExclamationTriangleIcon class="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+        <ExclamationTriangleIcon class="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-500" />
         <div class="min-w-0 flex-1">
           <p class="text-xs font-medium text-gray-700 dark:text-gray-300">Some CUSIPs could not be resolved</p>
           <ul class="mt-1 space-y-0.5">

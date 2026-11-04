@@ -9,12 +9,7 @@
       <div class="flex items-center space-x-4">
         <!-- Pass/Fail Icon -->
         <div
-          :class="[
-            'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center',
-            pillar.passed
-              ? 'bg-primary-100 dark:bg-primary-900/30'
-              : 'bg-gray-100 dark:bg-gray-700'
-          ]"
+          :class="[ 'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center', pillar.passed ? 'bg-primary-100 dark:bg-primary-900/30' : 'bg-gray-100 dark:bg-gray-700' ]"
         >
           <svg
             v-if="pillar.passed"
@@ -50,10 +45,7 @@
       <div class="flex items-center space-x-4">
         <div class="text-right">
           <p
-            :class="[
-              'text-lg font-bold',
-              pillar.passed ? 'text-primary-700 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'
-            ]"
+            :class="[ 'text-lg font-bold', pillar.passed ? 'text-primary-700 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400' ]"
           >
             {{ displayValue }}
           </p>

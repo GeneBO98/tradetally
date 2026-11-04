@@ -64,10 +64,10 @@
             </ul>
           </div>
 
-          <div v-if="props.tradesImported === 0" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
-            <p class="text-sm font-semibold text-amber-900 dark:text-amber-100">{{ zeroTradeReason.title }}</p>
-            <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">{{ zeroTradeReason.body }}</p>
-            <ul class="mt-3 space-y-1 text-sm text-amber-800 dark:text-amber-200">
+          <div v-if="props.tradesImported === 0" class="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900/60 dark:bg-yellow-950/20">
+            <p class="text-sm font-semibold text-yellow-900 dark:text-yellow-100">{{ zeroTradeReason.title }}</p>
+            <p class="mt-1 text-sm text-yellow-800 dark:text-yellow-200">{{ zeroTradeReason.body }}</p>
+            <ul class="mt-3 space-y-1 text-sm text-yellow-800 dark:text-yellow-200">
               <li v-for="step in zeroTradeReason.steps" :key="step" class="flex gap-2">
                 <span aria-hidden="true">•</span>
                 <span>{{ step }}</span>
@@ -76,27 +76,27 @@
           </div>
 
           <div v-if="props.achievements.length > 0" class="mt-4">
-            <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+            <div class="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
               <div class="flex items-start gap-3">
-                <TrophyIcon class="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                <TrophyIcon class="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-600 dark:text-yellow-400" />
                 <div class="min-w-0 flex-1">
-                  <p class="text-sm font-medium text-amber-900 dark:text-amber-100">
+                  <p class="text-sm font-medium text-yellow-900 dark:text-yellow-100">
                     {{ props.achievements.length === 1 ? 'Achievement unlocked' : `${props.achievements.length} achievements unlocked` }}
                   </p>
-                  <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                  <p class="mt-1 text-sm text-yellow-800 dark:text-yellow-200">
                     {{ achievementSummary }}
                   </p>
                   <div class="mt-3 flex flex-wrap gap-2">
                     <span
                       v-for="achievement in props.achievements.slice(0, 4)"
                       :key="achievement.id || achievement.name"
-                      class="badge bg-white text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-800"
+                      class="badge bg-white text-yellow-700 ring-1 ring-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-200 dark:ring-yellow-800"
                     >
                       {{ achievement.name }}
                     </span>
                     <span
                       v-if="props.achievements.length > 4"
-                      class="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-800"
+                      class="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-medium text-yellow-700 ring-1 ring-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-200 dark:ring-yellow-800"
                     >
                       +{{ props.achievements.length - 4 }} more
                     </span>
@@ -121,19 +121,19 @@
             </div>
           </div>
 
-          <div v-if="manualReviewItems.length > 0" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+          <div v-if="manualReviewItems.length > 0" class="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p class="text-sm font-medium text-amber-900 dark:text-amber-100">
+                <p class="text-sm font-medium text-yellow-900 dark:text-yellow-100">
                   {{ manualReviewItems.length }} sell-only execution{{ manualReviewItems.length === 1 ? '' : 's' }} need review
                 </p>
-                <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                <p class="mt-1 text-sm text-yellow-800 dark:text-yellow-200">
                   Confirm whether each row was a short entry, a close-only long, or should be ignored.
                 </p>
               </div>
               <button
                 type="button"
-                class="inline-flex shrink-0 items-center justify-center rounded-md border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-amber-700 dark:bg-gray-800 dark:text-amber-200 dark:hover:bg-amber-900/30"
+                class="inline-flex shrink-0 items-center justify-center rounded-md border border-yellow-300 bg-white px-3 py-1.5 text-sm font-medium text-yellow-800 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-yellow-700 dark:bg-gray-800 dark:text-yellow-200 dark:hover:bg-yellow-900/30"
                 @click="$emit('review-manual-items')"
               >
                 Review
