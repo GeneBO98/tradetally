@@ -232,12 +232,7 @@
                                                     >Entry:</span
                                                 >
                                                 <span class="ml-1"
-                                                    >${{
-                                                        parseFloat(
-                                                            event.trigger_trade
-                                                                .entry_price,
-                                                        ).toFixed(2)
-                                                    }}</span
+                                                    >{{ formatCurrency(event.trigger_trade.entry_price) }}</span
                                                 >
                                             </div>
                                             <div>
@@ -246,12 +241,7 @@
                                                     >Exit:</span
                                                 >
                                                 <span class="ml-1"
-                                                    >${{
-                                                        parseFloat(
-                                                            event.trigger_trade
-                                                                .exit_price,
-                                                        ).toFixed(2)
-                                                    }}</span
+                                                    >{{ formatCurrency(event.trigger_trade.exit_price) }}</span
                                                 >
                                             </div>
                                             <div>
@@ -262,11 +252,7 @@
                                                 <span
                                                     class="ml-1 font-medium text-red-600 dark:text-red-400"
                                                 >
-                                                    ${{
-                                                        getPnLValue(
-                                                            event.trigger_trade,
-                                                        ).toFixed(2)
-                                                    }}
+                                                    {{ formatSignedCurrency(getPnLValue(event.trigger_trade)) }}
                                                 </span>
                                             </div>
                                             <div
@@ -503,9 +489,7 @@
                                                             class="text-gray-600 dark:text-gray-400"
                                                             >Quantity:</span
                                                         >
-                                                        <span class="ml-1">{{
-                                                            pattern.quantity
-                                                        }}</span>
+                                                        <span class="ml-1">{{ formatQuantity(pattern.quantity) }}</span>
                                                     </div>
                                                     <div>
                                                         <span
@@ -530,11 +514,7 @@
                                                             >Entry:</span
                                                         >
                                                         <span class="ml-1"
-                                                            >${{
-                                                                parseFloat(
-                                                                    pattern.entry_price,
-                                                                ).toFixed(2)
-                                                            }}</span
+                                                            >{{ formatCurrency(pattern.entry_price) }}</span
                                                         >
                                                     </div>
                                                     <div>
@@ -543,11 +523,7 @@
                                                             >Exit:</span
                                                         >
                                                         <span class="ml-1"
-                                                            >${{
-                                                                parseFloat(
-                                                                    pattern.exit_price,
-                                                                ).toFixed(2)
-                                                            }}</span
+                                                            >{{ formatCurrency(pattern.exit_price) }}</span
                                                         >
                                                     </div>
                                                     <div>
@@ -557,11 +533,7 @@
                                                         >
                                                         <span
                                                             class="ml-1 font-medium"
-                                                            >${{
-                                                                parseFloat(
-                                                                    pattern.total_cost,
-                                                                ).toLocaleString()
-                                                            }}</span
+                                                            >{{ formatCurrency(pattern.total_cost) }}</span
                                                         >
                                                     </div>
                                                     <div>
@@ -570,12 +542,7 @@
                                                             >Fees:</span
                                                         >
                                                         <span class="ml-1"
-                                                            >${{
-                                                                parseFloat(
-                                                                    pattern.total_fees ||
-                                                                        0,
-                                                                ).toFixed(2)
-                                                            }}</span
+                                                            >{{ formatCurrency(pattern.total_fees || 0) }}</span
                                                         >
                                                     </div>
                                                 </div>
@@ -606,11 +573,7 @@
                                                                     ) === 0,
                                                             }"
                                                         >
-                                                            ${{
-                                                                parseFloat(
-                                                                    pattern.gross_pnl,
-                                                                ).toFixed(2)
-                                                            }}
+                                                            {{ formatSignedCurrency(pattern.gross_pnl) }}
                                                         </span>
                                                     </div>
                                                     <div>
@@ -635,11 +598,7 @@
                                                                     ) === 0,
                                                             }"
                                                         >
-                                                            ${{
-                                                                parseFloat(
-                                                                    pattern.pnl,
-                                                                ).toFixed(2)
-                                                            }}
+                                                            {{ formatSignedCurrency(pattern.pnl) }}
                                                         </span>
                                                     </div>
                                                     <div>
@@ -885,21 +844,10 @@
                                                             ) < 0
                                                         "
                                                     >
-                                                        ${{
-                                                            Math.abs(
-                                                                parseFloat(
-                                                                    event.total_additional_loss,
-                                                                ),
-                                                            ).toFixed(2)
-                                                        }}
+                                                        {{ formatCurrency(Math.abs(Number(event.total_additional_loss))) }}
                                                     </span>
                                                     <span v-else>
-                                                        ${{
-                                                            parseFloat(
-                                                                event.total_additional_loss ||
-                                                                    0,
-                                                            ).toFixed(2)
-                                                        }}
+                                                        {{ formatCurrency(event.total_additional_loss || 0) }}
                                                     </span>
                                                 </span>
                                             </div>
@@ -946,13 +894,7 @@
                                                 <span
                                                     >The revenge trading made
                                                     the situation worse by
-                                                    adding ${{
-                                                        Math.abs(
-                                                            parseFloat(
-                                                                event.total_additional_loss,
-                                                            ),
-                                                        ).toFixed(2)
-                                                    }}
+                                                    adding {{ formatCurrency(Math.abs(Number(event.total_additional_loss))) }}
                                                     in additional losses</span
                                                 >
                                             </span>
@@ -971,13 +913,7 @@
                                                 <span
                                                     >The revenge trading
                                                     actually worked this time,
-                                                    recovering ${{
-                                                        Math.abs(
-                                                            parseFloat(
-                                                                event.total_additional_loss,
-                                                            ),
-                                                        ).toFixed(2)
-                                                    }}</span
+                                                    recovering {{ formatCurrency(Math.abs(Number(event.total_additional_loss))) }}</span
                                                 >
                                             </span>
                                             <span
@@ -1126,6 +1062,7 @@
 import { ref, computed } from "vue";
 import MdiIcon from "@/components/MdiIcon.vue";
 import { useUserTimezone } from "@/composables/useUserTimezone";
+import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import {
     formatDate,
     getTimeBetweenTrades,
@@ -1153,6 +1090,8 @@ const props = defineProps({
 defineEmits(["rerun", "open-trade", "prev-page", "next-page", "go-to-page"]);
 
 const { formatTime: formatTimeTz } = useUserTimezone();
+const { formatCurrency, formatSignedCurrency } = useCurrencyFormatter();
+const formatQuantity = (q) => Number(q).toLocaleString("en-US", { maximumFractionDigits: 4 });
 const formatTime = (dateString) => formatTimeTz(dateString);
 
 // Track which revenge trade events are expanded (local UI state)
