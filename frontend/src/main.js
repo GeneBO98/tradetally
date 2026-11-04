@@ -6,6 +6,7 @@ import './assets/main.css'
 import { useAuthStore } from './stores/auth'
 import { useAnalytics } from './composables/useAnalytics'
 import { initializeGrowthBook, updateGrowthBookContext } from './services/growthbook'
+import { installDialogBehavior } from './lib/dialogBehavior'
 
 const app = createApp(App)
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 4000
@@ -96,6 +97,9 @@ async function bootstrap() {
   await router.isReady()
 
   app.mount('#app')
+  // Escape, focus trap, scroll lock and focus restore for every dialog
+  // (BaseModal opts out via data-dialog-managed and handles its own).
+  installDialogBehavior(document.body)
 
   // Rare csrf-hint desync: a valid HttpOnly auth cookie with no JS-readable
   // csrf_token hint boots as "anonymous", so a guest route may have rendered.

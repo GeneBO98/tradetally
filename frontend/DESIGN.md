@@ -8,7 +8,7 @@ the rules that can be checked mechanically.
 |---|---|
 | Page title / section / card title / sub-heading | `heading-page`, `heading-section`, `heading-card`, `heading-sub` |
 | Surface | `card` + `card-body` (standard) or `card p-4` (dense); `card-dense` for ribbons |
-| Dialog | `BaseModal`, or `modal-overlay` + `modal-panel` (+ `modal-title`, `modal-footer`) with `role="dialog"` |
+| Dialog | `BaseModal`, or `modal-overlay` + `modal-panel` (+ `modal-title`, `modal-footer`) with `role="dialog"`. `lib/dialogBehavior.js` gives every overlay Escape, focus trap, scroll lock and focus restore; the panel needs a close control (`aria-label="Close…"` or a Close/Cancel/Dismiss button) |
 | Floating menu / popover | `popover`, `dropdown-menu` |
 | Buttons | `btn-primary`, `btn-secondary`, `btn-tint`, `btn-danger`, `btn-yellow` (caution), `btn-ghost`, `btn-icon`, `btn-icon-outline`; add `btn-sm` for compact |
 | Toggle group | `segmented` wrapper with `segment` buttons; `segment-active` on the selected one |

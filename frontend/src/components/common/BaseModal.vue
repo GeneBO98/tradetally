@@ -4,6 +4,7 @@
                 v-if="modelValue"
                 ref="overlayRef"
                 class="modal-overlay overflow-y-auto"
+                data-dialog-managed
                 :class="overlayClass"
                 role="dialog"
                 aria-modal="true"
