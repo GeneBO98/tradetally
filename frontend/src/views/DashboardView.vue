@@ -565,7 +565,7 @@
             <template v-if="element.id === 'open-positions'">
               <div v-if="openTrades.length > 0" class="card">
                 <div class="card-body">
-                  <div class="flex items-center justify-between mb-4">
+                  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div class="flex items-center">
                       <h3 class="heading-card">Open Positions</h3>
                       <button 
@@ -575,8 +575,8 @@
                         View all →
                       </button>
                     </div>
-                    <div class="flex flex-wrap items-center justify-end gap-2">
-                      <div class="segmented" role="group" aria-label="Open positions view">
+                    <div class="flex min-w-0 max-w-full flex-wrap items-center gap-2 sm:justify-end">
+                      <div class="segmented min-w-0" role="group" aria-label="Open positions view">
                         <button
                           v-for="view in OPEN_POSITIONS_VIEWS"
                           :key="view.id"
