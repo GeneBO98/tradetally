@@ -87,7 +87,7 @@
               v-model="form.marketing_consent"
               name="marketing_consent"
               type="checkbox"
-              class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+              class="checkbox"
             />
           </div>
           <div class="ml-3 text-sm">
