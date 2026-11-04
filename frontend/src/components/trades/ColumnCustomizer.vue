@@ -32,7 +32,7 @@
               <h3 class="heading-sub">Customize Columns</h3>
               <button
                 @click="resetToDefault"
-                class="text-xs text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                class="btn-link"
               >
                 Reset to default
               </button>
@@ -80,20 +80,20 @@
             <div class="flex items-center justify-between text-xs mb-4">
               <button
                 @click="selectAll"
-                class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                class="btn-link"
               >
                 Select all
               </button>
               <button
                 @click="deselectAll"
-                class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                class="btn-link"
               >
                 Deselect all
               </button>
               <button
                 @click="resetWidths"
                 title="Clear the widths you dragged on the column edges"
-                class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                class="btn-link"
               >
                 Reset widths
               </button>

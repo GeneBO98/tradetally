@@ -176,7 +176,7 @@
       </p>
       <button
         @click="clearFilters"
-        class="mt-3 text-primary-700 dark:text-primary-400 hover:underline text-sm"
+        class="btn-link mt-3"
       >
         Clear all filters
       </button>

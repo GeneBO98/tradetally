@@ -144,7 +144,7 @@
             <button
               v-if="!isFiltered && !allAccountsIncluded"
               type="button"
-              class="text-xs font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+              class="btn-link"
               @click="includeAllAccounts"
             >
               Include all
@@ -265,7 +265,7 @@
                   </p>
                   <button
                     type="button"
-                    class="text-xs font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+                    class="btn-link"
                     :disabled="retirementStore.calculating"
                     @click="recalculateNow"
                   >
@@ -516,7 +516,7 @@
                           Portfolio needed using a {{ formatPercent(form.withdrawal_rate_percent) }} withdrawal rate
                           <button
                             type="button"
-                            class="ml-1 font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+                            class="btn-link ml-1"
                             @click="scrollToAssumptions"
                           >
                             Change

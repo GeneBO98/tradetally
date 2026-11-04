@@ -71,8 +71,8 @@ function createChart() {
         {
           label: cumulativeLabel,
           data: cumulativeData,
-          borderColor: '#16a34a',
-          backgroundColor: 'rgba(22, 163, 74, 0.1)',
+          borderColor: '#F0812A',
+          backgroundColor: 'rgba(240, 129, 42, 0.08)',
           order: 1,
           pointRadius: labels.length > 60 ? 0 : 2,
           yAxisID: 'y1'

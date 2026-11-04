@@ -121,9 +121,9 @@
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Avg R</div>
             <div class="flex items-center gap-1 sm:gap-2 mt-0.5 flex-wrap min-h-[1.75rem]">
-              <span class="text-base sm:text-lg font-bold text-green-700 dark:text-green-400">+{{ summary.avg_win_r }}</span>
+              <span class="text-base sm:text-lg font-bold text-green-700 dark:text-green-400">+{{ Number(summary.avg_win_r).toFixed(1) }}</span>
               <span class="text-gray-400 shrink-0">/</span>
-              <span class="text-base sm:text-lg font-bold text-red-600 dark:text-red-400">{{ summary.avg_loss_r }}</span>
+              <span class="text-base sm:text-lg font-bold text-red-600 dark:text-red-400">{{ Number(summary.avg_loss_r).toFixed(1) }}</span>
             </div>
           </div>
         </div>

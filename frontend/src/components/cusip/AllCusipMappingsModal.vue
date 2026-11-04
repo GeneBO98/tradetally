@@ -217,7 +217,7 @@
                                                             mapping,
                                                         )
                                                     "
-                                                    class="ml-2 text-xs text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                                                    class="btn-link ml-2"
                                                 >
                                                     Map Now
                                                 </button>
@@ -301,7 +301,7 @@
                                                     @click="
                                                         editMapping(mapping)
                                                     "
-                                                    class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                                                    class="btn-link"
                                                     title="Edit mapping"
                                                 >
                                                     <PencilIcon

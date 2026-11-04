@@ -15,7 +15,7 @@
         <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">
           Win Rate<span v-if="overview.position_grouping" class="ml-1 normal-case text-primary-700 dark:text-primary-400">· whole trade</span>
         </dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
+        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="winRateClass(overview.win_rate)">
           {{ Number(overview.win_rate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
         </dd>
         <dd v-if="overview.breakeven_trades > 0" class="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
@@ -40,7 +40,7 @@
       <!-- Profit Factor -->
       <div class="px-4 py-3.5">
         <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">Profit Factor</dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">{{ overview.profit_factor ?? '0.00' }}</dd>
+        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="profitFactorClass(overview.profit_factor)">{{ overview.profit_factor ?? '0.00' }}</dd>
       </div>
 
       <!-- R-Multiple (click to toggle Average / Total) -->
@@ -94,7 +94,7 @@
 </template>
 
 <script setup>
-import { pnlClass } from '@/utils/metricTone'
+import { pnlClass, winRateClass, profitFactorClass } from '@/utils/metricTone'
 import { ref } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 

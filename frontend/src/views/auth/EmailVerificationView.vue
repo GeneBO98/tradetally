@@ -13,7 +13,7 @@
     <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
       <div class="card py-8 px-4 sm:px-10">
         <!-- Loading State -->
-        <div v-if="loading" class="text-center">
+        <div v-if="initialLoading" class="text-center">
           <div class="spinner spinner-lg mx-auto"></div>
           <p class="mt-4 text-sm text-gray-600 dark:text-gray-400">Verifying your email...</p>
         </div>
@@ -108,6 +108,7 @@ const { showSuccess, showError } = useNotification()
 const authStore = useAuthStore()
 
 const loading = ref(true)
+const initialLoading = ref(true)
 const verified = ref(false)
 const error = ref(null)
 const showResendForm = ref(false)
@@ -129,6 +130,7 @@ async function verifyEmail() {
   if (!token) {
     error.value = 'Invalid verification link'
     loading.value = false
+    initialLoading.value = false
     return
   }
 
@@ -150,6 +152,7 @@ async function verifyEmail() {
     error.value = err.response?.data?.error || 'Verification failed'
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

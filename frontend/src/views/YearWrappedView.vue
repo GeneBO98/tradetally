@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
     <!-- Loading state -->
-    <div v-if="loading" class="flex items-center justify-center min-h-screen">
+    <div v-if="initialLoading" class="flex items-center justify-center min-h-screen">
       <div class="spinner spinner-lg"></div>
     </div>
 
@@ -41,6 +41,7 @@ const router = useRouter()
 const yearWrappedStore = useYearWrappedStore()
 
 const loading = ref(true)
+const initialLoading = ref(true)
 const error = ref(null)
 const year = ref(new Date().getFullYear())
 
@@ -52,12 +53,14 @@ onMounted(async () => {
   if (isNaN(year.value) || year.value < 2000 || year.value > new Date().getFullYear()) {
     error.value = 'Invalid year specified'
     loading.value = false
+    initialLoading.value = false
     return
   }
 
   try {
     await yearWrappedStore.fetchYearWrapped(year.value)
     loading.value = false
+    initialLoading.value = false
 
     // Auto-open the modal if there's data
     if (yearWrappedStore.wrappedData && yearWrappedStore.wrappedData.totalTrades > 0) {
@@ -66,6 +69,7 @@ onMounted(async () => {
   } catch (err) {
     error.value = err.message || 'Failed to load Year Wrapped data'
     loading.value = false
+    initialLoading.value = false
   }
 })
 

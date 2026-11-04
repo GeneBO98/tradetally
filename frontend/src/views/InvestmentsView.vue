@@ -684,13 +684,13 @@
                                     <td class="px-6 py-4 text-right text-sm space-x-3">
                                         <button
                                             @click="openPortfolioPosition(position)"
-                                            class="text-primary-700 hover:text-primary-800"
+                                            class="btn-link"
                                         >
                                             {{ position.holdingId ? "View" : "View Trades" }}
                                         </button>
                                         <button
                                             @click="analyzeHolding(position.symbol)"
-                                            class="text-primary-700 hover:text-primary-800"
+                                            class="btn-link"
                                         >
                                             Analyze
                                         </button>
@@ -770,14 +770,14 @@
                                             v-if="inCompareMode"
                                             type="button"
                                             @click="openFullCompare"
-                                            class="text-xs text-primary-700 hover:text-primary-800 whitespace-nowrap font-medium"
+                                            class="btn-link whitespace-nowrap"
                                         >
                                             Compare in full →
                                         </button>
                                         <button
                                             type="button"
                                             @click="clearComparisonSelection"
-                                            class="text-xs text-primary-700 hover:text-primary-800 whitespace-nowrap"
+                                            class="btn-link whitespace-nowrap"
                                         >
                                             Back to all
                                         </button>

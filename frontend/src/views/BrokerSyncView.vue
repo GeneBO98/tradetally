@@ -281,7 +281,7 @@
           <div class="mt-4 max-h-64 overflow-auto divide-y divide-gray-200 dark:divide-gray-700">
             <div v-for="entry in excludedTrades" :key="entry.id" class="flex items-center justify-between gap-3 py-2 text-sm">
               <span class="text-gray-800 dark:text-gray-200">{{ entry.symbol }} · {{ entry.side }}<template v-if="entry.account_identifier"> · {{ entry.account_identifier }}</template> · {{ formatDate(entry.entry_time) }}</span>
-              <button type="button" class="text-primary-700 hover:text-primary-800 dark:text-primary-400"
+              <button type="button" class="btn-link"
                 :disabled="restoringExclusion === entry.id" @click="restoreExclusion(entry.id)">
                 {{ restoringExclusion === entry.id ? 'Restoring…' : 'Allow future import' }}
               </button>
@@ -297,7 +297,7 @@
             <h3 class="heading-card">Sync History</h3>
             <button
               @click="refreshLogs"
-              class="text-sm text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300"
+              class="btn-link"
             >
               Refresh
             </button>

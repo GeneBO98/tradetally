@@ -35,7 +35,7 @@
               </p>
             </div>
             <div class="flex shrink-0 items-center gap-3">
-              <button type="button" class="text-sm font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300" @click="startEdit(profile)">Edit</button>
+              <button type="button" class="btn-link" @click="startEdit(profile)">Edit</button>
               <button type="button" class="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" @click="$emit('delete', profile)">Delete</button>
             </div>
           </div>
@@ -134,7 +134,7 @@
               <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Rate rows</h5>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">All amounts are per contract or per side, matching the existing fee settings.</p>
             </div>
-            <button type="button" class="text-sm font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300" @click="addRate">Add rate row</button>
+            <button type="button" class="btn-link" @click="addRate">Add rate row</button>
           </div>
 
           <div v-for="(rate, index) in form.rates" :key="rate.key" class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">

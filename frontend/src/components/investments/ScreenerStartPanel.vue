@@ -11,7 +11,7 @@
       <button
         v-if="hasScanData"
         type="button"
-        class="text-sm font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 whitespace-nowrap"
+        class="btn-link whitespace-nowrap"
         @click="emit('open-scanner')"
       >
         Open full scanner
@@ -109,7 +109,7 @@
               We could not load the starter lists.
               <button
                 type="button"
-                class="font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800"
+                class="btn-link"
                 @click="load(true)"
               >Try again</button>
               or analyze a well-known name to get going.

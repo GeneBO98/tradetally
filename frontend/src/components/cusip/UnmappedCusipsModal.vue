@@ -168,7 +168,7 @@
                   <div v-if="mappingCusip !== cusip.cusip" class="ml-4">
                     <button
                       @click="startQuickMapping(cusip)"
-                      class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 font-medium"
+                      class="btn-link"
                     >
                       Map Ticker
                     </button>

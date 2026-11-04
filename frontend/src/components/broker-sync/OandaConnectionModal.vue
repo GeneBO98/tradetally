@@ -3,7 +3,7 @@
     <form class="space-y-5 p-6" @submit.prevent="save">
       <div class="flex items-center justify-between">
         <h2 id="oanda-title" class="modal-title">Connect OANDA</h2>
-        <button type="button" class="text-sm text-primary-700 dark:text-primary-400" @click="close">Close</button>
+        <button type="button" class="btn-link" @click="close">Close</button>
       </div>
       <p class="text-sm text-gray-600 dark:text-gray-300">
         Generate a personal access token under Manage API Access in your OANDA account.

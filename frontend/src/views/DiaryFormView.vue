@@ -54,7 +54,7 @@
             <button
               type="button"
               @click="toggleTemplates"
-              class="text-sm text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300"
+              class="btn-link"
             >
               {{ showTemplates ? 'Hide' : 'Show' }}
             </button>
@@ -382,7 +382,7 @@
                 <button
                   type="button"
                   @click="removeWatchlistSymbol(index)"
-                  class="ml-2 text-primary-700 hover:text-primary-900 dark:text-primary-300 dark:hover:text-primary-100"
+                  class="btn-link ml-2"
                 >
                   <XMarkIcon class="w-3 h-3" />
                 </button>
@@ -404,7 +404,7 @@
               <button
                 type="button"
                 @click="showLinkedTradesSection = !showLinkedTradesSection"
-                class="text-sm text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 whitespace-nowrap"
+                class="btn-link whitespace-nowrap"
               >
                 {{ showLinkedTradesSection ? 'Hide' : (form.linkedTrades.length > 0 ? 'Manage' : 'Add trades') }}
               </button>
@@ -531,7 +531,7 @@
             <button
               type="button"
               @click="showAttachmentsSection = !showAttachmentsSection"
-              class="text-sm text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 whitespace-nowrap"
+              class="btn-link whitespace-nowrap"
             >
               {{ showAttachmentsSection ? 'Hide' : ((entryAttachments.length > 0 || hasPendingImages) ? 'Manage' : 'Add images') }}
             </button>

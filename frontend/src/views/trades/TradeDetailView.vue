@@ -13,7 +13,7 @@
       </button>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-12">
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="spinner spinner-lg"></div>
     </div>
 
@@ -79,7 +79,7 @@
           <router-link :to="{ path: `/trades/${trade.id}/edit`, query: { from: 'trade-detail' } }" class="btn-secondary">
             Edit
           </router-link>
-          <button @click="deleteTrade" class="btn-danger justify-center">
+          <button @click="deleteTrade" class="btn-secondary justify-center text-red-600 dark:text-red-400">
             Delete
           </button>
         </div>
@@ -1779,6 +1779,7 @@ function hasLegacyFuturesExcursionUnits(currentTrade, captured, scale) {
 }
 
 const loading = ref(true)
+const initialLoading = ref(true)
 const trade = ref(null)
 const allocationEnabled = ref(false)
 const allocationGroups = ref([])
@@ -2634,8 +2635,8 @@ function calculateRiskReward() {
     const move = isLongSide
       ? ((current - entry) / entry) * 100
       : ((entry - current) / entry) * 100
-    if (move > 0) return `+${move.toFixed(2)}%`
-    if (move < 0) return `${move.toFixed(2)}%`
+    if (move > 0) return `+${move.toFixed(1)}%`
+    if (move < 0) return `${move.toFixed(1)}%`
     return 'Breakeven'
   }
 
@@ -2651,9 +2652,9 @@ function calculateRiskReward() {
     : ((entryPrice - exitPrice) / entryPrice) * 100
 
   if (priceChange > 0) {
-    return `+${priceChange.toFixed(2)}%`
+    return `+${priceChange.toFixed(1)}%`
   } else if (priceChange < 0) {
-    return `${priceChange.toFixed(2)}%`
+    return `${priceChange.toFixed(1)}%`
   } else {
     return 'Breakeven'
   }
@@ -2988,6 +2989,7 @@ async function loadTrade() {
     }
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

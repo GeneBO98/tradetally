@@ -179,7 +179,7 @@
                             >
                                 <button
                                     @click="createPriceAlert(item.symbol)"
-                                    class="text-primary-700 hover:text-primary-900"
+                                    class="btn-link"
                                 >
                                     Alert
                                 </button>

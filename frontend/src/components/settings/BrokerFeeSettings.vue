@@ -116,7 +116,7 @@
                     <div class="flex items-center space-x-2 ml-4">
                         <button
                             @click="$emit('edit', setting)"
-                            class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                            class="btn-link"
                             title="Edit"
                             aria-label="Edit broker fee"
                         >

@@ -371,7 +371,7 @@
                       : 'These items are scored directly before hard-rule penalties are applied.' }}
                   </p>
                 </div>
-                <button type="button" @click="addChecklistItem" class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400">
+                <button type="button" @click="addChecklistItem" class="btn-link">
                   Add {{ form.reviewMode === 'score' ? 'criterion' : 'item' }}
                 </button>
               </div>

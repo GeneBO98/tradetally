@@ -5,7 +5,7 @@
       <div class="flex items-center gap-3">
         <button
           @click="goBack"
-          class="text-sm text-primary-700 hover:text-primary-800"
+          class="btn-link"
         >
           ← Back to Investments
         </button>
@@ -34,7 +34,7 @@
       class="callout-warning"
     >
       Select at least two accounts from the Account Comparison panel to compare.
-      <button @click="goBack" class="ml-2 underline text-primary-700 hover:text-primary-800">
+      <button @click="goBack" class="btn-link ml-2">
         Back to Investments
       </button>
     </div>

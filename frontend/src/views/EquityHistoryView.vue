@@ -15,7 +15,7 @@
             </div>
         </div>
 
-        <div v-if="loading" class="flex justify-center py-12">
+        <div v-if="initialLoading" class="flex justify-center py-12">
             <div
                 class="spinner spinner-lg"
             ></div>
@@ -619,7 +619,8 @@ onMounted(async () => {
         console.error("Error loading equity history:", error);
         showError("Error", "Failed to load equity history");
     } finally {
-        loading.value = false;
+        loading.value = false
+        initialLoading.value = false;
     }
 });
 </script>

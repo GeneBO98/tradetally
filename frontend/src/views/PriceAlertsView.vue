@@ -97,7 +97,7 @@
                 <button
                     v-if="!notificationPermissionGranted"
                     @click="requestBrowserNotifications"
-                    class="text-sm text-primary-700 hover:text-primary-800 font-medium"
+                    class="btn-link"
                 >
                     Enable browser notifications
                 </button>

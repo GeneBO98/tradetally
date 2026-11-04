@@ -18,7 +18,7 @@
     </div>
 
     <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center py-12">
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="spinner spinner-lg"></div>
     </div>
 
@@ -351,6 +351,7 @@ import {
 const authStore = useAuthStore()
 
 const loading = ref(false)
+const initialLoading = ref(true)
 const creating = ref(false)
 const deleting = ref(false)
 const clients = ref([])
@@ -391,6 +392,7 @@ const loadClients = async () => {
     console.error('Error loading OAuth clients:', error)
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

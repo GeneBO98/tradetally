@@ -194,7 +194,7 @@
               <button
                 type="button"
                 @click="addTakeProfitTarget"
-                class="inline-flex items-center text-xs text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                class="btn-link"
               >
                 <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -492,7 +492,7 @@
                     <button
                       type="button"
                       @click="addExecutionTakeProfitTarget(index)"
-                      class="inline-flex items-center text-xs text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                      class="btn-link"
                     >
                       <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -824,7 +824,7 @@
               <button
                 type="button"
                 @click="showSaveOptionsTemplateModal = true"
-                class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                class="btn-link"
               >
                 Save
               </button>
@@ -917,7 +917,7 @@
               <button
                 type="button"
                 @click="showSaveFuturesTemplateModal = true"
-                class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                class="btn-link"
               >
                 Save
               </button>
@@ -1248,7 +1248,7 @@
           class="text-sm text-gray-600 dark:text-gray-400"
         >
           This trade will be saved without an account. It will appear under All Accounts and Unsorted, but not in an individual account's trades or P&amp;L.
-          <button type="button" class="text-primary-700 hover:text-primary-800 dark:text-primary-400 underline" @click="showAccountField">
+          <button type="button" class="btn-link" @click="showAccountField">
             Select an account
           </button>
         </p>

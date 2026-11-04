@@ -85,6 +85,11 @@
     @apply bg-primary-700 text-white shadow-sm hover:bg-primary-700 hover:text-white dark:hover:bg-primary-700 dark:hover:text-white;
   }
 
+  /* Text link styled as a button: inline "View all", "Show more", row actions. */
+  .btn-link {
+    @apply inline-flex items-center gap-1 rounded text-sm font-medium text-primary-700 hover:text-primary-900 hover:underline focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-primary-400 dark:hover:text-primary-300;
+  }
+
   /* Bordered square icon button for toolbars (filters, settings, view toggles). */
   .btn-icon-outline {
     @apply btn-icon h-11 w-11 border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700;
@@ -95,7 +100,7 @@
     @apply btn text-gray-600 bg-transparent hover:bg-gray-100 focus:ring-primary-500 dark:text-gray-300 dark:hover:bg-gray-700;
   }
   .input {
-    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-900 dark:border-gray-600 dark:placeholder-gray-500;
+    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-900 dark:border-gray-500 dark:placeholder-gray-500;
     min-height: 44px; /* Ensures proper touch target size on mobile */
     font-size: 16px; /* Prevents iOS zoom on input focus */
   }
@@ -210,7 +215,7 @@
     @apply fixed inset-0 bg-gray-900/50 dark:bg-gray-950/50 transition-opacity;
   }
   .modal-panel {
-    @apply relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600;
+    @apply relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-500/60 dark:shadow-2xl;
     animation: tt-modal-in 180ms ease-out;
   }
   /* One entrance for every dialog, hand-rolled or BaseModal. */
@@ -455,21 +460,23 @@
     @apply hover:shadow-md transition-shadow cursor-pointer;
   }
 
+  /* Phones stack label over value so neither truncates; from sm up they
+     sit on one line with the figure right-aligned. */
   .table-card-row {
-    @apply flex justify-between items-start;
-    @apply text-sm;
+    @apply flex flex-col gap-0.5 text-sm;
+    @apply sm:flex-row sm:items-start sm:justify-between;
   }
 
   /* The label yields (truncates) before the figure ever wraps. */
   .table-card-label {
-    @apply text-xs font-medium text-gray-500 dark:text-gray-400 uppercase min-w-0 truncate;
-    @apply sm:min-w-[100px] sm:shrink-0;
+    @apply text-xs font-medium text-gray-500 dark:text-gray-400 uppercase;
+    @apply sm:min-w-[100px] sm:shrink-0 sm:truncate;
   }
 
   /* Never clip a figure: the value gets the remaining width and wraps. */
   .table-card-value {
-    @apply text-sm font-medium text-gray-900 dark:text-white text-right text-mono-num;
-    @apply shrink-0 whitespace-nowrap;
+    @apply text-sm font-medium text-gray-900 dark:text-white text-mono-num whitespace-nowrap;
+    @apply sm:text-right sm:shrink-0;
   }
 
   /* Responsive table with horizontal scroll fallback */

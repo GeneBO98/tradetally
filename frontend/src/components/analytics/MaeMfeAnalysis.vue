@@ -12,7 +12,7 @@
           </p>
           <button
             type="button"
-            class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+            class="btn-link mt-2"
             :aria-expanded="showGuide"
             aria-controls="mae-mfe-guide"
             @click="showGuide = !showGuide"
@@ -216,7 +216,7 @@
 
         <p v-if="chartOptions.hideOutliers && outlierTrades.size > 0" class="mb-4 text-xs text-gray-500 dark:text-gray-400">
           Hiding {{ outlierTrades.size }} outlier trade{{ outlierTrades.size === 1 ? '' : 's' }} ({{ outlierSymbols }}) from the stats and charts.
-          <button type="button" class="font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400" @click="setChartOption('hideOutliers', false)">Show all</button>
+          <button type="button" class="btn-link" @click="setChartOption('hideOutliers', false)">Show all</button>
         </p>
         <p v-else-if="chartOptions.hideOutliers" class="mb-4 text-xs text-gray-500 dark:text-gray-400">
           No outliers found in these trades.

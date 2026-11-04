@@ -112,7 +112,7 @@
                     class="badge-primary"
                   >
                     {{ symbol }}
-                    <button type="button" class="text-primary-700 dark:text-primary-300" @click="removeHoldingSymbol(symbol)">×</button>
+                    <button type="button" class="btn-link" @click="removeHoldingSymbol(symbol)">×</button>
                   </span>
                 </div>
                 <div v-else class="text-xs text-gray-500 dark:text-gray-400">
@@ -146,7 +146,7 @@
                     </p>
                   </div>
                   <div class="flex gap-2">
-                    <button type="button" @click="selectAllSources" class="text-xs text-primary-700 hover:text-primary-800">Select all</button>
+                    <button type="button" @click="selectAllSources" class="btn-link">Select all</button>
                     <button type="button" @click="clearSources" class="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Clear</button>
                   </div>
                 </div>
@@ -205,7 +205,7 @@
                       class="badge-primary"
                     >
                       {{ source.name }}
-                      <button type="button" class="text-primary-700 dark:text-primary-300" @click="removeSource(source.id)">×</button>
+                      <button type="button" class="btn-link" @click="removeSource(source.id)">×</button>
                     </span>
                   </div>
                   <div v-else class="text-xs text-gray-500 dark:text-gray-400">
@@ -355,7 +355,7 @@
                   >
                     {{ rule.enabled ? 'Disable' : 'Enable' }}
                   </button>
-                  <button @click.stop="testExistingRule(rule)" class="text-xs text-primary-700 hover:text-primary-800">Preview</button>
+                  <button @click.stop="testExistingRule(rule)" class="btn-link">Preview</button>
                   <button @click.stop="editRule(rule)" class="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Edit</button>
                   <button @click.stop="removeRule(rule)" class="text-xs text-red-600 dark:text-red-400 hover:text-red-800">Delete</button>
                 </div>
@@ -443,7 +443,7 @@
                 <button
                   type="button"
                   @click="showSourceErrors = !showSourceErrors"
-                  class="text-sm text-primary-700 hover:text-primary-800"
+                  class="btn-link"
                 >
                   {{ showSourceErrors ? 'Hide source errors' : `Show ${sourceErrorCount} source error${sourceErrorCount === 1 ? '' : 's'}` }}
                 </button>

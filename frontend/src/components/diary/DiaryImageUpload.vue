@@ -32,7 +32,7 @@
             <button
               type="button"
               @click="$refs.fileInput.click()"
-              class="text-primary-700 hover:text-primary-500 font-medium"
+              class="btn-link"
             >
               Choose files
             </button>

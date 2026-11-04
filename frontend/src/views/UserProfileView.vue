@@ -1,6 +1,6 @@
 <template>
   <div class="content-wrapper py-8">
-    <div v-if="loading" class="flex justify-center py-12">
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="spinner spinner-lg"></div>
     </div>
 
@@ -174,6 +174,7 @@ const { formatCurrency } = useCurrencyFormatter()
 
 const route = useRoute()
 const loading = ref(true)
+const initialLoading = ref(true)
 const tradesLoading = ref(false)
 const error = ref(null)
 const profile = ref(null)
@@ -254,6 +255,8 @@ async function loadData() {
   }
   
   loading.value = false
+  
+  initialLoading.value = false
 }
 
 onMounted(() => {

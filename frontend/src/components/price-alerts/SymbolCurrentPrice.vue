@@ -24,7 +24,7 @@
     <button
       v-if="!loading && currentPrice === null"
       type="button"
-      class="shrink-0 text-sm font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+      class="btn-link shrink-0"
       @click="retry"
     >
       Retry

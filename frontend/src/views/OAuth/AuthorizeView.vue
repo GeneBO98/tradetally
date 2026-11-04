@@ -10,7 +10,7 @@
     <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
       <div class="card py-8 px-4 sm:px-10">
         <!-- Loading State -->
-        <div v-if="loading" class="text-center py-8">
+        <div v-if="initialLoading" class="text-center py-8">
           <div class="spinner spinner-lg mx-auto"></div>
           <p class="mt-4 text-gray-600 dark:text-gray-400">Loading authorization request...</p>
         </div>
@@ -140,6 +140,7 @@ const route = useRoute()
 const authStore = useAuthStore()
 
 const loading = ref(true)
+const initialLoading = ref(true)
 const submitting = ref(false)
 const error = ref(null)
 const consentData = ref(null)
@@ -200,6 +201,7 @@ const loadAuthorizationRequest = async () => {
     error.value = err.response?.data?.error_description || 'Failed to load authorization request'
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

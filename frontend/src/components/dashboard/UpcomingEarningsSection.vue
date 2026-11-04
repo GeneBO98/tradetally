@@ -44,7 +44,7 @@
         </div>
         <button
           @click="fetchEarnings"
-          class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+          class="btn-link"
         >
           Try again
         </button>
@@ -70,9 +70,12 @@
               </span>
             </div>
             <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400 text-mono-num">
-              Est. {{ formatEps(earning.epsEstimate) }}
-              <span class="mx-1 text-gray-300 dark:text-gray-600">/</span>
-              Last yr {{ formatEps(earning.epsActual) }}
+              <template v-if="earning.epsEstimate !== null || earning.epsActual !== null">
+                <span v-if="earning.epsEstimate !== null">Est. {{ formatEps(earning.epsEstimate) }}</span>
+                <span v-if="earning.epsEstimate !== null && earning.epsActual !== null" class="mx-1 text-gray-300 dark:text-gray-600">/</span>
+                <span v-if="earning.epsActual !== null">Last yr {{ formatEps(earning.epsActual) }}</span>
+              </template>
+              <span v-else>No estimate yet</span>
             </div>
           </div>
           <div class="shrink-0 text-right">

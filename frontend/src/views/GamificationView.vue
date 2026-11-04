@@ -375,7 +375,7 @@
                         <div class="mt-6 flex items-center justify-between">
                             <button
                                 @click="activeTab = 'achievements'"
-                                class="text-primary-700 dark:text-primary-400 hover:text-primary-500 text-sm font-medium"
+                                class="btn-link"
                             >
                                 View all achievements →
                             </button>

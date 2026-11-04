@@ -332,7 +332,7 @@
                                 <ul v-else class="mt-4 divide-y divide-gray-200 dark:divide-gray-700">
                                     <li v-for="rate in manualFxRates" :key="rate.quote_code" class="flex items-center justify-between gap-4 py-2 text-sm">
                                         <span>1 USD = {{ Number(rate.per_usd) }} {{ rate.quote_code }}</span>
-                                        <button type="button" class="text-primary-700 hover:text-primary-800 dark:text-primary-400" :disabled="manualFxSaving" @click="removeManualFxRate(rate.quote_code)">Remove</button>
+                                        <button type="button" class="btn-link" :disabled="manualFxSaving" @click="removeManualFxRate(rate.quote_code)">Remove</button>
                                     </li>
                                 </ul>
                             </div>

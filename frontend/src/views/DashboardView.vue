@@ -30,7 +30,7 @@
             </div>
             
             <div v-if="isAutoUpdating" class="text-gray-500 dark:text-gray-400">
-              <span>{{ nextRefreshIn }}s</span>
+              <span>refresh in {{ nextRefreshIn }}s</span>
             </div>
           </div>
         </div>
@@ -570,21 +570,21 @@
                       <h3 class="heading-card">Open Positions</h3>
                       <button 
                         @click="navigateToOpenTrades"
-                        class="ml-3 text-sm text-primary-700 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
+                        class="btn-link ml-3"
                       >
                         View all →
                       </button>
                     </div>
                     <div class="flex flex-wrap items-center justify-end gap-2">
-                      <div class="inline-flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-700/60" role="group" aria-label="Open positions view">
+                      <div class="segmented" role="group" aria-label="Open positions view">
                         <button
                           v-for="view in OPEN_POSITIONS_VIEWS"
                           :key="view.id"
                           type="button"
                           :aria-pressed="open_positions_view === view.id"
                           @click="set_open_positions_view(view.id)"
-                          class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-                          :class="open_positions_view === view.id ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-white' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+                          class="segment"
+                          :class="open_positions_view === view.id ? 'segment-active' : ''"
                         >
                           {{ view.label }}
                         </button>
@@ -1039,7 +1039,7 @@
                   >
                     <button
                       type="button"
-                      class="inline-flex items-center gap-1 text-sm font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 transition-colors"
+                      class="btn-link"
                       @click="showAllOpenTrades = !showAllOpenTrades"
                     >
                       <template v-if="showAllOpenTrades">

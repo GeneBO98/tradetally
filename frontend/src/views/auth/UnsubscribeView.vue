@@ -13,7 +13,7 @@
     <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
       <div class="card py-8 px-4 sm:px-10">
         <!-- Loading State -->
-        <div v-if="loading" class="text-center">
+        <div v-if="initialLoading" class="text-center">
           <div class="spinner spinner-lg mx-auto"></div>
           <p class="mt-4 text-sm text-gray-600 dark:text-gray-400">Verifying your request...</p>
         </div>
@@ -102,6 +102,7 @@ import api from '@/services/api'
 const route = useRoute()
 
 const loading = ref(true)
+const initialLoading = ref(true)
 const error = ref(null)
 const showConfirm = ref(false)
 const processing = ref(false)
@@ -115,6 +116,7 @@ async function checkUnsubscribeStatus() {
   if (!token.value) {
     error.value = 'Missing unsubscribe token. Please use the link from your email.'
     loading.value = false
+    initialLoading.value = false
     return
   }
 
@@ -137,6 +139,7 @@ async function checkUnsubscribeStatus() {
     error.value = err.response?.data?.error || 'This unsubscribe link is invalid or has expired.'
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

@@ -53,7 +53,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <p class="mt-2 text-gray-500 dark:text-gray-400">{{ error }}</p>
-        <button @click="loadData" class="mt-3 text-primary-700 hover:text-primary-800 text-sm">
+        <button @click="loadData" class="btn-link mt-3">
           Try Again
         </button>
       </div>

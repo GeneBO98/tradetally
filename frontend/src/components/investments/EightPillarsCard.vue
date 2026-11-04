@@ -85,7 +85,7 @@
       <div class="flex items-center space-x-3">
         <button
           @click="$emit('view-details', analysis)"
-          class="text-sm text-primary-700 hover:text-primary-800"
+          class="btn-link"
         >
           View Details
         </button>
@@ -97,7 +97,7 @@
         </button>
         <button
           @click="$emit('add-to-holdings', analysis)"
-          class="text-sm text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300"
+          class="btn-link"
         >
           Add to Holdings
         </button>

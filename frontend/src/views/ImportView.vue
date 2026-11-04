@@ -995,7 +995,7 @@
                     <div class="text-center">
                       <MagnifyingGlassIcon class="h-12 w-12 mx-auto mb-3 opacity-50" />
                       <p class="text-sm">No results found for "{{ logSearchQuery }}"</p>
-                      <button @click="clearSearch" class="mt-2 text-xs text-primary-700 dark:text-primary-400 hover:underline">
+                      <button @click="clearSearch" class="btn-link mt-2">
                         Clear search
                       </button>
                     </div>
