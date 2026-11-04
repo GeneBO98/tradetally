@@ -28,26 +28,33 @@ let chart = null
 
 // Put zero at the same height on both value axes so a daily bar and the
 // cumulative line share one baseline instead of two unrelated scales.
-// Returns [{ min, max }, { min, max }] with 5% headroom.
+// Each axis gets its own round tick step; both get the same number of
+// steps above and below zero, so the ticks stay round and zero lines up.
+// Returns [{ min, max, step }, { min, max, step }] (empty objects when an
+// axis has no range).
+function niceStep(span, targetTicks = 8) {
+  const raw = span / targetTicks
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)))
+  const f = raw / mag
+  return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag
+}
 function alignedRanges(a, b) {
   const range = values => {
-    const nums = values.filter(v => Number.isFinite(v))
+    const nums = values.map(Number).filter(Number.isFinite) // API values may be strings
     return { max: Math.max(0, ...nums), min: Math.min(0, ...nums) }
   }
-  const span = r => r.max - r.min
   const A = range(a)
   const B = range(b)
-  if (!span(A) || !span(B)) return [{ min: undefined, max: undefined }, { min: undefined, max: undefined }]
-  const frac = Math.max(A.max / span(A), B.max / span(B)) // share of the axis above zero
-  const fit = r => {
-    let out
-    if (frac >= 1) out = { min: 0, max: r.max }
-    else if (frac <= 0) out = { min: r.min, max: 0 }
-    else if (r.max / span(r) < frac) out = { min: r.min, max: (frac / (1 - frac)) * -r.min }
-    else out = { min: -((1 - frac) / frac) * r.max, max: r.max }
-    return { min: out.min * 1.05, max: out.max * 1.05 }
-  }
-  return [fit(A), fit(B)]
+  if (A.max - A.min === 0 || B.max - B.min === 0) return [{}, {}]
+  const stepA = niceStep(A.max - A.min)
+  const stepB = niceStep(B.max - B.min)
+  const stepsUp = (v, s) => Math.ceil(v / s - 1e-9)
+  const above = Math.max(stepsUp(A.max, stepA), stepsUp(B.max, stepB))
+  const below = Math.max(stepsUp(-A.min, stepA), stepsUp(-B.min, stepB))
+  return [
+    { min: -below * stepA, max: above * stepA, step: stepA },
+    { min: -below * stepB, max: above * stepB, step: stepB }
+  ]
 }
 
 function createChart() {
@@ -138,7 +145,8 @@ function createChart() {
           max: yRange.max,
           title: { display: true, text: dailyLabel, color: textColor },
           ticks: {
-            color: textColor
+            color: textColor,
+            stepSize: yRange.step
           },
           grid: {
             color: gridColor
@@ -152,7 +160,8 @@ function createChart() {
           max: y1Range.max,
           title: { display: true, text: cumulativeLabel, color: textColor },
           ticks: {
-            color: textColor
+            color: textColor,
+            stepSize: y1Range.step
           },
           grid: {
             drawOnChartArea: false
