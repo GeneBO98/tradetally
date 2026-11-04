@@ -164,7 +164,7 @@
                             <div class="py-6">
                                 <label class="label">Breakeven Tolerance</label>
                                 <div
-                                    class="mt-2 inline-flex rounded-lg border border-gray-300 bg-gray-100 p-1 dark:border-gray-600 dark:bg-gray-800"
+                                    class="segmented mt-2"
                                     role="group"
                                     aria-label="Breakeven tolerance unit"
                                 >
@@ -172,8 +172,8 @@
                                         v-for="option in breakevenToleranceModeOptions"
                                         :key="option.value"
                                         type="button"
-                                        class="rounded-md px-4 py-2 text-sm font-medium transition-colors"
-                                        :class="analyticsForm.breakeven_tolerance_mode === option.value ? 'bg-white text-primary-700 shadow-sm dark:bg-gray-700 dark:text-primary-300' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+                                        class="segment"
+                                        :class="analyticsForm.breakeven_tolerance_mode === option.value ? 'segment-active' : ''"
                                         :aria-pressed="
                                             analyticsForm.breakeven_tolerance_mode ===
                                             option.value
