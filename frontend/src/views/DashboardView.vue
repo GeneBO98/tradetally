@@ -638,7 +638,7 @@
                       {{ getOptionPnL(position).unrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
                     </div>
                   </template>
-                  <span v-else class="text-xs text-gray-400">Enter premium below</span>
+                  <span v-else class="text-xs text-gray-500 dark:text-gray-400">Enter premium below</span>
                 </div>
                 <div v-else-if="position.unrealizedPnL !== null" class="text-right">
                   <div class="text-lg font-bold" :class="[
@@ -679,7 +679,7 @@
                   <span class="table-card-value">
                     <template v-if="position.requires_manual_price">
                       <div class="flex items-center space-x-1">
-                        <span class="text-xs text-gray-400">{{ currencySymbol }}</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">{{ currencySymbol }}</span>
                         <input
                           type="number"
                           step="0.01"
@@ -693,7 +693,7 @@
                     </template>
                     <template v-else>
                       <span v-if="position.currentPrice !== null">{{ formatPositionPrice(position.currentPrice, position) }}</span>
-                      <span v-else class="text-xs text-gray-400">-</span>
+                      <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
                     </template>
                   </span>
                 </div>
@@ -704,7 +704,7 @@
                 <span v-if="daily_position_pnl(position) !== null" class="table-card-value" :class="pnlClass(daily_position_pnl(position))">
                   {{ formatSignedPositionAmount(daily_position_pnl(position), position) }}
                 </span>
-                <span v-else class="text-xs text-gray-400">-</span>
+                <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
               </div>
 
               <div v-if="open_positions_view !== 'basic'" class="mb-3">
@@ -713,7 +713,7 @@
                   v-if="position_bars[getOpenPositionKey(position)]"
                   v-bind="bar_props(position)"
                 />
-                <span v-else class="text-xs text-gray-400">{{ position_bar_empty_text(position) }}</span>
+                <span v-else class="text-xs text-gray-500 dark:text-gray-400">{{ position_bar_empty_text(position) }}</span>
               </div>
 
               <!-- Individual Trades (only show when position has multiple trades) -->
@@ -851,7 +851,7 @@
                       <!-- Option: manual premium input -->
                       <template v-if="position.requires_manual_price">
                         <div class="flex items-center justify-end space-x-1">
-                          <span class="text-xs text-gray-400">{{ currencySymbol }}</span>
+                          <span class="text-xs text-gray-500 dark:text-gray-400">{{ currencySymbol }}</span>
                           <input
                             type="number"
                             step="0.01"
@@ -872,9 +872,9 @@
                           ]" :title="position.dayChange !== undefined ? formatSignedPositionCurrency(position.dayChange, position) + ' today' : undefined">
                             {{ position.dayChangePercent > 0 ? '+' : '' }}{{ Number(position.dayChangePercent).toFixed(1) }}%
                           </div>
-                          <div v-if="position.quoteSource === 'alpaca'" class="text-xs text-gray-400">via Alpaca</div>
+                          <div v-if="position.quoteSource === 'alpaca'" class="text-xs text-gray-500 dark:text-gray-400">via Alpaca</div>
                         </div>
-                        <span v-else class="text-xs text-gray-400">-</span>
+                        <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
                       </template>
                     </td>
                     <td v-if="open_positions_view === 'basic'" class="text-right text-gray-900 dark:text-white px-3 py-2" :title="nativeAmountTitle(position.totalCost, position)">
@@ -885,13 +885,13 @@
                         <span v-if="getOptionPnL(position).currentValue !== null" class="text-gray-900 dark:text-white" :title="nativeAmountTitle(getOptionPnL(position).currentValue, position)">
                           {{ formatPositionAmount(getOptionPnL(position).currentValue, position) }}
                         </span>
-                        <span v-else class="text-xs text-gray-400">-</span>
+                        <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
                       </template>
                       <template v-else>
                         <span v-if="position.currentValue !== null" class="text-gray-900 dark:text-white" :title="nativeAmountTitle(position.currentValue, position)">
                           {{ formatPositionAmount(position.currentValue, position) }}
                         </span>
-                        <span v-else class="text-xs text-gray-400">-</span>
+                        <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
                       </template>
                     </td>
                     <td class="text-right px-3 py-2">
@@ -904,7 +904,7 @@
                             {{ getOptionPnL(position).unrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
                           </div>
                         </div>
-                        <span v-else class="text-xs text-gray-400">Enter premium</span>
+                        <span v-else class="text-xs text-gray-500 dark:text-gray-400">Enter premium</span>
                       </template>
                       <template v-else>
                         <div v-if="position.unrealizedPnL !== null" :title="nativeAmountTitle(position.unrealizedPnL, position)">
@@ -915,7 +915,7 @@
                             {{ position.unrealizedPnLPercent > 0 ? '+' : '' }}{{ Number(position.unrealizedPnLPercent).toFixed(1) }}%
                           </div>
                         </div>
-                        <span v-else class="text-xs text-gray-400">-</span>
+                        <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
                       </template>
                     </td>
                     <td class="text-right px-3 py-2">
@@ -927,14 +927,14 @@
                       >
                         {{ formatSignedPositionAmount(daily_position_pnl(position), position) }}
                       </span>
-                      <span v-else class="text-xs text-gray-400">-</span>
+                      <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
                     </td>
                     <td v-if="open_positions_view !== 'basic'" class="pl-6 min-w-[220px] w-[260px] px-3 py-2">
                       <PositionRangeBar
                         v-if="position_bars[getOpenPositionKey(position)]"
                         v-bind="bar_props(position)"
                       />
-                      <span v-else class="text-xs text-gray-400">{{ position_bar_empty_text(position) }}</span>
+                      <span v-else class="text-xs text-gray-500 dark:text-gray-400">{{ position_bar_empty_text(position) }}</span>
                     </td>
                     <td class="text-right px-3 py-2">
                       <router-link
@@ -1003,7 +1003,7 @@
                   </td>
                   <td class="text-right font-semibold text-gray-900 dark:text-white px-3 py-2">
                     <span v-if="totalCurrentValueLabel">{{ totalCurrentValueLabel }}</span>
-                    <span v-else class="text-xs text-gray-400">-</span>
+                    <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
                   </td>
                   <td class="text-right px-3 py-2">
                     <div v-if="totalUnrealizedPnLAccount !== null">
@@ -1014,13 +1014,13 @@
                         {{ totalUnrealizedPnLPercent > 0 ? '+' : '' }}{{ Number(totalUnrealizedPnLPercent).toFixed(1) }}%
                       </div>
                     </div>
-                    <span v-else class="text-xs text-gray-400">-</span>
+                    <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
                   </td>
                   <td class="text-right px-3 py-2">
                     <span v-if="total_daily_pnl !== null" class="font-semibold" :class="pnlClass(total_daily_pnl)">
                       {{ formatSignedCurrency(total_daily_pnl, { currency: accountCurrency }) }}
                     </span>
-                    <span v-else class="text-xs text-gray-400">-</span>
+                    <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
                     <div v-if="daily_pnl_partial && total_daily_pnl !== null" class="text-xs text-gray-500 dark:text-gray-400">Partial</div>
                   </td>
                   <td v-if="open_positions_view !== 'basic'" class="px-3 py-2"></td>

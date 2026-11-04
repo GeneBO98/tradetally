@@ -127,5 +127,21 @@ if (typeof document !== 'undefined') {
   }
 }
 
+// Series colours that follow the theme. Light mode uses the text shades
+// (green-700 / red-600); dark mode uses brighter ones (green-500 / red-500)
+// so bars keep contrast on gray-800. Read at chart creation time.
+const SERIES = {
+  light: { gain: [21, 128, 61], loss: [220, 38, 38], accent: [240, 129, 42] },
+  dark: { gain: [34, 197, 94], loss: [239, 68, 68], accent: [247, 143, 47] }
+}
+function seriesColor(key, alpha) {
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  const [r, g, b] = SERIES[isDark ? 'dark' : 'light'][key]
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+export const chartGain = (alpha = 0.85) => seriesColor('gain', alpha)
+export const chartLoss = (alpha = 0.85) => seriesColor('loss', alpha)
+export const chartAccent = (alpha = 0.85) => seriesColor('accent', alpha)
+
 export { Chart }
 export default Chart

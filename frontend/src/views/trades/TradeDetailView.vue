@@ -403,11 +403,11 @@
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white text-mono-num flex flex-wrap gap-x-4 gap-y-1">
                     <!-- Show single take_profit as TP1 only when NO take_profit_targets exist -->
                     <span v-if="(trade.take_profit || trade.takeProfit) && (!trade.take_profit_targets || trade.take_profit_targets.length === 0)">
-                      <span class="text-xs text-gray-400 mr-1">TP1:</span>{{ formatTradePrice(trade, 'take_profit') }}
+                      <span class="text-xs text-gray-500 dark:text-gray-400 mr-1">TP1:</span>{{ formatTradePrice(trade, 'take_profit') }}
                     </span>
                     <!-- Show all targets from take_profit_targets as TP1, TP2, etc. -->
                     <span v-for="(target, index) in (trade.take_profit_targets || [])" :key="index">
-                      <span class="text-xs text-gray-400 mr-1">TP{{ index + 1 }}:</span>{{ formatTargetPrice(target, index) }}
+                      <span class="text-xs text-gray-500 dark:text-gray-400 mr-1">TP{{ index + 1 }}:</span>{{ formatTargetPrice(target, index) }}
                       <span v-if="target.shares" class="text-xs text-gray-400 ml-0.5">({{ target.shares }})</span>
                     </span>
                   </dd>
@@ -416,17 +416,11 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">R-Multiple</dt>
                   <dd class="mt-1">
                     <span class="text-sm font-semibold text-mono-num"
-                      :class="[
-                        Number(trade.rValue) >= 2
-                          ? 'text-green-700 dark:text-green-400'
-                          : Number(trade.rValue) >= 0
-                          ? 'text-yellow-600 dark:text-yellow-400'
-                          : 'text-red-600 dark:text-red-400'
-                      ]">
-                      {{ Number(trade.rValue).toFixed(1) }}R
+                      :class="pnlClass(Number(trade.rValue))">
+                      {{ formatR(trade.rValue) }}
                     </span>
                     <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                      ({{ Number(trade.rValue) >= 2 ? 'Excellent' : Number(trade.rValue) >= 0 ? 'Good' : 'Loss' }})
+                      ({{ Number(trade.rValue) >= 2 ? 'Excellent' : Number(trade.rValue) > 0 ? 'Good' : Number(trade.rValue) === 0 ? 'Breakeven' : 'Loss' }})
                     </span>
                   </dd>
                 </div>
@@ -1422,9 +1416,11 @@
           </div>
         </div>
 
-        <!-- Performance Summary -->
-        <div class="space-y-6">
-          <div class="card">
+        <!-- Performance Summary. On phones the side column dissolves into the
+             grid (display: contents) and the Performance card moves first, so
+             the outcome shows before the instrument fields. -->
+        <div class="contents lg:block lg:space-y-6">
+          <div class="card order-first lg:order-none">
             <div class="card-body">
               <h3 class="heading-card mb-4">Performance</h3>
               <dl class="space-y-4">
@@ -1511,13 +1507,7 @@
             <div class="card-body">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="heading-card">Breaking News</h3>
-                <span class="badge"
-                  :class="[
-                    trade.news_sentiment === 'positive' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' :
-                    trade.news_sentiment === 'negative' ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400' :
-                    trade.news_sentiment === 'mixed' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' :
-                    'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                  ]">
+                <span :class="tradeBadgeClass(newsBadgeTone(trade.news_sentiment))">
                   {{ trade.news_sentiment || 'neutral' }} sentiment
                 </span>
               </div>
@@ -1530,12 +1520,7 @@
                     <h4 class="heading-sub mb-2">
                       {{ article.headline }}
                     </h4>
-                    <span class="badge flex-shrink-0 ml-2"
-                      :class="[
-                        article.sentiment === 'positive' ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
-                        article.sentiment === 'negative' ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400' :
-                        'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                      ]">
+                    <span class="flex-shrink-0 ml-2" :class="tradeBadgeClass(newsBadgeTone(article.sentiment))">
                       {{ article.sentiment }}
                     </span>
                   </div>
@@ -1585,6 +1570,8 @@
 
 <script setup>
 import { pnlClass } from '@/utils/metricTone'
+import { formatR } from '@/utils/rFormat'
+import { newsBadgeTone, tradeBadgeClass } from '@/utils/tradeBadges'
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'

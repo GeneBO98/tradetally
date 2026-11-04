@@ -17,7 +17,7 @@
             <div class="flex-shrink-0">
               <CheckCircleIcon v-if="notification.type === 'success'" class="h-6 w-6 text-green-700 dark:text-green-400" />
               <XCircleIcon v-else-if="notification.type === 'error'" class="h-6 w-6 text-red-600 dark:text-red-400" />
-              <ExclamationTriangleIcon v-else class="h-6 w-6 text-yellow-400" />
+              <ExclamationTriangleIcon v-else class="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
             </div>
             <div class="ml-3 w-0 flex-1">
               <p class="text-sm font-medium text-gray-900 dark:text-white">

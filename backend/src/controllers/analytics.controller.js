@@ -2550,7 +2550,7 @@ const analyticsController = {
       const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
       const params = [req.user.id, ...filterParams];
 
-      return await sendCachedAnalytics(req, res, 'drawdown', {
+      return await sendCachedAnalytics(req, res, 'drawdown_r', {
         query: req.query
       }, async () => {
 
@@ -2558,7 +2558,10 @@ const analyticsController = {
           WITH daily_pnl AS (
             SELECT
               trade_date,
-              COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as daily_pnl
+              COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as daily_pnl,
+              -- Same R basis as total_r_value: trades with a stop loss only.
+              COALESCE(SUM(t.r_value) FILTER (WHERE t.r_value IS NOT NULL AND t.stop_loss IS NOT NULL), 0) as daily_r_value,
+              COUNT(*) FILTER (WHERE t.r_value IS NOT NULL AND t.stop_loss IS NOT NULL) as r_trade_count
             FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
             GROUP BY trade_date
@@ -2568,7 +2571,9 @@ const analyticsController = {
             SELECT
               trade_date,
               daily_pnl,
-              SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl
+              r_trade_count,
+              SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl,
+              SUM(daily_r_value) OVER (ORDER BY trade_date) as cumulative_r_value
             FROM daily_pnl
           ),
           running_max AS (
@@ -2576,7 +2581,10 @@ const analyticsController = {
               trade_date,
               daily_pnl,
               cumulative_pnl,
-              MAX(cumulative_pnl) OVER (ORDER BY trade_date) as running_max_pnl
+              r_trade_count,
+              cumulative_r_value,
+              MAX(cumulative_pnl) OVER (ORDER BY trade_date) as running_max_pnl,
+              MAX(cumulative_r_value) OVER (ORDER BY trade_date) as running_max_r_value
             FROM cumulative_pnl
           )
           SELECT
@@ -2584,7 +2592,9 @@ const analyticsController = {
             daily_pnl,
             cumulative_pnl,
             running_max_pnl,
-            cumulative_pnl - running_max_pnl as drawdown
+            cumulative_pnl - running_max_pnl as drawdown,
+            r_trade_count,
+            cumulative_r_value - running_max_r_value as r_value_drawdown
           FROM running_max
           ORDER BY trade_date
         `;

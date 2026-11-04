@@ -328,9 +328,9 @@
                 </span>
                 <TradeMarketSessionBadge :trade="trade" />
                 <!-- News badge for mobile -->
-                <span v-if="trade.has_news" 
-                  :class="getNewsBadgeClasses(trade.news_sentiment)"
-                  class="badge flex"
+                <span v-if="trade.has_news"
+                  :class="tradeBadgeClass(newsBadgeTone(trade.news_sentiment))"
+                  class="inline-flex items-center"
                   :title="`${trade.news_event_count ?? trade.news_events?.length ?? 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
                   <MdiIcon :icon="newspaperIcon" :size="14" class="mr-1" />
                   <span>{{ trade.news_event_count ?? trade.news_events?.length ?? 0 }}</span>
@@ -1900,19 +1900,6 @@ function handleBulkChartsSaved(result) {
 }
 
 // Get news badge classes based on sentiment
-function getNewsBadgeClasses(sentiment) {
-  const baseClasses = 'px-2 py-1 text-xs font-semibold rounded-full flex items-center'
-  
-  switch (sentiment) {
-    case 'positive':
-      return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-    case 'negative':
-      return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-    case 'neutral':
-    default:
-      return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-  }
-}
 
 // Map URL query params to store filter keys. The view owns this so deep links
 // (e.g. holdings "View Trades" -> /trades?status=open&symbol=X) load correctly

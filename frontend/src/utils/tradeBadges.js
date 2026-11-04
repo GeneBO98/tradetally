@@ -17,8 +17,9 @@ export const TRADE_BADGE_TONES = Object.freeze({
   future: 'badge-primary',
   session: 'badge-neutral',
   strategy: 'badge-primary',
-  newsPositive: 'badge-primary',
-  newsNegative: 'badge-warning',
+  newsPositive: 'badge-success',
+  newsNegative: 'badge-danger',
+  newsMixed: 'badge-warning',
   newsNeutral: 'badge-neutral'
 })
 
@@ -29,5 +30,6 @@ export function tradeBadgeClass(tone) {
 export function newsBadgeTone(sentiment) {
   if (sentiment === 'positive') return 'newsPositive'
   if (sentiment === 'negative') return 'newsNegative'
+  if (sentiment === 'mixed') return 'newsMixed'
   return 'newsNeutral'
 }

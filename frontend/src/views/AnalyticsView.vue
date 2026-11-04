@@ -390,6 +390,12 @@
           <h3 class="heading-card mb-4">Drawdown Analysis</h3>
           <div class="h-80 relative">
             <canvas ref="drawdownChart" class="absolute inset-0 w-full h-full"></canvas>
+            <!-- R mode needs trades with a stop loss; say so instead of drawing empty axes. -->
+            <div v-if="rValueMode && !drawdownHasRData" class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800">
+              <p class="max-w-xs text-center text-sm text-gray-600 dark:text-gray-400">
+                No R-multiple data in this range. R drawdown uses trades that have a stop loss.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -742,7 +748,7 @@ import { useAIStore } from '@/stores/ai'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { usePricingExperiment } from '@/composables/usePricingExperiment'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
-import { Chart } from '@/lib/chartSetup'
+import { Chart, chartGain, chartLoss, chartAccent } from '@/lib/chartSetup'
 
 const { formatCurrency, currencySymbol } = useCurrencyFormatter()
 const { monthlyPricePerMonthLabel } = usePricingExperiment()
@@ -1243,6 +1249,7 @@ const performanceByHoldTimeCounts = ref([])
 const dayOfWeekData = ref([])
 const dailyVolumeData = ref([])
 const drawdownData = ref([])
+const drawdownHasRData = computed(() => drawdownData.value.some(d => Number(d.r_trade_count) > 0))
 
 // Dynamic chart labels
 const chartLabels = ref({
@@ -1320,8 +1327,8 @@ function createTradeDistributionChart() {
       datasets: [{
         label: 'Number of Trades',
         data: tradeDistributionData.value,
-        backgroundColor: '#f3a05a',
-        borderColor: '#e89956',
+        backgroundColor: chartAccent(0.75),
+        borderColor: chartAccent(1),
         borderWidth: 1
       }]
     },
@@ -1390,7 +1397,7 @@ function createPerformanceByPriceChart() {
       datasets: [{
         label: chartLabel,
         data: chartData,
-        backgroundColor: chartData.map(val => val >= 0 ? '#4ade80' : '#f87171'),
+        backgroundColor: chartData.map(val => val >= 0 ? chartGain() : chartLoss()),
         borderWidth: 1
       }]
     },
@@ -1475,7 +1482,7 @@ function createPerformanceByVolumeChart() {
       datasets: [{
         label: chartLabel,
         data: chartData,
-        backgroundColor: chartData.map(val => val >= 0 ? '#4ade80' : '#f87171'),
+        backgroundColor: chartData.map(val => val >= 0 ? chartGain() : chartLoss()),
         borderWidth: 1
       }]
     },
@@ -1560,7 +1567,7 @@ function createPerformanceByPositionSizeChart() {
       datasets: [{
         label: chartLabel,
         data: chartData,
-        backgroundColor: chartData.map(val => val >= 0 ? '#4ade80' : '#f87171'),
+        backgroundColor: chartData.map(val => val >= 0 ? chartGain() : chartLoss()),
         borderWidth: 1
       }]
     },
@@ -1651,7 +1658,7 @@ function createDayOfWeekChart() {
       datasets: [{
         label: chartLabel,
         data: chartData,
-        backgroundColor: chartData.map(val => val >= 0 ? '#4ade80' : '#f87171'),
+        backgroundColor: chartData.map(val => val >= 0 ? chartGain() : chartLoss()),
         borderWidth: 1,
         barThickness: 30,
         categoryPercentage: 0.7
@@ -1736,7 +1743,7 @@ function createPerformanceByHoldTimeChart() {
       datasets: [{
         label: chartLabel,
         data: chartData,
-        backgroundColor: chartData.map(val => val >= 0 ? '#4ade80' : '#f87171'),
+        backgroundColor: chartData.map(val => val >= 0 ? chartGain() : chartLoss()),
         borderWidth: 1,
         barThickness: 20,
         categoryPercentage: 0.4
@@ -1832,8 +1839,8 @@ function createDailyVolumeChart() {
       datasets: [{
         label: 'Total Volume',
         data: volumes,
-        backgroundColor: '#f3a05a',
-        borderColor: '#e89956',
+        backgroundColor: chartAccent(0.75),
+        borderColor: chartAccent(1),
         borderWidth: 1
       }]
     },
@@ -1917,8 +1924,8 @@ function createDrawdownChart() {
 
   // Use R-value drawdown if in R-value mode, otherwise use dollar drawdown
   const drawdowns = rValueMode.value
-    ? drawdownData.value.map(d => d.r_value_drawdown || 0)
-    : drawdownData.value.map(d => d.drawdown)
+    ? drawdownData.value.map(d => Number(d.r_value_drawdown) || 0)
+    : drawdownData.value.map(d => Number(d.drawdown) || 0)
 
   const yAxisLabel = rValueMode.value ? 'Drawdown (R)' : `Drawdown (${currencySymbol.value})`
 
@@ -1937,8 +1944,8 @@ function createDrawdownChart() {
       datasets: [{
         label: 'Drawdown',
         data: drawdowns,
-        borderColor: '#ef4444',
-        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderColor: chartLoss(1),
+        backgroundColor: chartLoss(0.1),
         borderWidth: 2,
         fill: true,
         tension: 0.4
@@ -1979,8 +1986,9 @@ function createDrawdownChart() {
             text: yAxisLabel
           },
           afterDataLimits: function(scale) {
-            const minValue = Math.min(...drawdowns)
-            const range = Math.abs(minValue)
+            const minValue = Math.min(0, ...drawdowns)
+            // A flat series (no drawdown yet) still needs a visible range.
+            const range = Math.abs(minValue) || (rValueMode.value ? 1 : 100)
             scale.max = range * 0.15 // Add 15% padding above 0
             scale.min = minValue - (range * 0.05) // Add small padding below minimum
           }
