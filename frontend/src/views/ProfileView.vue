@@ -223,7 +223,7 @@
                             </div>
                         </div>
 
-                        <div class="flex justify-end">
+                        <div class="modal-footer">
                             <button
                                 type="submit"
                                 :disabled="profileLoading"
@@ -1057,7 +1057,7 @@
                             </div>
                         </section>
 
-                        <div class="flex justify-end">
+                        <div class="modal-footer">
                             <button
                                 type="submit"
                                 :disabled="tradingProfileLoading"
@@ -1232,7 +1232,7 @@
                         </div>
 
                         <!-- Action Buttons -->
-                        <div class="flex justify-end space-x-3">
+                        <div class="modal-footer">
                             <button
                                 type="button"
                                 @click="cancel2FASetup"
@@ -1341,7 +1341,7 @@
                             </p>
                         </div>
 
-                        <div class="flex justify-end space-x-3 pt-4">
+                        <div class="modal-footer">
                             <button
                                 type="button"
                                 @click="cancelDisable2FA"
@@ -1470,7 +1470,7 @@
                             />
                         </div>
 
-                        <div class="flex justify-end space-x-3 pt-4">
+                        <div class="modal-footer">
                             <button
                                 type="button"
                                 @click="closeCreateApiKeyModal"
@@ -1643,7 +1643,7 @@
                             {{ deleteAccountError }}
                         </div>
 
-                        <div class="flex justify-end space-x-3 pt-4">
+                        <div class="modal-footer">
                             <button
                                 type="button"
                                 @click="cancelDeleteAccount"

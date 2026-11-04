@@ -586,7 +586,7 @@
                     remove all lots and dividend records. This action cannot be
                     undone.
                 </p>
-                <div class="flex justify-end space-x-3">
+                <div class="modal-footer">
                     <button
                         @click="showDeleteConfirm = false"
                         class="btn-secondary"

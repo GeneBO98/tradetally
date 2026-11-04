@@ -1253,7 +1253,7 @@
                                                     event.id,
                                                 )
                                             "
-                                            class="text-xs px-2 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-colors flex items-center space-x-1"
+                                            class="btn-tint btn-sm space-x-1"
                                         >
                                             <span>{{
                                                 expandedOverconfidenceEvents.has(

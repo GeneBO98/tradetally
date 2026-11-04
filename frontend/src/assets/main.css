@@ -65,6 +65,23 @@
     @apply inline-flex items-center justify-center rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200;
   }
 
+  /* Soft accent button: tinted fill, accent text. For secondary actions that
+     should read as "ours" without the weight of btn-primary. */
+  .btn-tint {
+    @apply btn text-primary-700 bg-primary-50 hover:bg-primary-100 focus:ring-primary-500 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50;
+  }
+
+  /* Segmented control: a bordered group of equal segments, one active. */
+  .segmented {
+    @apply inline-flex rounded-md border border-gray-200 bg-white p-0.5 text-xs dark:border-gray-700 dark:bg-gray-900;
+  }
+  .segment {
+    @apply inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white;
+  }
+  .segment-active {
+    @apply bg-primary-700 text-white shadow-sm hover:bg-primary-700 hover:text-white dark:hover:bg-primary-700 dark:hover:text-white;
+  }
+
   /* Borderless, low-emphasis button (toolbar icons, tertiary actions). */
   .btn-ghost {
     @apply btn text-gray-600 bg-transparent hover:bg-gray-100 focus:ring-primary-500 dark:text-gray-300 dark:hover:bg-gray-700;
@@ -189,6 +206,10 @@
   }
   .modal-title {
     @apply text-lg font-semibold text-gray-900 dark:text-white;
+  }
+  /* Dialog action row: stacks on phones, right-aligned row from sm up. */
+  .modal-footer {
+    @apply mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3;
   }
 
   /* ---- Spinners -----------------------------------------------------

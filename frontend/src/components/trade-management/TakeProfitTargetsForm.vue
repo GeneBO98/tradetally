@@ -23,21 +23,21 @@
       <button
         type="button"
         @click="setQuickTargets('single')"
-        class="px-3 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+        class="btn-secondary btn-sm"
       >
         Single Target
       </button>
       <button
         type="button"
         @click="setQuickTargets('equal-split')"
-        class="px-3 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+        class="btn-secondary btn-sm"
       >
         Equal Split (2 TPs)
       </button>
       <button
         type="button"
         @click="setQuickTargets('pyramid')"
-        class="px-3 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+        class="btn-secondary btn-sm"
       >
         Pyramid Out (3 TPs)
       </button>
@@ -131,7 +131,7 @@
           :key="pct"
           type="button"
           @click="setTargetPercent(index, pct)"
-          class="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+          class="btn-secondary btn-sm"
         >
           +{{ pct }}%
         </button>

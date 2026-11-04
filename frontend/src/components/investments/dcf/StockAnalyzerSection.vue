@@ -225,7 +225,7 @@
           </label>
         </div>
 
-        <div class="flex justify-end space-x-3">
+        <div class="modal-footer">
           <button @click="closeWatchlistModal" class="btn-secondary">Cancel</button>
           <button
             v-if="watchlists.length > 0"
@@ -328,7 +328,7 @@
           </div>
         </div>
 
-        <div class="flex justify-end space-x-3 mt-6">
+        <div class="modal-footer">
           <button @click="closeAlertModal" class="btn-secondary">Cancel</button>
           <button
             @click="saveAlert"

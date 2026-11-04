@@ -294,7 +294,7 @@
                     </div>
                   </div>
 
-                  <div class="flex justify-end space-x-3 mt-6">
+                  <div class="modal-footer">
                     <button
                       type="button"
                       @click="closeModal"
@@ -335,7 +335,7 @@
                   </p>
                 </div>
 
-          <div class="mt-4 flex justify-end space-x-3">
+          <div class="modal-footer">
             <button
               type="button"
               @click="showDeleteModal = false"

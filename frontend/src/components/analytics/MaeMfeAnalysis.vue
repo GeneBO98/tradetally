@@ -28,8 +28,8 @@
           <div class="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
             <button
               type="button"
-              class="px-3 py-1.5 text-xs font-medium transition-colors"
-              :class="displayMode === 'dollars' ? 'bg-primary-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+              class="segment"
+              :class="displayMode === 'dollars' ? 'segment-active' : ''"
               @click="displayMode = 'dollars'"
             >
               {{ currencyCode }}
@@ -61,8 +61,8 @@
           <div class="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
             <button
               type="button"
-              class="px-3 py-1.5 text-xs font-medium transition-colors"
-              :class="chartOptions.hideOutliers ? 'bg-primary-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+              class="segment"
+              :class="chartOptions.hideOutliers ? 'segment-active' : ''"
               :aria-pressed="chartOptions.hideOutliers"
               title="Exclude trades whose MAE, MFE, or result is far outside the rest of your trades"
               @click="setChartOption('hideOutliers', !chartOptions.hideOutliers)"

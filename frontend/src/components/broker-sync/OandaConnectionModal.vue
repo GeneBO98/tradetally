@@ -52,7 +52,7 @@
         <label for="oanda-time" class="label">Daily sync time</label>
         <input id="oanda-time" v-model="form.sync_time" type="time" class="input" required :disabled="loading" />
       </div>
-      <div class="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+      <div class="modal-footer border-t border-gray-200 pt-4 dark:border-gray-700">
         <button type="button" class="btn-secondary" :disabled="loading" @click="close">Cancel</button>
         <button type="submit" class="btn-primary" :disabled="loading || !accounts.length || !form.account_id">{{ loading ? 'Connecting...' : 'Connect account' }}</button>
       </div>

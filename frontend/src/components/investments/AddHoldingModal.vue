@@ -128,7 +128,7 @@
         </div>
 
         <!-- Actions -->
-        <div class="flex justify-end space-x-3 pt-4">
+        <div class="modal-footer">
           <button
             type="button"
             @click="$emit('close')"

@@ -3,7 +3,7 @@
     <!-- Trigger Button -->
     <button
       @click="toggleDropdown"
-      class="flex items-center space-x-2 px-3 py-2 text-sm rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+      class="btn-ghost btn-sm space-x-2"
       :title="selectedAccountLabel"
     >
       <!-- Account Icon -->

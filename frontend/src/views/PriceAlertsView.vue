@@ -523,7 +523,7 @@
                             </div>
                         </div>
 
-                        <div class="flex justify-end space-x-3">
+                        <div class="modal-footer">
                             <button
                                 type="button"
                                 @click="cancelEdit"

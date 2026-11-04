@@ -8,9 +8,10 @@ the rules that can be checked mechanically.
 |---|---|
 | Page title / section / card title / sub-heading | `heading-page`, `heading-section`, `heading-card`, `heading-sub` |
 | Surface | `card` + `card-body` (standard) or `card p-4` (dense); `card-dense` for ribbons |
-| Dialog | `BaseModal`, or `modal-overlay` + `modal-panel` (+ `modal-title`) with `role="dialog"` |
+| Dialog | `BaseModal`, or `modal-overlay` + `modal-panel` (+ `modal-title`, `modal-footer`) with `role="dialog"` |
 | Floating menu / popover | `popover`, `dropdown-menu` |
-| Buttons | `btn-primary`, `btn-secondary`, `btn-danger`, `btn-ghost`; add `btn-sm` for compact |
+| Buttons | `btn-primary`, `btn-secondary`, `btn-tint`, `btn-danger`, `btn-ghost`, `btn-icon`; add `btn-sm` for compact |
+| Toggle group | `segmented` wrapper with `segment` buttons; `segment-active` on the selected one |
 | Inputs | `input`; add `input-sm` for compact editors |
 | Status chip | `badge-neutral`, `badge-primary`, `badge-success`, `badge-danger`, `badge-warning` |
 | Table header | `<thead class="table-head">`, `<th class="table-th">` |

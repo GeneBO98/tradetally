@@ -140,7 +140,7 @@
                             </div>
                         </li>
                     </ul>
-                    <div class="mt-3 flex justify-end">
+                    <div class="modal-footer">
                         <button @click="openCreateModal" class="btn-secondary">
                             Add Webhook
                         </button>
@@ -286,7 +286,7 @@
                             </span>
                         </label>
 
-                        <div class="flex justify-end space-x-3">
+                        <div class="modal-footer">
                             <button type="button" @click="closeModal" class="btn-secondary">
                                 Cancel
                             </button>

@@ -199,7 +199,7 @@
                                     @keydown="handleCommentKeydown"
                                 ></textarea>
                             </div>
-                            <div class="mt-3 flex justify-end">
+                            <div class="modal-footer">
                                 <button
                                     type="submit"
                                     :disabled="submitting || !newComment.trim()"

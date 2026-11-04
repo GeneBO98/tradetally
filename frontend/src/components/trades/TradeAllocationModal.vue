@@ -100,7 +100,7 @@
         <footer v-if="!loading && groups.length >= 2" class="flex flex-col-reverse gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700 sm:flex-row sm:justify-between">
           <button v-if="hasExisting" type="button" class="btn-ghost" :disabled="saving" @click="clearAllocation">Clear allocation</button>
           <div v-else></div>
-          <div class="flex justify-end gap-3">
+          <div class="modal-footer">
             <button type="button" class="btn-secondary" @click="emit('close')">Cancel</button>
             <button type="button" class="btn-primary" :disabled="saving || !canSave" @click="saveAllocation">{{ saving ? 'Saving...' : 'Save allocation' }}</button>
           </div>

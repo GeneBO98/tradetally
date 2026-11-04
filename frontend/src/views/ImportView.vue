@@ -284,7 +284,7 @@
               <p v-if="accountBlockMessage" class="mb-2 text-right text-xs text-gray-500 dark:text-gray-400">
                 {{ accountBlockMessage }}
               </p>
-              <div class="flex justify-end">
+              <div class="modal-footer">
                 <button
                   type="submit"
                   :disabled="!canSubmit"

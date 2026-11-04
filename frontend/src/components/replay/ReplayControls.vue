@@ -40,10 +40,8 @@
         v-for="option in speedOptions"
         :key="option"
         @click="$emit('set-speed', option)"
-        class="px-2 py-1 text-xs rounded-md font-medium"
-        :class="speed === option
-          ? 'bg-primary-700 text-white'
-          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
+        class="segment"
+        :class="speed === option ? 'segment-active' : ''"
       >
         {{ option }}x
       </button>

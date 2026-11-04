@@ -293,13 +293,11 @@
         >
           <div class="flex flex-col gap-2.5 sm:flex-row sm:items-center">
             <!-- Segmented direction toggle -->
-            <div class="inline-flex shrink-0 rounded-lg bg-white p-0.5 ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-700">
+            <div class="segmented shrink-0">
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
-                :class="transactionTypes[item.id] === 'deposit'
-                  ? 'bg-primary-700 text-white shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+                class="segment"
+                :class="transactionTypes[item.id] === 'deposit' ? 'segment-active' : ''"
                 @click="transactionTypes[item.id] = 'deposit'"
               >
                 <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -309,10 +307,8 @@
               </button>
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
-                :class="transactionTypes[item.id] === 'withdrawal'
-                  ? 'bg-primary-700 text-white shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+                class="segment"
+                :class="transactionTypes[item.id] === 'withdrawal' ? 'segment-active' : ''"
                 @click="transactionTypes[item.id] = 'withdrawal'"
               >
                 <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">

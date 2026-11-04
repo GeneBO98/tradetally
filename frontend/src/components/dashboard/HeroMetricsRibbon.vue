@@ -28,15 +28,15 @@
               <div class="inline-flex shrink-0 rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium" role="group" aria-label="Display values in dollars or R-multiples">
                 <button
                   type="button"
-                  class="px-2 py-0.5 transition-colors"
-                  :class="!rMode ? 'bg-primary-700 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+                  class="segment"
+                  :class="!rMode ? 'segment-active' : ''"
                   :aria-pressed="!rMode"
                   @click="emit('update:rMode', false)"
                 >$</button>
                 <button
                   type="button"
-                  class="px-2 py-0.5 transition-colors"
-                  :class="rMode ? 'bg-primary-700 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+                  class="segment"
+                  :class="rMode ? 'segment-active' : ''"
                   :aria-pressed="rMode"
                   @click="emit('update:rMode', true)"
                 >R</button>

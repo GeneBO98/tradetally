@@ -228,7 +228,7 @@
             </label>
           </div>
 
-          <div class="flex justify-end space-x-3 pt-4">
+          <div class="modal-footer">
             <button type="button" @click="closeCreateModal" class="btn-secondary">
               Cancel
             </button>
@@ -319,7 +319,7 @@
         <p class="text-gray-600 dark:text-gray-400 mb-6">
           Are you sure you want to delete "{{ clientToDelete.name }}"? This will revoke all access tokens and cannot be undone.
         </p>
-        <div class="flex justify-end space-x-3">
+        <div class="modal-footer">
           <button @click="clientToDelete = null" class="btn-secondary">
             Cancel
           </button>

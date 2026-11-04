@@ -1430,7 +1430,7 @@
                     {{ holdingToDelete.symbol }} position? This will also delete
                     all lots and dividend history.
                 </p>
-                <div class="flex justify-end space-x-3">
+                <div class="modal-footer">
                     <button
                         @click="holdingToDelete = null"
                         class="btn-secondary"
@@ -1516,7 +1516,7 @@
                     </label>
                 </div>
 
-                <div class="flex justify-end space-x-3">
+                <div class="modal-footer">
                     <button @click="closeWatchlistModal" class="btn-secondary">
                         Cancel
                     </button>

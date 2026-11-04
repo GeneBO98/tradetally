@@ -11,10 +11,8 @@
           v-for="option in rangeOptions"
           :key="option.id"
           @click="setRange(option.id)"
-          class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-          :class="selectedRange === option.id
-            ? 'bg-primary-700 text-white'
-            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
+          class="segment"
+          :class="selectedRange === option.id ? 'segment-active' : ''"
         >
           {{ option.label }}
         </button>

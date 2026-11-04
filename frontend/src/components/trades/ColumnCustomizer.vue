@@ -104,7 +104,7 @@
             </div>
 
             <!-- Apply/Cancel Buttons -->
-            <div class="flex justify-end space-x-2">
+            <div class="modal-footer">
               <button
                 @click="cancel"
                 class="btn-secondary"

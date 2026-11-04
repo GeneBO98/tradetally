@@ -13,10 +13,8 @@
             v-for="option in rangeOptions"
             :key="option.days"
             @click="setRange(option.days)"
-            class="px-2.5 py-1 text-xs font-medium rounded-md transition-colors"
-            :class="selectedDays === option.days
-              ? 'bg-primary-700 text-white'
-              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
+            class="segment"
+            :class="selectedDays === option.days ? 'segment-active' : ''"
           >
             {{ option.label }}
           </button>

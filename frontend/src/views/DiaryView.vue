@@ -422,7 +422,7 @@
             </button>
             <button
               @click="goToToday"
-              class="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
+              class="btn-secondary btn-sm"
             >
               Today
             </button>
@@ -570,7 +570,7 @@
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
           Are you sure you want to delete this journal entry? This action cannot be undone.
         </p>
-        <div class="flex justify-end space-x-3">
+        <div class="modal-footer">
           <button
             @click="showDeleteModal = false"
             class="btn-secondary"

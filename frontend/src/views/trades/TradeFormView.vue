@@ -36,7 +36,7 @@
                 </button>
                 <button
                   @click="acknowledgeBehavioralAlert"
-                  class="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                  class="btn-secondary btn-sm"
                 >
                   Continue anyway
                 </button>
@@ -1257,7 +1257,7 @@
           </button>
         </p>
 
-        <div class="flex justify-end space-x-3">
+        <div class="modal-footer">
           <button type="button" @click="handleCancel" class="btn-secondary">
             Cancel
           </button>

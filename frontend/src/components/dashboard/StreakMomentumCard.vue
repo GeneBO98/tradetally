@@ -17,24 +17,20 @@
 
       <template v-else>
         <!-- Streak scope toggle: by-day (default) vs by-trade -->
-        <div v-if="hasTradeData" class="mb-3 inline-flex rounded-md border border-gray-200 dark:border-gray-700 p-0.5 text-xs">
+        <div v-if="hasTradeData" class="mb-3 segmented">
           <button
             type="button"
             @click="scope = 'day'"
-            class="px-2.5 py-1 rounded transition-colors"
-            :class="scope === 'day'
-              ? 'bg-primary-700 text-white'
-              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
+            class="segment"
+            :class="scope === 'day' ? 'segment-active' : ''"
           >
             By day
           </button>
           <button
             type="button"
             @click="scope = 'trade'"
-            class="px-2.5 py-1 rounded transition-colors"
-            :class="scope === 'trade'
-              ? 'bg-primary-700 text-white'
-              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
+            class="segment"
+            :class="scope === 'trade' ? 'segment-active' : ''"
           >
             By trade
           </button>

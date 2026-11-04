@@ -386,7 +386,7 @@
                         placeholder="What was missing, frustrating, or not worth the cost?"
                     ></textarea>
                 </div>
-                <div class="flex justify-end space-x-3">
+                <div class="modal-footer">
                     <button
                         @click="closeCancelModal"
                         class="btn btn-secondary"

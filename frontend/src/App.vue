@@ -147,7 +147,7 @@
               ></textarea>
             </div>
           </div>
-          <div class="flex justify-end space-x-3 mt-6">
+          <div class="modal-footer">
             <button type="button" @click="showSupportModal = false" class="btn btn-outline">Cancel</button>
             <button type="submit" :disabled="supportSending" class="btn btn-primary">
               <span v-if="supportSending" class="spinner spinner-xs spinner-current inline-block mr-2"></span>
