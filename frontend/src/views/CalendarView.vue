@@ -142,9 +142,11 @@
               </div>
             </div>
 
-            <!-- Calendar Grid - Weekdays Only -->
-            <div class="grid grid-cols-6 gap-1 mb-2">
-              <div v-for="day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']" :key="day"
+            <!-- Calendar Grid. Weekend columns appear only when the month has
+                 weekend-dated activity (forex/crypto), so totals always match
+                 the visible days. -->
+            <div class="grid gap-1 mb-2" :class="expandedMonthShowsWeekends ? 'grid-cols-8' : 'grid-cols-6'">
+              <div v-for="day in expandedMonthDayLabels" :key="day"
                 class="text-center text-xs font-medium text-gray-500 dark:text-gray-400 py-2">
                 {{ day }}
               </div>
@@ -152,7 +154,7 @@
                 {{ showRValue ? 'Week R' : `Week ${pnl_type === 'net' ? 'Net' : 'Gross'} P/L` }}
               </div>
             </div>
-            <div v-for="(week, weekIndex) in expandedMonthWeekdays" :key="weekIndex" class="grid grid-cols-6 gap-1 mb-1">
+            <div v-for="(week, weekIndex) in expandedMonthWeekdays" :key="weekIndex" class="grid gap-1 mb-1" :class="expandedMonthShowsWeekends ? 'grid-cols-8' : 'grid-cols-6'">
               <div v-for="(day, dayIndex) in week.days" :key="dayIndex"
                 class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 min-h-[70px] sm:min-h-[80px] cursor-pointer hover:brightness-95 transition-all"
                 :class="getDayClass(day)"
@@ -465,9 +467,10 @@ const expandedMonthWeekdays = computed(() => {
 
   for (const date of allDays) {
     const dayOfWeek = getDay(date) // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    const weekLength = expandedMonthShowsWeekends.value ? 7 : 5
 
-    // Skip weekends
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
+    // Skip weekends unless this month has weekend-dated trades
+    if (!expandedMonthShowsWeekends.value && (dayOfWeek === 0 || dayOfWeek === 6)) {
       // If we hit Sunday and have accumulated weekdays, finish the week
       if (dayOfWeek === 0 && currentWeek.days.length > 0) {
         // Pad to 5 days if needed (for partial weeks)
@@ -480,10 +483,12 @@ const expandedMonthWeekdays = computed(() => {
       continue
     }
 
+    // Weekend-inclusive weeks run Mon..Sun; Sunday closes the week after it is added.
+
     // If it's Monday and we already have days, start a new week
     if (dayOfWeek === 1 && currentWeek.days.length > 0) {
-      // Pad to 5 days if needed (for partial weeks)
-      while (currentWeek.days.length < 5) {
+      // Pad to the week length if needed (for partial weeks)
+      while (currentWeek.days.length < weekLength) {
         currentWeek.days.push({ date: null })
       }
       weeks.push(currentWeek)
@@ -491,8 +496,9 @@ const expandedMonthWeekdays = computed(() => {
     }
 
     // Add padding for the first week if it doesn't start on Monday
-    if (weeks.length === 0 && currentWeek.days.length === 0 && dayOfWeek > 1) {
-      for (let i = 1; i < dayOfWeek; i++) {
+    if (weeks.length === 0 && currentWeek.days.length === 0 && dayOfWeek !== 1) {
+      const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+      for (let i = 0; i < offset; i++) {
         currentWeek.days.push({ date: null })
       }
     }
@@ -513,11 +519,17 @@ const expandedMonthWeekdays = computed(() => {
       currentWeek.week_gross_pnl += dayData.gross_pnl
       currentWeek.weekRValue += dayData.rValue || 0
     }
+
+    if (expandedMonthShowsWeekends.value && dayOfWeek === 0) {
+      weeks.push(currentWeek)
+      currentWeek = { days: [], weekPnl: 0, week_gross_pnl: 0, weekRValue: 0 }
+    }
   }
 
   // Add any remaining days as the last week
   if (currentWeek.days.length > 0) {
-    while (currentWeek.days.length < 5) {
+    const weekLength = expandedMonthShowsWeekends.value ? 7 : 5
+    while (currentWeek.days.length < weekLength) {
       currentWeek.days.push({ date: null })
     }
     weeks.push(currentWeek)
@@ -525,6 +537,24 @@ const expandedMonthWeekdays = computed(() => {
 
   return weeks
 })
+
+// Forex and crypto close on Saturdays/Sundays. Hiding those days would make the
+// month total disagree with the visible cells, so show them when they have trades.
+const expandedMonthShowsWeekends = computed(() => {
+  if (!expandedMonth.value) return false
+  const monthStart = startOfMonth(expandedMonth.value)
+  const monthEnd = endOfMonth(expandedMonth.value)
+  return eachDayOfInterval({ start: monthStart, end: monthEnd }).some(date => {
+    const dow = getDay(date)
+    return (dow === 0 || dow === 6) && getCalendarDataForDate(date).trades > 0
+  })
+})
+
+const expandedMonthDayLabels = computed(() =>
+  expandedMonthShowsWeekends.value
+    ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+)
 
 const selectedDayContributions = computed(() => dayContributions.value)
 
