@@ -84,14 +84,17 @@ function register(overlay) {
   open.set(overlay, { opener })
   lockScroll()
   const panel = panelOf(overlay)
-  // Let the component render its contents first.
-  requestAnimationFrame(() => {
-    if (!overlay.isConnected) return
+  const focusIn = () => {
+    if (!overlay.isConnected || !open.has(overlay)) return
     if (panel.contains(document.activeElement)) return
     const target = panel.querySelector(FOCUSABLE) || panel
     if (target === panel && !panel.hasAttribute('tabindex')) panel.setAttribute('tabindex', '-1')
     target.focus({ preventScroll: true })
-  })
+  }
+  // Focus now when the panel already has content, and again after a frame
+  // for components that render their controls asynchronously.
+  focusIn()
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focusIn)
 }
 
 function unregister(overlay) {

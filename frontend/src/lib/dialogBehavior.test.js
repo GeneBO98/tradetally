@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { installDialogBehavior } from './dialogBehavior'
 
-function flush() { return new Promise(r => setTimeout(r, 30)) }
+// MutationObserver callbacks run as microtasks; give slower CI runners a
+// generous margin beyond that.
+function flush() { return new Promise(r => setTimeout(r, 80)) }
 
 describe('dialogBehavior', () => {
   let stop
