@@ -62,7 +62,7 @@
                   v-model="column.visible"
                   @change="updateColumns"
                   :disabled="isRequiredColumn(column.key)"
-                  class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded disabled:opacity-50"
+                  class="checkbox"
                 />
                 
                 <!-- Column Name -->

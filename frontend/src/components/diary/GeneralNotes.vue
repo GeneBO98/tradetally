@@ -41,7 +41,7 @@
                     <div class="flex items-center space-x-2 ml-4">
                         <button
                             @click="editNote(note)"
-                            class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            class="btn-ghost btn-sm"
                             title="Edit"
                         >
                             <PencilIcon class="w-4 h-4" />

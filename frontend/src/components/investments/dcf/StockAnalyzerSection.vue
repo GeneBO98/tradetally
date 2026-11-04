@@ -93,7 +93,7 @@
           <input
             type="checkbox"
             v-model="showAllSymbols"
-            class="rounded text-primary-700 focus:ring-primary-500 mr-2"
+            class="checkbox mr-2"
           />
           Show all symbols
         </label>
@@ -209,7 +209,7 @@
               type="radio"
               v-model="selectedWatchlistId"
               :value="watchlist.id"
-              class="text-primary-700 focus:ring-primary-500"
+              class="radio"
             />
             <div class="ml-3">
               <span class="font-medium text-gray-900 dark:text-white">{{ watchlist.name }}</span>
@@ -302,7 +302,7 @@
               <input
                 type="checkbox"
                 v-model="alertForm.email_enabled"
-                class="rounded text-primary-700 focus:ring-primary-500 mr-2"
+                class="checkbox mr-2"
               />
               Email notification
             </label>
@@ -310,7 +310,7 @@
               <input
                 type="checkbox"
                 v-model="alertForm.browser_enabled"
-                class="rounded text-primary-700 focus:ring-primary-500 mr-2"
+                class="checkbox mr-2"
               />
               Browser notification
             </label>
@@ -318,7 +318,7 @@
               <input
                 type="checkbox"
                 v-model="alertForm.repeat_enabled"
-                class="rounded text-primary-700 focus:ring-primary-500 mr-2"
+                class="checkbox mr-2"
               />
               Repeat (re-trigger after it fires)
             </label>

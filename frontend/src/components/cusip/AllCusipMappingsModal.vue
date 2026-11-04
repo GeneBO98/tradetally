@@ -95,7 +95,7 @@
                 <div class="px-4 sm:px-6 pb-4">
                     <!-- Loading State -->
                     <div
-                        v-if="loading"
+                        v-if="initialLoading"
                         class="flex items-center justify-center py-12"
                     >
                         <div
@@ -497,7 +497,8 @@ const loadMappings = async (page = 1) => {
     } catch (error) {
         console.error("Error loading mappings:", error);
     } finally {
-        loading.value = false;
+        loading.value = false
+        initialLoading.value = false;
         console.log("loadMappings completed, loading:", loading.value);
     }
 };

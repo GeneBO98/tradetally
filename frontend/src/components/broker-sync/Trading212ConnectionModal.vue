@@ -8,7 +8,7 @@
           <h3 class="modal-title">Connect Trading 212</h3>
           <button
             type="button"
-            class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+            class="btn-ghost btn-sm"
             aria-label="Close"
             @click="emit('close')"
           >
@@ -20,7 +20,7 @@
 
         <div class="p-6">
           <div class="callout-info mb-6">
-            <h4 class="mb-2 text-sm font-medium text-primary-800 dark:text-primary-300">Setup instructions</h4>
+            <h4 class="heading-sub mb-2 text-primary-800 dark:text-primary-300">Setup instructions</h4>
             <ol class="list-inside list-decimal space-y-2 text-sm text-primary-700 dark:text-primary-400">
               <li>Open Trading 212 and go to your account settings.</li>
               <li>Create an API key pair for the account you want to sync.</li>

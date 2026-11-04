@@ -45,7 +45,7 @@
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Open trades are included with their full execution history. Leave blank for all history.</p>
       </div>
       <label class="flex items-center gap-2 text-sm">
-        <input v-model="form.auto_sync_enabled" type="checkbox" class="rounded text-primary-700 focus:ring-primary-500" :disabled="loading" />
+        <input v-model="form.auto_sync_enabled" type="checkbox" class="checkbox" :disabled="loading" />
         Sync automatically each day
       </label>
       <div v-if="form.auto_sync_enabled">

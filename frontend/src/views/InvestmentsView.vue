@@ -636,7 +636,7 @@
                                                 v-else
                                                 @click="saveTargetAllocation(position)"
                                                 :disabled="targetSaving"
-                                                class="text-xs text-primary-700 hover:text-primary-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                class="btn-link"
                                             >
                                                 Save
                                             </button>
@@ -1093,7 +1093,7 @@
                                         <input
                                             v-model="portfolioPreferencesForm.alertsEnabled"
                                             type="checkbox"
-                                            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                                            class="checkbox mt-0.5"
                                         />
                                         <span class="text-xs text-gray-700 dark:text-gray-300">
                                             Send drift and drawdown alerts to Notifications
@@ -1451,7 +1451,7 @@
                             type="radio"
                             v-model="selectedWatchlistId"
                             :value="watchlist.id"
-                            class="text-primary-700 focus:ring-primary-500"
+                            class="radio"
                         />
                         <div class="ml-3">
                             <span

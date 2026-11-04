@@ -221,7 +221,7 @@
     @apply fixed inset-0 bg-gray-900/50 dark:bg-gray-950/60 transition-opacity;
   }
   .modal-panel {
-    @apply relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-500/60 dark:shadow-2xl;
+    @apply relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 dark:shadow-2xl;
     animation: tt-modal-in 180ms ease-out;
   }
   /* One entrance for every dialog, hand-rolled or BaseModal. */
@@ -309,6 +309,16 @@
     @apply badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300;
   }
 
+  /* ---- Checkbox / radio ---------------------------------------------
+     Native controls tinted with the accent and sized to the 16px grid;
+     wrap in a label so the hit area reaches 44px. */
+  .checkbox {
+    @apply h-4 w-4 shrink-0 rounded border-gray-300 text-primary-700 focus:ring-primary-500 focus:ring-offset-0 dark:border-gray-500 dark:bg-gray-900 dark:checked:bg-primary-600;
+  }
+  .radio {
+    @apply h-4 w-4 shrink-0 border-gray-300 text-primary-700 focus:ring-primary-500 focus:ring-offset-0 dark:border-gray-500 dark:bg-gray-900;
+  }
+
   /* ---- Toggle switch ------------------------------------------------
      `switch` is the track; add `switch-on` when checked. The knob is a
      child span with `switch-knob` (translate-x-5 when on). */
@@ -349,7 +359,7 @@
 
   /* Brand tagline on auth pages. */
   .brand-tagline {
-    @apply text-xl sm:text-2xl md:text-3xl font-bold uppercase tracking-wide text-primary-600 dark:text-primary-400 whitespace-nowrap;
+    @apply text-xl sm:text-2xl md:text-3xl font-bold uppercase tracking-wide text-primary-700 dark:text-primary-400 whitespace-nowrap;
   }
 
   /* Horizontal scroll fade affordance. Soft edge shadows appear ONLY when the
@@ -508,9 +518,8 @@
 
   .table-responsive th,
   .table-responsive td {
-    @apply px-2 py-2;
+    @apply px-3 py-2;
     @apply sm:px-4 sm:py-3;
-    @apply lg:px-6 lg:py-4;
   }
 
   /* Hide columns progressively on smaller screens */
@@ -544,13 +553,13 @@
 
   /* Orange glow on hero P&L number in dark mode (and subtle in light). */
   .hero-glow-positive {
-    text-shadow: 0 0 24px rgba(21, 128, 61, 0.25);
+    text-shadow: 0 0 24px rgba(21, 128, 61, 0.25); /* success */
   }
   .dark .hero-glow-positive {
-    text-shadow: 0 0 32px rgba(34, 197, 94, 0.45);
+    text-shadow: 0 0 32px rgba(74, 222, 128, 0.4); /* green-400, the dark-mode gain text */
   }
   .hero-glow-negative {
-    text-shadow: 0 0 24px rgba(220, 38, 38, 0.2);
+    text-shadow: 0 0 24px rgba(220, 38, 38, 0.2); /* danger */
   }
   .dark .hero-glow-negative {
     text-shadow: 0 0 32px rgba(248, 113, 113, 0.4);

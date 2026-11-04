@@ -336,7 +336,7 @@
                   <div class="flex items-center space-x-2 ml-2">
                     <button
                       @click.stop="editAccount(account)"
-                      class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      class="btn-ghost btn-sm"
                       title="Edit account"
                     >
                       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -84,7 +84,7 @@
                                 class="callout-success"
                             >
                                 <h4
-                                    class="text-sm font-medium text-green-800 dark:text-green-300"
+                                    class="heading-sub text-green-800 dark:text-green-300"
                                 >
                                     Winners Hold Time
                                 </h4>
@@ -109,7 +109,7 @@
                                 class="callout-danger"
                             >
                                 <h4
-                                    class="text-sm font-medium text-red-800 dark:text-red-300"
+                                    class="heading-sub text-red-800 dark:text-red-300"
                                 >
                                     Losers Hold Time
                                 </h4>
@@ -134,7 +134,7 @@
                                 class="callout-info"
                             >
                                 <h4
-                                    class="text-sm font-medium text-primary-800 dark:text-primary-300"
+                                    class="heading-sub text-primary-800 dark:text-primary-300"
                                 >
                                     Hold Time Ratio
                                 </h4>

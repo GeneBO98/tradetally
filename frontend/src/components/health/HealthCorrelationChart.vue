@@ -32,7 +32,7 @@
               type="checkbox"
               v-model="removeOutliers"
               @change="updateChart"
-              class="mr-2 rounded border-gray-300 dark:border-gray-600 text-primary-700 focus:ring-primary-500"
+              class="checkbox mr-2"
             />
             Remove Outliers
           </label>

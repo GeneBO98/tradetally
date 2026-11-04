@@ -43,7 +43,7 @@
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center">
               <DocumentTextIcon class="w-5 h-5 text-primary-700 dark:text-primary-400 mr-2" />
-              <h3 class="text-sm font-medium text-primary-900 dark:text-primary-200">Use a Template</h3>
+              <h3 class="heading-sub text-primary-900 dark:text-primary-200">Use a Template</h3>
               <span
                 v-if="selectedTemplateName"
                 class="ml-2 text-xs text-primary-700 dark:text-primary-300"
@@ -158,7 +158,7 @@
                   type="radio"
                   v-model="form.marketBias"
                   value="bullish"
-                  class="form-radio text-green-700 dark:text-green-400"
+                  class="radio"
                 />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
                   <ArrowTrendingUpIcon class="w-4 h-4 inline mr-1 text-green-700 dark:text-green-400" />
@@ -170,7 +170,7 @@
                   type="radio"
                   v-model="form.marketBias"
                   value="bearish"
-                  class="form-radio text-red-600 dark:text-red-400"
+                  class="radio"
                 />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
                   <ArrowTrendingDownIcon class="w-4 h-4 inline mr-1 text-red-600 dark:text-red-400" />
@@ -182,7 +182,7 @@
                   type="radio"
                   v-model="form.marketBias"
                   value="neutral"
-                  class="form-radio text-gray-600"
+                  class="radio"
                 />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
                   <MinusIcon class="w-4 h-4 inline mr-1 text-gray-600" />
@@ -194,7 +194,7 @@
                   type="radio"
                   v-model="form.marketBias"
                   value=""
-                  class="form-radio text-gray-400"
+                  class="radio"
                 />
                 <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">No bias</span>
               </label>
@@ -451,7 +451,7 @@
                 <button
                   type="button"
                   @click="removeTag(index)"
-                  class="ml-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                  class="btn-ghost btn-sm ml-2"
                 >
                   <XMarkIcon class="w-3 h-3" />
                 </button>
@@ -478,7 +478,7 @@
                   type="radio"
                   v-model="form.followedPlan"
                   :value="true"
-                  class="form-radio text-green-700 dark:text-green-400"
+                  class="radio"
                 />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Yes</span>
               </label>
@@ -487,7 +487,7 @@
                   type="radio"
                   v-model="form.followedPlan"
                   :value="false"
-                  class="form-radio text-red-600 dark:text-red-400"
+                  class="radio"
                 />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">No</span>
               </label>
@@ -496,7 +496,7 @@
                   type="radio"
                   v-model="form.followedPlan"
                   :value="null"
-                  class="form-radio text-gray-400"
+                  class="radio"
                 />
                 <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">Not applicable</span>
               </label>

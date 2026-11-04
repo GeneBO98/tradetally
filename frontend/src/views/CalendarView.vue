@@ -228,12 +228,12 @@
             <div class="flex items-center space-x-2">
               <button
                 @click="isModalExpanded = !isModalExpanded"
-                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                class="btn-ghost btn-sm"
                 :title="isModalExpanded ? 'Collapse' : 'Expand'">
                 <ArrowsPointingInIcon v-if="isModalExpanded" class="h-5 w-5" />
                 <ArrowsPointingOutIcon v-else class="h-5 w-5" />
               </button>
-              <button @click="selectedDay = null; isModalExpanded = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <button @click="selectedDay = null; isModalExpanded = false" class="btn-ghost btn-sm">
                 <XMarkIcon class="h-6 w-6" />
               </button>
             </div>

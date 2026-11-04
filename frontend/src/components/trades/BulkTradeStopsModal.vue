@@ -5,7 +5,7 @@
       Enter a stop for each trade you want to change. Blank fields keep their current stop.
     </p>
     <label class="mb-4 flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
-      <input v-model="applyDefaults" type="checkbox" class="rounded border-gray-300 text-primary-700 focus:ring-primary-500" />
+      <input v-model="applyDefaults" type="checkbox" class="checkbox" />
       Fill remaining missing stops from my default risk setting
     </label>
     <div class="max-h-[55vh] overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">

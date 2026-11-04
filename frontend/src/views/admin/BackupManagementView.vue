@@ -50,7 +50,7 @@
                         class="callout-warning mb-4"
                     >
                         <h4
-                            class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
+                            class="heading-sub text-yellow-800 dark:text-yellow-300"
                         >
                             Backup Warnings
                         </h4>
@@ -71,7 +71,7 @@
                         class="callout-warning mb-4"
                     >
                         <h4
-                            class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
+                            class="heading-sub text-yellow-800 dark:text-yellow-300"
                         >
                             Storage Warnings
                         </h4>
@@ -371,7 +371,7 @@
                                                 )
                                             "
                                             :disabled="downloading[backup.id]"
-                                            class="text-primary-700 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300 disabled:opacity-50"
+                                            class="btn-link"
                                         >
                                             {{
                                                 downloading[backup.id]
@@ -592,7 +592,7 @@
                                         id="clear-existing"
                                         v-model="clearExisting"
                                         type="checkbox"
-                                        class="focus:ring-primary-500 h-4 w-4 text-primary-700 border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded"
+                                        class="checkbox"
                                     />
                                 </div>
                                 <div class="ml-3 text-sm">
@@ -620,7 +620,7 @@
                                         id="overwrite-users"
                                         v-model="overwriteUsers"
                                         type="checkbox"
-                                        class="focus:ring-primary-500 h-4 w-4 text-primary-700 border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded"
+                                        class="checkbox"
                                     />
                                 </div>
                                 <div class="ml-3 text-sm">

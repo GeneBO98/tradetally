@@ -145,7 +145,7 @@
         <!-- Action item -->
         <div v-if="report.action_item" class="card border-primary-200 bg-primary-50/60 dark:border-primary-900/50 dark:bg-primary-900/10">
           <div class="card-body">
-            <h3 class="text-sm font-semibold uppercase tracking-wider text-primary-700 dark:text-primary-300">This week's action item</h3>
+            <h3 class="heading-sub uppercase tracking-wider text-primary-700 dark:text-primary-300">This week's action item</h3>
             <p class="mt-2 text-sm text-gray-900 dark:text-gray-100">{{ report.action_item }}</p>
           </div>
         </div>

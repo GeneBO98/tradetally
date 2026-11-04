@@ -6,7 +6,7 @@
       <div class="px-4 py-3.5">
         <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">Total P&L</dt>
         <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="pnlClass(overview.total_pnl)">
-          {{ formatCurrency(overview.total_pnl) }}
+          {{ formatSignedCurrency(overview.total_pnl) }}
         </dd>
       </div>
 
@@ -33,7 +33,7 @@
       <div class="px-4 py-3.5">
         <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">{{ calculationMethod }} Trade</dt>
         <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="pnlClass(overview.avg_pnl)">
-          {{ formatCurrency(overview.avg_pnl) }}
+          {{ formatSignedCurrency(overview.avg_pnl) }}
         </dd>
       </div>
 
@@ -103,7 +103,7 @@ defineProps({
   calculationMethod: { type: String, default: 'Average' }
 })
 
-const { formatCurrency } = useCurrencyFormatter()
+const { formatCurrency, formatSignedCurrency } = useCurrencyFormatter()
 
 // Local display-only toggle: flip the R card between Average R and Total R.
 const rMultipleFlipped = ref(false)

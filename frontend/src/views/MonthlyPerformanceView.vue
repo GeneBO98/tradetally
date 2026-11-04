@@ -78,7 +78,7 @@
                                         type="checkbox"
                                         :checked="selectedStrategies.length === 0"
                                         @change="selectedStrategies = []"
-                                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                                        class="checkbox"
                                     />
                                     <span
                                         class="ml-3 text-sm text-gray-900 dark:text-white"
@@ -102,7 +102,7 @@
                                             type="checkbox"
                                             :value="strategy"
                                             v-model="selectedStrategies"
-                                            class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                                            class="checkbox"
                                         />
                                         <span
                                             class="ml-3 text-sm text-gray-900 dark:text-white"

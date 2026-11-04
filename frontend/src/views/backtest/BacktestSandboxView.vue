@@ -6,7 +6,7 @@
         <button
           v-if="mode !== 'setup'"
           @click="exitSession"
-          class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          class="btn-ghost btn-sm"
           title="Back to session setup"
         >
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -251,7 +251,7 @@
             </div>
             <span
               v-if="isFuturesSession"
-              class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 mb-2.5"
+              class="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 mb-2.5"
             >
               {{ sessionData.symbol }} &middot; ${{ sessionData.multiplier }}/pt
             </span>

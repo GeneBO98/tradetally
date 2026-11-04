@@ -13,7 +13,7 @@
           </h3>
           <button
             @click="emit('close')"
-            class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+            class="btn-ghost btn-sm"
           >
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -25,7 +25,7 @@
         <div class="p-6">
           <!-- Instructions -->
           <div class="callout-info mb-6">
-            <h4 class="text-sm font-medium text-primary-800 dark:text-primary-300 mb-2">Setup Instructions</h4>
+            <h4 class="heading-sub text-primary-800 dark:text-primary-300 mb-2">Setup Instructions</h4>
             <ol class="text-sm text-primary-700 dark:text-primary-400 space-y-2 list-decimal list-inside">
               <li>Log in to <a href="https://www.interactivebrokers.com/sso/Login" target="_blank" class="underline font-medium">IBKR Client Portal</a></li>
               <li>Navigate to <strong>Performance & Reports > Flex Queries</strong> (labeled <strong>Reporting</strong> in some accounts)</li>

@@ -41,7 +41,7 @@
                     </svg>
                 </div>
                 <div>
-                    <h4 class="text-sm font-medium text-red-800">
+                    <h4 class="heading-sub text-red-800">
                         Unable to load tick data
                     </h4>
                     <p class="text-sm text-red-700 dark:text-red-400 mt-1">{{ error }}</p>
@@ -170,7 +170,7 @@
                 class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4"
             >
                 <h4
-                    class="text-sm font-medium text-primary-900 dark:text-primary-200 mb-2"
+                    class="heading-sub text-primary-900 dark:text-primary-200 mb-2"
                 >
                     Key Insights
                 </h4>

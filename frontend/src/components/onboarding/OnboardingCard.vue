@@ -45,7 +45,7 @@
             </button>
             <button
               type="button"
-              class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+              class="btn-ghost btn-sm"
               @click="handleSkip"
             >
               Skip tour

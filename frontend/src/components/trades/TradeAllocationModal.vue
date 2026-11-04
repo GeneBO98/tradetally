@@ -19,7 +19,7 @@
         </header>
 
         <div class="px-6 py-5">
-          <div v-if="loading" class="flex justify-center py-12">
+          <div v-if="initialLoading" class="flex justify-center py-12">
             <div class="spinner spinner-lg"></div>
           </div>
 
@@ -126,6 +126,7 @@ const emit = defineEmits(['close', 'saved'])
 const tradesStore = useTradesStore()
 
 const loading = ref(false)
+const initialLoading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const mode = ref('percentage')
@@ -250,6 +251,7 @@ async function loadAllocation() {
     error.value = err?.response?.data?.error || 'Unable to load this trade allocation'
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

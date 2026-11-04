@@ -76,7 +76,7 @@
                 <label class="flex cursor-pointer rounded-md border p-2 text-sm" :class="optionClass(item, index, 'import_as_short')">
                   <input
                     v-model="decisions[reviewKey(item, index)]"
-                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
+                    class="radio mt-0.5"
                     type="radio"
                     value="import_as_short"
                   >
@@ -89,7 +89,7 @@
                 <label class="flex cursor-pointer rounded-md border p-2 text-sm" :class="optionClass(item, index, 'import_as_close_only')">
                   <input
                     v-model="decisions[reviewKey(item, index)]"
-                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
+                    class="radio mt-0.5"
                     type="radio"
                     value="import_as_close_only"
                   >
@@ -102,7 +102,7 @@
                 <label class="flex cursor-pointer rounded-md border p-2 text-sm" :class="optionClass(item, index, 'import_as_gifted_shares')">
                   <input
                     v-model="decisions[reviewKey(item, index)]"
-                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
+                    class="radio mt-0.5"
                     type="radio"
                     value="import_as_gifted_shares"
                   >
@@ -115,7 +115,7 @@
                 <label class="flex cursor-pointer rounded-md border p-2 text-sm" :class="optionClass(item, index, 'ignore')">
                   <input
                     v-model="decisions[reviewKey(item, index)]"
-                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
+                    class="radio mt-0.5"
                     type="radio"
                     value="ignore"
                   >

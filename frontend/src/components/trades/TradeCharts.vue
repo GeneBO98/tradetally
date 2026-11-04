@@ -140,7 +140,7 @@
                         </a>
                         <button
                             @click="copyChartUrl(chart)"
-                            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 flex-shrink-0"
+                            class="btn-ghost btn-sm flex-shrink-0"
                             title="Copy link"
                         >
                             <svg

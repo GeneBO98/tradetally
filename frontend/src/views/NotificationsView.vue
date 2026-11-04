@@ -74,7 +74,7 @@
                 type="checkbox"
                 :checked="selectedNotifications.includes(notification.id)"
                 @change="toggleNotificationSelection(notification.id)"
-                class="h-4 w-4 text-primary-700 border-gray-300 rounded focus:ring-primary-500"
+                class="checkbox"
               />
             </div>
             <!-- Icon -->

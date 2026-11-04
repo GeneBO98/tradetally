@@ -43,7 +43,7 @@
                 AI Analysis
                 <span
                   v-if="showProLock"
-                  class="ml-1.5 px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                  class="badge ml-1.5 bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
                 >Pro</span>
               </button>
             </div>

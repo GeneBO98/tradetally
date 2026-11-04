@@ -60,7 +60,7 @@
                                 v-model="modalAlert.checkboxChecked"
                                 type="checkbox"
                                 :disabled="modalAlert.isSubmitting"
-                                class="mt-0.5 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                                class="checkbox mt-0.5"
                             />
                             <span>{{ modalAlert.checkboxLabel }}</span>
                         </label>

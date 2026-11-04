@@ -40,7 +40,7 @@
     </div>
 
     <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center py-12">
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="spinner spinner-lg"></div>
     </div>
 
@@ -95,6 +95,7 @@ import api from '@/services/api'
 // Data
 const analytics = ref(null)
 const loading = ref(false)
+const initialLoading = ref(true)
 const error = ref(null)
 const enabled = ref(false)
 const rawResponse = ref(null)
@@ -143,6 +144,7 @@ async function fetchAnalytics() {
     }
   } finally {
     loading.value = false
+    initialLoading.value = false
     console.log('[STATS] Fetch complete. State:', {
       loading: loading.value,
       error: error.value,

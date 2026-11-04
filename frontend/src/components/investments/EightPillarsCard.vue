@@ -91,7 +91,7 @@
         </button>
         <button
           @click="$emit('add-to-watchlist', analysis)"
-          class="text-sm text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+          class="btn-ghost btn-sm"
         >
           Add to Watchlist
         </button>

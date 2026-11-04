@@ -19,7 +19,7 @@
             </svg>
           </div>
           <div class="ml-3 flex-1">
-            <h3 class="text-lg font-medium text-red-800 dark:text-red-400">Revenge Trading Alert</h3>
+            <h3 class="heading-card text-red-800 dark:text-red-400">Revenge Trading Alert</h3>
             <p class="text-red-700 dark:text-red-300 mt-1">{{ behavioralAlert.message }}</p>
             <div v-if="behavioralAlert.recommendation" class="mt-2">
               <p class="text-sm text-red-600 dark:text-red-400">
@@ -55,7 +55,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
           </svg>
         </div>
-        <h3 class="text-lg font-medium text-red-800 dark:text-red-400 mb-2">Trading Temporarily Blocked</h3>
+        <h3 class="heading-card text-red-800 dark:text-red-400 mb-2">Trading Temporarily Blocked</h3>
         <p class="text-red-700 dark:text-red-300 mb-4">
           Based on your recent trading patterns, we recommend taking a break to avoid emotional decision-making.
         </p>
@@ -1226,7 +1226,7 @@
             id="isPublic"
             v-model="form.isPublic"
             type="checkbox"
-            class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
+            class="checkbox"
           />
           <label for="isPublic" class="ml-2 block text-sm text-gray-900 dark:text-white">
             Make this trade public

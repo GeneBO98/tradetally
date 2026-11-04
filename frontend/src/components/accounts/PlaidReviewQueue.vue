@@ -27,7 +27,7 @@
         </div>
         <button
           type="button"
-          class="inline-flex items-center gap-1.5 text-xs font-medium text-primary-700 hover:text-primary-800 disabled:opacity-50 dark:text-primary-400 dark:hover:text-primary-300"
+          class="btn-link"
           :disabled="!accountId || store.reviewLoading"
           @click="refresh"
         >
@@ -170,7 +170,7 @@
           <input
             v-if="canAct(item)"
             type="checkbox"
-            class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+            class="checkbox"
             :checked="selectedIds.has(item.id)"
             :aria-label="`Select ${item.description}`"
             @click.stop="toggleRowSelection(item, (currentPage - 1) * PAGE_SIZE + pageIndex, $event)"
@@ -398,7 +398,7 @@
               type="radio"
               value="single"
               v-model="confirmState.scope"
-              class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
+              class="radio mt-0.5"
             />
             <div class="flex-1">
               <div class="text-sm font-medium text-gray-900 dark:text-white">
@@ -419,7 +419,7 @@
               type="radio"
               value="matching"
               v-model="confirmState.scope"
-              class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
+              class="radio mt-0.5"
             />
             <div class="flex-1">
               <div class="text-sm font-medium text-gray-900 dark:text-white">

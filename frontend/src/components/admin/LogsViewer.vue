@@ -28,7 +28,7 @@
           <input
             type="checkbox"
             v-model="autoRefresh"
-            class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+            class="checkbox"
           />
           <span class="text-gray-700 dark:text-gray-300">Auto-refresh (5s)</span>
         </label>
@@ -284,7 +284,7 @@ function highlightSearch(message) {
 
   const query = searchQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const regex = new RegExp(`(${query})`, 'gi')
-  return escaped.replace(regex, '<span class="bg-yellow-400 text-gray-900 px-1 rounded">$1</span>')
+  return escaped.replace(regex, '<span class="badge bg-yellow-400 text-gray-900">$1</span>')
 }
 
 // Debounced search

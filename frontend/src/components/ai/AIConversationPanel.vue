@@ -15,7 +15,7 @@
             Model: {{ currentModelLabel }}
           </p>
           <p v-if="aiStore.hasActiveSession && groupContextLabel" class="text-xs mt-0.5">
-            <span class="px-1.5 py-0.5 font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap">
+            <span class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400">
               {{ groupContextLabel }}
             </span>
           </p>

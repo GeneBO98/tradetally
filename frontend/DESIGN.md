@@ -13,6 +13,8 @@ the rules that can be checked mechanically.
 | Buttons | `btn-primary`, `btn-secondary`, `btn-tint`, `btn-danger`, `btn-yellow` (caution), `btn-ghost`, `btn-icon`, `btn-icon-outline`; add `btn-sm` for compact |
 | Toggle group | `segmented` wrapper with `segment` buttons; `segment-active` on the selected one |
 | On/off switch | `switch` track + `switch-knob` span; add `switch-on` when checked |
+| Checkbox / radio | `checkbox` / `radio` on the native input, wrapped in a label |
+| Text-link button | `btn-link` (accent) or `btn-ghost btn-sm` (neutral); never a bare `<button>` |
 | Inputs | `input`; add `input-sm` for compact editors |
 | Status chip | `badge-neutral`, `badge-primary`, `badge-success`, `badge-danger`, `badge-warning` |
 | Table header | `<thead class="table-head">`, `<th class="table-th">` |

@@ -262,7 +262,7 @@
                                 </svg>
                                 <div>
                                     <h4
-                                        class="text-sm font-medium text-green-800 dark:text-green-300"
+                                        class="heading-sub text-green-800 dark:text-green-300"
                                     >
                                         2FA is enabled
                                     </h4>
@@ -315,7 +315,7 @@
                                 </svg>
                                 <div>
                                     <h4
-                                        class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
+                                        class="heading-sub text-yellow-800 dark:text-yellow-300"
                                     >
                                         2FA is not enabled
                                     </h4>
@@ -446,7 +446,7 @@
                             </div>
                             <span
                                 :class="getSubscriptionStatusClass( subscription.subscription.status, )"
-                                class="px-3 py-1 rounded-full text-sm font-medium"
+                                class="badge"
                             >
                                 {{
                                     formatSubscriptionStatus(
@@ -513,7 +513,7 @@
                             <div class="flex items-center justify-between">
                                 <div>
                                     <h4
-                                        class="text-sm font-medium text-primary-900 dark:text-primary-100"
+                                        class="heading-sub text-primary-900 dark:text-primary-100"
                                     >
                                         Pro Trial Active
                                     </h4>
@@ -1039,7 +1039,7 @@
             <div v-if="activeTab === 'profile'" class="card border-red-200 dark:border-red-800">
                 <div class="card-body">
                     <h3
-                        class="text-lg font-medium text-red-600 dark:text-red-400 mb-4"
+                        class="heading-card text-red-600 dark:text-red-400 mb-4"
                     >
                         Danger Zone
                     </h3>
@@ -1067,7 +1067,7 @@
                             </svg>
                             <div>
                                 <h4
-                                    class="text-sm font-medium text-red-800 dark:text-red-300"
+                                    class="heading-sub text-red-800 dark:text-red-300"
                                 >
                                     Warning
                                 </h4>
@@ -1252,7 +1252,7 @@
                             </svg>
                             <div>
                                 <h4
-                                    class="text-sm font-medium text-red-800 dark:text-red-300"
+                                    class="heading-sub text-red-800 dark:text-red-300"
                                 >
                                     Security Warning
                                 </h4>
@@ -1370,7 +1370,7 @@
                                         v-model="createApiKeyForm.permissions"
                                         type="checkbox"
                                         value="read"
-                                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
+                                        class="checkbox"
                                     />
                                     <label
                                         for="permRead"
@@ -1385,7 +1385,7 @@
                                         v-model="createApiKeyForm.permissions"
                                         type="checkbox"
                                         value="write"
-                                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
+                                        class="checkbox"
                                     />
                                     <label
                                         for="permWrite"
@@ -1403,7 +1403,7 @@
                                         v-model="createApiKeyForm.permissions"
                                         type="checkbox"
                                         value="admin"
-                                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
+                                        class="checkbox"
                                     />
                                     <label
                                         for="permAdmin"

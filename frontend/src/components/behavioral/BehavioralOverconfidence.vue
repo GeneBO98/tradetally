@@ -79,7 +79,7 @@
                                 class="callout-warning"
                             >
                                 <h4
-                                    class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
+                                    class="heading-sub text-yellow-800 dark:text-yellow-300"
                                 >
                                     Overconfidence Events
                                 </h4>
@@ -102,7 +102,7 @@
                                 class="callout-danger"
                             >
                                 <h4
-                                    class="text-sm font-medium text-red-800 dark:text-red-300"
+                                    class="heading-sub text-red-800 dark:text-red-300"
                                 >
                                     Avg Position Increase
                                 </h4>
@@ -126,7 +126,7 @@
                                 class="callout-warning"
                             >
                                 <h4
-                                    class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
+                                    class="heading-sub text-yellow-800 dark:text-yellow-300"
                                 >
                                     Performance Impact
                                 </h4>
@@ -173,7 +173,7 @@
                                 class="callout-info"
                             >
                                 <h4
-                                    class="text-sm font-medium text-primary-800 dark:text-primary-300"
+                                    class="heading-sub text-primary-800 dark:text-primary-300"
                                 >
                                     Success Rate
                                 </h4>
@@ -200,7 +200,7 @@
                             class="callout-info mb-6"
                         >
                             <h4
-                                class="text-lg font-medium text-primary-800 dark:text-primary-300 mb-3"
+                                class="heading-sub text-primary-800 dark:text-primary-300 mb-3"
                             >
                                 Win Streak Patterns
                             </h4>

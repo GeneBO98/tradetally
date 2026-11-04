@@ -18,7 +18,7 @@
 
     <div class="p-6">
       <!-- Loading State -->
-      <div v-if="loading" class="flex justify-center items-center h-80">
+      <div v-if="initialLoading" class="flex justify-center items-center h-80">
         <div class="spinner spinner-md"></div>
       </div>
 
@@ -62,6 +62,7 @@ const periods = [
 
 const chartContainer = ref(null)
 const loading = ref(false)
+const initialLoading = ref(true)
 const error = ref(null)
 const selectedPeriod = ref('1Y')
 let chart = null
@@ -85,11 +86,13 @@ async function loadChart() {
     if (!candles || candles.length === 0) {
       error.value = 'No chart data available for this symbol'
       loading.value = false
+      initialLoading.value = false
       return
     }
 
     // Set loading to false first so the container becomes visible
     loading.value = false
+    initialLoading.value = false
     
     // Wait for Vue to render the DOM after loading changes
     await nextTick()
@@ -115,6 +118,7 @@ async function loadChart() {
     console.error('Failed to load chart:', err)
     error.value = err.response?.data?.error || 'Failed to load chart data'
     loading.value = false
+    initialLoading.value = false
   }
 }
 

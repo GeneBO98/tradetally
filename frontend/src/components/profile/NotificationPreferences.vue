@@ -12,7 +12,7 @@
       </div>
 
       <!-- Loading State -->
-      <div v-if="loading" class="flex justify-center py-8">
+      <div v-if="initialLoading" class="flex justify-center py-8">
         <div class="spinner spinner-md"></div>
       </div>
 
@@ -278,6 +278,7 @@ const preferences = ref({
 })
 
 const loading = ref(false)
+const initialLoading = ref(true)
 const updating = ref(false)
 const error = ref(null)
 const updateStatus = ref(null)
@@ -295,6 +296,7 @@ async function fetchPreferences() {
     error.value = err.response?.data?.error || 'Failed to load notification preferences'
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

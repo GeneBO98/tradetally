@@ -151,7 +151,7 @@
       <div class="flex items-start">
         <ExclamationTriangleIcon class="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 mr-3 flex-shrink-0" />
         <div>
-          <h3 class="text-sm font-medium text-red-800 dark:text-red-200">
+          <h3 class="heading-sub text-red-800 dark:text-red-200">
             Analysis Failed
           </h3>
           <p class="text-sm text-red-700 dark:text-red-300 mt-1">

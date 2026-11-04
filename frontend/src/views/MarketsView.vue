@@ -139,7 +139,7 @@
                             <div class="mt-4 flex space-x-2">
                                 <button
                                     @click.stop="editWatchlist(watchlist)"
-                                    class="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 text-sm font-medium"
+                                    class="btn-ghost btn-sm"
                                 >
                                     Edit
                                 </button>
@@ -504,7 +504,7 @@
                                     >
                                         <button
                                             @click="editAlert(alert)"
-                                            class="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                                            class="btn-ghost btn-sm"
                                         >
                                             Edit
                                         </button>
@@ -618,7 +618,7 @@
                                 <input
                                     v-model="watchlistForm.is_default"
                                     type="checkbox"
-                                    class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                                    class="checkbox"
                                 />
                                 <span
                                     class="ml-2 text-sm text-gray-700 dark:text-gray-300"
@@ -760,7 +760,7 @@
                                     <input
                                         v-model="alertForm.email_enabled"
                                         type="checkbox"
-                                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                                        class="checkbox"
                                     />
                                     <span
                                         class="ml-2 text-sm text-gray-700 dark:text-gray-300"
@@ -771,7 +771,7 @@
                                     <input
                                         v-model="alertForm.browser_enabled"
                                         type="checkbox"
-                                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                                        class="checkbox"
                                     />
                                     <span
                                         class="ml-2 text-sm text-gray-700 dark:text-gray-300"
@@ -782,7 +782,7 @@
                                     <input
                                         v-model="alertForm.repeat_enabled"
                                         type="checkbox"
-                                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                                        class="checkbox"
                                     />
                                     <span
                                         class="ml-2 text-sm text-gray-700 dark:text-gray-300"

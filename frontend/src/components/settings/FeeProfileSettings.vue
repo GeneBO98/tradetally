@@ -72,7 +72,7 @@
                   <label class="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/60">
                     <input
                       type="checkbox"
-                      class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800"
+                      class="checkbox"
                       :value="account.id"
                       v-model="accountSelections[profile.id]"
                       @change="saveAssignments(profile)"
@@ -106,7 +106,7 @@
             <h4 class="heading-card">{{ editingId ? 'Edit fee profile' : 'Create fee profile' }}</h4>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Use one row for a broker-wide default, or add instrument-specific rows for exceptions.</p>
           </div>
-          <button type="button" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" @click="cancelForm">Cancel</button>
+          <button type="button" class="btn-ghost btn-sm" @click="cancelForm">Cancel</button>
         </div>
 
         <div class="mt-5 grid gap-4 md:grid-cols-2">
@@ -121,7 +121,7 @@
         </div>
 
         <label class="mt-5 flex items-start gap-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-900/60 dark:bg-yellow-950/20">
-          <input v-model="form.isZeroFee" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500" />
+          <input v-model="form.isZeroFee" type="checkbox" class="checkbox mt-0.5" />
           <span>
             <span class="block text-sm font-medium text-yellow-900 dark:text-yellow-100">Zero-fee profile</span>
             <span class="mt-0.5 block text-xs text-yellow-800 dark:text-yellow-200">Use for simulated accounts. This explicitly overrides legacy broker settings.</span>

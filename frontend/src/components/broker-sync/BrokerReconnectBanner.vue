@@ -8,7 +8,7 @@
       <div class="flex min-w-0 items-start gap-3">
         <ExclamationTriangleIcon class="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-600 dark:text-yellow-400" />
         <div>
-          <h2 class="text-sm font-semibold text-yellow-950 dark:text-yellow-100">
+          <h2 class="heading-sub text-yellow-950 dark:text-yellow-100">
             {{ alertTitle }}
           </h2>
           <p class="mt-1 text-sm text-yellow-800 dark:text-yellow-200">

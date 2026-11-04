@@ -55,7 +55,7 @@
                 </code>
                 <button
                   @click="copyToClipboard(client.client_id)"
-                  class="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  class="btn-ghost btn-sm ml-2"
                   title="Copy"
                 >
                   <ClipboardIcon class="w-4 h-4" />
@@ -178,15 +178,15 @@
             </label>
             <div class="space-y-2">
               <label class="flex items-center">
-                <input type="checkbox" v-model="selectedScopes" value="openid" class="form-checkbox" />
+                <input type="checkbox" v-model="selectedScopes" value="openid" class="checkbox" />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">openid - Basic identity</span>
               </label>
               <label class="flex items-center">
-                <input type="checkbox" v-model="selectedScopes" value="profile" class="form-checkbox" />
+                <input type="checkbox" v-model="selectedScopes" value="profile" class="checkbox" />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">profile - Profile information</span>
               </label>
               <label class="flex items-center">
-                <input type="checkbox" v-model="selectedScopes" value="email" class="form-checkbox" />
+                <input type="checkbox" v-model="selectedScopes" value="email" class="checkbox" />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">email - Email address</span>
               </label>
             </div>
@@ -221,7 +221,7 @@
               type="checkbox"
               v-model="newClient.isTrusted"
               id="trusted"
-              class="form-checkbox"
+              class="checkbox"
             />
             <label for="trusted" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
               Trusted application (skip consent screen)
@@ -267,7 +267,7 @@
               </code>
               <button
                 @click="copyToClipboard(createdClient.client_id)"
-                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                class="btn-ghost btn-sm"
               >
                 <ClipboardIcon class="w-5 h-5" />
               </button>
@@ -284,7 +284,7 @@
               </code>
               <button
                 @click="copyToClipboard(createdClient.client_secret)"
-                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                class="btn-ghost btn-sm"
               >
                 <ClipboardIcon class="w-5 h-5" />
               </button>

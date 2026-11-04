@@ -43,7 +43,7 @@
     <!-- Tab Content -->
     <div class="p-6">
       <!-- Loading State -->
-      <div v-if="loading" class="flex items-center justify-center py-12">
+      <div v-if="initialLoading" class="flex items-center justify-center py-12">
         <div class="spinner spinner-md"></div>
       </div>
 
@@ -130,6 +130,7 @@ const tabs = [
 const activeTab = ref('balance-sheet')
 const frequency = ref('annual')
 const loading = ref(false)
+const initialLoading = ref(true)
 const error = ref(null)
 
 const balanceSheetData = ref(null)
@@ -204,6 +205,7 @@ async function loadData() {
     error.value = err.response?.data?.error || 'Failed to load financial data'
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 </script>

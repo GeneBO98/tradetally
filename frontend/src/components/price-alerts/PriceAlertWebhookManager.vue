@@ -58,7 +58,7 @@
                 Send every triggered price alert to Slack, Discord, or a custom webhook endpoint. All destinations receive the <code class="text-gray-600 dark:text-gray-300">price_alert.triggered</code> event.
             </p>
 
-            <div v-if="loading" class="flex justify-center py-6">
+            <div v-if="initialLoading" class="flex justify-center py-6">
                 <div
                     class="spinner spinner-sm"
                 ></div>
@@ -279,7 +279,7 @@
                             <input
                                 v-model="form.isActive"
                                 type="checkbox"
-                                class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                                class="checkbox"
                             />
                             <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
                                 Destination is active
@@ -530,7 +530,8 @@ async function loadWebhooks() {
             error.response?.data?.error || "Failed to load webhook destinations";
         expanded.value = true;
     } finally {
-        loading.value = false;
+        loading.value = false
+        initialLoading.value = false;
     }
 }
 

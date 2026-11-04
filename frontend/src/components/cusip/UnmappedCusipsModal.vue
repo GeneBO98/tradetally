@@ -49,7 +49,7 @@
                 <div class="flex">
                   <ExclamationTriangleIcon class="h-5 w-5 text-yellow-400" />
                   <div class="ml-3">
-                    <h3 class="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                    <h3 class="heading-sub text-yellow-800 dark:text-yellow-200">
                       {{ unmappedCusips.length }} Unmapped CUSIP{{ unmappedCusips.length !== 1 ? 's' : '' }}
                     </h3>
                     <p class="mt-1 text-sm text-yellow-700 dark:text-yellow-300">
@@ -135,7 +135,7 @@
                             v-model="quickMapping.verified"
                             type="checkbox"
                             id="quick-verified"
-                            class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
+                            class="checkbox"
                           />
                           <label for="quick-verified" class="ml-2 block text-xs text-gray-700 dark:text-gray-300">
                             Mark as verified

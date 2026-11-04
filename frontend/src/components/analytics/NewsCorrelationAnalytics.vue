@@ -19,7 +19,7 @@
     </div>
 
     <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center py-12">
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="spinner spinner-lg"></div>
     </div>
 
@@ -306,7 +306,7 @@
             </div>
             <button
               @click="closePerformerDetails"
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              class="btn-ghost btn-sm"
             >
               <MdiIcon :icon="closeIcon" :size="24" />
             </button>
@@ -418,6 +418,7 @@ const closeIcon = mdiClose
 // Data
 const analytics = ref(null)
 const loading = ref(false)
+const initialLoading = ref(true)
 const error = ref(null)
 const enabled = ref(false)
 
@@ -459,6 +460,7 @@ async function fetchAnalytics() {
     }
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

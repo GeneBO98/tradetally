@@ -108,7 +108,7 @@
       <div role="dialog" aria-modal="true" class="modal-panel max-w-lg w-full mx-4 p-6">
         <div class="flex items-center justify-between mb-4">
           <h3 class="modal-title">Contact Support</h3>
-          <button @click="showSupportModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <button @click="showSupportModal = false" class="btn-ghost btn-sm">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>

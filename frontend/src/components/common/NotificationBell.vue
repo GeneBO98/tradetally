@@ -55,7 +55,7 @@
 
         <!-- Notifications List -->
         <div class="max-h-96 overflow-y-auto">
-          <div v-if="loading" class="p-4 text-center">
+          <div v-if="initialLoading" class="p-4 text-center">
             <div class="spinner spinner-sm mx-auto"></div>
             <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Loading notifications...</p>
           </div>
@@ -238,6 +238,7 @@ const rootRef = ref(null)
 const isOpen = ref(false)
 const notifications = ref([])
 const loading = ref(false)
+const initialLoading = ref(true)
 const markingAsRead = ref(false)
 const pollingDisabled = ref(false)
 const dismissingIds = ref(new Set())
@@ -340,6 +341,7 @@ const fetchNotifications = async () => {
     console.error('Error fetching notifications:', error)
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

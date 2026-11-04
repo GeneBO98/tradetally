@@ -27,7 +27,7 @@
         </div>
         <button
           type="button"
-          class="shrink-0 text-xs font-semibold text-primary-700 hover:text-primary-800 disabled:opacity-50 dark:text-primary-300 dark:hover:text-primary-200"
+          class="btn-link shrink-0"
           :disabled="loading"
           @click="$emit('refresh')"
         >

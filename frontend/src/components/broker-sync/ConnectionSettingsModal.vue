@@ -22,7 +22,7 @@
                     </h3>
                     <button
                         @click="emit('close')"
-                        class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+                        class="btn-ghost btn-sm"
                     >
                         <svg
                             class="w-6 h-6"
@@ -202,7 +202,7 @@
                             </div>
                             <button
                                 type="button"
-                                class="text-sm font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 disabled:opacity-50"
+                                class="btn-link"
                                 :disabled="accountsLoading"
                                 @click="emit('refresh-accounts')"
                             >
@@ -234,7 +234,7 @@
                                 <div class="flex items-center gap-3 min-w-0">
                                     <input
                                         type="checkbox"
-                                        class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                                        class="checkbox"
                                         :checked="!isAccountExcluded(account.account_identifier)"
                                         @change="setAccountIncluded(account.account_identifier, $event.target.checked)"
                                     />

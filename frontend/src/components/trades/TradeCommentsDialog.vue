@@ -23,7 +23,7 @@
                         </h3>
                         <button
                             @click="closeDialog"
-                            class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+                            class="btn-ghost btn-sm"
                         >
                             <svg
                                 class="h-6 w-6"
@@ -43,7 +43,7 @@
 
                     <!-- Comments List -->
                     <div class="mt-4 max-h-96 overflow-y-auto">
-                        <div v-if="loading" class="text-center py-4">
+                        <div v-if="initialLoading" class="text-center py-4">
                             <div
                                 class="spinner spinner-md mx-auto"
                             ></div>
@@ -120,7 +120,7 @@
                                                 @click="
                                                     startEditComment(comment)
                                                 "
-                                                class="text-xs text-gray-500 hover:text-primary-800 transition-colors"
+                                                class="btn-link"
                                             >
                                                 Edit
                                             </button>
@@ -151,7 +151,7 @@
                                         >
                                             <button
                                                 @click="cancelEdit"
-                                                class="text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                                                class="btn-ghost btn-sm"
                                             >
                                                 Cancel
                                             </button>
@@ -263,7 +263,8 @@ async function loadComments() {
     } catch (error) {
         showError("Error", "Failed to load comments");
     } finally {
-        loading.value = false;
+        loading.value = false
+        initialLoading.value = false;
     }
 }
 

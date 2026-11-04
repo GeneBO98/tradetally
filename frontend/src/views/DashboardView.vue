@@ -196,7 +196,7 @@
             </svg>
           </div>
           <div class="flex-1 min-w-0">
-            <h3 class="text-sm font-medium text-primary-900 dark:text-primary-100">Get started with TradeTally</h3>
+            <h3 class="heading-sub text-primary-900 dark:text-primary-100">Get started with TradeTally</h3>
             <p class="mt-1 text-sm text-primary-700 dark:text-primary-300">
               Import your first trades to see your P&L, win rate, and analytics here.
             </p>
@@ -726,7 +726,7 @@
                        class="flex justify-between items-center text-sm bg-gray-50 dark:bg-gray-900 rounded px-3 py-2">
                     <div class="flex items-center space-x-2">
                       <span class="text-xs text-gray-500">Trade #{{ trade.id }}</span>
-                      <span class="px-1.5 text-xs leading-4 font-medium rounded"
+                      <span class="badge"
                         :class="[
                           trade.side === 'long'
                             ? 'bg-green-50 text-green-700 dark:bg-green-900/10 dark:text-green-400'
@@ -753,7 +753,7 @@
                   :to="`/trades/${position.trades[0].id}`"
                   class="text-sm text-primary-700 hover:text-primary-900 dark:hover:text-primary-400 font-medium"
                 >
-                  View Trade →
+                  View →
                 </router-link>
               </div>
             </div>
@@ -954,7 +954,7 @@
                       <span class="ml-1 text-gray-400">{{ formatDate(trade.trade_date) }}</span>
                     </td>
                     <td class="px-3 py-2">
-                      <span class="px-1.5 inline-flex text-xs leading-4 font-medium rounded"
+                      <span class="badge"
                         :class="[
                           trade.side === 'long'
                             ? 'bg-green-50 text-green-700 dark:bg-green-900/10 dark:text-green-400'
@@ -1414,7 +1414,7 @@
                     
                     <div class="space-y-4">
                       <div>
-                        <h4 class="text-sm font-medium text-green-700 dark:text-green-400 mb-2">Best Trades</h4>
+                        <h4 class="text-label mb-2">Best Trades</h4>
                         <div class="space-y-1">
                           <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.id}-${trade.symbol}-${trade.trade_date}`"
                                @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
@@ -1435,7 +1435,7 @@
                       </div>
 
                       <div>
-                        <h4 class="text-sm font-medium text-red-600 dark:text-red-400 mb-2">Worst Trades</h4>
+                        <h4 class="text-label mb-2">Worst Trades</h4>
                         <div class="space-y-1">
                           <div v-if="analytics.topTrades.worst && analytics.topTrades.worst.length > 0"
                                v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.id}-${trade.symbol}-${trade.trade_date}`"

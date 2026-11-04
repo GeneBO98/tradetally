@@ -192,7 +192,7 @@
               <input
                 v-model="includeImportedNotes"
                 type="checkbox"
-                class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
+                class="checkbox mt-0.5"
               />
               <span>
                 <span class="block text-sm font-medium text-gray-900 dark:text-white">Import notes and descriptions</span>
@@ -325,7 +325,7 @@
                   type="checkbox"
                   :checked="importHistory.length > 0 && selectedImportIds.size === importHistory.length"
                   @change="toggleSelectAll"
-                  class="rounded border-gray-300 dark:border-gray-600 text-primary-700 focus:ring-primary-500"
+                  class="checkbox"
                 />
                 <span>Select All</span>
               </label>
@@ -350,7 +350,7 @@
                   type="checkbox"
                   :checked="selectedImportIds.has(importLog.id)"
                   @change="toggleImportSelection(importLog.id)"
-                  class="flex-shrink-0 rounded border-gray-300 dark:border-gray-600 text-primary-700 focus:ring-primary-500"
+                  class="checkbox"
                 />
                 <div class="min-w-0">
                   <p class="truncate font-medium text-gray-900 dark:text-white">{{ importLog.file_name }}</p>
@@ -879,7 +879,7 @@
           <!-- Header -->
           <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
             <h3 class="modal-title">Import Logs</h3>
-            <button @click="showLogs = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+            <button @click="showLogs = false" class="btn-ghost btn-sm">
               <XMarkIcon class="h-6 w-6" />
             </button>
           </div>

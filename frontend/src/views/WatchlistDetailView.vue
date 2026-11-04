@@ -185,7 +185,7 @@
                                 </button>
                                 <button
                                     @click="editNotes(item)"
-                                    class="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                                    class="btn-ghost btn-sm"
                                 >
                                     Edit
                                 </button>
@@ -271,7 +271,7 @@
                         <button
                             @click="loadWatchlistNews"
                             :disabled="loadingNews"
-                            class="text-sm text-primary-700 hover:text-primary-800 disabled:opacity-50"
+                            class="btn-link"
                         >
                             {{ loadingNews ? "Loading..." : "Refresh" }}
                         </button>
@@ -407,7 +407,7 @@
                         <button
                             @click="loadWatchlistEarnings"
                             :disabled="loadingEarnings"
-                            class="text-sm text-primary-700 hover:text-primary-800 disabled:opacity-50"
+                            class="btn-link"
                         >
                             {{ loadingEarnings ? "Loading..." : "Refresh" }}
                         </button>
@@ -539,7 +539,7 @@
                             v-if="pillarsLoaded"
                             @click="loadWatchlistPillars"
                             :disabled="loadingPillars"
-                            class="text-sm text-primary-700 hover:text-primary-800 disabled:opacity-50"
+                            class="btn-link"
                         >
                             {{ loadingPillars ? "Analyzing..." : "Refresh" }}
                         </button>

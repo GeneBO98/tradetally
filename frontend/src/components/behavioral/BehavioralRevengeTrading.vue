@@ -28,7 +28,7 @@
                                     {{ formatDate(revengeFreshness.latestRunAt) }}
                                 </span>
                                 <span
-                                    class="rounded-full px-2 py-1"
+                                    class="badge"
                                     :class="
                                         revengeFreshness.hasStaleResults
                                             ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300'
@@ -156,7 +156,7 @@
                                             class="flex items-center justify-between mb-3"
                                         >
                                             <h4
-                                                class="text-sm font-semibold text-red-800 dark:text-red-400"
+                                                class="heading-sub text-red-800 dark:text-red-400"
                                             >
                                                 <MdiIcon
                                                     :icon="mdiTrendingDown"
@@ -760,7 +760,7 @@
                                                 Revenge Trading Outcome
                                             </h5>
                                             <span
-                                                class="inline-flex px-3 py-1 text-sm font-semibold rounded-full"
+                                                class="badge"
                                                 :class="{
                                                     'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400':
                                                         event.outcome_type ===

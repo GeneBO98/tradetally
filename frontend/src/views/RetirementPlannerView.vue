@@ -160,7 +160,7 @@
               <input
                 :data-testid="`retirement-account-${account.account_identifier}`"
                 type="checkbox"
-                class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-700 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900"
+                class="checkbox"
                 :checked="isAccountIncluded(account.account_identifier)"
                 :disabled="isFiltered || (isAccountIncluded(account.account_identifier) && includedAccountIds.length === 1)"
                 @change="toggleAccount(account.account_identifier)"
@@ -293,7 +293,7 @@
                     <label class="flex cursor-pointer items-center gap-2 text-xs text-gray-700 dark:text-gray-200">
                       <input
                         type="checkbox"
-                        class="h-3.5 w-3.5 rounded border-gray-300 text-primary-700 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900"
+                        class="checkbox"
                         :checked="account.include_in_retirement_savings"
                         :disabled="savingsAccountBusy === account.id"
                         @change="toggleSavingsAccount(account, $event.target.checked)"
@@ -677,7 +677,7 @@
               </div>
               <span
                 v-if="projectionOutOfDate"
-                class="inline-flex shrink-0 items-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300"
+                class="badge shrink-0 border border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300"
               >
                 <ArrowPathIcon class="h-3.5 w-3.5" :class="{ 'animate-spin': retirementStore.calculating }" />
                 Updating to match your inputs

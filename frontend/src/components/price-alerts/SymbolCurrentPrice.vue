@@ -9,7 +9,7 @@
       <p class="text-xs text-gray-500 dark:text-gray-400">
         Current price for {{ normalizedSymbol }}
       </p>
-      <div v-if="loading" class="mt-1 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+      <div v-if="initialLoading" class="mt-1 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
         <span class="spinner h-3.5 w-3.5" aria-hidden="true"></span>
         <span>Loading quote...</span>
       </div>
@@ -46,6 +46,7 @@ const props = defineProps({
 
 const currentPrice = ref(null)
 const loading = ref(false)
+const initialLoading = ref(true)
 const errorMessage = ref('Current price unavailable')
 let requestSequence = 0
 
@@ -71,6 +72,7 @@ async function loadQuote(symbol, sequence) {
   } finally {
     if (sequence === requestSequence) {
       loading.value = false
+      initialLoading.value = false
     }
   }
 }
@@ -85,6 +87,7 @@ function queueQuote(symbol) {
 
   if (!symbol) {
     loading.value = false
+    initialLoading.value = false
     return
   }
 

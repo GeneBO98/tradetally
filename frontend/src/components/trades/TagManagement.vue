@@ -38,7 +38,7 @@
                             type="checkbox"
                             :checked="!modelValue || modelValue.length === 0"
                             @change="toggleAllTags"
-                            class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                            class="checkbox"
                         />
                         <span class="ml-3 text-sm text-gray-900 dark:text-white"
                             >All Tags</span
@@ -62,7 +62,7 @@
                                     modelValue && modelValue.includes(tag.name)
                                 "
                                 @change="toggleTag(tag.name)"
-                                class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                                class="checkbox"
                             />
                             <span class="ml-3 flex items-center gap-2">
                                 <span

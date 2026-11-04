@@ -4,7 +4,7 @@
         <div class="flex items-center justify-between mb-6">
             <button
                 @click="goBack"
-                class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                class="btn-ghost btn-sm"
             >
                 <svg
                     class="w-4 h-4 mr-1"
@@ -674,7 +674,7 @@
                     </div>
                     <div class="ml-3">
                         <h3
-                            class="text-sm font-medium text-primary-800 dark:text-primary-300"
+                            class="heading-sub text-primary-800 dark:text-primary-300"
                         >
                             Understanding the Analytics
                         </h3>

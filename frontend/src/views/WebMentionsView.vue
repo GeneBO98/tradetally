@@ -86,7 +86,7 @@
                           v-model="selectedHoldingSymbols"
                           :value="holding.symbol"
                           type="checkbox"
-                          class="mt-1 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                          class="checkbox mt-1"
                           @change="applyHoldingSelection"
                         />
                         <div class="min-w-0">
@@ -147,7 +147,7 @@
                   </div>
                   <div class="flex gap-2">
                     <button type="button" @click="selectAllSources" class="btn-link">Select all</button>
-                    <button type="button" @click="clearSources" class="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Clear</button>
+                    <button type="button" @click="clearSources" class="btn-ghost btn-sm">Clear</button>
                   </div>
                 </div>
                 <div class="space-y-3">
@@ -179,7 +179,7 @@
                             v-model="form.source_ids"
                             :value="source.id"
                             type="checkbox"
-                            class="mt-1 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                            class="checkbox mt-1"
                           />
                           <div class="min-w-0">
                             <div class="flex items-center gap-2 flex-wrap">

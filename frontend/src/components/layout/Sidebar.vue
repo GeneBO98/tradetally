@@ -78,7 +78,7 @@
           <span v-if="!isCollapsed" class="flex-1">{{ item.name }}</span>
           <span
             v-if="!isCollapsed && item.badge === 'pro'"
-            class="shrink-0 rounded-[3px] bg-primary-500/15 px-1.5 py-0 text-[9px] font-bold uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+            class="badge shrink-0 rounded-[3px] bg-primary-500/15 text-[9px] uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
           >
             Pro
           </span>
@@ -142,7 +142,7 @@
                     <span class="flex-1 truncate">{{ sub.name }}</span>
                     <span
                       v-if="sub.badge === 'pro'"
-                      class="shrink-0 rounded-[3px] bg-primary-500/15 px-1.5 py-0 text-[9px] font-bold uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+                      class="badge shrink-0 rounded-[3px] bg-primary-500/15 text-[9px] uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
                     >
                       Pro
                     </span>
@@ -208,7 +208,7 @@
               <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ displayName }}</p>
               <span
                 v-if="roleBadge"
-                class="shrink-0 rounded-[3px] bg-primary-500/15 px-1 py-0 text-[8px] font-bold uppercase leading-[13px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+                class="badge shrink-0 rounded-[3px] bg-primary-500/15 text-[8px] uppercase leading-[13px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
               >
                 {{ roleBadge }}
               </span>
@@ -250,7 +250,7 @@
                   <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ displayName }}</p>
                   <span
                     v-if="roleBadge"
-                    class="shrink-0 rounded-[3px] bg-primary-500/15 px-1.5 py-0 text-[9px] font-bold uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+                    class="badge shrink-0 rounded-[3px] bg-primary-500/15 text-[9px] uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
                   >
                     {{ roleBadge }}
                   </span>

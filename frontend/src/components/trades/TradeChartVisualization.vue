@@ -50,7 +50,7 @@
         </p>
       </div>
 
-      <div v-if="loading" class="flex justify-center py-16">
+      <div v-if="initialLoading" class="flex justify-center py-16">
         <div class="spinner spinner-lg"></div>
       </div>
 
@@ -191,6 +191,7 @@ const { showError, showWarning } = useNotification()
 const { userTimezone, timezoneLabel } = useUserTimezone()
 
 const loading = ref(false)
+const initialLoading = ref(true)
 const error = ref(null)
 const isConfigured = ref(true)
 const chartData = ref(null)
@@ -338,6 +339,7 @@ async function fetchChartData() {
     }
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

@@ -197,7 +197,7 @@
               >
                 Archive
               </button>
-              <button v-if="form.id" @click="resetForm" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+              <button v-if="form.id" @click="resetForm" class="btn-ghost btn-sm">
                 Clear
               </button>
             </div>
@@ -220,7 +220,7 @@
                     class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3"
                     :class="form.reviewMode === 'checklist' ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700'"
                   >
-                    <input v-model="form.reviewMode" value="checklist" type="radio" class="mt-1 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500" />
+                    <input v-model="form.reviewMode" value="checklist" type="radio" class="radio mt-1" />
                     <span>
                       <span class="block text-sm font-medium text-gray-900 dark:text-white">Checklist</span>
                       <span class="block text-xs text-gray-500 dark:text-gray-400">Pass/fail items weighted into adherence.</span>
@@ -230,7 +230,7 @@
                     class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3"
                     :class="form.reviewMode === 'score' ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700'"
                   >
-                    <input v-model="form.reviewMode" value="score" type="radio" class="mt-1 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500" />
+                    <input v-model="form.reviewMode" value="score" type="radio" class="radio mt-1" />
                     <span>
                       <span class="block text-sm font-medium text-gray-900 dark:text-white">0-5 Grading</span>
                       <span class="block text-xs text-gray-500 dark:text-gray-400">Self-score each criterion, then apply hard-rule penalties.</span>
@@ -349,11 +349,11 @@
                 </div>
               </div>
               <label class="inline-flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 md:col-span-2">
-                <input v-model="form.requireStopLoss" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500" />
+                <input v-model="form.requireStopLoss" type="checkbox" class="checkbox" />
                 <span class="text-sm text-gray-700 dark:text-gray-300">Require stop loss for a passing review</span>
               </label>
               <label class="inline-flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 md:col-span-2">
-                <input v-model="form.autoAssignEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500" />
+                <input v-model="form.autoAssignEnabled" type="checkbox" class="checkbox" />
                 <span>
                   <span class="block text-sm text-gray-700 dark:text-gray-300">Auto-suggest for matching trades</span>
                   <span class="block text-xs text-gray-500 dark:text-gray-400">Uses configured strategy, setup, side, timeframe, or tag rules on unreviewed trades.</span>
@@ -392,7 +392,7 @@
                       <input v-model.number="item.weight" type="number" min="0.25" step="0.25" class="input" required />
                     </div>
                     <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mt-6">
-                      <input v-model="item.isRequired" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500" />
+                      <input v-model="item.isRequired" type="checkbox" class="checkbox" />
                       Required
                     </label>
                     <div class="flex items-end justify-end">

@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center py-4">
+    <div v-if="initialLoading" class="flex justify-center py-4">
       <div class="spinner spinner-sm"></div>
     </div>
 
@@ -23,7 +23,7 @@
             type="checkbox"
             :checked="isSelected(trade.id)"
             @change="toggleTrade(trade.id)"
-            class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
+            class="checkbox"
           />
           <div class="flex-1">
             <div class="flex items-center space-x-2">
@@ -83,6 +83,7 @@ const emit = defineEmits(['update:modelValue'])
 const { formatCurrency } = useCurrencyFormatter()
 
 const loading = ref(false)
+const initialLoading = ref(true)
 const availableTrades = ref([])
 const selectedTrades = computed({
   get: () => props.modelValue,
@@ -124,6 +125,7 @@ const fetchTrades = async () => {
     availableTrades.value = []
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

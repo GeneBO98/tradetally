@@ -4,7 +4,7 @@
     <div class="mb-6">
       <button 
         @click="$router.go(-1)"
-        class="inline-flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+        class="btn-ghost btn-sm"
       >
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
@@ -186,7 +186,7 @@
                 </div>
                 <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                   <span v-if="analysis.position_group"
-                    class="px-1.5 py-0.5 font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap"
+                    class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400"
                     :title="`Analyzed as a combined ${analysis.position_group.leg_count}-leg strategy`">
                     {{ formatPositionGroupLabel(analysis.position_group) }}
                   </span>
@@ -194,7 +194,7 @@
                     {{ formatAIModelLabel(analysis.ai_metadata) }}
                   </span>
                   <span v-if="formatAIContextSources(analysis.ai_metadata)"
-                    class="px-1.5 py-0.5 font-semibold rounded-full bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                    class="badge bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
                     {{ formatAIContextSources(analysis.ai_metadata) }}
                   </span>
                   <span>{{ analysis.response_count }} response{{ analysis.response_count === 1 ? '' : 's' }}</span>
@@ -275,7 +275,7 @@
             </svg>
           </div>
           <div class="ml-3">
-            <h3 class="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+            <h3 class="heading-sub text-yellow-800 dark:text-yellow-200">
               Incomplete Calculation
             </h3>
             <div class="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
@@ -470,8 +470,8 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Setup Quality</dt>
                   <dd class="mt-1">
                     <div v-if="trade.qualityGrade" class="flex items-center space-x-3">
-                      <span class="px-3 py-1 inline-flex text-sm font-semibold rounded"
-                        :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
+                      <span class="badge"
+                        :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                         Grade {{ trade.qualityGrade }}
                       </span>
                       <span v-if="trade.qualityScore" class="text-sm text-gray-600 dark:text-gray-400">
@@ -635,8 +635,8 @@
                   <div class="text-sm font-medium text-gray-700 dark:text-gray-300">Setup Quality</div>
                   <span
                     v-if="trade.setupQuality?.grade"
-                    class="inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold"
-                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.setupQuality.grade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.setupQuality.grade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.setupQuality.grade === 'C', 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100': trade.setupQuality.grade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.setupQuality.grade === 'F' }"
+                    class="badge"
+                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.setupQuality.grade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.setupQuality.grade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.setupQuality.grade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.setupQuality.grade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.setupQuality.grade === 'F' }"
                   >
                     Grade {{ trade.setupQuality.grade }}
                   </span>
@@ -706,7 +706,7 @@
                           </div>
                           <span
                             v-if="selectedAdherenceReview"
-                            class="inline-flex rounded-full px-3 py-1 text-sm font-semibold"
+                            class="badge"
                             :class="selectedAdherenceReview.adherenceScore >= 80
                               ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
                               : selectedAdherenceReview.adherenceScore >= 60
@@ -726,7 +726,7 @@
                             <input
                               v-model="item.checked"
                               type="checkbox"
-                              class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                              class="checkbox mt-1"
                             />
                             <div class="flex-1">
                               <div class="text-sm font-medium text-gray-900 dark:text-white">
@@ -860,7 +860,7 @@
                           </div>
                           <span
                             v-if="selectedManualGradingReview"
-                            class="inline-flex rounded-full px-3 py-1 text-sm font-semibold"
+                            class="badge"
                             :class="selectedManualGradingReview.adherenceScore >= 80
                               ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
                               : selectedManualGradingReview.adherenceScore >= 60
@@ -1063,7 +1063,7 @@
                           type="checkbox"
                           :checked="selectedExecutions.has(index)"
                           @change="toggleExecution(index)"
-                          class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                          class="checkbox"
                         />
                         <span v-else class="block h-4 w-4"></span>
                       </td>
@@ -1143,7 +1143,7 @@
                         type="checkbox"
                         :checked="selectedExecutions.has(index)"
                         @change="toggleExecution(index)"
-                        class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                        class="checkbox"
                       />
                     <span class="badge"
                           :class="[
@@ -1411,7 +1411,7 @@
                           <div v-if="comment.user_id === authStore.user?.id" class="flex items-center space-x-2">
                             <button
                               @click="startEditComment(comment)"
-                              class="text-xs text-gray-500 hover:text-primary-800 transition-colors"
+                              class="btn-link"
                             >
                               Edit
                             </button>
@@ -1436,7 +1436,7 @@
                           <div class="mt-2 flex justify-end space-x-2">
                             <button
                               @click="cancelEditComment"
-                              class="text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                              class="btn-ghost btn-sm"
                             >
                               Cancel
                             </button>
@@ -2570,13 +2570,13 @@ function formatDate(date) {
       const { year, month, day } = dateOnlyParts
       // Create date in local timezone (month is 0-indexed)
       const dateObj = new Date(year, month - 1, day)
-      return format(dateObj, 'MMM dd, yyyy')
+      return format(dateObj, 'MMM d, yyyy')
     }
 
     // For datetime strings with non-midnight times, use as-is
     const dateObj = new Date(date)
     if (isNaN(dateObj.getTime())) return 'Invalid Date'
-    return format(dateObj, 'MMM dd, yyyy')
+    return format(dateObj, 'MMM d, yyyy')
   } catch (error) {
     console.error('Date formatting error:', error, 'for date:', date)
     return 'Invalid Date'

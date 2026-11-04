@@ -80,7 +80,7 @@
                       v-model="form.verified"
                       type="checkbox"
                       id="verified"
-                      class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
+                      class="checkbox"
                     />
                     <label for="verified" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
                       Mark as verified (confirmed to be correct)
@@ -92,7 +92,7 @@
                     <div class="flex">
                       <InformationCircleIcon class="h-5 w-5 text-primary-400" />
                       <div class="ml-3">
-                        <h3 class="text-sm font-medium text-primary-800 dark:text-primary-200">
+                        <h3 class="heading-sub text-primary-800 dark:text-primary-200">
                           Trade Updates
                         </h3>
                         <p class="mt-1 text-sm text-primary-700 dark:text-primary-300">

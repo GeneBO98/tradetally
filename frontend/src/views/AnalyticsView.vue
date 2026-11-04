@@ -324,7 +324,7 @@
                 </div>
                 <div class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">Win Rate:</span>
-                  <span class="font-medium">{{ sector.win_rate }}%</span>
+                  <span class="font-medium" :class="winRateClass(sector.win_rate)">{{ Number(sector.win_rate).toFixed(1) }}%</span>
                 </div>
               </div>
               
@@ -633,7 +633,7 @@
             </h3>
             <button
               @click="showLayoutSettings = false"
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              class="btn-ghost btn-sm"
             >
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -653,7 +653,7 @@
                         type="checkbox"
                         :checked="chartLayout.find(c => c.id === chart.id)?.visible"
                         @change="toggleChartVisibility(chart.id)"
-                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                        class="checkbox"
                       />
                       <span class="ml-2 text-sm text-gray-900 dark:text-white">{{ chart.title }}</span>
                     </label>
@@ -673,7 +673,7 @@
                         type="checkbox"
                         :checked="chartLayout.find(c => c.id === chart.id)?.visible"
                         @change="toggleChartVisibility(chart.id)"
-                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                        class="checkbox"
                       />
                       <span class="ml-2 text-sm text-gray-900 dark:text-white">{{ chart.title }}</span>
                     </label>
@@ -700,7 +700,7 @@
                         type="checkbox"
                         :checked="chartLayout.find(c => c.id === chart.id)?.visible"
                         @change="toggleChartVisibility(chart.id)"
-                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
+                        class="checkbox"
                       />
                       <span class="ml-2 text-sm text-gray-900 dark:text-white">{{ chart.title }}</span>
                     </label>
@@ -731,7 +731,7 @@
 </template>
 
 <script setup>
-import { pnlClass } from '@/utils/metricTone'
+import { pnlClass, winRateClass } from '@/utils/metricTone'
 import { resolveDatePreset, resolveMonthlyFilterParams } from '@/utils/datePresets'
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'

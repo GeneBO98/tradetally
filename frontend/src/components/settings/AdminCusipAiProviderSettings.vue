@@ -24,7 +24,7 @@
                         id="adminUseMainProviderForCusip"
                         v-model="form.useMainProvider"
                         type="checkbox"
-                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
+                        class="checkbox"
                         @change="onAdminCusipUseMainProviderChange"
                     />
                     <label

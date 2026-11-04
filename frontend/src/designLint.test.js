@@ -172,6 +172,16 @@ describe('design system consistency', () => {
     expect(offenders(f => /modal-panel[^"]*\balign-bottom\b|\balign-bottom\b[^"]*modal-panel/.test(f.text))).toEqual([])
   })
 
+  it('tints native checkboxes and radios with the shared classes', () => {
+    const bad = offenders(f => [...f.text.matchAll(/<input\b(?:"[^"]*"|[^>"])*>/g)].some(m => /type="(?:checkbox|radio)"/.test(m[0]) && !/\bclass="[^"]*\b(?:checkbox|radio|sr-only|peer)\b/.test(m[0]) && !/\bswitch\b/.test(m[0])))
+    expect(bad).toEqual([])
+  })
+
+  it('puts every h2/h3/h4 on a heading role', () => {
+    const bad = offenders(f => !PRESENTATION(f.path) && !/views\/auth\//.test(f.path) && [...f.text.matchAll(/<h[234]\b[^>]*?\sclass="([^"]*)"/g)].some(m => !/\b(?:heading-(?:page|section|card|sub)|modal-title|text-label|sr-only)\b/.test(m[1])))
+    expect(bad).toEqual([])
+  })
+
   it('does not redefine shared primitives in scoped styles', () => {
     const re = /<style[^>]*>[\s\S]*?(?:^|\s)\.(?:input|btn(?:-primary|-secondary)?|card|badge|modal-panel)\s*\{/m
     expect(offenders(f => re.test(f.text))).toEqual([])

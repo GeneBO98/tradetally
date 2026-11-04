@@ -6,7 +6,7 @@
         <div class="ai-report-icon-wrapper">
           <component :is="iconComponent" class="ai-report-icon" />
         </div>
-        <h2 class="ai-report-card-title">{{ section.title }}</h2>
+        <h2 class="heading-card ai-report-card-title">{{ section.title }}</h2>
       </div>
     </div>
 

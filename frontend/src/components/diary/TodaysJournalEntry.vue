@@ -49,7 +49,7 @@
           
           <button
             @click="toggleExpanded"
-            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            class="btn-ghost btn-sm"
           >
             <ChevronDownIcon 
               class="w-4 h-4 transition-transform duration-200"

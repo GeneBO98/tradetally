@@ -17,8 +17,8 @@ export const TRADE_BADGE_TONES = Object.freeze({
   future: 'badge-primary',
   session: 'badge-neutral',
   strategy: 'badge-primary',
-  newsPositive: 'badge-success',
-  newsNegative: 'badge-danger',
+  newsPositive: 'badge-primary',
+  newsNegative: 'badge-warning',
   newsNeutral: 'badge-neutral'
 })
 

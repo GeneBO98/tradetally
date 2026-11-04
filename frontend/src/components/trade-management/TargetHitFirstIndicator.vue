@@ -25,7 +25,7 @@
         <button
           v-if="mode === 'auto' && analysis"
           @click="runAnalysis"
-          class="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+          class="btn-ghost btn-sm"
           title="Refresh analysis"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -53,7 +53,7 @@
             <input
               :checked="target.status === 'hit'"
               type="checkbox"
-              class="rounded border-gray-300 text-green-700 dark:text-green-400 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-700"
+              class="checkbox"
               :disabled="saving"
               @change="toggleTarget('tp', index, $event.target.checked)"
             />
@@ -79,7 +79,7 @@
             <input
               :checked="slHit"
               type="checkbox"
-              class="rounded border-gray-300 text-red-600 dark:text-red-400 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
+              class="checkbox"
               :disabled="saving"
               @change="toggleTarget('sl', 0, $event.target.checked)"
             />
@@ -128,7 +128,7 @@
     <!-- Auto Mode -->
     <div v-else>
       <!-- Loading State -->
-      <div v-if="loading" class="flex items-center justify-center py-4">
+      <div v-if="initialLoading" class="flex items-center justify-center py-4">
         <div class="spinner spinner-sm"></div>
         <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">Analyzing chart data...</span>
       </div>
@@ -275,6 +275,7 @@ const props = defineProps({
 const emit = defineEmits(['updated'])
 
 const loading = ref(false)
+const initialLoading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const dataUnavailable = ref(false)
@@ -573,6 +574,7 @@ async function runAnalysis() {
     }
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

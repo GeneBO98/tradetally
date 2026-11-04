@@ -32,7 +32,7 @@
     <div v-if="Object.keys($route.query).length > 0" class="mb-4">
       <button
         @click="goBack"
-        class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        class="btn-ghost btn-sm"
       >
         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
@@ -244,7 +244,7 @@
             <div class="flex flex-wrap items-center gap-2">
               <button
                 @click="clearSelection"
-                class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                class="btn-ghost btn-sm"
               >
                 Clear selection
               </button>
@@ -302,7 +302,7 @@
               :value="trade.id"
               v-model="selectedTrades"
               @click.stop
-              class="mt-1 h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
+              class="checkbox mt-1"
             />
             <div
               class="flex-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 rounded"
@@ -330,14 +330,14 @@
                 <!-- News badge for mobile -->
                 <span v-if="trade.has_news" 
                   :class="getNewsBadgeClasses(trade.news_sentiment)"
-                  class="px-2 py-1 text-xs font-semibold rounded-full flex items-center"
+                  class="badge flex"
                   :title="`${trade.news_event_count ?? trade.news_events?.length ?? 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
                   <MdiIcon :icon="newspaperIcon" :size="14" class="mr-1" />
                   <span>{{ trade.news_event_count ?? trade.news_events?.length ?? 0 }}</span>
                 </span>
               </div>
             <span class="badge"
-              :class="[ !isTradeOpen(trade) ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400' ]">
+              :class="isTradeOpen(trade) ? 'badge-primary' : 'badge-neutral'">
               {{ isTradeOpen(trade) ? 'Open' : 'Closed' }}
             </span>
           </div>
@@ -415,7 +415,7 @@
             <div class="flex items-center justify-between">
               <div class="text-xs text-gray-500 dark:text-gray-400">Quality</div>
               <span class="badge"
-                :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
+                :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                 {{ trade.qualityGrade }}
               </span>
             </div>
@@ -430,7 +430,7 @@
           <div class="flex justify-between items-center mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
             <button
               @click.stop="openComments(trade)"
-              class="inline-flex items-center text-gray-500 hover:text-primary-800 transition-colors"
+              class="btn-link"
             >
               <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
               <span class="text-sm">{{ trade.comment_count || 0 }}</span>
@@ -469,7 +469,7 @@
                   type="checkbox"
                   :checked="isAllSelected"
                   @change="toggleSelectAll"
-                  class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
+                  class="checkbox"
                 />
               </th>
               <!-- Column Customizer immediately after checkbox -->
@@ -517,7 +517,7 @@
                   type="checkbox"
                   :value="trade.id"
                   v-model="selectedTrades"
-                  class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
+                  class="checkbox"
                 />
               </td>
               <!-- Empty cell to align with column customizer -->
@@ -705,7 +705,7 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span v-if="trade.qualityGrade"
                     class="badge"
-                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
+                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                     {{ trade.qualityGrade }}
                   </span>
                   <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
@@ -725,7 +725,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span class="badge"
-                    :class="[ !isTradeOpen(trade) ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400' ]">
+                    :class="isTradeOpen(trade) ? 'badge-primary' : 'badge-neutral'">
                     {{ isTradeOpen(trade) ? 'Open' : 'Closed' }}
                   </span>
                 </td>
@@ -735,7 +735,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap text-center']">
                   <button
                     @click.stop="openComments(trade)"
-                    class="inline-flex items-center text-gray-500 hover:text-primary-800 transition-colors"
+                    class="btn-link"
                   >
                     <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
                     <span class="text-sm">{{ trade.comment_count || 0 }}</span>
