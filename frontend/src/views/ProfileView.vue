@@ -20,7 +20,7 @@
                     ]"
                     :key="tab.id"
                     @click="activeTab = tab.id"
-                    :class="[ 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm', activeTab === tab.id ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
+                    :class="[ 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm', activeTab === tab.id ? 'tab-active' : 'tab-inactive', ]"
                 >
                     {{ tab.label }}
                 </button>
@@ -633,7 +633,7 @@
                                         </h4>
                                         <span
                                             v-if="!apiKey.isActive"
-                                            class="badge-danger"
+                                            class="badge-warning"
                                         >
                                             Inactive
                                         </span>
@@ -754,7 +754,7 @@
                         <!-- General Trading Information -->
                         <section>
                             <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
-                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                <h4 class="text-label">
                                     General Information
                                 </h4>
                             </div>
@@ -803,7 +803,7 @@
 
                         <section>
                             <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
-                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                <h4 class="text-label">
                                     After-Trade Excursion Tracking
                                 </h4>
                             </div>
@@ -841,7 +841,7 @@
                         <!-- Trading Preferences -->
                         <section>
                             <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
-                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                <h4 class="text-label">
                                     Trading Preferences
                                 </h4>
                             </div>
@@ -923,7 +923,7 @@
                         <!-- Sector Preferences -->
                         <section>
                             <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
-                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                <h4 class="text-label">
                                     Sector Preferences
                                 </h4>
                             </div>
@@ -948,7 +948,7 @@
                         <!-- What the AI should know -->
                         <section>
                             <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-4">
-                                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+                                <h4 class="text-label">
                                     What the AI should know about you
                                 </h4>
                             </div>

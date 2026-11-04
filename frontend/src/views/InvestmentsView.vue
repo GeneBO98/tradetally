@@ -35,13 +35,13 @@
             <nav class="-mb-px flex space-x-8">
                 <button
                     @click="activeTab = 'screener'"
-                    :class="[ 'py-4 px-1 border-b-2 font-medium text-sm', activeTab === 'screener' ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
+                    :class="[ 'tab', activeTab === 'screener' ? 'tab-active' : 'tab-inactive', ]"
                 >
                     Stock Screener
                 </button>
                 <button
                     @click="activeTab = 'holdings'"
-                    :class="[ 'py-4 px-1 border-b-2 font-medium text-sm', activeTab === 'holdings' ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
+                    :class="[ 'tab', activeTab === 'holdings' ? 'tab-active' : 'tab-inactive', ]"
                 >
                     Holdings
                     <span
@@ -53,13 +53,13 @@
                 </button>
                 <button
                     @click="activeTab = 'scanner'"
-                    :class="[ 'py-4 px-1 border-b-2 font-medium text-sm', activeTab === 'scanner' ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
+                    :class="[ 'tab', activeTab === 'scanner' ? 'tab-active' : 'tab-inactive', ]"
                 >
                     Stock Scanner
                 </button>
                 <button
                     @click="activeTab = 'income'"
-                    :class="[ 'py-4 px-1 border-b-2 font-medium text-sm', activeTab === 'income' ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
+                    :class="[ 'tab', activeTab === 'income' ? 'tab-active' : 'tab-inactive', ]"
                 >
                     Income
                 </button>

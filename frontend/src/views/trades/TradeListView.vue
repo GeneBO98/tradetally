@@ -48,12 +48,12 @@
         <div class="block sm:hidden space-y-4">
           <div class="flex items-start justify-between">
             <div class="flex-1">
-              <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+              <h3 class="text-label mb-2">
                 P&L Summary ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
               </h3>
               <div class="space-y-1">
                 <div class="text-xs text-gray-500 dark:text-gray-400">Gross</div>
-                <div class="text-lg font-semibold tabular-nums" :class="[
+                <div class="text-lg font-semibold text-mono-num" :class="[
                 tradesStore.totalGrossPnL >= 0
                   ? 'text-green-700 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
@@ -61,7 +61,7 @@
                   {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
                 </div>
                 <div class="text-xs text-gray-500 dark:text-gray-400">Net</div>
-                <div class="text-sm font-medium tabular-nums" :class="[
+                <div class="text-lg font-semibold text-mono-num" :class="[
                 tradesStore.totalNetPnL >= 0
                   ? 'text-green-700 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
@@ -73,7 +73,7 @@
                   <div class="text-sm font-medium tabular-nums" :class="[
                   totalUnrealizedPnl >= 0
                     ? 'text-green-700 dark:text-green-400'
-                    : 'text-yellow-600 dark:text-yellow-400'
+                    : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ formatSignedCurrency(totalUnrealizedPnl) }}
                   </div>
@@ -106,13 +106,13 @@
         <!-- Desktop Layout: Side by side -->
         <div class="hidden sm:flex items-center justify-between">
           <div class="flex items-center space-x-6">
-            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <h3 class="text-label">
               P&L Summary ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
             </h3>
             <div class="flex items-baseline gap-6">
               <div class="text-center">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Gross</div>
-                <div class="text-lg font-semibold tabular-nums" :class="[
+                <div class="text-lg font-semibold text-mono-num" :class="[
                   tradesStore.totalGrossPnL >= 0
                     ? 'text-green-700 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
@@ -122,7 +122,7 @@
               </div>
               <div class="text-center">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Net</div>
-                <div class="text-lg font-semibold tabular-nums" :class="[
+                <div class="text-lg font-semibold text-mono-num" :class="[
                   tradesStore.totalNetPnL >= 0
                     ? 'text-green-700 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
@@ -132,10 +132,10 @@
               </div>
               <div v-if="isUnrealizedColumnVisible" class="text-center">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Unrealized</div>
-                <div class="text-lg font-semibold tabular-nums" :class="[
+                <div class="text-lg font-semibold text-mono-num" :class="[
                   totalUnrealizedPnl >= 0
                     ? 'text-green-700 dark:text-green-400'
-                    : 'text-yellow-600 dark:text-yellow-400'
+                    : 'text-red-600 dark:text-red-400'
                 ]">
                   {{ formatSignedCurrency(totalUnrealizedPnl) }}
                 </div>
@@ -427,7 +427,7 @@
             <div class="flex items-center justify-between">
               <div class="text-xs text-gray-500 dark:text-gray-400">Quality</div>
               <span class="badge"
-                :class="{ 'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
+                :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                 {{ trade.qualityGrade }}
               </span>
             </div>
@@ -459,7 +459,7 @@
         <!-- Desktop view (table) -->
         <div class="hidden md:block card overflow-hidden">
         <!-- Top scroll bar wrapper -->
-        <div ref="topScroll" class="overflow-x-auto overflow-y-hidden bg-gray-100 dark:bg-gray-800" @scroll="syncBottomScroll" style="height: 17px;">
+        <div ref="topScroll" class="overflow-x-auto overflow-y-hidden" @scroll="syncBottomScroll" style="height: 17px;">
           <div :style="{width: tableScrollWidth, height: '1px'}"></div>
         </div>
         <!-- Main table wrapper -->
@@ -476,7 +476,7 @@
           <thead class="table-head">
             <tr ref="headerRow">
               <!-- Checkbox Column -->
-              <th v-if="isCheckboxColumnVisible" :class="[getCheckboxPadding, 'text-left']">
+              <th v-if="isCheckboxColumnVisible" class="table-th" :class="[getCheckboxPadding, 'text-left']">
                 <input
                   type="checkbox"
                   :checked="isAllSelected"
@@ -485,7 +485,7 @@
                 />
               </th>
               <!-- Column Customizer immediately after checkbox -->
-              <th class="pl-0 pr-2 py-3 text-center relative">
+              <th class="pl-0 pr-2 py-3 text-center relative table-th">
                 <ColumnCustomizer
                   :columns="tableColumns"
                   @update:columns="handleColumnsUpdate"
@@ -517,7 +517,7 @@
                   ></span>
                 </span>
               </th>
-              <th v-if="hasCustomColumnWidths"></th>
+              <th v-if="hasCustomColumnWidths" class="table-th"></th>
             </tr>
           </thead>
           <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -586,8 +586,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="trade.entry_time" class="text-sm text-gray-900 dark:text-white leading-tight">
-                    <div>{{ formatDateMonthDay(trade.entry_time) }}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.entry_time) }}</div>
+                    <div class="whitespace-nowrap">{{ formatDateMonthDay(trade.entry_time) }}, <span class="text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.entry_time) }}</span></div>
                   </div>
                   <div v-else class="text-sm text-gray-500 dark:text-gray-400">-</div>
                 </td>
@@ -597,8 +596,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="trade.exit_time" class="text-sm text-gray-900 dark:text-white leading-tight">
-                    <div>{{ formatDateMonthDay(trade.exit_time) }}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.exit_time) }}</div>
+                    <div class="whitespace-nowrap">{{ formatDateMonthDay(trade.exit_time) }}, <span class="text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.exit_time) }}</span></div>
                   </div>
                   <div v-else class="text-sm text-gray-500 dark:text-gray-400">-</div>
                 </td>
@@ -719,7 +717,7 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span v-if="trade.qualityGrade"
                     class="badge"
-                    :class="{ 'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
+                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                     {{ trade.qualityGrade }}
                   </span>
                   <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
@@ -863,7 +861,7 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="trade.rValue != null && trade.rValue !== undefined" class="text-sm font-medium" :class="[
                     trade.rValue >= 2 ? 'text-green-700 dark:text-green-400' :
-                    trade.rValue >= 0 ? 'text-yellow-600 dark:text-yellow-400' :
+                    trade.rValue >= 0 ? 'text-red-600 dark:text-red-400' :
                     'text-red-600 dark:text-red-400'
                   ]">
                     {{ Number(trade.rValue).toFixed(1) }}R
@@ -993,7 +991,7 @@
         
       <!-- Pagination (shared for both mobile and desktop) -->
       <div v-if="tradesStore.pagination.totalPages > 1" class="mt-4">
-        <div class="bg-white dark:bg-gray-800 px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 sm:px-6 rounded-lg shadow">
+        <div class="card px-4 py-3 flex items-center justify-between sm:px-6">
           <div class="flex-1 flex justify-between sm:hidden">
             <button 
               @click="prevPage"

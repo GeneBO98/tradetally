@@ -89,11 +89,11 @@
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="table-head">
                   <tr class="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    <th class="px-3 py-3">Group</th>
-                    <th class="px-3 py-3 text-right">Trades</th>
-                    <th class="px-3 py-3 text-right">Win rate</th>
-                    <th class="px-3 py-3 text-right">Commission &amp; fees</th>
-                    <th class="px-3 py-3 text-right">P&amp;L</th>
+                    <th class="px-3 py-3 table-th">Group</th>
+                    <th class="px-3 py-3 text-right table-th">Trades</th>
+                    <th class="px-3 py-3 text-right table-th">Win rate</th>
+                    <th class="px-3 py-3 text-right table-th">Commission &amp; fees</th>
+                    <th class="px-3 py-3 text-right table-th">P&amp;L</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -124,9 +124,9 @@
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="table-head">
                   <tr class="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    <th class="px-3 py-3">Month</th>
-                    <th v-for="group in visibleGroups" :key="group.id" class="px-3 py-3 text-right">{{ group.name }}</th>
-                    <th class="px-3 py-3 text-right">Total</th>
+                    <th class="px-3 py-3 table-th">Month</th>
+                    <th v-for="group in visibleGroups" :key="group.id" class="px-3 py-3 text-right table-th">{{ group.name }}</th>
+                    <th class="px-3 py-3 text-right table-th">Total</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">

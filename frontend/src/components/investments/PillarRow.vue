@@ -84,10 +84,10 @@
           <table class="min-w-full text-sm">
             <thead class="table-head">
               <tr class="bg-gray-100 dark:bg-gray-800">
-                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Year</th>
-                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">Price</th>
-                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">EPS</th>
-                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">P/E</th>
+                <th class="px-3 py-2 text-left table-th">Year</th>
+                <th class="px-3 py-2 text-right table-th">Price</th>
+                <th class="px-3 py-2 text-right table-th">EPS</th>
+                <th class="px-3 py-2 text-right table-th">P/E</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -109,10 +109,10 @@
           <table class="min-w-full text-sm">
             <thead class="table-head">
               <tr class="bg-gray-100 dark:bg-gray-800">
-                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Year</th>
-                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">Op. Income</th>
-                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">Invested Capital</th>
-                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">ROIC</th>
+                <th class="px-3 py-2 text-left table-th">Year</th>
+                <th class="px-3 py-2 text-right table-th">Op. Income</th>
+                <th class="px-3 py-2 text-right table-th">Invested Capital</th>
+                <th class="px-3 py-2 text-right table-th">ROIC</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">

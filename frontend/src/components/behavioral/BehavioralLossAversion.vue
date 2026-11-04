@@ -266,7 +266,7 @@
                                 <div class="flex space-x-2">
                                     <button
                                         @click="$emit('scroll-to-missed')"
-                                        class="px-3 py-2 text-sm font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800 dark:hover:bg-orange-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 flex items-center"
+                                        class="px-3 py-2 text-sm font-medium text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-md hover:bg-yellow-100 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800 dark:hover:bg-yellow-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 flex items-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiTarget"
@@ -379,7 +379,7 @@
                                         </div>
                                         <div class="text-right">
                                             <p
-                                                class="text-sm text-orange-600 dark:text-orange-400 font-medium"
+                                                class="text-sm text-yellow-600 dark:text-yellow-400 font-medium"
                                             >
                                                 +{{
                                                     trade.missedOpportunityPercent

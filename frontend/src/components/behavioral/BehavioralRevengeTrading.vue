@@ -372,7 +372,7 @@
                                                     pattern.pattern_type + index
                                                 "
                                                 class="p-3 rounded-lg border-l-4 cursor-pointer transition-colors"
-                                                :class="{ 'bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-orange-400': pattern.pattern_type === 'same_symbol_revenge', 'bg-primary-50 dark:bg-primary-900/10 hover:bg-primary-100 dark:hover:bg-primary-900/20 border-primary-400': pattern.pattern_type === 'emotional_reactive_trading', }"
+                                                :class="{ 'bg-yellow-50 dark:bg-yellow-900/10 hover:bg-yellow-100 dark:hover:bg-yellow-900/20 border-yellow-400': pattern.pattern_type === 'same_symbol_revenge', 'bg-primary-50 dark:bg-primary-900/10 hover:bg-primary-100 dark:hover:bg-primary-900/20 border-primary-400': pattern.pattern_type === 'emotional_reactive_trading', }"
                                                 @click="
                                                     $emit('open-trade', pattern.trade_id)
                                                 "
@@ -388,7 +388,7 @@
                                                                 pattern.pattern_type ===
                                                                 'same_symbol_revenge'
                                                             "
-                                                            class="text-sm font-medium text-orange-800 dark:text-orange-400 flex items-center"
+                                                            class="text-sm font-medium text-yellow-800 dark:text-yellow-400 flex items-center"
                                                         >
                                                             <MdiIcon
                                                                 :icon="
@@ -687,7 +687,7 @@
 
                                                 <div
                                                     class="text-xs"
-                                                    :class="{ 'text-orange-600 dark:text-orange-400': pattern.pattern_type === 'same_symbol_revenge', 'text-primary-700 dark:text-primary-400': pattern.pattern_type === 'emotional_reactive_trading', }"
+                                                    :class="{ 'text-yellow-600 dark:text-yellow-400': pattern.pattern_type === 'same_symbol_revenge', 'text-primary-700 dark:text-primary-400': pattern.pattern_type === 'emotional_reactive_trading', }"
                                                 >
                                                     <span
                                                         v-if="

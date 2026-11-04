@@ -76,7 +76,7 @@
                       <span v-if="playbook.autoAssignEnabled" class="badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
                         Auto-suggest
                       </span>
-                      <span v-if="playbook.requireStopLoss" class="badge bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                      <span v-if="playbook.requireStopLoss" class="badge bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300">
                         Stop required
                       </span>
                       <span v-if="playbook.minimumTargetR !== null" class="badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
@@ -129,12 +129,12 @@
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="table-head">
                   <tr class="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    <th class="py-3 pr-4">Profile</th>
-                    <th class="py-3 pr-4">Reviewed</th>
-                    <th class="py-3 pr-4">Win Rate</th>
-                    <th class="py-3 pr-4">Profit Factor</th>
-                    <th class="py-3 pr-4">Avg R</th>
-                    <th class="py-3">Adherence</th>
+                    <th class="py-3 pr-4 table-th">Profile</th>
+                    <th class="py-3 pr-4 table-th">Reviewed</th>
+                    <th class="py-3 pr-4 table-th">Win Rate</th>
+                    <th class="py-3 pr-4 table-th">Profit Factor</th>
+                    <th class="py-3 pr-4 table-th">Avg R</th>
+                    <th class="py-3 table-th">Adherence</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-800 text-sm text-gray-700 dark:text-gray-300">

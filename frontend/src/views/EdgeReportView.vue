@@ -153,7 +153,7 @@
         <!-- Narrative -->
         <div v-if="selected.narrative" class="card">
           <div class="card-body">
-            <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Coach's notes</h3>
+            <h3 class="text-label">Coach's notes</h3>
             <p class="mt-2 whitespace-pre-line text-sm leading-relaxed text-gray-700 dark:text-gray-300">{{ selected.narrative }}</p>
           </div>
         </div>
@@ -161,7 +161,7 @@
         <!-- Playbook adherence -->
         <div v-if="report.playbook" class="card">
           <div class="card-body">
-            <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Playbook adherence</h3>
+            <h3 class="text-label">Playbook adherence</h3>
             <div class="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div>
                 <div class="text-xs text-gray-500 dark:text-gray-400">Reviewed trades</div>

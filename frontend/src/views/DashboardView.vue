@@ -787,19 +787,19 @@
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead class="table-head">
                 <tr class="table-th whitespace-nowrap">
-                  <th class="px-3 py-2 text-left font-medium">Symbol</th>
-                  <th class="px-3 py-2 text-left font-medium">Side</th>
-                  <th class="px-3 py-2 text-right font-medium">Shares</th>
-                  <th class="px-3 py-2 text-right font-medium">Avg Entry</th>
-                  <th class="px-3 py-2 text-right font-medium">Price</th>
-                  <th v-if="open_positions_view === 'basic'" class="px-3 py-2 text-right font-medium">Cost</th>
-                  <th class="px-3 py-2 text-right font-medium">Value</th>
-                  <th class="px-3 py-2 text-right font-medium">Unrealized P&amp;L</th>
-                  <th class="px-3 py-2 text-right font-medium" title="Price change since previous close × current holdings">Daily P&amp;L</th>
-                  <th v-if="open_positions_view !== 'basic'" class="px-3 py-2 pl-6 text-left font-medium">
+                  <th class="px-3 py-2 text-left table-th">Symbol</th>
+                  <th class="px-3 py-2 text-left table-th">Side</th>
+                  <th class="px-3 py-2 text-right table-th">Shares</th>
+                  <th class="px-3 py-2 text-right table-th">Avg Entry</th>
+                  <th class="px-3 py-2 text-right table-th">Price</th>
+                  <th v-if="open_positions_view === 'basic'" class="px-3 py-2 text-right table-th">Cost</th>
+                  <th class="px-3 py-2 text-right table-th">Value</th>
+                  <th class="px-3 py-2 text-right table-th">Unrealized P&amp;L</th>
+                  <th class="px-3 py-2 text-right table-th" title="Price change since previous close × current holdings">Daily P&amp;L</th>
+                  <th v-if="open_positions_view !== 'basic'" class="px-3 py-2 pl-6 text-left table-th">
                     {{ open_positions_view === 'range' ? '52-week range' : 'Stop → Target' }}
                   </th>
-                  <th class="px-3 py-2"><span class="sr-only">Actions</span></th>
+                  <th class="px-3 py-2 table-th"><span class="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700 text-sm whitespace-nowrap tabular-nums">
@@ -965,13 +965,13 @@
                     </td>
                     <td class="px-3 py-2 text-right">{{ (trade.quantity || 0).toLocaleString() }}</td>
                     <td class="px-3 py-2 text-right">{{ formatPositionCurrency(trade.entry_price, position) }}</td>
-                    <td class="px-3 py-2"></td>
+                    <td class="text-right text-mono-num px-3 py-2"></td>
                     <td v-if="open_positions_view === 'basic'" class="px-3 py-2 text-right" :title="nativeAmountTitle(trade.entry_price * trade.quantity, position)">
                       {{ formatPositionAmount(trade.entry_price * trade.quantity, position) }}
                     </td>
-                    <td class="px-3 py-2"></td>
-                    <td class="px-3 py-2"></td>
-                    <td class="px-3 py-2"></td>
+                    <td class="text-right text-mono-num px-3 py-2"></td>
+                    <td class="text-right text-mono-num px-3 py-2"></td>
+                    <td class="text-right text-mono-num px-3 py-2"></td>
                     <td v-if="open_positions_view !== 'basic'" class="px-3 py-2"></td>
                     <td class="px-3 py-2 text-right">
                       <router-link
@@ -1124,7 +1124,7 @@
                       Win Rate
                     </dt>
                     <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
-                      analytics.summary.winRate >= 50 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      winRateClass(analytics.summary.winRate)
                     ]">
                       {{ formatPercent(analytics.summary.winRate) }}%
                     </dd>
@@ -1140,7 +1140,7 @@
                       Profit Factor
                     </dt>
                     <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
-                      analytics.summary.profitFactor >= 1 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      profitFactorClass(analytics.summary.profitFactor)
                     ]">
                       {{ formatNumber(analytics.summary.profitFactor) }}
                     </dd>
@@ -1637,6 +1637,7 @@
 </template>
 
 <script setup>
+import { winRateClass, profitFactorClass } from '@/utils/metricTone'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, onMounted, nextTick, watch, computed, onUnmounted, defineAsyncComponent } from 'vue'
 import { useAuthStore } from '@/stores/auth'

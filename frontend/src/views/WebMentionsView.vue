@@ -419,7 +419,7 @@
 
           <section class="card">
             <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Trusted Sources</h2>
+              <h2 class="text-label">Trusted Sources</h2>
             </div>
             <div class="p-4 space-y-4">
               <div class="flex items-center justify-between gap-3">
@@ -459,7 +459,7 @@
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ source.domain || source.source_type }}</p>
                         <p class="text-xs text-red-600 dark:text-red-300 mt-2">{{ source.last_fetch_error || 'Fetch failed' }}</p>
                       </div>
-                      <span class="badge-danger">
+                      <span class="badge-warning">
                         error
                       </span>
                     </div>

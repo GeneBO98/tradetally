@@ -117,7 +117,7 @@
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">calculated</p>
             </div>
-            <svg class="w-10 h-10 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
+            <svg class="w-10 h-10 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20M10,9.5C10,10.3 9.3,11 8.5,11C7.7,11 7,10.3 7,9.5C7,8.7 7.7,8 8.5,8C9.3,8 10,8.7 10,9.5M15,13H9V14.5H15V13M17,9.5C17,10.3 16.3,11 15.5,11C14.7,11 14,10.3 14,9.5C14,8.7 14.7,8 15.5,8C16.3,8 17,8.7 17,9.5Z" />
             </svg>
           </div>
@@ -470,7 +470,7 @@ function calculateHealthConditions(trades) {
     {
       name: 'Sleep Deprived',
       iconPath: 'M2,21H20V19H2M20,8H18V5H20M20,3H4V13A4,4 0 0,0 8,17H14A4,4 0 0,0 18,13V10H20A2,2 0 0,0 22,8V5C22,3.89 21.1,3 20,3Z',
-      iconColor: 'text-orange-500',
+      iconColor: 'text-yellow-500',
       description: 'Sleep < 6 hours',
       filter: t => {
         const sleepHours = getTradeHealthValue(t, 'sleep_hours')
@@ -591,7 +591,7 @@ function getInsightTypeClass(type) {
   const classes = {
     'sleep_quality': 'bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 text-primary-800 dark:text-primary-300',
     'heart_rate': 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300',
-    'stress': 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-800 dark:text-orange-300',
+    'stress': 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300',
     'composure': 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300',
     'overall': 'bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 text-primary-800 dark:text-primary-300'
   }

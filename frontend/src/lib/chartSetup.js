@@ -71,7 +71,7 @@ const CHART_THEMES = {
 // One presentation contract for every Chart.js chart: system font at 11px,
 // gentle line smoothing, small markers, unrotated ticks, compact legends.
 Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-Chart.defaults.font.size = 11
+Chart.defaults.font.size = 12
 Chart.defaults.elements.line.tension = 0.2
 Chart.defaults.elements.line.borderWidth = 2
 Chart.defaults.elements.point.radius = 2

@@ -123,15 +123,15 @@
                             </div>
 
                             <div
-                                class="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4"
+                                class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4"
                             >
                                 <h4
-                                    class="text-sm font-medium text-orange-800 dark:text-orange-300"
+                                    class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
                                 >
                                     Performance Impact
                                 </h4>
                                 <p
-                                    class="text-2xl font-bold text-orange-900 dark:text-orange-200"
+                                    class="text-2xl font-bold text-yellow-900 dark:text-yellow-200"
                                 >
                                     <span
                                         v-if="
@@ -163,7 +163,7 @@
                                     </span>
                                 </p>
                                 <p
-                                    class="text-xs text-orange-700 dark:text-orange-400"
+                                    class="text-xs text-yellow-700 dark:text-yellow-400"
                                 >
                                     Net P&L impact
                                 </p>
@@ -337,15 +337,15 @@
 
                                 <!-- Position Size Analysis -->
                                 <div
-                                    class="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3 mb-4"
+                                    class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 mb-4"
                                 >
                                     <h6
-                                        class="text-sm font-medium text-orange-800 dark:text-orange-300 mb-2"
+                                        class="text-sm font-medium text-yellow-800 dark:text-yellow-300 mb-2"
                                     >
                                         Position Risk Escalation
                                     </h6>
                                     <p
-                                        class="mb-2 text-xs text-orange-700 dark:text-orange-400"
+                                        class="mb-2 text-xs text-yellow-700 dark:text-yellow-400"
                                     >
                                         Based on
                                         {{
@@ -357,7 +357,7 @@
                                     <div class="grid grid-cols-2 gap-3 text-xs">
                                         <div>
                                             <span
-                                                class="text-orange-700 dark:text-orange-400"
+                                                class="text-yellow-700 dark:text-yellow-400"
                                                 >Baseline Size:</span
                                             >
                                             <span class="font-medium ml-1"
@@ -371,7 +371,7 @@
                                         </div>
                                         <div>
                                             <span
-                                                class="text-orange-700 dark:text-orange-400"
+                                                class="text-yellow-700 dark:text-yellow-400"
                                                 >Peak Size:</span
                                             >
                                             <span class="font-medium ml-1"
@@ -385,7 +385,7 @@
                                         </div>
                                     </div>
                                     <div
-                                        class="mt-2 text-xs text-orange-700 dark:text-orange-400 flex items-start"
+                                        class="mt-2 text-xs text-yellow-700 dark:text-yellow-400 flex items-start"
                                     >
                                         <MdiIcon
                                             :icon="mdiTrendingUp"
@@ -893,7 +893,7 @@
                                             event.outcomeAnalysis.verdict
                                         "
                                         class="mt-4 p-3 rounded-lg border-2"
-                                        :class="{ 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700': event.outcomeAnalysis.verdict .verdict === 'true_overconfidence', 'bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700': event.outcomeAnalysis.verdict .verdict === 'partial_overconfidence', 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700': event.outcomeAnalysis.verdict .verdict === 'prudent_trade', 'bg-gray-100 dark:bg-gray-900/30 border-gray-300 dark:border-gray-700': event.outcomeAnalysis.verdict .verdict === 'bad_luck', }"
+                                        :class="{ 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700': event.outcomeAnalysis.verdict .verdict === 'true_overconfidence', 'bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700': event.outcomeAnalysis.verdict .verdict === 'partial_overconfidence', 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700': event.outcomeAnalysis.verdict .verdict === 'prudent_trade', 'bg-gray-100 dark:bg-gray-900/30 border-gray-300 dark:border-gray-700': event.outcomeAnalysis.verdict .verdict === 'bad_luck', }"
                                     >
                                         <div
                                             class="flex items-center justify-between mb-2"
@@ -905,7 +905,7 @@
                                                         event.outcomeAnalysis
                                                             .verdict.verdict ===
                                                         'true_overconfidence',
-                                                    'text-orange-900 dark:text-orange-200':
+                                                    'text-yellow-900 dark:text-yellow-200':
                                                         event.outcomeAnalysis
                                                             .verdict.verdict ===
                                                         'partial_overconfidence',
@@ -943,7 +943,7 @@
                                                         event.outcomeAnalysis
                                                             .verdict.verdict ===
                                                         'true_overconfidence',
-                                                    'bg-orange-200 dark:bg-orange-800 text-orange-900 dark:text-orange-100':
+                                                    'bg-yellow-200 dark:bg-yellow-800 text-yellow-900 dark:text-yellow-100':
                                                         event.outcomeAnalysis
                                                             .verdict.verdict ===
                                                         'partial_overconfidence',
@@ -976,7 +976,7 @@
                                                     event.outcomeAnalysis
                                                         .verdict.verdict ===
                                                     'true_overconfidence',
-                                                'text-orange-800 dark:text-orange-200':
+                                                'text-yellow-800 dark:text-yellow-200':
                                                     event.outcomeAnalysis
                                                         .verdict.verdict ===
                                                     'partial_overconfidence',
@@ -1284,7 +1284,7 @@
                                                         <span
                                                             class="badge"
                                                             :class="{
-                                                                'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300':
+                                                                'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300':
                                                                     index === 0,
                                                                 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300':
                                                                     index > 0 &&

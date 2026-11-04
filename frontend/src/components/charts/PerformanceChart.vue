@@ -59,8 +59,11 @@ function createChart() {
         {
           label: dailyLabel,
           data: dailyData,
-          borderColor: '#F0812A',
-          backgroundColor: 'rgba(240, 129, 42, 0.1)',
+          // Direction, not accent: each segment is green above zero, red below.
+          borderColor: '#16a34a',
+          backgroundColor: 'rgba(22, 163, 74, 0.08)',
+          segment: { borderColor: ctx => (ctx.p1.parsed.y < 0 || ctx.p0.parsed.y < 0) ? '#dc2626' : '#16a34a' },
+          pointBackgroundColor: ctx => (ctx.parsed?.y ?? 0) < 0 ? '#dc2626' : '#16a34a',
           pointRadius: labels.length > 60 ? 0 : 2,
           yAxisID: 'y'
         },
@@ -68,7 +71,7 @@ function createChart() {
           label: cumulativeLabel,
           data: cumulativeData,
           borderColor: '#16a34a',
-          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          backgroundColor: 'rgba(22, 163, 74, 0.1)',
           yAxisID: 'y1'
         }
       ]

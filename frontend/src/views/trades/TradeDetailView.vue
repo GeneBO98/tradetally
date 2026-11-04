@@ -35,10 +35,12 @@
             </p>
           </div>
         </div>
-        <div v-if="isOwner" class="flex flex-wrap gap-3 sm:justify-end">
+        <!-- Phones: a two-column grid so no action sits alone on a full-width row;
+             the primary action spans both columns. -->
+        <div v-if="isOwner" class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3 sm:justify-end">
           <button
             @click="toggleAIPanel"
-            class="btn-primary inline-flex items-center gap-2"
+            class="btn-primary col-span-2 sm:col-auto inline-flex items-center justify-center gap-2"
           >
             <SparklesIcon class="h-4 w-4" />
             <span>{{ showAIPanel ? 'Hide Analysis' : 'Analyze Trade' }}</span>
@@ -77,7 +79,7 @@
           <router-link :to="{ path: `/trades/${trade.id}/edit`, query: { from: 'trade-detail' } }" class="btn-secondary">
             Edit
           </router-link>
-          <button @click="deleteTrade" class="btn-danger">
+          <button @click="deleteTrade" class="btn-danger justify-center">
             Delete
           </button>
         </div>
@@ -469,7 +471,7 @@
                   <dd class="mt-1">
                     <div v-if="trade.qualityGrade" class="flex items-center space-x-3">
                       <span class="px-3 py-1 inline-flex text-sm font-semibold rounded"
-                        :class="{ 'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
+                        :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                         Grade {{ trade.qualityGrade }}
                       </span>
                       <span v-if="trade.qualityScore" class="text-sm text-gray-600 dark:text-gray-400">
@@ -594,7 +596,7 @@
                         'text-green-700 dark:text-green-400': trade.qualityGrade === 'A',
                         'text-primary-700 dark:text-primary-400': trade.qualityGrade === 'B',
                         'text-yellow-600 dark:text-yellow-400': trade.qualityGrade === 'C',
-                        'text-orange-600 dark:text-orange-400': trade.qualityGrade === 'D',
+                        'text-yellow-600 dark:text-yellow-400': trade.qualityGrade === 'D',
                         'text-red-600 dark:text-red-400': trade.qualityGrade === 'F'
                       }">
                       {{ Number(trade.qualityScore).toFixed(1) }}/5.0
@@ -634,7 +636,7 @@
                   <span
                     v-if="trade.setupQuality?.grade"
                     class="inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold"
-                    :class="{ 'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.setupQuality.grade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.setupQuality.grade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.setupQuality.grade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.setupQuality.grade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.setupQuality.grade === 'F' }"
+                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.setupQuality.grade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.setupQuality.grade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.setupQuality.grade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.setupQuality.grade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.setupQuality.grade === 'F' }"
                   >
                     Grade {{ trade.setupQuality.grade }}
                   </span>
@@ -732,7 +734,7 @@
                               </div>
                               <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
                                 <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
-                                <span v-if="item.isRequired" class="text-orange-600 dark:text-orange-400">Required</span>
+                                <span v-if="item.isRequired" class="text-yellow-600 dark:text-yellow-400">Required</span>
                               </div>
                             </div>
                           </label>
@@ -882,7 +884,7 @@
                                 </div>
                                 <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
                                   <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
-                                  <span v-if="item.isRequired" class="text-orange-600 dark:text-orange-400">Required</span>
+                                  <span v-if="item.isRequired" class="text-yellow-600 dark:text-yellow-400">Required</span>
                                 </div>
                               </div>
                               <div class="flex items-center gap-3 sm:w-56">
@@ -1019,7 +1021,7 @@
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead class="table-head">
                     <tr>
-                      <th v-if="splitMode" class="px-3 py-3 w-10"></th>
+                      <th v-if="splitMode" class="px-3 py-3 w-10 table-th"></th>
                       <th class="px-3 py-3 text-left table-th">
                         Action
                       </th>

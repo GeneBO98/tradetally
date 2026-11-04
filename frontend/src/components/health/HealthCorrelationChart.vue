@@ -545,7 +545,7 @@ function getMetricCondition(metric) {
 function getCorrelationClass(correlation) {
   const abs = Math.abs(correlation)
   if (abs > 0.7) return correlation > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-  if (abs > 0.4) return correlation > 0 ? 'text-green-500' : 'text-orange-500'
+  if (abs > 0.4) return correlation > 0 ? 'text-green-500' : 'text-yellow-500'
   return 'text-gray-600'
 }
 

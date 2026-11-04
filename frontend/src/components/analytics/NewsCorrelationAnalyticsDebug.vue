@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <!-- Debug Info -->
     <div class="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
-      <h3 class="font-bold mb-2">Debug Information</h3>
+      <h3 class="heading-card mb-2">Debug Information</h3>
       <div class="space-y-1 text-sm">
         <div>Loading: {{ loading }}</div>
         <div>Error: {{ error || 'None' }}</div>
@@ -35,7 +35,7 @@
 
     <!-- Raw API Response -->
     <div v-if="rawResponse" class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
-      <h3 class="font-bold mb-2">Raw API Response:</h3>
+      <h3 class="heading-card mb-2">Raw API Response:</h3>
       <pre class="text-xs overflow-auto">{{ JSON.stringify(rawResponse, null, 2) }}</pre>
     </div>
 

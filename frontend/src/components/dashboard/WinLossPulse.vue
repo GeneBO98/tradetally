@@ -53,13 +53,13 @@
               :class="winRateClass"
               style="font-size: 2.5rem;"
             >
-              {{ winRate.toFixed(0) }}<span class="text-lg">%</span>
+              {{ winRate.toFixed(1) }}<span class="text-lg">%</span>
             </div>
             <div class="mt-0.5 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
               {{ winRateVerdict }}
             </div>
             <div v-if="breakeven > 0" class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-              {{ winRateExcludingBe.toFixed(0) }}% excl. BE
+              {{ winRateExcludingBe.toFixed(1) }}% excl. BE
             </div>
           </div>
         </div>

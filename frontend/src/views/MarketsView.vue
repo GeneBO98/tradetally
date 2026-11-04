@@ -35,7 +35,7 @@
                 <nav class="-mb-px flex space-x-8">
                     <button
                         @click="activeTab = 'watchlists'"
-                        :class="[ activeTab === 'watchlists' ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600', 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm', ]"
+                        :class="[ activeTab === 'watchlists' ? 'tab-active' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600', 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm', ]"
                     >
                         <svg
                             class="w-5 h-5 inline mr-2"
@@ -54,7 +54,7 @@
                     </button>
                     <button
                         @click="activeTab = 'alerts'"
-                        :class="[ activeTab === 'alerts' ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600', 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm', ]"
+                        :class="[ activeTab === 'alerts' ? 'tab-active' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600', 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm', ]"
                     >
                         <MdiIcon
                             :icon="mdiBell"
@@ -456,7 +456,7 @@
                                                 !alert.is_active &&
                                                 alert.triggered_at
                                             "
-                                            class="badge bg-orange-100 text-orange-800"
+                                            class="badge bg-yellow-100 text-yellow-800"
                                         >
                                             Triggered
                                         </span>

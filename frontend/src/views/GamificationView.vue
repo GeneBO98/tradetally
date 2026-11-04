@@ -113,7 +113,7 @@
                         v-for="tab in tabs"
                         :key="tab.key"
                         @click="activeTab = tab.key"
-                        :class="[ 'py-3 px-1 border-b-2 font-medium text-sm', activeTab === tab.key ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', ]"
+                        :class="[ 'py-3 px-1 border-b-2 font-medium text-sm', activeTab === tab.key ? 'tab-active' : 'tab-inactive', ]"
                     >
                         <MdiIcon :icon="tab.icon" :size="20" class="mr-2" />
                         {{ tab.name }}
@@ -422,7 +422,7 @@
                             <div class="flex justify-end mb-2">
                                 <span
                                     v-if="achievement.is_earned"
-                                    class="badge-success"
+                                    class="badge-primary"
                                 >
                                     <MdiIcon
                                         :icon="mdiCheckCircle"
@@ -845,7 +845,7 @@
                                     >
                                         <div class="flex items-center">
                                             <div
-                                                :class="[ 'w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium', index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200' : index === 2 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-400', ]"
+                                                :class="[ 'w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium', index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200' : index === 2 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-400', ]"
                                             >
                                                 {{ index + 1 }}
                                             </div>
@@ -961,7 +961,7 @@
                             >
                                 <div class="flex items-center">
                                     <div
-                                        :class="[ 'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold', index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200' : index === 2 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-400', ]"
+                                        :class="[ 'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold', index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200' : index === 2 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-400', ]"
                                     >
                                         {{ entry.rank || index + 1 }}
                                     </div>

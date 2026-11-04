@@ -152,7 +152,7 @@
           <template v-else>
             <!-- Performance chart -->
             <div class="p-4 border-b border-gray-200 dark:border-gray-700">
-              <h3 class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">Performance vs {{ benchmark }}</h3>
+              <h3 class="text-label mb-3">Performance vs {{ benchmark }}</h3>
               <div
                 v-if="perAccountData[account]?.performance?.series?.length"
                 class="h-64"
@@ -169,7 +169,7 @@
 
             <!-- Holdings table (read-only) -->
             <div class="p-4">
-              <h3 class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">Holdings</h3>
+              <h3 class="text-label mb-3">Holdings</h3>
               <div v-if="perAccountData[account]?.rebalance?.positions?.length" class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs">
                   <thead class="table-head">

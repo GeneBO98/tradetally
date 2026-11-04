@@ -515,7 +515,7 @@
                         class="heading-card flex items-center"
                     >
                         <svg
-                            class="w-5 h-5 mr-2 text-orange-600"
+                            class="w-5 h-5 mr-2 text-yellow-600"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -529,7 +529,7 @@
                         </svg>
                         8 Pillars Analysis
                         <span
-                            class="ml-2 badge bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
+                            class="ml-2 badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
                         >
                             Pro
                         </span>

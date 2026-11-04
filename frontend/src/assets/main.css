@@ -203,14 +203,14 @@
      elevation. BaseModal (components/common) is the preferred wrapper;
      hand-rolled dialogs must at least use these classes. */
   .modal-overlay {
-    @apply fixed inset-0 z-50 bg-gray-900/50 dark:bg-gray-950/70;
+    @apply fixed inset-0 z-50 bg-gray-900/50 dark:bg-gray-950/50;
   }
   /* Backdrop variant for the "wrapper + separate backdrop div" pattern. */
   .modal-backdrop {
-    @apply fixed inset-0 bg-gray-900/50 dark:bg-gray-950/70 transition-opacity;
+    @apply fixed inset-0 bg-gray-900/50 dark:bg-gray-950/50 transition-opacity;
   }
   .modal-panel {
-    @apply relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700;
+    @apply relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600;
     animation: tt-modal-in 180ms ease-out;
   }
   /* One entrance for every dialog, hand-rolled or BaseModal. */
@@ -313,7 +313,7 @@
     @apply whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors;
   }
   .tab-active {
-    @apply border-primary-500 text-primary-600 dark:text-primary-400;
+    @apply border-primary-500 text-primary-700 dark:text-primary-300;
   }
   .tab-inactive {
     @apply border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300;
@@ -332,7 +332,7 @@
   .h-scroll-fade {
     overflow-x: auto;
     background:
-      linear-gradient(to right, #ffffff 30%, rgba(255, 255, 255, 0)) left center,
+      linear-gradient(to right, theme('colors.white') 30%, rgba(255, 255, 255, 0)) left center,
       linear-gradient(to left, #ffffff 30%, rgba(255, 255, 255, 0)) right center,
       radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0)) left center,
       radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0)) right center;
@@ -342,8 +342,8 @@
   }
   .dark .h-scroll-fade {
     background:
-      linear-gradient(to right, #1f2937 30%, rgba(31, 41, 55, 0)) left center,
-      linear-gradient(to left, #1f2937 30%, rgba(31, 41, 55, 0)) right center,
+      linear-gradient(to right, theme('colors.gray.800') 30%, rgba(31, 41, 55, 0)) left center,
+      linear-gradient(to left, theme('colors.gray.800') 30%, rgba(31, 41, 55, 0)) right center,
       radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0)) left center,
       radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0)) right center;
     background-repeat: no-repeat;
@@ -449,13 +449,14 @@
   }
 
   .table-card-label {
-    @apply text-xs font-medium text-gray-500 dark:text-gray-400 uppercase;
-    @apply min-w-[100px];
+    @apply text-xs font-medium text-gray-500 dark:text-gray-400 uppercase shrink-0;
+    @apply sm:min-w-[100px];
   }
 
+  /* Never clip a figure: the value gets the remaining width and wraps. */
   .table-card-value {
-    @apply text-sm font-medium text-gray-900 dark:text-white text-right;
-    @apply flex-1 truncate;
+    @apply text-sm font-medium text-gray-900 dark:text-white text-right text-mono-num;
+    @apply flex-1 min-w-0 break-words;
   }
 
   /* Responsive table with horizontal scroll fallback */
@@ -526,7 +527,7 @@
     width: 6px;
     height: 6px;
     border-radius: 9999px;
-    background-color: #10b981;
+    background-color: #16a34a;
   }
   .pulse-dot::after {
     content: '';

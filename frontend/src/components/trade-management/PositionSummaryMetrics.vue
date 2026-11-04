@@ -98,15 +98,15 @@
           <table class="min-w-full text-sm">
             <thead class="table-head">
               <tr class="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                <th class="pb-2 pr-4 font-medium">Leg</th>
-                <th class="pb-2 pr-4 font-medium">Side</th>
-                <th class="pb-2 pr-4 font-medium text-right">Qty</th>
-                <th class="pb-2 pr-4 font-medium text-right">Entry</th>
-                <th class="pb-2 pr-4 font-medium text-right">Exit</th>
-                <th class="pb-2 pr-4 font-medium text-right">Stop Loss</th>
-                <th class="pb-2 pr-4 font-medium text-right">P&L</th>
-                <th class="pb-2 pr-4 font-medium text-right">Actual R</th>
-                <th class="pb-2 font-medium"></th>
+                <th class="pb-2 pr-4 table-th">Leg</th>
+                <th class="pb-2 pr-4 table-th">Side</th>
+                <th class="pb-2 pr-4 text-right table-th">Qty</th>
+                <th class="pb-2 pr-4 text-right table-th">Entry</th>
+                <th class="pb-2 pr-4 text-right table-th">Exit</th>
+                <th class="pb-2 pr-4 text-right table-th">Stop Loss</th>
+                <th class="pb-2 pr-4 text-right table-th">P&L</th>
+                <th class="pb-2 pr-4 text-right table-th">Actual R</th>
+                <th class="pb-2 table-th"></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-700">

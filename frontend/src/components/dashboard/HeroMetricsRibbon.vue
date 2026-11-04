@@ -166,6 +166,7 @@
 </template>
 
 <script setup>
+import { winRateClass as winRateTone, profitFactorClass as profitFactorTone } from '@/utils/metricTone'
 import { computed } from 'vue'
 import MiniBarChart from '@/components/common/MiniBarChart.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -356,18 +357,12 @@ const pnlSizeClass = computed(() => {
 
 const winRateClass = computed(() => {
   if (totalTrades.value === 0) return 'text-gray-400 dark:text-gray-500'
-  const wr = parseFloat(winRate.value)
-  if (wr >= 60) return 'text-green-700 dark:text-green-400'
-  if (wr >= 45) return 'text-gray-900 dark:text-gray-100'
-  return 'text-red-600 dark:text-red-400'
+  return winRateTone(parseFloat(winRate.value))
 })
 
 const profitFactorClass = computed(() => {
   if (totalTrades.value === 0) return 'text-gray-400 dark:text-gray-500'
-  if (!Number.isFinite(profitFactor.value)) return 'text-green-700 dark:text-green-400'
-  if (profitFactor.value >= 1.5) return 'text-green-700 dark:text-green-400'
-  if (profitFactor.value >= 1) return 'text-gray-900 dark:text-gray-100'
-  return 'text-red-600 dark:text-red-400'
+  return profitFactorTone(profitFactor.value)
 })
 
 const todayR = computed(() => streakStats.value.todayR)

@@ -11,7 +11,7 @@
       <!-- Badge for unread count -->
       <span
         v-if="unreadCount > 0"
-        class="absolute top-0 right-0 bg-red-500 text-white text-xs leading-none rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center font-semibold tabular-nums"
+        class="absolute top-0 right-0 bg-primary-700 text-white text-xs leading-none rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center font-semibold tabular-nums"
       >
         {{ unreadCount > 99 ? '99+' : unreadCount }}
       </span>

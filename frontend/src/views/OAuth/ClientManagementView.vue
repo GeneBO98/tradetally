@@ -37,7 +37,7 @@
               </h3>
               <span
                 v-if="client.is_trusted"
-                class="badge-success"
+                class="badge-primary"
               >
                 Trusted
               </span>

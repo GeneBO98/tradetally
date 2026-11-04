@@ -23,7 +23,7 @@
                     <div class="flex-1">
                         <h3
                             v-if="note.title"
-                            class="font-medium text-gray-900 dark:text-white mb-2"
+                            class="heading-card mb-2"
                         >
                             {{ note.title }}
                         </h3>

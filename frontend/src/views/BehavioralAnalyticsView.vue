@@ -220,10 +220,10 @@
                         <div class="flex items-center">
                             <div class="flex-shrink-0">
                                 <div
-                                    class="h-8 w-8 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center"
+                                    class="h-8 w-8 rounded-full bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center"
                                 >
                                     <svg
-                                        class="h-5 w-5 text-orange-600 dark:text-orange-400"
+                                        class="h-5 w-5 text-yellow-600 dark:text-yellow-400"
                                         fill="none"
                                         viewBox="0 0 24 24"
                                         stroke="currentColor"
@@ -917,12 +917,12 @@
                                 )"
                                 :key="trade.tradeId"
                                 class="card p-4 relative"
-                                :class="{ 'ring-2 ring-red-200 dark:ring-red-800': index === 0, 'ring-1 ring-orange-200 dark:ring-orange-800': index === 1, 'ring-1 ring-yellow-200 dark:ring-yellow-800': index === 2, }"
+                                :class="{ 'ring-2 ring-red-200 dark:ring-red-800': index === 0, 'ring-1 ring-yellow-200 dark:ring-yellow-800': index === 1, 'ring-1 ring-yellow-200 dark:ring-yellow-800': index === 2, }"
                             >
                                 <!-- Rank Badge -->
                                 <div
                                     class="absolute -top-2 -left-2 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                                    :class="{ 'bg-red-500': index === 0, 'bg-orange-500': index === 1, 'bg-yellow-500': index === 2, 'bg-gray-500': index > 2, }"
+                                    :class="{ 'bg-red-500': index === 0, 'bg-yellow-500': index === 1, 'bg-yellow-500': index === 2, 'bg-gray-500': index > 2, }"
                                 >
                                     {{ index + 1 }}
                                 </div>
@@ -2107,13 +2107,13 @@ const scrollToTopMissedTrades = async () => {
         // Briefly highlight the section
         topMissedTradesSection.value.classList.add(
             "ring-2",
-            "ring-orange-400",
+            "ring-yellow-400",
             "ring-opacity-50",
         );
         setTimeout(() => {
             topMissedTradesSection.value.classList.remove(
                 "ring-2",
-                "ring-orange-400",
+                "ring-yellow-400",
                 "ring-opacity-50",
             );
         }, 2000);

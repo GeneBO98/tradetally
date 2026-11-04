@@ -23,7 +23,7 @@
         </div>
         <div class="text-center">
           <div class="text-2xl font-bold" :class="summary.overall_win_rate >= 50 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-            {{ Math.round(summary.overall_win_rate) }}%
+            {{ Number(summary.overall_win_rate).toFixed(1) }}%
           </div>
           <div class="text-sm text-gray-500 dark:text-gray-400">Overall Win Rate</div>
         </div>
@@ -41,7 +41,7 @@
               {{ summary.sentiment_breakdown.positive }} trades
             </span>
             <span class="text-sm" :class="summary.performance_by_sentiment.positive_win_rate >= 50 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-              {{ Math.round(summary.performance_by_sentiment.positive_win_rate) }}%
+              {{ Number(summary.performance_by_sentiment.positive_win_rate).toFixed(1) }}%
             </span>
           </div>
         </div>
@@ -56,7 +56,7 @@
               {{ summary.sentiment_breakdown.negative }} trades
             </span>
             <span class="text-sm" :class="summary.performance_by_sentiment.negative_win_rate >= 50 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-              {{ Math.round(summary.performance_by_sentiment.negative_win_rate) }}%
+              {{ Number(summary.performance_by_sentiment.negative_win_rate).toFixed(1) }}%
             </span>
           </div>
         </div>
@@ -82,7 +82,7 @@
             <span class="font-medium">Quick Insight:</span>
             Your best performance is on
             <span class="font-medium text-gray-900 dark:text-white">{{ bestSentiment.sentiment }}</span>
-            news with a {{ Math.round(bestSentiment.win_rate) }}% win rate.
+            news with a {{ Number(bestSentiment.win_rate).toFixed(1) }}% win rate.
           </div>
         </div>
       </div>

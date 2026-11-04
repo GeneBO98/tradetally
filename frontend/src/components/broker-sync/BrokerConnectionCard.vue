@@ -71,7 +71,7 @@
             </button>
             <button
               @click="emit('deleteTrades', connection); showMenu = false"
-              class="w-full px-4 py-2 text-left text-sm text-orange-600 dark:text-orange-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              class="w-full px-4 py-2 text-left text-sm text-yellow-600 dark:text-yellow-400 hover:bg-gray-100 dark:hover:bg-gray-700"
             >
               Delete All Trades
             </button>

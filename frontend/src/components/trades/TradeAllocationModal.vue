@@ -39,7 +39,7 @@
                     <span v-if="tradePnl !== null" class="font-normal text-gray-500 dark:text-gray-400"> · {{ formatMoney(tradePnl) }} P&amp;L</span>
                   </div>
                 </div>
-                <div class="inline-flex rounded-lg border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-800" role="group" aria-label="Allocation input method">
+                <div class="card inline-flex border-gray-300 p-1 dark:border-gray-600" role="group" aria-label="Allocation input method">
                   <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium" :class="mode === 'quantity' ? selectedModeClass : unselectedModeClass" @click="changeMode('quantity')">Quantity</button>
                   <button type="button" class="btn-ghost btn-sm" :class="mode === 'quantity' ? selectedModeClass : unselectedModeClass" @click="changeMode('quantity')">Quantity</button>
                 </div>

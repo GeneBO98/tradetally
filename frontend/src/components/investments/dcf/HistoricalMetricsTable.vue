@@ -12,10 +12,10 @@
       <table class="min-w-full text-sm">
         <thead class="table-head">
           <tr class="bg-gray-100 dark:bg-gray-700">
-            <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300">Metric</th>
-            <th class="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300">1 Year</th>
-            <th class="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300">5 Year Avg</th>
-            <th class="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300">10 Year Avg</th>
+            <th class="px-4 py-3 text-left table-th">Metric</th>
+            <th class="px-4 py-3 text-right table-th">1 Year</th>
+            <th class="px-4 py-3 text-right table-th">5 Year Avg</th>
+            <th class="px-4 py-3 text-right table-th">10 Year Avg</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">

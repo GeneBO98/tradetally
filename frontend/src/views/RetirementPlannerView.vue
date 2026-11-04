@@ -671,7 +671,7 @@
           >
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div class="min-w-0 max-w-2xl">
-                <h2 class="text-3xl font-bold text-gray-950 dark:text-white">
+                <h2 class="heading-card text-3xl">
                   {{ selectedScenario?.is_on_track ? "On track" : "Needs adjustment" }}
                 </h2>
               </div>

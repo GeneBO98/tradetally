@@ -335,7 +335,7 @@
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Range Filters Group -->
         <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-          <h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-3">Range Filters</h4>
+          <h4 class="text-label mb-3">Range Filters</h4>
           <div class="space-y-4">
             <!-- Price Range -->
             <div>
@@ -415,7 +415,7 @@
 
         <!-- Timing & Options Group -->
         <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-          <h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-3">Timing & Options</h4>
+          <h4 class="text-label mb-3">Timing & Options</h4>
           <div class="space-y-4">
             <!-- Hold Time -->
             <div>
@@ -564,7 +564,7 @@
 
       <!-- Trade Characteristics Group -->
       <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-        <h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-3">Trade Characteristics</h4>
+        <h4 class="text-label mb-3">Trade Characteristics</h4>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <!-- Sector -->
           <div>

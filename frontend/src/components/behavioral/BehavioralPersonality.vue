@@ -87,7 +87,7 @@
                             <div class="flex items-center justify-between mb-4">
                                 <div>
                                     <h4
-                                        class="text-xl font-bold text-gray-900 dark:text-white capitalize"
+                                        class="heading-section capitalize"
                                     >
                                         {{
                                             formatPersonalityName(

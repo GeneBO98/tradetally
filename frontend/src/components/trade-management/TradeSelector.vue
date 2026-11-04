@@ -53,7 +53,7 @@
               <!-- Instrument Type Badge -->
               <span
                 v-if="trade.instrument_type && trade.instrument_type !== 'stock'"
-                :class="[ 'text-xs px-1.5 py-0.5 rounded font-medium', trade.instrument_type === 'option' ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400' : trade.instrument_type === 'future' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400' ]"
+                :class="[ 'text-xs px-1.5 py-0.5 rounded font-medium', trade.instrument_type === 'option' ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400' : trade.instrument_type === 'future' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400' ]"
               >
                 {{ formatInstrumentType(trade.instrument_type) }}
               </span>
@@ -124,7 +124,7 @@
             </span>
             <span
               v-else
-              class="badge-success"
+              class="badge-primary"
             >
               Ready
             </span>

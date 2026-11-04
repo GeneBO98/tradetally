@@ -86,7 +86,7 @@
                   </div>
                   <span
                     v-if="template.is_default"
-                    class="badge-success ml-2 flex-shrink-0"
+                    class="badge-primary ml-2 flex-shrink-0"
                   >
                     Default
                   </span>

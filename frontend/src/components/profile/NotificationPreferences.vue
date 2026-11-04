@@ -33,7 +33,7 @@
         <!-- Trading Notifications -->
         <section>
           <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-2">
-            <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+            <h4 class="text-label">
               Trading Notifications
             </h4>
           </div>
@@ -133,7 +133,7 @@
         <!-- Alert Notifications -->
         <section>
           <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-2">
-            <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+            <h4 class="text-label">
               Alert Notifications
             </h4>
           </div>
@@ -173,7 +173,7 @@
         <!-- Email Preferences -->
         <section>
           <div class="bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 rounded-md mb-2">
-            <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-gray-100">
+            <h4 class="text-label">
               Email Preferences
             </h4>
           </div>

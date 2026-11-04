@@ -47,7 +47,7 @@
           class="card-dense px-5 py-4"
         >
           <div class="flex items-center justify-between gap-2">
-            <h2 class="text-sm font-medium text-gray-600 dark:text-gray-400">{{ indicator.name }}</h2>
+            <h2 class="heading-sub">{{ indicator.name }}</h2>
             <span
               class="badge uppercase"
               :class="badgeClasses(indicator.status)"

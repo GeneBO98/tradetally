@@ -178,7 +178,7 @@
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400" title="For trades with after-trade data, this uses after-trade MFE. Otherwise it uses in-trade MFE.">Avg profit left on table</p>
-            <p class="text-lg font-semibold text-orange-600 dark:text-orange-400 text-mono-num mt-1">
+            <p class="text-lg font-semibold text-yellow-600 dark:text-yellow-400 text-mono-num mt-1">
               <span v-if="loading" class="text-gray-300 dark:text-gray-600">—</span>
               <span v-else-if="displayStats.avg_profit_left != null">{{ formatValue(displayStats.avg_profit_left) }}</span>
               <span v-else class="text-gray-400">—</span>

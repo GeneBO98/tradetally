@@ -5,18 +5,18 @@
       <table class="min-w-full text-sm">
         <thead class="table-head">
           <tr class="bg-gray-100 dark:bg-gray-700">
-            <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300"></th>
-            <th colspan="3" class="px-4 py-2 text-center font-medium text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">Historical</th>
-            <th colspan="3" class="px-4 py-2 text-center font-medium text-primary-700 dark:text-primary-400 border-b border-gray-200 dark:border-gray-600">My Assumptions</th>
+            <th class="px-4 py-3 text-left table-th"></th>
+            <th colspan="3" class="px-4 py-2 text-center border-b border-gray-200 dark:border-gray-600 table-th">Historical</th>
+            <th colspan="3" class="px-4 py-2 text-center text-primary-700 dark:text-primary-400 border-b border-gray-200 dark:border-gray-600 table-th">My Assumptions</th>
           </tr>
           <tr class="bg-gray-50 dark:bg-gray-700/50">
-            <th class="px-4 py-2 text-left font-medium text-gray-700 dark:text-gray-300"></th>
-            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400">1 Year</th>
-            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400">5 Years</th>
-            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400">10 Years</th>
-            <th class="px-4 py-2 text-center text-xs font-medium text-red-600 dark:text-red-400">Bear</th>
-            <th class="px-4 py-2 text-center text-xs font-medium text-yellow-600 dark:text-yellow-400">Base</th>
-            <th class="px-4 py-2 text-center text-xs font-medium text-green-700 dark:text-green-400">Bull</th>
+            <th class="px-4 py-2 text-left table-th"></th>
+            <th class="px-4 py-2 text-center table-th">1 Year</th>
+            <th class="px-4 py-2 text-center table-th">5 Years</th>
+            <th class="px-4 py-2 text-center table-th">10 Years</th>
+            <th class="px-4 py-2 text-center text-red-600 dark:text-red-400 table-th">Bear</th>
+            <th class="px-4 py-2 text-center text-yellow-600 dark:text-yellow-400 table-th">Base</th>
+            <th class="px-4 py-2 text-center text-green-700 dark:text-green-400 table-th">Bull</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">

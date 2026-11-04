@@ -256,7 +256,7 @@
                                     v-if="
                                         alert.is_active && !alert.triggered_at
                                     "
-                                    class="badge-success"
+                                    class="badge-primary"
                                 >
                                     Active
                                 </span>
@@ -272,7 +272,7 @@
                                     v-else-if="
                                         !alert.is_active && alert.triggered_at
                                     "
-                                    class="badge bg-orange-100 text-orange-800"
+                                    class="badge bg-yellow-100 text-yellow-800"
                                 >
                                     Triggered
                                 </span>

@@ -15,7 +15,10 @@ function walk(dir, out = []) {
   return out
 }
 const files = walk(ROOT).map(f => ({ path: relative(ROOT, f), text: readFileSync(f, 'utf8') }))
-const classStrings = text => [...text.matchAll(/class="([^"]*)"/g)].map(m => m[1])
+const classStrings = text => [
+  ...[...text.matchAll(/(?<![:@])class="([^"]*)"/g)].map(m => m[1]),
+  ...[...text.matchAll(/:class="([^"]*)"/g)].flatMap(m => [...m[1].matchAll(/'([^']*)'/g)].map(q => q[1]))
+]
 const offenders = pred => files.filter(pred).map(f => f.path)
 
 // Intentional exceptions: full-screen media/celebration overlays and the
@@ -125,6 +128,21 @@ describe('design system consistency', () => {
   it('keeps the shared stylesheets on the surface radius too', () => {
     const extra = readdirSync(join(ROOT, 'assets')).filter(n => n.endsWith('.css')).map(n => readFileSync(join(ROOT, 'assets', n), 'utf8'))
     expect(extra.some(t => /rounded-(?:xl|2xl|3xl)\b/.test(t))).toBe(false)
+  })
+
+  it('puts every table header cell on .table-th', () => {
+    const bad = offenders(f => [...f.text.matchAll(/<th\b([^>]*)>/g)].some(m => !/\btable-th\b/.test(m[1]) && !/\bsr-only\b/.test(m[1])))
+    expect(bad).toEqual([])
+  })
+
+  it('does not use orange as a second warning ramp', () => {
+    expect(offenders(f => !PRESENTATION(f.path) && /(?:bg|text|border|ring)-orange-\d+/.test(f.text))).toEqual([])
+  })
+
+  it('keeps the win green and loss red tokens in tailwind.config.js', () => {
+    const cfg = readFileSync(join(ROOT, '..', 'tailwind.config.js'), 'utf8')
+    expect(cfg).toMatch(/success: '#16a34a'/)
+    expect(cfg).not.toMatch(/#10b981|#f59e0b/i)
   })
 
   it('does not redefine shared primitives in scoped styles', () => {

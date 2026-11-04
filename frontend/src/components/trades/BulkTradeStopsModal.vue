@@ -11,7 +11,7 @@
     <div class="max-h-[55vh] overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
       <table class="w-full min-w-[650px] text-sm">
         <thead class="sticky top-0 table-head text-left">
-          <tr><th class="px-3 py-2">Trade</th><th class="px-3 py-2">Entry</th><th class="px-3 py-2">Current stop</th><th class="px-3 py-2">New stop</th><th class="px-3 py-2">Proposed R</th></tr>
+          <tr><th class="px-3 py-2 table-th">Trade</th><th class="px-3 py-2 table-th">Entry</th><th class="px-3 py-2 table-th">Current stop</th><th class="px-3 py-2 table-th">New stop</th><th class="px-3 py-2 table-th">Proposed R</th></tr>
         </thead>
         <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
           <tr v-for="row in rows" :key="row.id" class="text-gray-800 dark:text-gray-200">

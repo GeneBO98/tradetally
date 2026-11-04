@@ -44,10 +44,10 @@
             <table class="min-w-full text-left text-xs">
               <thead class="table-head border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th class="px-3 py-2 font-medium">Broker</th>
-                  <th class="px-3 py-2 font-medium">Instrument</th>
-                  <th class="px-3 py-2 text-right font-medium">Commission</th>
-                  <th class="px-3 py-2 text-right font-medium">Fees</th>
+                  <th class="px-3 py-2 table-th">Broker</th>
+                  <th class="px-3 py-2 table-th">Instrument</th>
+                  <th class="px-3 py-2 text-right table-th">Commission</th>
+                  <th class="px-3 py-2 text-right table-th">Fees</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100 dark:divide-gray-800">

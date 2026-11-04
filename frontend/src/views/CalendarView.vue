@@ -188,7 +188,7 @@
         <div v-for="month in yearlyCalendar" :key="month.key" class="card">
           <div class="card-body p-4">
             <div class="flex justify-between items-center mb-3">
-              <h3 class="font-medium text-gray-900 dark:text-white">
+              <h3 class="heading-card">
                 {{ format(month.date, 'MMMM') }}
               </h3>
               <button @click="expandMonth(month.date)" class="text-primary-700 hover:text-primary-800 text-sm">
