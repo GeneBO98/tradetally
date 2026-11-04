@@ -14,7 +14,7 @@
         </p>
       </div>
 
-      <div v-if="resetSuccess" class="rounded-md bg-green-50 dark:bg-green-900/20 p-4">
+      <div v-if="resetSuccess" class="callout-success">
         <p class="text-sm text-green-800 dark:text-green-400">
           Your password has been reset successfully. You can now sign in with your new password.
         </p>
@@ -56,7 +56,7 @@
           </div>
         </div>
 
-        <div v-if="error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+        <div v-if="error" class="callout-danger">
           <p class="text-sm text-red-800 dark:text-red-400">{{ error }}</p>
         </div>
 

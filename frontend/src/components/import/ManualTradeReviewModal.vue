@@ -27,7 +27,7 @@
           </button>
         </div>
 
-        <div v-if="error" class="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+        <div v-if="error" class="callout-danger mt-4">
           {{ error }}
         </div>
 
@@ -132,7 +132,7 @@
         <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
             type="button"
-            class="inline-flex w-full justify-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700 sm:w-auto"
+            class="btn-secondary w-full justify-center sm:w-auto"
             :disabled="loading"
             @click="$emit('close')"
           >

@@ -267,7 +267,7 @@
       </div>
 
       <!-- Incomplete Calculation Banner -->
-      <div v-if="hasIncompleteQuality" class="rounded-md bg-yellow-50 dark:bg-yellow-900/20 p-4 border border-yellow-200 dark:border-yellow-800">
+      <div v-if="hasIncompleteQuality" class="callout-warning">
         <div class="flex">
           <div class="flex-shrink-0">
             <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
@@ -563,7 +563,7 @@
                       </div>
                       <div v-else class="text-sm font-semibold"
                         :class="[ metric.score >= 0.8 ? 'text-primary-700 dark:text-primary-400' : metric.score >= 0.6 ? 'text-primary-700 dark:text-primary-300' : metric.score >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400' ]">
-                        {{ (metric.score * 100).toFixed(0) }}%
+                        {{ (metric.score * 100).toFixed(1) }}%
                       </div>
                       <div class="text-xs text-gray-500 dark:text-gray-400">
                         {{ metric.excluded ? 'Excluded from score' : metric.display }}
@@ -1411,7 +1411,7 @@
                           <div v-if="comment.user_id === authStore.user?.id" class="flex items-center space-x-2">
                             <button
                               @click="startEditComment(comment)"
-                              class="text-xs text-gray-500 hover:text-primary-600 transition-colors"
+                              class="text-xs text-gray-500 hover:text-primary-800 transition-colors"
                             >
                               Edit
                             </button>

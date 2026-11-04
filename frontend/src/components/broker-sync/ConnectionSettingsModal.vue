@@ -101,10 +101,10 @@
                             @click="
                                 form.autoSyncEnabled = !form.autoSyncEnabled
                             "
-                            :class="[ form.autoSyncEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
+                            :class="[ form.autoSyncEnabled ? 'switch-on' : '', 'switch', ]"
                         >
                             <span
-                                :class="[ form.autoSyncEnabled ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out', ]"
+                                :class="[ form.autoSyncEnabled ? 'translate-x-5' : 'translate-x-0', 'switch-knob', ]"
                             />
                         </button>
                     </div>
@@ -220,7 +220,7 @@
 
                         <div
                             v-else-if="accountsError && schwabAccounts.length === 0"
-                            class="mt-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
+                            class="callout-danger mt-4"
                         >
                             <p class="text-sm text-red-700 dark:text-red-300">{{ accountsError }}</p>
                         </div>

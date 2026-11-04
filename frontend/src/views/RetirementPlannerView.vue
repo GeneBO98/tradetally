@@ -48,7 +48,7 @@
       <div
         v-if="retirementStore.error"
         role="alert"
-        class="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200"
+        class="callout-danger mb-6"
       >
         <div class="flex items-start gap-3">
           <ExclamationTriangleIcon class="mt-0.5 h-5 w-5 shrink-0" />
@@ -65,7 +65,7 @@
       <div
         v-if="!retirementStore.hasSavedPlan"
         data-testid="starter-banner"
-        class="mb-6 rounded-lg border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
+        class="callout-info mb-6"
       >
         <div class="flex items-start gap-3">
           <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-700 dark:text-primary-400" />
@@ -83,7 +83,7 @@
 
       <div
         v-if="isFiltered"
-        class="mb-6 rounded-lg border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
+        class="callout-info mb-6"
       >
         <div class="flex items-start gap-3">
           <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-700 dark:text-primary-400" />

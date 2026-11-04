@@ -29,8 +29,8 @@
         </div>
         <button
           type="button"
-          class="relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2"
-          :class="enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700'"
+          class="switch focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2"
+          :class="enabled ? 'switch-on' : ''"
           role="switch"
           :aria-checked="enabled"
           :disabled="savingFeature || loading"

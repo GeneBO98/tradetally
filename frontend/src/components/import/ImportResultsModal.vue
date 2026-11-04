@@ -22,7 +22,7 @@
 
           <!-- Summary Stats -->
           <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-            <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
+            <div class="callout-success text-center">
               <p class="text-2xl font-bold text-green-700 dark:text-green-400">{{ tradesImported }}</p>
               <p class="text-xs text-green-700 dark:text-green-300">Imported</p>
             </div>
@@ -64,7 +64,7 @@
             </ul>
           </div>
 
-          <div v-if="props.tradesImported === 0" class="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900/60 dark:bg-yellow-950/20">
+          <div v-if="props.tradesImported === 0" class="callout-warning mt-4">
             <p class="text-sm font-semibold text-yellow-900 dark:text-yellow-100">{{ zeroTradeReason.title }}</p>
             <p class="mt-1 text-sm text-yellow-800 dark:text-yellow-200">{{ zeroTradeReason.body }}</p>
             <ul class="mt-3 space-y-1 text-sm text-yellow-800 dark:text-yellow-200">
@@ -76,7 +76,7 @@
           </div>
 
           <div v-if="props.achievements.length > 0" class="mt-4">
-            <div class="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
+            <div class="callout-warning">
               <div class="flex items-start gap-3">
                 <TrophyIcon class="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-600 dark:text-yellow-400" />
                 <div class="min-w-0 flex-1">
@@ -108,7 +108,7 @@
 
           <!-- Warnings Section -->
           <div v-if="warnings && warnings.length > 0" class="mt-4">
-            <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+            <div class="callout-warning">
               <div class="flex items-start">
                 <ExclamationTriangleIcon class="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-2 flex-shrink-0 mt-0.5" />
                 <div>
@@ -214,7 +214,7 @@
         </div>
 
         <div v-if="showDemoDataCta && tradesImported === 0" class="mt-4">
-          <div class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-4">
+          <div class="callout-info">
             <div class="flex items-start">
               <InformationCircleIcon class="h-5 w-5 text-primary-700 dark:text-primary-400 mr-2 flex-shrink-0 mt-0.5" />
               <div class="flex-1">
@@ -239,7 +239,7 @@
 
         <!-- Need Help? Section (for supported brokers with 0 trades) -->
         <div v-if="showNeedHelp" class="mt-4">
-          <div class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-4">
+          <div class="callout-info">
             <div class="flex items-start">
               <InformationCircleIcon class="h-5 w-5 text-primary-700 dark:text-primary-400 mr-2 flex-shrink-0 mt-0.5" />
               <div class="flex-1">
@@ -280,7 +280,7 @@
         <div class="mt-5 sm:mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
             type="button"
-            class="inline-flex w-full justify-center rounded-md border border-gray-300 px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700 sm:w-auto sm:text-sm"
+            class="btn-secondary w-full justify-center sm:w-auto"
             @click="$emit('close')"
           >
             Close

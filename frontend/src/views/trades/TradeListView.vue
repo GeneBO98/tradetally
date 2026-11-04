@@ -189,7 +189,7 @@
         <div role="dialog" aria-modal="true" class="modal-panel my-8 w-full max-w-4xl">
           <div class="flex items-center justify-between border-b border-gray-200 px-5 py-3 dark:border-gray-700">
             <h3 class="modal-title flex items-center gap-2">
-              <FunnelIcon class="h-5 w-5 text-primary-500" />
+              <FunnelIcon class="h-5 w-5 text-primary-700 dark:text-primary-400" />
               Filters
             </h3>
             <button
@@ -356,20 +356,20 @@
           
           <div class="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <div class="text-gray-500 dark:text-gray-400">Entry Date</div>
-              <div class="text-gray-900 dark:text-white">{{ trade.entry_time ? formatDate(trade.entry_time) : '-' }}</div>
+              <div class="table-card-label">Entry Date</div>
+              <div class="table-card-value text-left">{{ trade.entry_time ? formatDate(trade.entry_time) : '-' }}</div>
             </div>
             <div>
-              <div class="text-gray-500 dark:text-gray-400">Exit Date</div>
-              <div class="text-gray-900 dark:text-white">{{ trade.exit_time ? formatDate(trade.exit_time) : '-' }}</div>
+              <div class="table-card-label">Exit Date</div>
+              <div class="table-card-value text-left">{{ trade.exit_time ? formatDate(trade.exit_time) : '-' }}</div>
             </div>
             <div>
-              <div class="text-gray-500 dark:text-gray-400">Entry</div>
-              <div class="text-gray-900 dark:text-white">{{ formatTradePrice(trade, 'entry_price') }}</div>
+              <div class="table-card-label">Entry</div>
+              <div class="table-card-value text-left">{{ formatTradePrice(trade, 'entry_price') }}</div>
             </div>
             <div>
-              <div class="text-gray-500 dark:text-gray-400">Exit</div>
-              <div class="text-gray-900 dark:text-white">
+              <div class="table-card-label">Exit</div>
+              <div class="table-card-value text-left">
                 {{ trade.exit_price !== null && trade.exit_price !== undefined ? formatTradePrice(trade, 'exit_price') : '-' }}
               </div>
             </div>
@@ -442,7 +442,7 @@
           <div class="flex justify-between items-center mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
             <button
               @click.stop="openComments(trade)"
-              class="inline-flex items-center text-gray-500 hover:text-primary-600 transition-colors"
+              class="inline-flex items-center text-gray-500 hover:text-primary-800 transition-colors"
             >
               <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
               <span class="text-sm">{{ trade.comment_count || 0 }}</span>
@@ -747,7 +747,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap text-center']">
                   <button
                     @click.stop="openComments(trade)"
-                    class="inline-flex items-center text-gray-500 hover:text-primary-600 transition-colors"
+                    class="inline-flex items-center text-gray-500 hover:text-primary-800 transition-colors"
                   >
                     <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
                     <span class="text-sm">{{ trade.comment_count || 0 }}</span>
@@ -1105,7 +1105,7 @@
           <h3 class="modal-title">Add Tags to {{ selectedTrades.length }} Trade{{ selectedTrades.length === 1 ? '' : 's' }}</h3>
           <button
             @click="showBulkTagModal = false"
-            class="text-gray-400 hover:text-gray-500"
+            class="btn-icon"
           >
             <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -1123,7 +1123,7 @@
         <div class="modal-footer">
           <button
             @click="showBulkTagModal = false"
-            class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300"
+            class="btn-secondary"
           >
             Cancel
           </button>

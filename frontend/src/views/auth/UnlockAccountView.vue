@@ -15,7 +15,7 @@
         <div class="spinner spinner-lg"></div>
       </div>
 
-      <div v-else-if="status === 'success'" class="rounded-md bg-green-50 dark:bg-green-900/20 p-4">
+      <div v-else-if="status === 'success'" class="callout-success">
         <p class="text-sm text-green-800 dark:text-green-400">
           {{ message }}
         </p>
@@ -27,7 +27,7 @@
       </div>
 
       <div v-else class="space-y-6">
-        <div class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+        <div class="callout-danger">
           <p class="text-sm text-red-800 dark:text-red-400">{{ message }}</p>
         </div>
         <div class="text-center space-y-2">

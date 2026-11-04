@@ -31,7 +31,7 @@
     <!-- Empty / invalid state -->
     <div
       v-if="selectedAccountValues.length < 2"
-      class="rounded-lg border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 p-4 text-sm text-yellow-800 dark:text-yellow-200"
+      class="callout-warning"
     >
       Select at least two accounts from the Account Comparison panel to compare.
       <button @click="goBack" class="ml-2 underline text-primary-700 hover:text-primary-800">

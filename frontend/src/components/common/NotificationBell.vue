@@ -92,7 +92,7 @@
                   />
                   <ChatBubbleLeftRightIcon
                     v-else-if="notification.type === 'trade_comment'"
-                    class="h-5 w-5 text-primary-500"
+                    class="h-5 w-5 text-primary-700 dark:text-primary-400"
                   />
                   <TrophyIcon
                     v-else-if="notification.type === 'achievement_earned'"
@@ -104,7 +104,7 @@
                   />
                   <BellIcon
                     v-else-if="notification.type === 'web_mention_alert'"
-                    class="h-5 w-5 text-primary-500"
+                    class="h-5 w-5 text-primary-700 dark:text-primary-400"
                   />
                   <ArrowPathIcon
                     v-else-if="['broker_reauth_expiring', 'broker_reauth_required'].includes(notification.type)"

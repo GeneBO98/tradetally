@@ -18,8 +18,8 @@
           type="button"
           role="switch"
           :aria-checked="showDollarAmounts"
-          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-          :class="showDollarAmounts ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600'"
+          class="switch"
+          :class="showDollarAmounts ? 'switch-on' : ''"
           @click="showDollarAmounts = !showDollarAmounts"
         >
           <span

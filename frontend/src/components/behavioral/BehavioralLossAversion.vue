@@ -50,7 +50,7 @@
                         <!-- Main Insight Message -->
                         <div
                             v-if="lossAversionData.analysis.message"
-                            class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 mb-6"
+                            class="callout-warning mb-6"
                         >
                             <div class="flex">
                                 <div class="flex-shrink-0">
@@ -81,7 +81,7 @@
                         <!-- Hold Time Comparison -->
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                             <div
-                                class="bg-green-50 dark:bg-green-900/20 rounded-lg p-4"
+                                class="callout-success"
                             >
                                 <h4
                                     class="text-sm font-medium text-green-800 dark:text-green-300"
@@ -106,7 +106,7 @@
                             </div>
 
                             <div
-                                class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4"
+                                class="callout-danger"
                             >
                                 <h4
                                     class="text-sm font-medium text-red-800 dark:text-red-300"
@@ -131,7 +131,7 @@
                             </div>
 
                             <div
-                                class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4"
+                                class="callout-info"
                             >
                                 <h4
                                     class="text-sm font-medium text-primary-800 dark:text-primary-300"
@@ -291,7 +291,7 @@
                             </div>
 
                             <div
-                                class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4 mb-4"
+                                class="callout-info mb-4"
                             >
                                 <div
                                     class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center"

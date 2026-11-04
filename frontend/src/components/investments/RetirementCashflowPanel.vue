@@ -70,7 +70,7 @@
       <div
         v-if="!cashflow.income_detected"
         data-testid="no-income-notice"
-        class="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-xs leading-5 text-yellow-900 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200"
+        class="callout-warning mt-3 text-xs leading-5"
       >
         <p class="font-semibold">No income found in your linked accounts.</p>
         <p class="mt-0.5">

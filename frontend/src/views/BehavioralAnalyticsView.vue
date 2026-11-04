@@ -655,7 +655,7 @@
             </div>
 
             <!-- Info Banner Explaining the Difference -->
-            <div v-if="activeBehavioralTab === 'settings'" class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4 mb-6">
+            <div v-if="activeBehavioralTab === 'settings'" class="callout-info mb-6">
                 <div class="flex">
                     <div class="flex-shrink-0">
                         <svg
@@ -1059,7 +1059,7 @@
 
                                 <!-- Peak Price and Potential -->
                                 <div
-                                    class="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 mb-4"
+                                    class="callout-danger mb-4"
                                 >
                                     <div
                                         class="grid grid-cols-1 md:grid-cols-2 gap-4"
@@ -1316,7 +1316,7 @@
 
                                 <!-- Recommendation -->
                                 <div
-                                    class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-3"
+                                    class="callout-info"
                                 >
                                     <div class="flex items-start space-x-2">
                                         <svg
@@ -1529,11 +1529,11 @@
                                             'enabled',
                                         )
                                     "
-                                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                                    :class="settings.revengeTrading?.enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700'"
+                                    class="switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                                    :class="settings.revengeTrading?.enabled ? 'switch-on' : ''"
                                 >
                                     <span
-                                        class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                        class="switch-knob"
                                         :class="settings.revengeTrading?.enabled ? 'translate-x-5' : 'translate-x-0'"
                                     ></span>
                                 </button>

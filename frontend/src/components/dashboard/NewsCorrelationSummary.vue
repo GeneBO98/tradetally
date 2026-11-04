@@ -3,7 +3,7 @@
     <div class="card-body">
       <div class="flex items-center justify-between mb-4">
         <h3 class="heading-card flex items-center">
-          <MdiIcon :icon="newspaperIcon" :size="20" class="mr-2 text-primary-500" />
+          <MdiIcon :icon="newspaperIcon" :size="20" class="mr-2 text-primary-700 dark:text-primary-400" />
           News Sentiment Impact
         </h3>
         <router-link

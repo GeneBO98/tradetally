@@ -360,7 +360,7 @@
 
                     <!-- Total Preview -->
                     <div
-                        class="p-3 bg-primary-50 dark:bg-primary-900/20 rounded-md"
+                        class="callout-info"
                     >
                         <div
                             class="flex justify-between items-center"

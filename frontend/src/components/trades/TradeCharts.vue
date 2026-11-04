@@ -209,7 +209,7 @@
                     class="bg-white dark:bg-gray-800 rounded-lg p-12 text-center max-w-2xl mx-auto"
                 >
                     <svg
-                        class="h-24 w-24 mx-auto mb-6 text-primary-500 dark:text-primary-400"
+                        class="h-24 w-24 mx-auto mb-6 text-primary-700 dark:text-primary-400"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"

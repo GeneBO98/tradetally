@@ -76,7 +76,7 @@
                         <!-- Main Stats -->
                         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                             <div
-                                class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4"
+                                class="callout-warning"
                             >
                                 <h4
                                     class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
@@ -99,7 +99,7 @@
                             </div>
 
                             <div
-                                class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4"
+                                class="callout-danger"
                             >
                                 <h4
                                     class="text-sm font-medium text-red-800 dark:text-red-300"
@@ -123,7 +123,7 @@
                             </div>
 
                             <div
-                                class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4"
+                                class="callout-warning"
                             >
                                 <h4
                                     class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
@@ -170,7 +170,7 @@
                             </div>
 
                             <div
-                                class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4"
+                                class="callout-info"
                             >
                                 <h4
                                     class="text-sm font-medium text-primary-800 dark:text-primary-300"
@@ -197,7 +197,7 @@
                         <!-- Win Streak Analysis -->
                         <div
                             v-if="overconfidenceData.analysis.winStreakAnalysis"
-                            class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4 mb-6"
+                            class="callout-info mb-6"
                         >
                             <h4
                                 class="text-lg font-medium text-primary-800 dark:text-primary-300 mb-3"
@@ -337,7 +337,7 @@
 
                                 <!-- Position Size Analysis -->
                                 <div
-                                    class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 mb-4"
+                                    class="callout-warning mb-4"
                                 >
                                     <h6
                                         class="text-sm font-medium text-yellow-800 dark:text-yellow-300 mb-2"
@@ -1177,7 +1177,7 @@
                                             :key="rec"
                                             class="flex items-start"
                                         >
-                                            <span class="text-primary-500 mr-1"
+                                            <span class="text-primary-700 mr-1 dark:text-primary-400"
                                                 >•</span
                                             >
                                             {{ rec }}
@@ -1475,7 +1475,7 @@
                                                         </div>
                                                     </div>
                                                     <div
-                                                        class="text-primary-500 hover:text-primary-600"
+                                                        class="text-primary-700 hover:text-primary-800 dark:text-primary-400"
                                                     >
                                                         <svg
                                                             class="w-4 h-4"

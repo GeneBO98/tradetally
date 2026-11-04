@@ -96,7 +96,7 @@
         </div>
 
         <!-- Key Levels -->
-        <div v-if="entry.key_levels && expanded" class="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg">
+        <div v-if="entry.key_levels && expanded" class="callout-warning">
           <h5 class="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">Key Levels</h5>
           <div class="text-sm text-yellow-700 dark:text-yellow-300" v-html="parseMarkdown(entry.key_levels)"></div>
         </div>

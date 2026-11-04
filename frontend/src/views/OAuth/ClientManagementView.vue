@@ -250,7 +250,7 @@
           </h3>
         </div>
 
-        <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-4">
+        <div class="callout-warning mb-4">
           <p class="text-sm text-yellow-800 dark:text-yellow-300 font-medium">
             Save these credentials now! The client secret will not be shown again.
           </p>
@@ -291,7 +291,7 @@
             </div>
           </div>
 
-          <div class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-4">
+          <div class="callout-info">
             <p class="text-sm text-primary-800 dark:text-primary-300">
               <strong>For Discourse OAuth2 Basic plugin:</strong><br />
               Use these endpoints:<br />

@@ -34,7 +34,7 @@
       </div>
 
       <!-- Verification message from registration -->
-      <div v-if="verificationMessage" class="rounded-md bg-primary-50 dark:bg-primary-900/20 p-4">
+      <div v-if="verificationMessage" class="callout-info">
         <p class="text-sm text-primary-800 dark:text-primary-400">{{ verificationMessage }}</p>
       </div>
 
@@ -78,7 +78,7 @@
           </div>
         </div>
 
-        <div v-if="authStore.error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+        <div v-if="authStore.error" class="callout-danger">
           <p class="text-sm text-red-800 dark:text-red-400">{{ authStore.error }}</p>
           <div v-if="showResendVerification" class="mt-3">
             <button
@@ -99,7 +99,7 @@
         </div>
 
         <!-- Resend verification success message -->
-        <div v-if="resendSuccess" class="rounded-md bg-green-50 dark:bg-green-900/20 p-4">
+        <div v-if="resendSuccess" class="callout-success">
           <p class="text-sm text-green-800 dark:text-green-400">
             Verification email sent successfully! Please check your inbox.
           </p>

@@ -292,7 +292,7 @@
                                         title="Email enabled"
                                         :icon="mdiEmailOutline"
                                         :size="16"
-                                        class="text-primary-500"
+                                        class="text-primary-700 dark:text-primary-400"
                                         />
                                     <MdiIcon
                                         v-if="alert.browser_enabled"

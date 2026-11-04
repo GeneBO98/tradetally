@@ -24,7 +24,7 @@
         <!-- Body -->
         <div class="p-6">
           <!-- Instructions -->
-          <div class="mb-6 p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
+          <div class="callout-info mb-6">
             <h4 class="text-sm font-medium text-primary-800 dark:text-primary-300 mb-2">Setup Instructions</h4>
             <ol class="text-sm text-primary-700 dark:text-primary-400 space-y-2 list-decimal list-inside">
               <li>Log in to <a href="https://www.interactivebrokers.com/sso/Login" target="_blank" class="underline font-medium">IBKR Client Portal</a></li>
@@ -47,11 +47,11 @@
           </div>
 
           <!-- Error Message -->
-          <div v-if="props.reconnecting" class="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-sm text-yellow-800 dark:text-yellow-200">
+          <div v-if="props.reconnecting" class="callout-warning mb-6">
             Your Flex token no longer works. Generate a new token in IBKR (Performance &amp; Reports &gt; Flex Queries &gt; Flex Web Service Configuration), set "Should Expire After" to 1 Year, and paste it below. Your query ID, trades and sync settings are kept.
           </div>
 
-          <div v-if="props.error" class="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <div v-if="props.error" class="callout-danger mb-6">
             <div class="flex">
               <svg class="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
@@ -113,10 +113,10 @@
               <button
                 type="button"
                 @click="form.autoSyncEnabled = !form.autoSyncEnabled"
-                :class="[ form.autoSyncEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2' ]"
+                :class="[ form.autoSyncEnabled ? 'switch-on' : '', 'switch' ]"
               >
                 <span
-                  :class="[ form.autoSyncEnabled ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out' ]"
+                  :class="[ form.autoSyncEnabled ? 'translate-x-5' : 'translate-x-0', 'switch-knob' ]"
                 />
               </button>
             </div>

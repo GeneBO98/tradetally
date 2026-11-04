@@ -317,7 +317,7 @@
                                     :href="article.url"
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    class="block hover:text-primary-600 transition-colors"
+                                    class="block hover:text-primary-800 transition-colors"
                                 >
                                     <h3
                                         class="heading-sub mb-1"

@@ -150,7 +150,7 @@
                                     <!-- Trigger Trade Information -->
                                     <div
                                         v-if="event.trigger_trade"
-                                        class="mt-3 p-4 bg-red-50 dark:bg-red-900/10 rounded-lg border-l-4 border-red-500"
+                                        class="callout-danger mt-3 border-l-4"
                                     >
                                         <div
                                             class="flex items-center justify-between mb-3"

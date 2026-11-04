@@ -11,7 +11,7 @@
         <!-- Error State -->
         <div
             v-else-if="error"
-            class="bg-red-50 dark:bg-red-900/20 rounded-lg p-6 text-center"
+            class="callout-danger text-center"
         >
             <p class="text-red-700 dark:text-red-400">{{ error }}</p>
             <button @click="loadHolding" class="mt-4 btn-primary">
@@ -167,7 +167,7 @@
                         :class="[ 'text-xs', holding.unrealizedPnL >= 0 ? 'text-green-500' : 'text-red-500', ]"
                     >
                         {{ holding.unrealizedPnL >= 0 ? "+" : ""
-                        }}{{ holding.unrealizedPnLPercent.toFixed(2) }}%
+                        }}{{ holding.unrealizedPnLPercent.toFixed(1) }}%
                     </p>
                 </div>
             </div>

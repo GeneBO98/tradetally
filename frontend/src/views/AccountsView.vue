@@ -218,7 +218,7 @@
               <div class="flex gap-2">
                 <button
                   @click="editAccount(account)"
-                  class="p-2 text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400"
+                  class="p-2 text-gray-500 hover:text-primary-800 dark:text-gray-400 dark:hover:text-primary-400"
                   title="Edit"
                 >
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

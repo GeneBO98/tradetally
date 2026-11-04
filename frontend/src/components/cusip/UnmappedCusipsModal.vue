@@ -44,7 +44,7 @@
 
           <!-- Unmapped CUSIPs List -->
           <div v-else>
-            <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-4 mb-6">
+            <div class="callout-warning mb-6">
               <div class="flex items-start justify-between">
                 <div class="flex">
                   <ExclamationTriangleIcon class="h-5 w-5 text-yellow-400" />

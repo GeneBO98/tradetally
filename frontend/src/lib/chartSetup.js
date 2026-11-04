@@ -65,7 +65,7 @@ Chart.register(
 // Charts that pass explicit colors are unaffected.
 const CHART_THEMES = {
   light: { text: '#4b5563', line: '#e5e7eb' }, // gray-600 / gray-200
-  dark: { text: '#9ca3af', line: 'rgba(75, 85, 99, 0.45)' } // gray-400 / gray-600 at 45%
+  dark: { text: '#d1d5db', line: 'rgba(107, 114, 128, 0.4)' } // gray-300 / gray-500 at 40%
 }
 
 // One presentation contract for every Chart.js chart: system font at 11px,

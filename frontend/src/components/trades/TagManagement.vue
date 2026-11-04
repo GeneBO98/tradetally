@@ -130,7 +130,7 @@
                     <button
                         type="button"
                         @click="showTagManager = false"
-                        class="text-gray-400 hover:text-gray-500"
+                        class="btn-icon"
                     >
                         <svg
                             class="h-6 w-6"

@@ -55,7 +55,7 @@
           {{ emptyDescription }}
         </p>
 
-        <div v-if="!aiStore.canStartSession" class="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+        <div v-if="!aiStore.canStartSession" class="callout-warning mb-4">
           <p class="text-yellow-800 dark:text-yellow-200 text-sm">
             <template v-if="aiStore.credits.unlimited === false && aiStore.credits.remaining <= 0">
               You've used all your AI credits for this month. Credits reset at the start of each month.
@@ -186,7 +186,7 @@
     </div>
 
     <!-- Error Display -->
-    <div v-if="aiStore.error" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+    <div v-if="aiStore.error" class="callout-danger mt-4">
       <p class="text-red-800 dark:text-red-200 text-sm">{{ aiStore.error }}</p>
       <button @click="aiStore.clearError" class="text-red-600 dark:text-red-400 text-xs underline mt-1">
         Dismiss

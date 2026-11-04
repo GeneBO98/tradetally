@@ -244,7 +244,7 @@
                     <div v-if="twoFactorStatus.enabled" class="space-y-4">
                         <!-- 2FA is enabled -->
                         <div
-                            class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4"
+                            class="callout-success"
                         >
                             <div class="flex items-center">
                                 <svg
@@ -297,7 +297,7 @@
                     <div v-else class="space-y-4">
                         <!-- 2FA is not enabled -->
                         <div
-                            class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4"
+                            class="callout-warning"
                         >
                             <div class="flex items-center">
                                 <svg
@@ -508,7 +508,7 @@
                             v-if="
                                 subscription.trial && subscription.trial.active
                             "
-                            class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4"
+                            class="callout-info"
                         >
                             <div class="flex items-center justify-between">
                                 <div>
@@ -609,7 +609,7 @@
 
                     <div
                         v-if="billingStatus.billing_available && !canManageApiKeys"
-                        class="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900 dark:border-yellow-900/40 dark:bg-yellow-950/30 dark:text-yellow-200"
+                        class="callout-warning"
                     >
                         API keys are available with a Pro subscription.
                         Upgrade to create personal integrations and external
@@ -1049,7 +1049,7 @@
                     </p>
 
                     <div
-                        class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6"
+                        class="callout-danger mb-6"
                     >
                         <div class="flex items-start">
                             <svg
@@ -1234,7 +1234,7 @@
                     </h3>
 
                     <div
-                        class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6"
+                        class="callout-danger mb-6"
                     >
                         <div class="flex items-center">
                             <svg
@@ -1476,7 +1476,7 @@
 
                     <div class="space-y-4">
                         <div
-                            class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-4"
+                            class="callout-warning"
                         >
                             <p
                                 class="text-sm text-yellow-800 dark:text-yellow-400"
@@ -1575,7 +1575,7 @@
                         class="space-y-4"
                     >
                         <div
-                            class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4"
+                            class="callout-danger"
                         >
                             <p class="text-sm text-red-700 dark:text-red-400">
                                 To confirm, please enter your password below.

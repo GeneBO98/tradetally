@@ -235,7 +235,7 @@
         <div
           v-if="analysis.analysis_result?.conclusion &&
                 !analysis.analysis_result.conclusion.includes('Neither stop loss nor take profit')"
-          class="p-3 bg-primary-50 dark:bg-primary-900/20 rounded-lg"
+          class="callout-info"
         >
           <p class="text-sm text-primary-800 dark:text-primary-200">
             {{ analysis.analysis_result.conclusion }}

@@ -14,7 +14,7 @@
         </p>
       </div>
 
-      <div v-if="emailSent" class="rounded-md bg-green-50 dark:bg-green-900/20 p-4">
+      <div v-if="emailSent" class="callout-success">
         <p class="text-sm text-green-800 dark:text-green-400">
           If an account with that email exists, we've sent you a password reset link.
         </p>
@@ -40,7 +40,7 @@
           />
         </div>
 
-        <div v-if="authStore.error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+        <div v-if="authStore.error" class="callout-danger">
           <p class="text-sm text-red-800 dark:text-red-400">{{ authStore.error }}</p>
         </div>
 

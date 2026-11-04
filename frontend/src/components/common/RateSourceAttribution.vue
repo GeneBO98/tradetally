@@ -4,7 +4,7 @@
     :href="attribution.url"
     target="_blank"
     rel="noopener"
-    class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+    class="hover:text-primary-800 dark:hover:text-primary-400 transition-colors"
     :title="`Currency conversions use ${attribution.name} exchange rates${rateDate ? ` (${rateDate})` : ''}`"
   >
     <span class="hidden sm:inline">Exchange rates by {{ attribution.name }}</span>

@@ -85,7 +85,7 @@
           </div>
 
           <!-- User Info -->
-          <div class="mb-6 p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
+          <div class="callout-info mb-6">
             <p class="text-sm text-primary-800 dark:text-primary-300">
               Signing in as <strong>{{ user?.email }}</strong>
             </p>

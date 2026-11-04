@@ -36,7 +36,7 @@
         <div>
           <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
             Stop Loss
-            <button v-if="!editingStopLoss" type="button" @click="startEditingStopLoss" class="ml-1 text-primary-500 hover:text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded" aria-label="Edit stop loss">(edit)</button>
+            <button v-if="!editingStopLoss" type="button" @click="startEditingStopLoss" class="ml-1 text-primary-700 hover:text-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded dark:text-primary-400" aria-label="Edit stop loss">(edit)</button>
           </div>
           <div v-if="editingStopLoss" class="space-y-2">
             <div class="relative">
@@ -79,7 +79,7 @@
           <div v-if="!hasMultipleTpTargets && editableTakeProfitTargets.length === 0">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
               Take Profit (TP1)
-              <button v-if="!editingTakeProfit" type="button" @click="startEditingTakeProfit" class="ml-1 text-primary-500 hover:text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded" aria-label="Edit take profit">(edit)</button>
+              <button v-if="!editingTakeProfit" type="button" @click="startEditingTakeProfit" class="ml-1 text-primary-700 hover:text-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded dark:text-primary-400" aria-label="Edit take profit">(edit)</button>
             </div>
             <div v-if="editingTakeProfit" class="space-y-2">
               <div class="flex items-center gap-2">
@@ -201,7 +201,7 @@
       </div>
 
       <!-- Error Message -->
-      <div v-if="error" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">
+      <div v-if="error" class="callout-danger mt-4">
         {{ error }}
       </div>
 

@@ -75,14 +75,14 @@
       <div v-else-if="showChart && chartData">
         <div
           v-if="chartData.trade?.instrumentType === 'option'"
-          class="mb-3 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm text-primary-900 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-100"
+          class="callout-info mb-3"
         >
           This chart displays the underlying security. Execution markers show option fill timing; contract prices remain in the execution table.
         </div>
 
         <div
           v-if="chartData.futures_continuous"
-          class="mb-3 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm text-primary-900 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-100"
+          class="callout-info mb-3"
         >
           This chart displays continuous front-month data
           <template v-if="chartData.chart_symbol">({{ chartData.chart_symbol }})</template>.
@@ -91,7 +91,7 @@
 
         <div
           v-if="degradationNotice"
-          class="mb-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-100"
+          class="callout-warning mb-3"
         >
           {{ degradationNotice }}
         </div>

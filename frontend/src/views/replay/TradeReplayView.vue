@@ -72,7 +72,7 @@
       <!-- Degraded-data notice -->
       <div
         v-if="replayData.degraded"
-        class="mb-4 p-3 rounded-lg border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20"
+        class="callout-warning mb-4"
       >
         <p class="text-sm text-yellow-800 dark:text-yellow-200">
           <strong>Daily mode:</strong> minute-level data isn't available for this trade, so the
@@ -98,7 +98,7 @@
       <!-- Options underlying notice -->
       <div
         v-if="replayData.trade.instrument_type === 'option'"
-        class="mb-4 p-3 rounded-lg border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20"
+        class="callout-info mb-4"
       >
         <p class="text-sm text-primary-800 dark:text-primary-200">
           The chart shows the <strong>underlying stock</strong> ({{ replayData.chart_symbol }});
@@ -111,7 +111,7 @@
       <!-- Futures continuous-contract notice -->
       <div
         v-if="replayData.futures_continuous"
-        class="mb-4 p-3 rounded-lg border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20"
+        class="callout-info mb-4"
       >
         <p class="text-sm text-primary-800 dark:text-primary-200">
           The chart shows <strong>continuous front-month data</strong> ({{ replayData.chart_symbol }}).

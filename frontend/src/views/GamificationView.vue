@@ -179,7 +179,7 @@
                                     <MdiIcon
                                         :icon="mdiChartLine"
                                         :size="24"
-                                        class="text-primary-500"
+                                        class="text-primary-700 dark:text-primary-400"
                                     />
                                 </div>
                                 <div class="ml-5 w-0 flex-1">
@@ -529,7 +529,7 @@
                                     <MdiIcon
                                         :icon="mdiAccount"
                                         :size="20"
-                                        class="mr-2 text-primary-500"
+                                        class="mr-2 text-primary-700 dark:text-primary-400"
                                     />
                                     My Rankings
                                 </h3>
@@ -687,7 +687,7 @@
                             <div v-else class="space-y-4">
                                 <div
                                     v-if="hasFiltersApplied"
-                                    class="mb-4 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-lg border border-primary-200 dark:border-primary-700"
+                                    class="callout-info mb-4"
                                 >
                                     <div
                                         class="flex items-center justify-between"

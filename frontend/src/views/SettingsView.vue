@@ -104,14 +104,14 @@
                                                 analyticsForm.analyticsPositionGrouping =
                                                     !analyticsForm.analyticsPositionGrouping
                                             "
-                                            :class="[ analyticsForm.analyticsPositionGrouping ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
+                                            :class="[ analyticsForm.analyticsPositionGrouping ? 'switch-on' : '', 'switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
                                             role="switch"
                                             :aria-checked="
                                                 analyticsForm.analyticsPositionGrouping
                                             "
                                         >
                                             <span
-                                                :class="[ analyticsForm.analyticsPositionGrouping ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out', ]"
+                                                :class="[ analyticsForm.analyticsPositionGrouping ? 'translate-x-5' : 'translate-x-0', 'switch-knob', ]"
                                             />
                                         </button>
                                     </div>
@@ -147,14 +147,14 @@
                                                 analyticsForm.edgeReportEnabled =
                                                     !analyticsForm.edgeReportEnabled
                                             "
-                                            :class="[ analyticsForm.edgeReportEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
+                                            :class="[ analyticsForm.edgeReportEnabled ? 'switch-on' : '', 'switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
                                             role="switch"
                                             :aria-checked="
                                                 analyticsForm.edgeReportEnabled
                                             "
                                         >
                                             <span
-                                                :class="[ analyticsForm.edgeReportEnabled ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out', ]"
+                                                :class="[ analyticsForm.edgeReportEnabled ? 'translate-x-5' : 'translate-x-0', 'switch-knob', ]"
                                             />
                                         </button>
                                     </div>
@@ -381,14 +381,14 @@
                                                 analyticsForm.autoCloseExpiredOptions =
                                                     !analyticsForm.autoCloseExpiredOptions
                                             "
-                                            :class="[ analyticsForm.autoCloseExpiredOptions ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
+                                            :class="[ analyticsForm.autoCloseExpiredOptions ? 'switch-on' : '', 'switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
                                             role="switch"
                                             :aria-checked="
                                                 analyticsForm.autoCloseExpiredOptions
                                             "
                                         >
                                             <span
-                                                :class="[ analyticsForm.autoCloseExpiredOptions ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out', ]"
+                                                :class="[ analyticsForm.autoCloseExpiredOptions ? 'translate-x-5' : 'translate-x-0', 'switch-knob', ]"
                                             />
                                         </button>
                                     </div>
@@ -734,14 +734,14 @@
                                             privacyForm.publicProfile =
                                                 !privacyForm.publicProfile
                                         "
-                                        :class="[ privacyForm.publicProfile ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700', 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
+                                        :class="[ privacyForm.publicProfile ? 'switch-on' : '', 'switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
                                         role="switch"
                                         :aria-checked="
                                             privacyForm.publicProfile
                                         "
                                     >
                                         <span
-                                            :class="[ privacyForm.publicProfile ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out', ]"
+                                            :class="[ privacyForm.publicProfile ? 'translate-x-5' : 'translate-x-0', 'switch-knob', ]"
                                         />
                                     </button>
                                 </div>
@@ -948,7 +948,7 @@
                                 class="pt-4"
                             >
                                 <div
-                                    class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4"
+                                    class="callout-info"
                                 >
                                     <div class="flex items-start">
                                         <ArrowPathIcon

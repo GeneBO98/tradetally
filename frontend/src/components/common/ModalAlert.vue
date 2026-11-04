@@ -84,7 +84,7 @@
                             :href="modalAlert.linkUrl"
                             target="_blank"
                             rel="noopener noreferrer"
-                            class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-center text-primary-700 bg-primary-100 border border-primary-300 rounded-md hover:bg-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:bg-primary-900/20 dark:text-primary-300 dark:border-primary-700 dark:hover:bg-primary-900/40"
+                            class="btn-secondary w-full justify-center sm:w-auto"
                         >
                             {{ modalAlert.linkText || "View Documentation" }}
                         </a>
@@ -93,7 +93,7 @@
                         <button
                             @click="handleConfirm"
                             :disabled="modalAlert.isSubmitting"
-                            class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2"
+                            class="btn w-full justify-center text-white sm:w-auto"
                             :class="confirmButtonClass"
                         >
                             {{ modalAlert.isSubmitting ? modalAlert.pendingText : modalAlert.confirmText }}
@@ -155,7 +155,7 @@ const confirmButtonClass = computed(() => {
         case "warning":
             return "bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500";
         case "confirm":
-            return "bg-primary-600 hover:bg-primary-700 focus:ring-primary-500";
+            return "bg-primary-700 hover:bg-primary-800 focus:ring-primary-500";
         case "success":
             return "bg-green-600 hover:bg-green-700 focus:ring-green-500";
         default:

@@ -159,7 +159,7 @@
                   class="flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 text-sm"
                 >
                   <div>
-                    <router-link :to="`/trades/${review.trade_id}`" class="font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
+                    <router-link :to="`/trades/${review.trade_id}`" class="font-medium text-gray-900 dark:text-white hover:text-primary-800 dark:hover:text-primary-400">
                       {{ review.symbol }}
                     </router-link>
                     <div class="text-gray-500 dark:text-gray-400">{{ formatDate(review.trade_date) }}</div>

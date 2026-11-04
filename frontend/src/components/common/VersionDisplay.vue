@@ -3,7 +3,7 @@
     v{{ currentVersion }}
     <span
       v-if="updateAvailable"
-      class="ml-1 text-primary-500"
+      class="ml-1 text-primary-700 dark:text-primary-400"
       title="Update available"
     >
       (v{{ latestVersion }} available)

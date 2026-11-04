@@ -189,7 +189,7 @@
             <p class="text-xs text-gray-500 dark:text-gray-400" title="Average realized P&L divided by best available MFE on winning trades. After-trade MFE is used when present.">Exit efficiency</p>
             <p class="text-lg font-semibold text-mono-num mt-1" :class="exitEfficiency >= 60 ? 'text-green-700 dark:text-green-400' : exitEfficiency >= 40 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'">
               <span v-if="loading" class="text-gray-300 dark:text-gray-600">—</span>
-              <span v-else-if="exitEfficiency != null">{{ exitEfficiency.toFixed(0) }}%</span>
+              <span v-else-if="exitEfficiency != null">{{ exitEfficiency.toFixed(1) }}%</span>
               <span v-else class="text-gray-400">—</span>
             </p>
             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Avg P&L / best MFE (winners)</p>

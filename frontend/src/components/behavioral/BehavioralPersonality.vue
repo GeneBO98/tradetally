@@ -82,7 +82,7 @@
                     <div v-else-if="personalityData && personalityData.profile">
                         <!-- Personality Overview -->
                         <div
-                            class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-6 mb-6"
+                            class="callout-info mb-6"
                         >
                             <div class="flex items-center justify-between mb-4">
                                 <div>
@@ -412,7 +412,7 @@
                                 personalityData.peerComparison &&
                                 !personalityData.peerComparison.insufficientData
                             "
-                            class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4 mb-6"
+                            class="callout-info mb-6"
                         >
                             <h5
                                 class="text-lg font-medium text-primary-800 dark:text-primary-300 mb-4"
@@ -618,7 +618,7 @@
                                 personalityData.driftAnalysis &&
                                 personalityData.driftAnalysis.hasDrift
                             "
-                            class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 mb-6"
+                            class="callout-warning mb-6"
                         >
                             <h5
                                 class="text-lg font-medium text-yellow-800 dark:text-yellow-300 mb-3"

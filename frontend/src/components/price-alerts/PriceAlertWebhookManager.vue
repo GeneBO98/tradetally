@@ -66,7 +66,7 @@
 
             <div
                 v-else-if="loadError"
-                class="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 p-3"
+                class="callout-danger"
             >
                 <p class="text-sm text-red-700 dark:text-red-300">
                     {{ loadError }}

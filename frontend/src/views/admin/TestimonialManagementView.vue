@@ -29,7 +29,7 @@
     </div>
 
     <!-- Error -->
-    <div v-else-if="error && !testimonials.length" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+    <div v-else-if="error && !testimonials.length" class="callout-danger">
       <p class="text-sm text-red-800 dark:text-red-400">{{ error }}</p>
     </div>
 

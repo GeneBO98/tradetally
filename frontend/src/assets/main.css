@@ -298,6 +298,19 @@
     @apply badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300;
   }
 
+  /* ---- Toggle switch ------------------------------------------------
+     `switch` is the track; add `switch-on` when checked. The knob is a
+     child span with `switch-knob` (translate-x-5 when on). */
+  .switch {
+    @apply relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:bg-gray-600 dark:focus:ring-offset-gray-900;
+  }
+  .switch-on {
+    @apply bg-primary-700 dark:bg-primary-600;
+  }
+  .switch-knob {
+    @apply pointer-events-none inline-block h-5 w-5 translate-x-0 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out;
+  }
+
   /* ---- Tables -------------------------------------------------------
      Header row: a faint tint in light mode, and in dark mode a recessed
      band instead of a lighter gray-700 stripe across the card. */
@@ -448,15 +461,16 @@
     @apply text-sm;
   }
 
+  /* The label yields (truncates) before the figure ever wraps. */
   .table-card-label {
-    @apply text-xs font-medium text-gray-500 dark:text-gray-400 uppercase shrink-0;
-    @apply sm:min-w-[100px];
+    @apply text-xs font-medium text-gray-500 dark:text-gray-400 uppercase min-w-0 truncate;
+    @apply sm:min-w-[100px] sm:shrink-0;
   }
 
   /* Never clip a figure: the value gets the remaining width and wraps. */
   .table-card-value {
     @apply text-sm font-medium text-gray-900 dark:text-white text-right text-mono-num;
-    @apply flex-1 min-w-0 break-words;
+    @apply shrink-0 whitespace-nowrap;
   }
 
   /* Responsive table with horizontal scroll fallback */

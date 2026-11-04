@@ -6,7 +6,7 @@
                 <li class="inline-flex items-center">
                     <router-link
                         to="/import"
-                        class="inline-flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400"
+                        class="inline-flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-primary-800 dark:hover:text-primary-400"
                     >
                         <ArrowUpTrayIcon class="w-4 h-4 mr-2" />
                         Import

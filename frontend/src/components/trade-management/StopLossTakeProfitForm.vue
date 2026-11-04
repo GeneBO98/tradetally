@@ -181,7 +181,7 @@
         </div>
 
         <!-- API Error -->
-        <div v-if="apiError" class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+        <div v-if="apiError" class="callout-danger">
           <p class="text-sm text-red-700 dark:text-red-300">{{ apiError }}</p>
         </div>
 

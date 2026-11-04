@@ -352,7 +352,7 @@
                                     :key="period"
                                     @click="setPortfolioPeriod(period)"
                                     :disabled="investmentsStore.portfolioLoading"
-                                    :class="[ 'px-3 py-1.5 text-xs rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed', portfolioPeriod === period ? 'bg-primary-700 text-white border-primary-600' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 hover:text-primary-600', ]"
+                                    :class="[ 'px-3 py-1.5 text-xs rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed', portfolioPeriod === period ? 'bg-primary-700 text-white border-primary-600' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 hover:text-primary-800', ]"
                                 >
                                     {{ monthPresetOptions.find(option => option.value === period)?.label || period }}
                                 </button>
@@ -835,7 +835,7 @@
                                                     :class="row.returnDelta >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                                     class="block text-xs"
                                                 >
-                                                    {{ row.returnDelta >= 0 ? '+' : '' }}{{ row.returnDelta.toFixed(2) }}%
+                                                    {{ row.returnDelta >= 0 ? '+' : '' }}{{ row.returnDelta.toFixed(1) }}%
                                                 </span>
                                             </td>
                                             <td
@@ -843,7 +843,7 @@
                                                 class="px-3 py-2 text-right font-medium"
                                                 :class="pairDifferenceRow.returnDelta >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                             >
-                                                {{ pairDifferenceRow.returnDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.returnDelta.toFixed(2) }}%
+                                                {{ pairDifferenceRow.returnDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.returnDelta.toFixed(1) }}%
                                             </td>
                                         </tr>
                                         <tr>
@@ -905,7 +905,7 @@
                                                     :class="row.driftDelta <= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                                     class="block text-xs"
                                                 >
-                                                    {{ row.driftDelta >= 0 ? '+' : '' }}{{ row.driftDelta.toFixed(2) }}%
+                                                    {{ row.driftDelta >= 0 ? '+' : '' }}{{ row.driftDelta.toFixed(1) }}%
                                                 </span>
                                             </td>
                                             <td
@@ -914,7 +914,7 @@
                                                 :class="pairDifferenceRow.driftDelta === null ? 'text-gray-500 dark:text-gray-400' : pairDifferenceRow.driftDelta <= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                             >
                                                 <template v-if="pairDifferenceRow.driftDelta === null">—</template>
-                                                <template v-else>{{ pairDifferenceRow.driftDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.driftDelta.toFixed(2) }}%</template>
+                                                <template v-else>{{ pairDifferenceRow.driftDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.driftDelta.toFixed(1) }}%</template>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -1124,7 +1124,7 @@
                                         <div
                                             v-for="condition in investmentsStore.portfolioAlertSummary.activeConditions"
                                             :key="`${condition.category}-${condition.symbol}`"
-                                            class="rounded-md border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 p-3"
+                                            class="callout-warning"
                                         >
                                             <div class="flex items-center justify-between gap-3">
                                                 <p class="text-xs font-medium text-yellow-900 dark:text-yellow-100">
@@ -1141,7 +1141,7 @@
                                     </div>
                                     <div
                                         v-else
-                                        class="rounded-md border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3"
+                                        class="callout-success"
                                     >
                                         <p class="text-xs font-medium text-green-900 dark:text-green-100">
                                             No active portfolio alert conditions.

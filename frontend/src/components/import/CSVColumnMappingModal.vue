@@ -144,7 +144,7 @@
           </div>
 
           <!-- Error -->
-          <div v-if="error" class="rounded-md bg-red-50 p-3 dark:bg-red-900/20">
+          <div v-if="error" class="callout-danger">
             <p class="text-sm font-medium text-red-800 dark:text-red-400">{{ error }}</p>
           </div>
 

@@ -63,7 +63,7 @@
         <!-- Pro behavioral alert (highest priority when present) -->
         <div
           v-if="proAlert"
-          class="flex items-start gap-2 p-3 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40"
+          class="callout-danger flex items-start gap-2"
         >
           <div class="w-2 h-2 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
           <div class="min-w-0 flex-1">

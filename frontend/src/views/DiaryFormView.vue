@@ -28,7 +28,7 @@
     </div>
 
     <!-- Error State -->
-    <div v-else-if="error" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-8">
+    <div v-else-if="error" class="callout-danger mb-8">
       <div class="flex">
         <ExclamationTriangleIcon class="w-5 h-5 text-red-600 dark:text-red-400 mr-2" />
         <p class="text-red-800 dark:text-red-200">{{ error }}</p>
@@ -39,7 +39,7 @@
     <div v-if="!loading && !error" class="space-y-8">
       <form @submit.prevent="saveEntry" class="space-y-6">
         <!-- Template Selector -->
-        <div v-if="!isEditing" class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 p-4 rounded-lg">
+        <div v-if="!isEditing" class="callout-info">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center">
               <DocumentTextIcon class="w-5 h-5 text-primary-700 dark:text-primary-400 mr-2" />

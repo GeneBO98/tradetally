@@ -19,7 +19,7 @@
         </div>
 
         <div class="p-6">
-          <div class="mb-6 rounded-lg bg-primary-50 p-4 dark:bg-primary-900/20">
+          <div class="callout-info mb-6">
             <h4 class="mb-2 text-sm font-medium text-primary-800 dark:text-primary-300">Setup instructions</h4>
             <ol class="list-inside list-decimal space-y-2 text-sm text-primary-700 dark:text-primary-400">
               <li>Open Trading 212 and go to your account settings.</li>
@@ -37,7 +37,7 @@
             </a>
           </div>
 
-          <div v-if="props.error" class="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+          <div v-if="props.error" class="callout-danger mb-6">
             <p class="text-sm text-red-700 dark:text-red-300">{{ props.error }}</p>
           </div>
 
@@ -99,7 +99,7 @@
               </div>
               <button
                 type="button"
-                :class="[ form.auto_sync_enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600', 'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2' ]"
+                :class="[ form.auto_sync_enabled ? 'switch-on' : '', 'switch' ]"
                 role="switch"
                 :aria-checked="form.auto_sync_enabled"
                 @click="form.auto_sync_enabled = !form.auto_sync_enabled"

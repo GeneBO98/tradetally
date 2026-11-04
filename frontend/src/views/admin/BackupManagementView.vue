@@ -28,7 +28,7 @@
                     <!-- Success message -->
                     <div
                         v-if="successMessage"
-                        class="mb-4 rounded-md bg-green-50 dark:bg-green-900/20 p-4"
+                        class="callout-success mb-4"
                     >
                         <p class="text-sm text-green-800 dark:text-green-400">
                             {{ successMessage }}
@@ -38,7 +38,7 @@
                     <!-- Error message -->
                     <div
                         v-if="errorMessage"
-                        class="mb-4 rounded-md bg-red-50 dark:bg-red-900/20 p-4"
+                        class="callout-danger mb-4"
                     >
                         <p class="text-sm text-red-800 dark:text-red-400">
                             {{ errorMessage }}
@@ -47,7 +47,7 @@
 
                     <div
                         v-if="backupWarnings.length"
-                        class="mb-4 rounded-md border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20"
+                        class="callout-warning mb-4"
                     >
                         <h4
                             class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
@@ -68,7 +68,7 @@
 
                     <div
                         v-if="storageWarnings.length"
-                        class="mb-4 rounded-md border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20"
+                        class="callout-warning mb-4"
                     >
                         <h4
                             class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
@@ -107,7 +107,7 @@
                                 @click="toggleBackups"
                                 :disabled="savingSettings"
                                 type="button"
-                                :class="[ settings.enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700', 'relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500', ]"
+                                :class="[ settings.enabled ? 'switch-on' : '', 'switch ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500', ]"
                             >
                                 <span
                                     :class="[ settings.enabled ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200', ]"
@@ -638,7 +638,7 @@
                             </div>
 
                             <div
-                                class="mt-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3"
+                                class="callout-warning mt-4"
                                 :class="clearExisting ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' : ''"
                             >
                                 <div class="flex">

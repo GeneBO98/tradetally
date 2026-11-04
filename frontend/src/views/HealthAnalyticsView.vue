@@ -59,7 +59,7 @@
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">/ 100</p>
             </div>
-            <svg class="w-10 h-10 text-primary-500" fill="currentColor" viewBox="0 0 24 24">
+            <svg class="w-10 h-10 text-primary-700 dark:text-primary-400" fill="currentColor" viewBox="0 0 24 24">
               <path d="M23,12H17V10L20.39,6H17V4H23V6L19.62,10H23V12M15,16H9V14L12.39,10H9V8H15V10L11.62,14H15V16M7,20H1V18L4.39,14H1V12H7V14L3.62,18H7V20Z" />
             </svg>
           </div>
@@ -88,7 +88,7 @@
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">hours</p>
             </div>
-            <svg class="w-10 h-10 text-primary-500" fill="currentColor" viewBox="0 0 24 24">
+            <svg class="w-10 h-10 text-primary-700 dark:text-primary-400" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19,7H11V14H3V5H1V20H3V17H21V20H23V11A4,4 0 0,0 19,7M7,10H5V8H7V10Z" />
             </svg>
           </div>
@@ -258,7 +258,7 @@
                 <p class="mt-1 text-sm">{{ insight.description }}</p>
                 <div class="mt-2 flex items-center justify-between">
                   <span class="text-xs opacity-75">
-                    Confidence: {{ (insight.confidence * 100).toFixed(0) }}%
+                    Confidence: {{ (insight.confidence * 100).toFixed(1) }}%
                   </span>
                   <span v-if="insight.isActionable" class="badge-primary">
                     Actionable

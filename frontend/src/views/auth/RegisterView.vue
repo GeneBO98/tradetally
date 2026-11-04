@@ -32,7 +32,7 @@
       </div>
 
       <!-- Registration disabled message -->
-      <div v-if="registrationDisabled" class="rounded-md bg-yellow-50 dark:bg-yellow-900/20 p-4">
+      <div v-if="registrationDisabled" class="callout-warning">
         <div class="text-center">
           <h3 class="text-lg font-medium text-yellow-800 dark:text-yellow-400 mb-2">
             Registration Currently Disabled
@@ -100,7 +100,7 @@
           </div>
         </div>
 
-        <div v-if="authStore.error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+        <div v-if="authStore.error" class="callout-danger">
           <p class="text-sm text-red-800 dark:text-red-400">{{ authStore.error }}</p>
         </div>
 

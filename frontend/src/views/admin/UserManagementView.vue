@@ -28,7 +28,7 @@
         </div>
 
         <!-- Error -->
-        <div v-else-if="error && !users.length" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+        <div v-else-if="error && !users.length" class="callout-danger">
             <p class="text-sm text-red-800 dark:text-red-400">{{ error }}</p>
         </div>
 
@@ -389,20 +389,20 @@
                         </div>
                     </div>
 
-                    <div v-if="tierInfo.subscription && tierInfo.subscription.status === 'active'" class="rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 p-3">
+                    <div v-if="tierInfo.subscription && tierInfo.subscription.status === 'active'" class="callout-success">
                         <p class="text-xs font-medium text-green-700 dark:text-green-300 uppercase tracking-wider">Subscription</p>
                         <p class="mt-2 text-sm font-medium text-green-800 dark:text-green-200">Active</p>
                         <p class="mt-0.5 text-xs text-green-700 dark:text-green-300">Renews {{ formatDate(tierInfo.subscription.current_period_end) }}</p>
                     </div>
 
-                    <div v-if="selectedUser && (selectedUser.role === 'admin' || selectedUser.role === 'owner')" class="rounded-md bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700 p-3">
+                    <div v-if="selectedUser && (selectedUser.role === 'admin' || selectedUser.role === 'owner')" class="callout-info">
                         <p class="text-xs font-medium text-primary-700 dark:text-primary-300 uppercase tracking-wider">Role Bonus</p>
                         <p class="mt-2 text-sm font-medium text-primary-800 dark:text-primary-200">Admins keep Pro by default</p>
                     </div>
                 </div>
 
                 <!-- Override Info -->
-                <div v-if="tierInfo.override" class="rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 p-3">
+                <div v-if="tierInfo.override" class="callout-warning">
                     <p class="text-sm font-medium text-yellow-800 dark:text-yellow-200">
                         Override: {{ tierInfo.override.tier }}
                         <span v-if="tierInfo.override.expires_at"> until {{ formatDate(tierInfo.override.expires_at) }}</span>

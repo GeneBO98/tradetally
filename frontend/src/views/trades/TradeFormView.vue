@@ -217,7 +217,7 @@
           </div>
 
           <!-- Info message when fields are hidden -->
-          <div v-if="hasGroupedExecutions" class="mt-6 p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
+          <div v-if="hasGroupedExecutions" class="callout-info mt-6">
             <p class="text-sm text-primary-800 dark:text-primary-200">
               <span class="font-medium">Note:</span> Side, Stop Loss, and Take Profit are configured per execution below since this trade contains grouped complete trades.
             </p>
@@ -1237,7 +1237,7 @@
       </div>
         </div>
 
-      <div v-if="error" ref="errorRef" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+      <div v-if="error" ref="errorRef" class="callout-danger">
           <p class="text-sm font-medium text-red-800 dark:text-red-400">{{ error }}</p>
           <ul v-if="validationErrors.length" class="mt-2 text-sm text-red-700 dark:text-red-400 list-disc list-inside space-y-1">
             <li v-for="(ve, i) in validationErrors" :key="i">{{ ve }}</li>

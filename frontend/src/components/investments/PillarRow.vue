@@ -120,7 +120,7 @@
                 <td class="px-3 py-2 text-gray-900 dark:text-white">{{ row.year }}</td>
                 <td class="px-3 py-2 text-right text-gray-900 dark:text-white">{{ formatCurrency(row.operatingIncome) }}</td>
                 <td class="px-3 py-2 text-right text-gray-900 dark:text-white">{{ formatCurrency(row.investedCapital) }}</td>
-                <td class="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">{{ row.roic?.toFixed(2) }}%</td>
+                <td class="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">{{ row.roic?.toFixed(1) }}%</td>
               </tr>
             </tbody>
           </table>

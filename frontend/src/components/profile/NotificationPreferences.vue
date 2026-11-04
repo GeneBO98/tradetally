@@ -223,9 +223,9 @@
         </div>
 
         <!-- Additional Info -->
-        <div class="mt-6 p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
+        <div class="callout-info mt-6">
           <div class="flex items-start">
-            <MdiIcon :icon="infoIcon" :size="16" class="mr-2 text-primary-500 mt-0.5" />
+            <MdiIcon :icon="infoIcon" :size="16" class="mr-2 text-primary-700 mt-0.5 dark:text-primary-400" />
             <div class="text-sm text-primary-800 dark:text-primary-300">
               <p class="font-medium mb-1">About Notifications</p>
               <p class="text-xs">

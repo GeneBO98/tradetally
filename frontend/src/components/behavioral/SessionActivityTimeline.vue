@@ -42,7 +42,7 @@
             </div>
 
             <div v-if="loading" class="mt-6 flex h-72 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700"><div class="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400"><div class="spinner spinner-sm" aria-hidden="true"></div>Loading session activity…</div></div>
-            <div v-else-if="error" class="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200"><div class="flex items-center justify-between gap-3"><span>{{ error }}</span><button type="button" class="font-medium text-primary-700 underline dark:text-primary-300" @click="$emit('retry')">Retry</button></div></div>
+            <div v-else-if="error" class="callout-danger mt-6"><div class="flex items-center justify-between gap-3"><span>{{ error }}</span><button type="button" class="font-medium text-primary-700 underline dark:text-primary-300" @click="$emit('retry')">Retry</button></div></div>
             <div v-else-if="!timeline || !timeline.session_date" class="mt-6 rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">No session activity is available for the selected date range.</div>
             <template v-else>
                 <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">

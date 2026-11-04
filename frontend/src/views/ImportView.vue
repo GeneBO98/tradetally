@@ -149,7 +149,7 @@
                       :key="step"
                       class="flex gap-2.5 text-sm leading-relaxed text-gray-700 dark:text-gray-300"
                     >
-                      <span class="mt-0.5 w-5 flex-shrink-0 font-mono text-xs font-semibold tabular-nums text-primary-500 dark:text-primary-400">
+                      <span class="mt-0.5 w-5 flex-shrink-0 font-mono text-xs font-semibold tabular-nums text-primary-700 dark:text-primary-400">
                         {{ index + 1 }}
                       </span>
                       <span>{{ step }}</span>
@@ -263,12 +263,12 @@
               </div>
             </div>
 
-            <div v-if="error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+            <div v-if="error" class="callout-danger">
               <p class="text-sm text-red-800 dark:text-red-400">{{ error }}</p>
             </div>
 
             <!-- Import progress indicator -->
-            <div v-if="loading && importStage" class="rounded-md bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 p-4">
+            <div v-if="loading && importStage" class="callout-info">
               <div class="flex items-center space-x-3">
                 <div class="spinner spinner-sm flex-shrink-0"></div>
                 <span class="text-sm font-medium text-primary-700 dark:text-primary-300">{{ importStage }}</span>

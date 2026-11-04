@@ -7,7 +7,7 @@
     <div role="dialog" aria-modal="true" class="modal-panel p-6 w-full max-w-md">
       <div class="flex justify-between items-center mb-2">
         <h3 class="modal-title">{{ title }}</h3>
-        <button type="button" @click="close" class="text-gray-400 hover:text-gray-500">
+        <button type="button" @click="close" class="btn-icon">
           <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
           </svg>

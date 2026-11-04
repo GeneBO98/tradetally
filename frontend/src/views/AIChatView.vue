@@ -180,7 +180,7 @@
             </div>
           </div>
 
-          <div v-if="aiStore.error" class="mb-3 rounded-md bg-red-50 p-3 dark:bg-red-900/20">
+          <div v-if="aiStore.error" class="callout-danger mb-3">
             <p class="text-sm text-red-800 dark:text-red-200">{{ aiStore.error }}</p>
             <button @click="aiStore.clearError" class="mt-1 text-xs text-red-600 underline dark:text-red-400">Dismiss</button>
           </div>

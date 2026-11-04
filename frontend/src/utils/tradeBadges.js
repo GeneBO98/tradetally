@@ -5,7 +5,7 @@
  * a pile of pills in three different sizes.
  */
 export const TRADE_BADGE_BASE =
-  'badge max-w-full overflow-hidden px-1.5 py-0 uppercase tracking-wide ring-1 ring-inset'
+  'badge max-w-full overflow-hidden uppercase tracking-wide'
 
 /**
  * Colour carries meaning here: categories (instrument kind, strategy) use the
@@ -13,13 +13,13 @@ export const TRADE_BADGE_BASE =
  * not a category), and news follows sentiment because that is directional.
  */
 export const TRADE_BADGE_TONES = Object.freeze({
-  option: 'bg-primary-50 text-primary-700 ring-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:ring-primary-800',
-  future: 'bg-primary-50 text-primary-700 ring-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:ring-primary-800',
-  session: 'bg-gray-100 text-gray-600 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700',
-  strategy: 'bg-primary-50 text-primary-700 ring-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:ring-primary-800',
-  newsPositive: 'bg-green-50 text-green-700 ring-green-200 dark:bg-green-900/30 dark:text-green-300 dark:ring-green-800',
-  newsNegative: 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-900/30 dark:text-red-300 dark:ring-red-800',
-  newsNeutral: 'bg-gray-100 text-gray-600 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700'
+  option: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
+  future: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
+  session: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
+  strategy: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
+  newsPositive: 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  newsNegative: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  newsNeutral: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
 })
 
 export function tradeBadgeClass(tone) {

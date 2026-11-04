@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-6">
     <!-- Debug Info -->
-    <div class="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
+    <div class="callout-warning">
       <h3 class="heading-card mb-2">Debug Information</h3>
       <div class="space-y-1 text-sm">
         <div>Loading: {{ loading }}</div>

@@ -71,7 +71,7 @@
                       :href="item.url"
                       target="_blank"
                       rel="noopener noreferrer"
-                      class="hover:text-primary-600 dark:hover:text-primary-400"
+                      class="hover:text-primary-800 dark:hover:text-primary-400"
                     >
                       {{ item.headline }}
                     </a>

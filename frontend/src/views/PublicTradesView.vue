@@ -166,7 +166,7 @@
             <div class="flex items-center space-x-4">
               <button
                 @click="openComments(trade)"
-                class="flex items-center hover:text-primary-600 transition-colors"
+                class="flex items-center hover:text-primary-800 transition-colors"
               >
                 <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
                 {{ trade.comment_count || 0 }} comments

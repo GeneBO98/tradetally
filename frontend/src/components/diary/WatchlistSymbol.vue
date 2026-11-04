@@ -95,7 +95,7 @@
           </div>
 
           <!-- Error Message -->
-          <div v-if="alertError" class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <div v-if="alertError" class="callout-danger mb-4">
             <p class="text-sm text-red-800 dark:text-red-200">{{ alertError }}</p>
           </div>
 

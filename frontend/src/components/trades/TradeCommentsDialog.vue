@@ -120,7 +120,7 @@
                                                 @click="
                                                     startEditComment(comment)
                                                 "
-                                                class="text-xs text-gray-500 hover:text-primary-600 transition-colors"
+                                                class="text-xs text-gray-500 hover:text-primary-800 transition-colors"
                                             >
                                                 Edit
                                             </button>

@@ -109,7 +109,7 @@
                   size-class="w-8 h-8"
                 />
                 <span
-                  class="truncate font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400"
+                  class="truncate font-medium text-gray-900 dark:text-white hover:text-primary-800 dark:hover:text-primary-400"
                   :title="symbol.symbol"
                 >{{ symbol.symbol }}</span>
                 <span class="text-xs text-gray-500 dark:text-gray-400 text-right tabular-nums">
@@ -122,7 +122,7 @@
                 </div>
                 <div class="text-right">
                   <div class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ (symbol.winning_trades / symbol.total_trades * 100).toFixed(0) }}%
+                    {{ (symbol.winning_trades / symbol.total_trades * 100).toFixed(1) }}%
                   </div>
                   <div
                     v-if="(Number(symbol.breakeven_trades) || 0) > 0"

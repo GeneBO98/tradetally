@@ -9,7 +9,7 @@
   >
     <div
       v-if="!dismissed"
-      class="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-lg"
+      class="callout-warning mb-6"
     >
       <div class="flex items-start gap-3">
         <ExclamationTriangleIcon class="h-5 w-5 text-yellow-500 dark:text-yellow-400 flex-shrink-0 mt-0.5" />

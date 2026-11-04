@@ -22,7 +22,7 @@
         </div>
 
         <!-- Target R -->
-        <div v-if="effectiveTargetR !== null" class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
+        <div v-if="effectiveTargetR !== null" class="callout-info r-multiple-card flex flex-col min-h-[5rem] sm:p-4">
           <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">
             Target R (Net)
             <span v-if="showWeightedAverageHint" class="text-xs font-normal">(weighted avg)</span>
