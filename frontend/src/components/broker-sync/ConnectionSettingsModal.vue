@@ -214,7 +214,7 @@
                             <div
                                 v-for="index in 2"
                                 :key="index"
-                                class="h-12 rounded-lg bg-gray-100 dark:bg-gray-700 animate-pulse"
+                                class="skeleton h-12"
                             ></div>
                         </div>
 

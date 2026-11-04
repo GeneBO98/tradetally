@@ -892,11 +892,11 @@
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="table-head">
                   <tr>
-                    <th class="px-5 py-3 text-left table-th">Scenario</th>
-                    <th class="px-5 py-3 text-right table-th">Return</th>
-                    <th class="px-5 py-3 text-right table-th">Inflation</th>
-                    <th class="px-5 py-3 text-right table-th">Projected balance at retirement</th>
-                    <th class="px-5 py-3 text-right table-th">Status</th>
+                    <th class="text-left table-th px-4 py-2">Scenario</th>
+                    <th class="text-right table-th px-4 py-2">Return</th>
+                    <th class="text-right table-th px-4 py-2">Inflation</th>
+                    <th class="text-right table-th px-4 py-2">Projected balance at retirement</th>
+                    <th class="text-right table-th px-4 py-2">Status</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">

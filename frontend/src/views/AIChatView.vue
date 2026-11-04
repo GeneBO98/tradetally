@@ -167,34 +167,7 @@
                 :disabled="aiStore.savingMemoryNote"
                 @click="saveMemoryNote"
               >
-                {{ aiStore.savingMemoryNote ? 'Saving...' : 'Save' }}
-              </button>
-              <button
-                type="button"
-                class="btn-ghost btn-sm"
-                :disabled="aiStore.savingMemoryNote"
-                @click="aiStore.dismissMemoryNote()"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-
-          <div v-if="aiStore.error" class="callout-danger mb-3">
-            <p class="text-sm text-red-800 dark:text-red-200">{{ aiStore.error }}</p>
-            <button @click="aiStore.clearError" class="mt-1 text-xs text-red-600 underline dark:text-red-400">Dismiss</button>
-          </div>
-
-          <p v-if="aiStore.currentSession && !aiStore.canAskFollowup" class="mb-3 text-sm text-gray-600 dark:text-gray-400">
-            This conversation reached its message limit. Start a new chat to keep going.
-          </p>
-
-          <form @submit.prevent="sendMessage()" class="flex items-end gap-2">
-            <textarea
-              v-model="draft"
-              rows="2"
-              class="input flex-1 resize-none"
-              :placeholder="aiStore.currentSession ? 'Ask a follow-up...' : 'Ask about your trading, a position, or a stock...'"
+                {{ aiStore.savingMemoryNote ? 'Saving...' : 'Save'}} </button> <button type="button" class="btn-ghost btn-sm" :disabled="aiStore.savingMemoryNote" @click="aiStore.dismissMemoryNote()" > Dismiss </button> </div> </div> <div v-if="aiStore.error" class="callout-danger mb-3"> <p class="text-sm text-red-600 dark:text-red-200">{{ aiStore.error }}</p> <button @click="aiStore.clearError" class="mt-1 text-xs text-red-600 underline dark:text-red-400">Dismiss</button> </div> <p v-if="aiStore.currentSession && !aiStore.canAskFollowup" class="mb-3 text-sm text-gray-600 dark:text-gray-400"> This conversation reached its message limit. Start a new chat to keep going. </p> <form @submit.prevent="sendMessage()" class="flex items-end gap-2"> <textarea v-model="draft" rows="2" class="input flex-1 resize-none" :placeholder="aiStore.currentSession ?'Ask a follow-up...' : 'Ask about your trading, a position, or a stock...'"
               :disabled="composerDisabled"
               maxlength="4000"
               @keydown.enter.exact.prevent="sendMessage()"

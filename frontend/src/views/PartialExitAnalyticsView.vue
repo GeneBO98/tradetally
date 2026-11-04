@@ -94,37 +94,37 @@
           <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead class="table-head">
               <tr>
-                <th class="px-4 py-3 text-left table-th">
+                <th class="text-left table-th px-4 py-2">
                   Partial
                 </th>
-                <th class="px-4 py-3 text-center table-th">
+                <th class="text-center table-th px-4 py-2">
                   Eligible
                 </th>
-                <th class="px-4 py-3 text-center table-th">
+                <th class="text-center table-th px-4 py-2">
                   Abs. Hit %
                 </th>
-                <th class="px-4 py-3 text-center table-th">
+                <th class="text-center table-th px-4 py-2">
                   Cond. Hit %
                 </th>
-                <th class="px-4 py-3 text-center table-th">
+                <th class="text-center table-th px-4 py-2">
                   Profitable
                 </th>
-                <th class="px-4 py-3 text-center table-th">
+                <th class="text-center table-th px-4 py-2">
                   BE/Scratch
                 </th>
-                <th class="px-4 py-3 text-center table-th">
+                <th class="text-center table-th px-4 py-2">
                   Loss
                 </th>
-                <th class="px-4 py-3 text-right table-th">
+                <th class="text-right table-th px-4 py-2">
                   Avg Exit (pts)
                 </th>
-                <th class="px-4 py-3 text-right table-th">
+                <th class="text-right table-th px-4 py-2">
                   Avg Exit Profit (pts)
                 </th>
-                <th class="px-4 py-3 text-right table-th">
+                <th class="text-right table-th px-4 py-2">
                   Avg R
                 </th>
-                <th class="px-4 py-3 text-right table-th">
+                <th class="text-right table-th px-4 py-2">
                   Avg SL (pts)
                 </th>
               </tr>
@@ -298,13 +298,13 @@ const ptsColor = (pts) => {
 
 const formatPts = (value) => {
   if (value === null || value === undefined) return '--'
-  const sign = value >= 0 ? '+' : ''
+  const sign = value > 0 ? '+' : ''
   return `${sign}${value.toFixed(2)}`
 }
 
 const formatR = (value) => {
   if (value === null || value === undefined) return '--'
-  const sign = value >= 0 ? '+' : ''
+  const sign = value > 0 ? '+' : ''
   return `${sign}${value.toFixed(1)}R`
 }
 

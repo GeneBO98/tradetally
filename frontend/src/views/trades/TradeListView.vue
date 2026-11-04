@@ -53,13 +53,13 @@
               </h3>
               <div class="space-y-1">
                 <div class="text-xs text-gray-500 dark:text-gray-400">Gross</div>
-                <div class="text-lg font-semibold text-mono-num" :class="[
+                <div class="stat-value" :class="[
                 pnlClass(tradesStore.totalGrossPnL)
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
                 </div>
                 <div class="text-xs text-gray-500 dark:text-gray-400">Net</div>
-                <div class="text-lg font-semibold text-mono-num" :class="[
+                <div class="stat-value" :class="[
                 pnlClass(tradesStore.totalNetPnL)
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
@@ -90,7 +90,7 @@
           </div>
           <div>
             <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">Win Rate</div>
-            <div class="text-lg font-medium" :class="winRateClass(tradesStore.winRate)">
+            <div class="stat-value" :class="winRateClass(tradesStore.winRate)">
               {{ Number(tradesStore.winRate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ Number(tradesStore.winRateExcludingBreakeven).toFixed(1) }}% excl. BE</div>
@@ -106,7 +106,7 @@
             <div class="flex items-baseline gap-6">
               <div class="text-center">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Gross</div>
-                <div class="text-lg font-semibold text-mono-num" :class="[
+                <div class="stat-value" :class="[
                   pnlClass(tradesStore.totalGrossPnL)
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
@@ -114,7 +114,7 @@
               </div>
               <div class="text-center">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Net</div>
-                <div class="text-lg font-semibold text-mono-num" :class="[
+                <div class="stat-value" :class="[
                   pnlClass(tradesStore.totalNetPnL)
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
@@ -122,7 +122,7 @@
               </div>
               <div v-if="isUnrealizedColumnVisible" class="text-center">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Unrealized</div>
-                <div class="text-lg font-semibold text-mono-num" :class="[
+                <div class="stat-value" :class="[
                   pnlClass(totalUnrealizedPnl)
                 ]">
                   {{ formatSignedCurrency(totalUnrealizedPnl) }}
@@ -133,7 +133,7 @@
           <div class="flex items-center gap-6">
             <div class="text-right">
               <div class="text-sm text-gray-500 dark:text-gray-400">Win Rate</div>
-              <div class="text-lg font-medium" :class="winRateClass(tradesStore.winRate)">
+              <div class="stat-value" :class="winRateClass(tradesStore.winRate)">
                 {{ Number(tradesStore.winRate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400">{{ Number(tradesStore.winRateExcludingBreakeven).toFixed(1) }}% excl. BE</div>
@@ -159,7 +159,9 @@
     <!-- Enrichment Status -->
     <EnrichmentStatus />
 
-    <!-- Filters modal -->
+    <!-- Filters modal (teleported so the overlay covers the sidebar too) -->
+    <Teleport to="body">
+
     <transition
       enter-active-class="transition-opacity duration-150"
       enter-from-class="opacity-0"
@@ -194,6 +196,7 @@
         </div>
       </div>
     </transition>
+    </Teleport>
 
     <div class="mt-2">
       <div v-if="tradesStore.initialLoading" class="flex justify-center py-12">
@@ -295,7 +298,7 @@
         <!-- Mobile view (cards) -->
         <div class="block md:hidden space-y-4">
         <div v-for="trade in tradesStore.trades" :key="trade.id" 
-             class="card p-4 hover:shadow-md transition-shadow">
+             class="card p-4 transition-shadow">
           <div class="flex items-start space-x-3 mb-3">
             <input
               type="checkbox"
@@ -401,8 +404,8 @@
               <div class="text-xs text-gray-500 dark:text-gray-400">Confidence</div>
               <div class="flex items-center space-x-2">
                 <div class="flex space-x-1">
-                  <div v-for="i in 10" :key="i" class="w-2 h-2 rounded-full"
-                    :class="i <= trade.confidence ? 'switch-on' : ''">
+                  <div v-for="i in 10" :key="i" class="dot"
+                    :class="i <= trade.confidence ? 'dot-on' : ''">
                   </div>
                 </div>
                 <span class="text-sm font-medium text-gray-900 dark:text-white">{{ trade.confidence }}/10</span>
@@ -415,7 +418,7 @@
             <div class="flex items-center justify-between">
               <div class="text-xs text-gray-500 dark:text-gray-400">Quality</div>
               <span class="badge"
-                :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
+                :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-white text-primary-700 ring-1 ring-inset ring-primary-400 dark:bg-gray-800 dark:text-primary-300 dark:ring-primary-500': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                 {{ trade.qualityGrade }}
               </span>
             </div>
@@ -473,7 +476,7 @@
                 />
               </th>
               <!-- Column Customizer immediately after checkbox -->
-              <th class="pl-0 pr-2 py-3 text-center relative table-th">
+              <th class="pl-0 pr-2 text-center relative table-th py-2">
                 <ColumnCustomizer
                   :columns="tableColumns"
                   @update:columns="handleColumnsUpdate"
@@ -705,7 +708,7 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span v-if="trade.qualityGrade"
                     class="badge"
-                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
+                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-white text-primary-700 ring-1 ring-inset ring-primary-400 dark:bg-gray-800 dark:text-primary-300 dark:ring-primary-500': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                     {{ trade.qualityGrade }}
                   </span>
                   <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>

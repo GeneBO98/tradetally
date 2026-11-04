@@ -129,12 +129,12 @@
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="table-head">
                   <tr class="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    <th class="py-3 pr-4 table-th">Profile</th>
-                    <th class="py-3 pr-4 table-th">Reviewed</th>
-                    <th class="py-3 pr-4 table-th">Win Rate</th>
-                    <th class="py-3 pr-4 table-th">Profit Factor</th>
-                    <th class="py-3 pr-4 table-th">Avg R</th>
-                    <th class="py-3 table-th">Adherence</th>
+                    <th class="pr-4 table-th py-2">Profile</th>
+                    <th class="pr-4 table-th py-2">Reviewed</th>
+                    <th class="pr-4 table-th py-2">Win Rate</th>
+                    <th class="pr-4 table-th py-2">Profit Factor</th>
+                    <th class="pr-4 table-th py-2">Avg R</th>
+                    <th class="table-th py-2">Adherence</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-800 text-sm text-gray-700 dark:text-gray-300">

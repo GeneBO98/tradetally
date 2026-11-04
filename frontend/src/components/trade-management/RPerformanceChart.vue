@@ -13,10 +13,7 @@
         :disabled="loading"
         @click="fetchRPerformance"
       >
-        <svg v-if="loading" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-        </svg>
+        <span v-if="loading" class="spinner spinner-xs spinner-current mr-2"></span>
         <svg v-else class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
         </svg>
@@ -339,7 +336,7 @@ function createChart() {
                 return `Target R (Net): ${dataPoint.cumulative_potential_r}R`
               } else if (context.datasetIndex === 2) {
                 const mgmtR = dataPoint.management_r || 0
-                return `Management R: ${dataPoint.cumulative_management_r || 0}R (this trade: ${mgmtR >= 0 ? '+' : ''}${mgmtR}R)`
+                return `Management R: ${dataPoint.cumulative_management_r || 0}R (this trade: ${mgmtR > 0 ? '+' : ''}${mgmtR}R)`
               }
               return ''
             }

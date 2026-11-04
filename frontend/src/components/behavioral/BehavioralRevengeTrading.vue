@@ -136,38 +136,7 @@
                                                     'profit',
                                                 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400':
                                                     event.outcome_type ===
-                                                    'neutral',
-                                            }"
-                                        >
-                                            {{ event.outcome_type }}
-                                        </span>
-                                        <span
-                                            class="text-sm text-gray-500 dark:text-gray-400"
-                                        >
-                                            {{ formatDate(event.created_at) }}
-                                        </span>
-                                    </div>
-                                    <!-- Trigger Trade Information -->
-                                    <div
-                                        v-if="event.trigger_trade"
-                                        class="callout-danger mt-3 border-l-4"
-                                    >
-                                        <div
-                                            class="flex items-center justify-between mb-3"
-                                        >
-                                            <h4
-                                                class="heading-sub text-red-800 dark:text-red-400"
-                                            >
-                                                <MdiIcon
-                                                    :icon="mdiTrendingDown"
-                                                    :size="16"
-                                                    class="mr-1"
-                                                />
-                                                Initial Loss Trade (Trigger)
-                                            </h4>
-                                            <button
-                                                @click="
-                                                    $emit('open-trade',
+                                                    'neutral', }" > {{ event.outcome_type }} </span> <span class="text-sm text-gray-500 dark:text-gray-400" > {{ formatDate(event.created_at) }} </span> </div> <!-- Trigger Trade Information --> <div v-if="event.trigger_trade" class="callout-danger mt-3 border-l-4" > <div class="flex items-center justify-between mb-3" > <h4 class="heading-sub text-red-600 dark:text-red-400" > <MdiIcon :icon="mdiTrendingDown" :size="16" class="mr-1" /> Initial Loss Trade (Trigger) </h4> <button @click=" $emit('open-trade',
                                                         event.trigger_trade.id,
                                                     )
                                                 "
@@ -920,10 +889,10 @@
                                         <div
                                             class="mt-3 text-xs"
                                             :class="{
-                                                'text-red-700 dark:text-red-300':
+                                                'text-red-600 dark:text-red-400':
                                                     event.outcome_type ===
                                                     'loss',
-                                                'text-green-700 dark:text-green-300':
+                                                'text-green-700 dark:text-green-400':
                                                     event.outcome_type ===
                                                     'profit',
                                                 'text-gray-700 dark:text-gray-300':

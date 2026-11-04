@@ -28,7 +28,7 @@
       <div
         v-for="template in templates"
         :key="template.id"
-        class="card card-body hover:shadow-md transition-shadow duration-200"
+        class="card card-body transition-shadow duration-200"
       >
         <div class="flex flex-col space-y-4">
           <!-- Header -->

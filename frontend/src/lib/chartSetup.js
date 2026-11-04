@@ -82,7 +82,10 @@ Chart.defaults.plugins.legend.labels.usePointStyle = true
 Chart.defaults.scale.ticks.maxRotation = 0
 Chart.defaults.scale.ticks.autoSkipPadding = 12
 // Room for axis titles and the last tick label so cards never clip them.
-Chart.defaults.layout.padding = { left: 8, right: 14, top: 6, bottom: 0 }
+Chart.defaults.layout.padding = { left: 8, right: 14, top: 6, bottom: 4 }
+Chart.defaults.scale.ticks.maxTicksLimit = 14
+Chart.defaults.plugins.legend.position = 'top'
+Chart.defaults.plugins.legend.labels.padding = 14
 
 function applyChartTheme(theme) {
   Chart.defaults.color = theme.text

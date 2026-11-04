@@ -169,34 +169,7 @@
       <div v-else-if="aiStore.currentSession && aiStore.currentSession.followup_count >= aiStore.currentSession.max_followups"
            class="border-t border-gray-200 dark:border-gray-700 pt-4 text-center">
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
-          You've used all follow-up questions for this session.
-        </p>
-        <button
-          @click="handleNewSession"
-          :disabled="!aiStore.canStartSession"
-          class="btn-primary inline-flex items-center gap-2"
-        >
-          <SparklesIcon class="h-4 w-4" />
-          Start New Analysis
-          <span v-if="!aiStore.credits.unlimited" class="text-xs opacity-75">
-            ({{ aiStore.creditCosts.new_session }} credits)
-          </span>
-        </button>
-      </div>
-    </div>
-
-    <!-- Error Display -->
-    <div v-if="aiStore.error" class="callout-danger mt-4">
-      <p class="text-red-800 dark:text-red-200 text-sm">{{ aiStore.error }}</p>
-      <button @click="aiStore.clearError" class="text-red-600 dark:text-red-400 text-xs underline mt-1">
-        Dismiss
-      </button>
-    </div>
-  </div>
-</template>
-
-<script setup>
-import { computed, ref, onMounted, watch, nextTick } from 'vue'
+          You've used all follow-up questions for this session. </p> <button @click="handleNewSession" :disabled="!aiStore.canStartSession" class="btn-primary inline-flex items-center gap-2" > <SparklesIcon class="h-4 w-4" /> Start New Analysis <span v-if="!aiStore.credits.unlimited" class="text-xs opacity-75"> ({{ aiStore.creditCosts.new_session }} credits) </span> </button> </div> </div> <!-- Error Display --> <div v-if="aiStore.error" class="callout-danger mt-4"> <p class="text-red-800 dark:text-red-400 text-sm">{{ aiStore.error }}</p> <button @click="aiStore.clearError" class="text-red-600 dark:text-red-400 text-xs underline mt-1"> Dismiss </button> </div> </div> </template> <script setup> import { computed, ref, onMounted, watch, nextTick } from'vue'
 import { useAIStore } from '@/stores/ai'
 import { useTradesStore } from '@/stores/trades'
 import { SparklesIcon, PaperAirplaneIcon } from '@heroicons/vue/24/outline'

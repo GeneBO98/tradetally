@@ -78,32 +78,32 @@
                     <thead class="table-head">
                         <tr>
                             <th
-                                class="px-6 py-3 text-left table-th"
+                                class="text-left table-th px-4 py-2"
                             >
                                 Symbol
                             </th>
                             <th
-                                class="px-6 py-3 text-left table-th"
+                                class="text-left table-th px-4 py-2"
                             >
                                 Current Price
                             </th>
                             <th
-                                class="px-6 py-3 text-left table-th"
+                                class="text-left table-th px-4 py-2"
                             >
                                 Change
                             </th>
                             <th
-                                class="px-6 py-3 text-left table-th"
+                                class="text-left table-th px-4 py-2"
                             >
                                 % Change
                             </th>
                             <th
-                                class="px-6 py-3 text-left table-th"
+                                class="text-left table-th px-4 py-2"
                             >
                                 Added
                             </th>
                             <th
-                                class="px-6 py-3 text-left table-th"
+                                class="text-left table-th px-4 py-2"
                             >
                                 Actions
                             </th>

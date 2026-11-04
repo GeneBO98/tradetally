@@ -17,8 +17,8 @@
         <span
           class="text-sm font-medium"
           :class="trade.pnl >= 0
-            ? 'text-green-800 dark:text-green-200'
-            : 'text-red-800 dark:text-red-200'"
+            ? 'text-green-700 dark:text-green-400'
+            : 'text-red-600 dark:text-red-400'"
         >
           {{ trade.symbol }}
         </span>
@@ -30,7 +30,7 @@
         >
           {{ (trade.side || '').toUpperCase() }}
         </span>
-        <span v-if="trade.pnl !== null && trade.pnl !== undefined" class="text-xs font-medium" :class="trade.pnl >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'">
+        <span v-if="trade.pnl !== null && trade.pnl !== undefined" class="text-xs font-medium" :class="trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
           {{ formatSignedCurrency(trade.pnl) }}
         </span>
       </div>

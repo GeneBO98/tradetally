@@ -144,13 +144,13 @@
                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead class="table-head">
                             <tr>
-                                <th class="px-4 py-3 text-left table-th">User</th>
-                                <th class="px-4 py-3 text-left table-th">Role / Tier</th>
-                                <th class="px-4 py-3 text-left table-th">Status</th>
-                                <th class="px-4 py-3 text-left table-th">Last Active</th>
-                                <th class="px-4 py-3 text-right table-th">Imports</th>
-                                <th class="px-4 py-3 text-right table-th">Trades</th>
-                                <th class="px-4 py-3 text-right table-th">Actions</th>
+                                <th class="text-left table-th px-4 py-2">User</th>
+                                <th class="text-left table-th px-4 py-2">Role / Tier</th>
+                                <th class="text-left table-th px-4 py-2">Status</th>
+                                <th class="text-left table-th px-4 py-2">Last Active</th>
+                                <th class="text-right table-th px-4 py-2">Imports</th>
+                                <th class="text-right table-th px-4 py-2">Trades</th>
+                                <th class="text-right table-th px-4 py-2">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -389,13 +389,7 @@
                         </div>
                     </div>
 
-                    <div v-if="tierInfo.subscription && tierInfo.subscription.status === 'active'" class="callout-success">
-                        <p class="text-xs font-medium text-green-700 dark:text-green-300 uppercase tracking-wider">Subscription</p>
-                        <p class="mt-2 text-sm font-medium text-green-800 dark:text-green-200">Active</p>
-                        <p class="mt-0.5 text-xs text-green-700 dark:text-green-300">Renews {{ formatDate(tierInfo.subscription.current_period_end) }}</p>
-                    </div>
-
-                    <div v-if="selectedUser && (selectedUser.role === 'admin' || selectedUser.role === 'owner')" class="callout-info">
+                    <div v-if="tierInfo.subscription && tierInfo.subscription.status === 'active'" class="callout-success"> <p class="text-xs font-medium text-green-700 dark:text-green-400 uppercase tracking-wider">Subscription</p> <p class="mt-2 text-sm font-medium text-green-700 dark:text-green-200">Active</p> <p class="mt-0.5 text-xs text-green-700 dark:text-green-300">Renews {{ formatDate(tierInfo.subscription.current_period_end) }}</p> </div> <div v-if="selectedUser && (selectedUser.role ==='admin' || selectedUser.role === 'owner')" class="callout-info">
                         <p class="text-xs font-medium text-primary-700 dark:text-primary-300 uppercase tracking-wider">Role Bonus</p>
                         <p class="mt-2 text-sm font-medium text-primary-800 dark:text-primary-200">Admins keep Pro by default</p>
                     </div>

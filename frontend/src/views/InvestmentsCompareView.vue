@@ -317,7 +317,7 @@ function deltaColorClass(delta) {
 
 function formatDeltaPercent(delta) {
     if (!delta) return ''
-    const sign = delta.delta >= 0 ? '+' : ''
+    const sign = delta.delta > 0 ? '+' : ''
     return `${sign}${delta.delta.toFixed(2)}%`
 }
 
@@ -329,13 +329,13 @@ function formatDeltaCurrency(delta) {
 
 function formatDeltaNumber(delta, decimals = 2) {
     if (!delta) return ''
-    const sign = delta.delta >= 0 ? '+' : ''
+    const sign = delta.delta > 0 ? '+' : ''
     return `${sign}${delta.delta.toFixed(decimals)}`
 }
 
 function formatDeltaInt(delta) {
     if (!delta) return ''
-    const sign = delta.delta >= 0 ? '+' : ''
+    const sign = delta.delta > 0 ? '+' : ''
     return `${sign}${Math.round(delta.delta)}`
 }
 

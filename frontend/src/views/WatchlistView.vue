@@ -64,7 +64,7 @@
             <div
                 v-for="watchlist in watchlists"
                 :key="watchlist.id"
-                class="card hover:shadow-md transition-shadow cursor-pointer"
+                class="card transition-shadow cursor-pointer"
                 @click="selectWatchlist(watchlist)"
             >
                 <div class="p-6">

@@ -109,7 +109,7 @@
                     <div
                         v-for="watchlist in watchlists"
                         :key="watchlist.id"
-                        class="card hover:shadow-md transition-shadow cursor-pointer"
+                        class="card transition-shadow cursor-pointer"
                         @click="selectWatchlist(watchlist)"
                     >
                         <div class="p-6">
@@ -351,42 +351,42 @@
                             <thead class="table-head">
                                 <tr>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Symbol
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Alert Type
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Target
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Current Price
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Status
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Notifications
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Created
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Actions
                                     </th>

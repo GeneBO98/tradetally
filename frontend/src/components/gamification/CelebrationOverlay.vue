@@ -1,6 +1,6 @@
 <template>
   <transition name="fade">
-    <div v-if="visible" :class="['fixed inset-0 z-[9999] flex items-center justify-center bg-black/60', { 'reduce-motion': reducedMotion }]" @click.self="handleDismissAll">
+    <div v-if="visible" :class="['fixed inset-0 z-[100] flex items-center justify-center bg-black/60', { 'reduce-motion': reducedMotion }]" @click.self="handleDismissAll">
       <!-- Achievement(s) modal -->
       <div
         v-if="currentItem?.type === 'achievement_group'"

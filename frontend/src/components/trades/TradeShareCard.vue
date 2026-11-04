@@ -363,9 +363,9 @@ function draw(logo) {
   } else if (showDollarAmounts.value) {
     hero = formatMoney(pnl)
   } else if (pnlPercent !== null) {
-    hero = `${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`
+    hero = `${pnlPercent > 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`
   } else if (rValue !== null) {
-    hero = `${rValue >= 0 ? '+' : ''}${rValue.toFixed(1)}R`
+    hero = `${rValue > 0 ? '+' : ''}${rValue.toFixed(1)}R`
   } else {
     hero = isWin ? 'WIN' : 'LOSS'
   }
@@ -380,10 +380,10 @@ function draw(logo) {
     secondaryParts.push('unrealized')
   }
   if (showDollarAmounts.value && pnlPercent !== null) {
-    secondaryParts.push(`${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`)
+    secondaryParts.push(`${pnlPercent > 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`)
   }
   if (rValue !== null) {
-    secondaryParts.push(`${rValue >= 0 ? '+' : ''}${rValue.toFixed(1)}R`)
+    secondaryParts.push(`${rValue > 0 ? '+' : ''}${rValue.toFixed(1)}R`)
   }
   if (secondaryParts.length > 0) {
     ctx.fillText(secondaryParts.join('  ·  '), PAD + heroWidth + 36, heroY - 8)

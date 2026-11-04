@@ -14,14 +14,14 @@
         class="text-sm mt-2 font-medium"
         :class="mosClass"
       >
-        {{ marginOfSafety >= 0 ? '+' : '' }}{{ formatPercent(marginOfSafety) }} MoS
+        {{ marginOfSafety > 0 ? '+' : '' }}{{ formatPercent(marginOfSafety) }} MoS
       </p>
       <p
         v-if="currentPriceReturn !== null && currentPriceReturn !== undefined"
         class="text-sm mt-1 font-medium"
         :class="returnClass"
       >
-        {{ currentPriceReturn >= 0 ? '+' : '' }}{{ formatPercent(currentPriceReturn) }} / yr
+        {{ currentPriceReturn > 0 ? '+' : '' }}{{ formatPercent(currentPriceReturn) }} / yr
       </p>
       <p class="text-xs mt-1" :class="statusClass">
         {{ statusText }}
@@ -101,9 +101,9 @@ const valueClass = computed(() => {
   if (props.currentPrice !== null && props.currentPrice !== undefined && 
       props.fairValue !== null && props.fairValue !== undefined) {
     if (props.currentPrice <= props.fairValue) {
-      return 'text-green-700 dark:text-green-300'
+      return 'text-green-700 dark:text-green-400'
     } else {
-      return 'text-red-700 dark:text-red-300'
+      return 'text-red-600 dark:text-red-400'
     }
   }
   return 'text-gray-900 dark:text-white'

@@ -392,7 +392,7 @@
                     <button
                         @click="cancelSubscription"
                         :disabled="cancelLoading || !cancelReason"
-                        class="btn bg-red-600 text-white hover:bg-red-700"
+                        class="btn-danger"
                     >
                         <span
                             v-if="cancelLoading"

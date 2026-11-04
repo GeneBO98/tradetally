@@ -37,16 +37,16 @@
       <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
         <thead class="table-head">
           <tr>
-            <th class="px-4 py-3 text-left table-th">
+            <th class="text-left table-th px-4 py-2">
               Symbol
             </th>
-            <th class="px-4 py-3 text-left hidden sm:table-cell table-th">
+            <th class="text-left hidden sm:table-cell table-th px-4 py-2">
               Company
             </th>
-            <th class="px-4 py-3 text-right table-th">
+            <th class="text-right table-th px-4 py-2">
               Price
             </th>
-            <th class="px-4 py-3 text-center table-th">
+            <th class="text-center table-th px-4 py-2">
               Pass
             </th>
             <!-- Pillar columns -->

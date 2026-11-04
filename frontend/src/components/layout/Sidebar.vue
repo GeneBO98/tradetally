@@ -78,7 +78,7 @@
           <span v-if="!isCollapsed" class="flex-1">{{ item.name }}</span>
           <span
             v-if="!isCollapsed && item.badge === 'pro'"
-            class="badge shrink-0 rounded-[3px] bg-primary-500/15 text-[9px] uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+            class="badge-neutral shrink-0 px-1.5 py-0 text-[10px] uppercase tracking-wider"
           >
             Pro
           </span>
@@ -142,7 +142,7 @@
                     <span class="flex-1 truncate">{{ sub.name }}</span>
                     <span
                       v-if="sub.badge === 'pro'"
-                      class="badge shrink-0 rounded-[3px] bg-primary-500/15 text-[9px] uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+                      class="badge-neutral shrink-0 px-1.5 py-0 text-[10px] uppercase tracking-wider"
                     >
                       Pro
                     </span>
@@ -208,7 +208,7 @@
               <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ displayName }}</p>
               <span
                 v-if="roleBadge"
-                class="badge shrink-0 rounded-[3px] bg-primary-500/15 text-[8px] uppercase leading-[13px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+                class="badge-neutral shrink-0 px-1.5 py-0 text-[10px] uppercase tracking-wider"
               >
                 {{ roleBadge }}
               </span>
@@ -232,7 +232,7 @@
       >
         <div
           v-if="userMenuOpen"
-          class="user-popover absolute bottom-full left-2 right-2 z-50 mb-2 origin-bottom-left popover overflow-hidden lg:left-3 lg:right-auto lg:w-72 dark:bg-gray-900/95 dark:ring-gray-700/60"
+          class="user-popover absolute bottom-full left-2 right-2 z-40 mb-2 origin-bottom-left popover overflow-hidden lg:left-3 lg:right-auto lg:w-72 dark:bg-gray-900/95 dark:ring-gray-700/60"
         >
           <!-- Header -->
           <div class="px-5 pt-4 pb-4">
@@ -250,7 +250,7 @@
                   <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ displayName }}</p>
                   <span
                     v-if="roleBadge"
-                    class="badge shrink-0 rounded-[3px] bg-primary-500/15 text-[9px] uppercase leading-[14px] tracking-wider text-primary-700 dark:bg-primary-400/15 dark:text-primary-300"
+                    class="badge-neutral shrink-0 px-1.5 py-0 text-[10px] uppercase tracking-wider"
                   >
                     {{ roleBadge }}
                   </span>

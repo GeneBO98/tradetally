@@ -298,7 +298,7 @@
           <div>
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Trade Management Impact</div>
             <div class="text-lg font-semibold" :class="getManagementRTextClass">
-              {{ analysis?.management_r >= 0 ? '+' : '' }}{{ analysis?.management_r }}R
+              {{ analysis?.management_r > 0 ? '+' : '' }}{{ analysis?.management_r }}R
             </div>
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400 text-right max-w-xs">

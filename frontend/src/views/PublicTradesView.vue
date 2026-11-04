@@ -37,7 +37,7 @@
       <div
         v-for="trade in trades"
         :key="trade.id"
-        class="card hover:shadow-lg transition-shadow duration-200"
+        class="card transition-shadow duration-200"
       >
         <div class="card-body">
           <div class="flex items-start justify-between">

@@ -73,7 +73,7 @@
       class="fixed inset-0 z-50 overflow-y-auto"
       @click="cancelDelete"
     >
-      <div class="flex min-h-screen items-end justify-center px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+      <div class="flex min-h-screen items-end justify-center px-4 pt-4 pb-20 text-center ">
         <div class="modal-backdrop"></div>
         
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>

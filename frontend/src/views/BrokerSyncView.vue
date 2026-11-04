@@ -311,13 +311,13 @@
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead class="table-head">
                 <tr>
-                  <th class="px-4 py-3 text-left table-th">Broker</th>
-                  <th class="px-4 py-3 text-left table-th">Type</th>
-                  <th class="px-4 py-3 text-left table-th">Status</th>
-                  <th class="px-4 py-3 text-left table-th">Imported</th>
-                  <th class="px-4 py-3 text-left table-th">Duplicates</th>
-                  <th class="px-4 py-3 text-left table-th">Review</th>
-                  <th class="px-4 py-3 text-left table-th">Date</th>
+                  <th class="text-left table-th px-4 py-2">Broker</th>
+                  <th class="text-left table-th px-4 py-2">Type</th>
+                  <th class="text-left table-th px-4 py-2">Status</th>
+                  <th class="text-left table-th px-4 py-2">Imported</th>
+                  <th class="text-left table-th px-4 py-2">Duplicates</th>
+                  <th class="text-left table-th px-4 py-2">Review</th>
+                  <th class="text-left table-th px-4 py-2">Date</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">

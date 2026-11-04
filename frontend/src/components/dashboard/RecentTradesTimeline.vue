@@ -125,6 +125,6 @@ function formatR(r) {
 function formatPct(p) {
   const n = parseFloat(p)
   if (!Number.isFinite(n)) return ''
-  return (n > 0 ? '+' : '') + n.toFixed(2) + '%'
+  return (n > 0 ? '+' : '') + n.toFixed(1) + '%'
 }
 </script>

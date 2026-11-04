@@ -1,6 +1,6 @@
 <template>
   <div v-if="isOpen" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center ">
       <!-- Background overlay -->
       <div class="modal-backdrop" aria-hidden="true" @click="$emit('close')"></div>
 
@@ -113,48 +113,7 @@
                     { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY' },
                     { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD' },
                     { value: 'MM-DD-YYYY', label: 'MM-DD-YYYY' },
-                    { value: 'DD-MM-YYYY', label: 'DD-MM-YYYY' }
-                  ]"
-                />
-              </div>
-              <div class="flex items-center sm:col-span-2">
-                <input
-                  id="hasHeaderRow"
-                  v-model="mappingForm.has_header_row"
-                  type="checkbox"
-                  class="checkbox"
-                />
-                <label for="hasHeaderRow" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-                  First row contains column headers
-                </label>
-              </div>
-            </div>
-          </details>
-
-          <!-- Mapping name -->
-          <div>
-            <label for="mappingName" class="label">Save this mapping as</label>
-            <input
-              id="mappingName"
-              v-model="mappingForm.mapping_name"
-              type="text"
-              placeholder="Optional — auto-generated if blank"
-              class="input"
-            />
-          </div>
-
-          <!-- Error -->
-          <div v-if="error" class="callout-danger">
-            <p class="text-sm font-medium text-red-800 dark:text-red-400">{{ error }}</p>
-          </div>
-
-          <!-- Help link -->
-          <p class="text-xs text-gray-500 dark:text-gray-400">
-            Not sure?
-            <a
-              :href="supportMailtoLink"
-              class="font-medium text-primary-700 hover:text-primary-500 dark:text-primary-400"
-              @click="$emit('support-clicked', { source: 'mapping_modal', detectedBroker: selectedBroker, headerCount: csvHeaders.length })"
+                    { value: 'DD-MM-YYYY', label: 'DD-MM-YYYY'} ]" /> </div> <div class="flex items-center sm:col-span-2"> <input id="hasHeaderRow" v-model="mappingForm.has_header_row" type="checkbox" class="checkbox" /> <label for="hasHeaderRow" class="ml-2 block text-sm text-gray-700 dark:text-gray-300"> First row contains column headers </label> </div> </div> </details> <!-- Mapping name --> <div> <label for="mappingName" class="label">Save this mapping as</label> <input id="mappingName" v-model="mappingForm.mapping_name" type="text" placeholder="Optional — auto-generated if blank" class="input" /> </div> <!-- Error --> <div v-if="error" class="callout-danger"> <p class="text-sm font-medium text-red-600 dark:text-red-400">{{ error }}</p> </div> <!-- Help link --> <p class="text-xs text-gray-500 dark:text-gray-400"> Not sure? <a :href="supportMailtoLink" class="font-medium text-primary-700 hover:text-primary-500 dark:text-primary-400" @click="$emit('support-clicked', { source: 'mapping_modal', detectedBroker: selectedBroker, headerCount: csvHeaders.length })"
             >
               Send us the headers
             </a>

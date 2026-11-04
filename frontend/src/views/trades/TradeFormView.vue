@@ -264,7 +264,7 @@
               <div class="text-right">
                 <p class="text-2xl font-bold"
                    :class="pnlClass(computedPnlPreview.value)">
-                  {{ computedPnlPreview.value >= 0 ? '+' : '' }}${{ computedPnlPreview.value.toFixed(2) }}
+                  {{ computedPnlPreview.value > 0 ? '+' : '' }}${{ computedPnlPreview.value.toFixed(2) }}
                 </p>
               </div>
             </div>
@@ -1187,67 +1187,7 @@
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Charts & Images</span>
             <svg
               class="h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform duration-200"
-              :class="{ 'rotate-180': showCharts }"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          <div v-show="showCharts" class="p-4 space-y-6">
-            <!-- Display existing charts (edit mode only) -->
-            <TradeCharts
-              v-if="isEdit && trade && trade.charts && trade.charts.length > 0"
-              :trade-id="route.params.id"
-              :charts="trade.charts"
-              :can-delete="true"
-              @deleted="handleChartDeleted"
-            />
-
-            <!-- Add new charts -->
-            <ChartUpload
-              ref="chartUploadRef"
-              :trade-id="isEdit ? route.params.id : null"
-              @added="handleChartAdded"
-            />
-
-            <!-- Image Upload Section -->
-            <ImageUpload
-              ref="imageUploadRef"
-              :trade-id="isEdit ? route.params.id : null"
-              @uploaded="handleImageUploaded"
-            />
-          </div>
-        </div>
-  
-        <div class="flex items-center">
-          <input
-            id="isPublic"
-            v-model="form.isPublic"
-            type="checkbox"
-            class="checkbox"
-          />
-          <label for="isPublic" class="ml-2 block text-sm text-gray-900 dark:text-white">
-            Make this trade public
-          </label>
-        </div>
-      </div>
-        </div>
-
-      <div v-if="error" ref="errorRef" class="callout-danger">
-          <p class="text-sm font-medium text-red-800 dark:text-red-400">{{ error }}</p>
-          <ul v-if="validationErrors.length" class="mt-2 text-sm text-red-700 dark:text-red-400 list-disc list-inside space-y-1">
-            <li v-for="(ve, i) in validationErrors" :key="i">{{ ve }}</li>
-          </ul>
-        </div>
-
-        <p
-          v-if="!form.account_identifier?.trim()"
-          role="status"
-          class="text-sm text-gray-600 dark:text-gray-400"
-        >
-          This trade will be saved without an account. It will appear under All Accounts and Unsorted, but not in an individual account's trades or P&amp;L.
+              :class="{ 'rotate-180': showCharts }" fill="none" stroke="currentColor" viewBox="0 0 24 24" > <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /> </svg> </button> <div v-show="showCharts" class="p-4 space-y-6"> <!-- Display existing charts (edit mode only) --> <TradeCharts v-if="isEdit && trade && trade.charts && trade.charts.length > 0" :trade-id="route.params.id" :charts="trade.charts" :can-delete="true" @deleted="handleChartDeleted" /> <!-- Add new charts --> <ChartUpload ref="chartUploadRef" :trade-id="isEdit ? route.params.id : null" @added="handleChartAdded" /> <!-- Image Upload Section --> <ImageUpload ref="imageUploadRef" :trade-id="isEdit ? route.params.id : null" @uploaded="handleImageUploaded" /> </div> </div> <div class="flex items-center"> <input id="isPublic" v-model="form.isPublic" type="checkbox" class="checkbox" /> <label for="isPublic" class="ml-2 block text-sm text-gray-900 dark:text-white"> Make this trade public </label> </div> </div> </div> <div v-if="error" ref="errorRef" class="callout-danger"> <p class="text-sm font-medium text-red-600 dark:text-red-400">{{ error }}</p> <ul v-if="validationErrors.length" class="mt-2 text-sm text-red-600 dark:text-red-400 list-disc list-inside space-y-1"> <li v-for="(ve, i) in validationErrors" :key="i">{{ ve }}</li> </ul> </div> <p v-if="!form.account_identifier?.trim()" role="status" class="text-sm text-gray-600 dark:text-gray-400" > This trade will be saved without an account. It will appear under All Accounts and Unsorted, but not in an individual account's trades or P&amp;L.
           <button type="button" class="btn-link" @click="showAccountField">
             Select an account
           </button>
@@ -1262,10 +1202,7 @@
             :disabled="loading"
             class="btn-primary inline-flex items-center"
           >
-            <svg v-if="loading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
+            <span v-if="loading" class="spinner spinner-xs spinner-light mr-2 -ml-1"></span>
             <span v-if="loading">{{ isEdit ? 'Updating...' : 'Saving trade...' }}</span>
             <span v-else>{{ isEdit ? 'Update Trade' : 'Create Trade' }}</span>
           </button>
@@ -1275,7 +1212,7 @@
 
     <!-- Public Profile Modal -->
     <div v-if="showPublicProfileModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center ">
         <div class="modal-backdrop" aria-hidden="true" @click="closePublicProfileModal"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         <div class="modal-panel w-full p-6 max-w-lg">
@@ -1321,7 +1258,7 @@
 
     <!-- Save Futures Template Modal -->
     <div v-if="showSaveFuturesTemplateModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center ">
         <div class="modal-backdrop" aria-hidden="true" @click="showSaveFuturesTemplateModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         <div class="modal-panel w-full p-6 max-w-lg">
@@ -1367,7 +1304,7 @@
 
     <!-- Save Options Template Modal -->
     <div v-if="showSaveOptionsTemplateModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center ">
         <div class="modal-backdrop" aria-hidden="true" @click="showSaveOptionsTemplateModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         <div class="modal-panel w-full p-6 max-w-lg">
@@ -1413,7 +1350,7 @@
 
     <!-- Manage Futures Templates Modal -->
     <div v-if="showManageFuturesTemplatesModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center ">
         <div class="modal-backdrop" aria-hidden="true" @click="showManageFuturesTemplatesModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         <div class="modal-panel w-full p-6 max-w-lg">
@@ -1462,7 +1399,7 @@
 
     <!-- Manage Options Templates Modal -->
     <div v-if="showManageOptionsTemplatesModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center ">
         <div class="modal-backdrop" aria-hidden="true" @click="showManageOptionsTemplatesModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         <div class="modal-panel w-full p-6 max-w-lg">

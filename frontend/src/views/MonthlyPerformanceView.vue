@@ -304,71 +304,71 @@
                             <thead class="table-head">
                                 <tr>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Month
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center table-th"
+                                        class="text-center table-th px-4 py-2"
                                     >
                                         Trades
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center table-th"
+                                        class="text-center table-th px-4 py-2"
                                     >
                                         Wins
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center table-th"
+                                        class="text-center table-th px-4 py-2"
                                     >
                                         Losses
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center table-th"
+                                        class="text-center table-th px-4 py-2"
                                     >
                                         Breakeven
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center table-th"
+                                        class="text-center table-th px-4 py-2"
                                     >
                                         Win Rate
                                     </th>
                                     <th
                                         v-if="!showRValue"
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Total P&L
                                     </th>
                                     <th
                                         v-if="!showRValue"
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Avg P&L
                                     </th>
                                     <th
                                         v-if="!showRValue"
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Avg Win
                                     </th>
                                     <th
                                         v-if="!showRValue"
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Avg Loss
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center table-th"
+                                        class="text-center table-th px-4 py-2"
                                     >
                                         Avg R
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center table-th"
+                                        class="text-center table-th px-4 py-2"
                                     >
                                         Total R
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center table-th"
+                                        class="text-center table-th px-4 py-2"
                                     >
                                         Days
                                     </th>

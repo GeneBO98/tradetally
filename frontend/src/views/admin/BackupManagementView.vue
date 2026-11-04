@@ -200,26 +200,7 @@
                             type="button"
                             class="btn-primary"
                         >
-                            <svg
-                                v-if="creatingBackup"
-                                class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                            >
-                                <circle
-                                    class="opacity-25"
-                                    cx="12"
-                                    cy="12"
-                                    r="10"
-                                    stroke="currentColor"
-                                    stroke-width="4"
-                                ></circle>
-                                <path
-                                    class="opacity-75"
-                                    fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                ></path>
-                            </svg>
+                            <span v-if="creatingBackup" class="spinner spinner-xs spinner-light mr-2 -ml-1"></span>
                             {{
                                 creatingBackup
                                     ? "Creating..."
@@ -279,32 +260,32 @@
                             <thead class="table-head">
                                 <tr>
                                     <th
-                                        class="px-3 py-3 text-left table-th"
+                                        class="text-left table-th px-3 py-2"
                                     >
                                         Filename
                                     </th>
                                     <th
-                                        class="px-3 py-3 text-left table-th"
+                                        class="text-left table-th px-3 py-2"
                                     >
                                         Type
                                     </th>
                                     <th
-                                        class="px-3 py-3 text-left table-th"
+                                        class="text-left table-th px-3 py-2"
                                     >
                                         Size
                                     </th>
                                     <th
-                                        class="px-3 py-3 text-left table-th"
+                                        class="text-left table-th px-3 py-2"
                                     >
                                         Status
                                     </th>
                                     <th
-                                        class="px-3 py-3 text-left table-th"
+                                        class="text-left table-th px-3 py-2"
                                     >
                                         Created
                                     </th>
                                     <th
-                                        class="px-3 py-3 text-right table-th"
+                                        class="text-right table-th px-3 py-2"
                                     >
                                         Actions
                                     </th>
@@ -502,26 +483,7 @@
                             type="button"
                             class="btn-secondary"
                         >
-                            <svg
-                                v-if="cleaningUp"
-                                class="animate-spin -ml-1 mr-2 h-4 w-4"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                            >
-                                <circle
-                                    class="opacity-25"
-                                    cx="12"
-                                    cy="12"
-                                    r="10"
-                                    stroke="currentColor"
-                                    stroke-width="4"
-                                ></circle>
-                                <path
-                                    class="opacity-75"
-                                    fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                ></path>
-                            </svg>
+                            <span v-if="cleaningUp" class="spinner spinner-xs spinner-current mr-2 -ml-1"></span>
                             {{ cleaningUp ? "Cleaning..." : "Run Cleanup" }}
                         </button>
                     </div>
@@ -539,7 +501,7 @@
         aria-modal="true"
     >
         <div
-            class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0"
+            class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center "
         >
             <!-- Background overlay -->
             <div
@@ -659,7 +621,7 @@
                                             class="heading-sub"
                                             :class="
                                                 clearExisting
-                                                    ? 'text-red-800 dark:text-red-300'
+                                                    ? 'text-red-600 dark:text-red-400'
                                                     : 'text-yellow-800 dark:text-yellow-300'
                                             "
                                         >
@@ -673,7 +635,7 @@
                                             class="mt-1 text-sm"
                                             :class="
                                                 clearExisting
-                                                    ? 'text-red-700 dark:text-red-400'
+                                                    ? 'text-red-600 dark:text-red-400'
                                                     : 'text-yellow-700 dark:text-yellow-400'
                                             "
                                         >
@@ -740,26 +702,7 @@
                         type="button"
                         class="btn-danger w-full justify-center sm:ml-3 sm:w-auto sm:text-sm"
                     >
-                        <svg
-                            v-if="restoring"
-                            class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                        >
-                            <circle
-                                class="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                stroke-width="4"
-                            ></circle>
-                            <path
-                                class="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                            ></path>
-                        </svg>
+                        <span v-if="restoring" class="spinner spinner-xs spinner-light mr-2 -ml-1"></span>
                         {{ restoring ? "Restoring..." : "Restore Backup" }}
                     </button>
                     <button

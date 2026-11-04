@@ -83,12 +83,12 @@
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead class="table-head">
                 <tr>
-                  <th class="px-6 py-3 text-left table-th">Symbol</th>
-                  <th class="px-6 py-3 text-right table-th">Dividends</th>
-                  <th class="px-6 py-3 text-right table-th">Interest</th>
-                  <th class="px-6 py-3 text-right table-th">Fees</th>
-                  <th class="px-6 py-3 text-right table-th">Payments</th>
-                  <th class="px-6 py-3 text-right table-th">Last Payment</th>
+                  <th class="text-left table-th px-4 py-2">Symbol</th>
+                  <th class="text-right table-th px-4 py-2">Dividends</th>
+                  <th class="text-right table-th px-4 py-2">Interest</th>
+                  <th class="text-right table-th px-4 py-2">Fees</th>
+                  <th class="text-right table-th px-4 py-2">Payments</th>
+                  <th class="text-right table-th px-4 py-2">Last Payment</th>
                 </tr>
               </thead>
               <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">

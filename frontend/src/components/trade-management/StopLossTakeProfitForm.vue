@@ -156,40 +156,7 @@
                 'flex-1 px-4 py-2 text-sm font-medium rounded-lg border-2 transition-colors',
                 targetHitFirst === 'stop_loss'
                   ? 'border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 dark:border-red-600'
-                  : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
-              ]"
-            >
-              SL Hit First
-            </button>
-          </div>
-        </div>
-
-        <!-- Quick Set Buttons -->
-        <div class="pt-2">
-          <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Quick set stop loss:</p>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="pct in [1, 2, 3, 5]"
-              :key="pct"
-              type="button"
-              @click="setStopLossPercent(pct)"
-              class="btn-secondary btn-sm"
-            >
-              {{ pct }}% risk
-            </button>
-          </div>
-        </div>
-
-        <!-- API Error -->
-        <div v-if="apiError" class="callout-danger">
-          <p class="text-sm text-red-700 dark:text-red-300">{{ apiError }}</p>
-        </div>
-
-        <!-- Actions -->
-        <div class="flex justify-end space-x-4 pt-4">
-          <button
-            type="button"
-            @click="$emit('cancel')"
+                  : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500']" > SL Hit First </button> </div> </div> <!-- Quick Set Buttons --> <div class="pt-2"> <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Quick set stop loss:</p> <div class="flex flex-wrap gap-2"> <button v-for="pct in [1, 2, 3, 5]" :key="pct" type="button" @click="setStopLossPercent(pct)" class="btn-secondary btn-sm" > {{ pct }}% risk </button> </div> </div> <!-- API Error --> <div v-if="apiError" class="callout-danger"> <p class="text-sm text-red-600 dark:text-red-300">{{ apiError }}</p> </div> <!-- Actions --> <div class="flex justify-end space-x-4 pt-4"> <button type="button" @click="$emit('cancel')"
             class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
           >
             Cancel

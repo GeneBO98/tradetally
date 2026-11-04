@@ -535,7 +535,7 @@
                                     class="text-sm font-semibold mt-0.5"
                                     :class="pnlClass(rebalanceImpact.realizedPnl)"
                                 >
-                                    {{ rebalanceImpact.realizedPnl >= 0 ? '+' : '' }}{{ formatCurrency(rebalanceImpact.realizedPnl) }}
+                                    {{ rebalanceImpact.realizedPnl > 0 ? '+' : '' }}{{ formatCurrency(rebalanceImpact.realizedPnl) }}
                                 </p>
                                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">If all sells execute</p>
                             </div>
@@ -546,28 +546,28 @@
                         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                             <thead class="table-head">
                                 <tr>
-                                    <th class="px-6 py-3 text-left table-th">
+                                    <th class="text-left table-th px-4 py-2">
                                         Symbol
                                     </th>
-                                    <th class="px-6 py-3 text-right table-th" title="Current market value and average cost basis per share">
+                                    <th class="text-right table-th px-4 py-2" title="Current market value and average cost basis per share">
                                         Value
                                     </th>
-                                    <th class="px-6 py-3 text-right cursor-help whitespace-nowrap table-th" title="This position's current share of total portfolio value">
+                                    <th class="text-right cursor-help whitespace-nowrap table-th px-4 py-2" title="This position's current share of total portfolio value">
                                         Actual %
                                     </th>
-                                    <th class="px-6 py-3 text-right cursor-help whitespace-nowrap table-th" title="Your desired allocation percentage for this position. Edit and save to track rebalancing needs">
+                                    <th class="text-right cursor-help whitespace-nowrap table-th px-4 py-2" title="Your desired allocation percentage for this position. Edit and save to track rebalancing needs">
                                         Target %
                                     </th>
-                                    <th class="px-6 py-3 text-right cursor-help table-th" title="How far the actual allocation has strayed from your target. Highlighted when it exceeds your drift alert threshold">
+                                    <th class="text-right cursor-help table-th px-4 py-2" title="How far the actual allocation has strayed from your target. Highlighted when it exceeds your drift alert threshold">
                                         Drift
                                     </th>
-                                    <th class="px-6 py-3 text-right cursor-help table-th" title="Estimated number of shares to buy (positive) or sell (negative) to return to your target allocation">
+                                    <th class="text-right cursor-help table-th px-4 py-2" title="Estimated number of shares to buy (positive) or sell (negative) to return to your target allocation">
                                         Share Delta
                                     </th>
-                                    <th class="px-6 py-3 text-right cursor-help table-th" title="Cash impact of rebalancing: what buying would cost you (shown negative) or what selling would bring in (shown positive)">
+                                    <th class="text-right cursor-help table-th px-4 py-2" title="Cash impact of rebalancing: what buying would cost you (shown negative) or what selling would bring in (shown positive)">
                                         Trade Value
                                     </th>
-                                    <th class="px-6 py-3 text-right table-th">
+                                    <th class="text-right table-th px-4 py-2">
                                         Actions
                                     </th>
                                 </tr>
@@ -835,7 +835,7 @@
                                                     :class="pnlClass(row.returnDelta)"
                                                     class="block text-xs"
                                                 >
-                                                    {{ row.returnDelta >= 0 ? '+' : '' }}{{ row.returnDelta.toFixed(1) }}%
+                                                    {{ row.returnDelta > 0 ? '+' : '' }}{{ row.returnDelta.toFixed(1) }}%
                                                 </span>
                                             </td>
                                             <td
@@ -843,7 +843,7 @@
                                                 class="px-3 py-2 text-right font-medium"
                                                 :class="pnlClass(pairDifferenceRow.returnDelta)"
                                             >
-                                                {{ pairDifferenceRow.returnDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.returnDelta.toFixed(1) }}%
+                                                {{ pairDifferenceRow.returnDelta > 0 ? '+' : '' }}{{ pairDifferenceRow.returnDelta.toFixed(1) }}%
                                             </td>
                                         </tr>
                                         <tr>
@@ -880,14 +880,14 @@
                                                     v-if="!row.isLeader && !isPairCompare"
                                                     class="block text-xs text-gray-500 dark:text-gray-400"
                                                 >
-                                                    {{ row.positionsDelta >= 0 ? '+' : '' }}{{ row.positionsDelta }}
+                                                    {{ row.positionsDelta > 0 ? '+' : '' }}{{ row.positionsDelta }}
                                                 </span>
                                             </td>
                                             <td
                                                 v-if="isPairCompare"
                                                 class="px-3 py-2 text-right font-medium text-gray-700 dark:text-gray-300"
                                             >
-                                                {{ pairDifferenceRow.positionsDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.positionsDelta }}
+                                                {{ pairDifferenceRow.positionsDelta > 0 ? '+' : '' }}{{ pairDifferenceRow.positionsDelta }}
                                             </td>
                                         </tr>
                                         <tr>
@@ -905,7 +905,7 @@
                                                     :class="row.driftDelta <= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                                     class="block text-xs"
                                                 >
-                                                    {{ row.driftDelta >= 0 ? '+' : '' }}{{ row.driftDelta.toFixed(1) }}%
+                                                    {{ row.driftDelta > 0 ? '+' : '' }}{{ row.driftDelta.toFixed(1) }}%
                                                 </span>
                                             </td>
                                             <td
@@ -914,7 +914,7 @@
                                                 :class="pairDifferenceRow.driftDelta === null ? 'text-gray-500 dark:text-gray-400' : pairDifferenceRow.driftDelta <= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                             >
                                                 <template v-if="pairDifferenceRow.driftDelta === null">—</template>
-                                                <template v-else>{{ pairDifferenceRow.driftDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.driftDelta.toFixed(1) }}%</template>
+                                                <template v-else>{{ pairDifferenceRow.driftDelta > 0 ? '+' : '' }}{{ pairDifferenceRow.driftDelta.toFixed(1) }}%</template>
                                             </td>
                                         </tr>
                                     </tbody>

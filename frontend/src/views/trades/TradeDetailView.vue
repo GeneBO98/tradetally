@@ -79,7 +79,7 @@
           <router-link :to="{ path: `/trades/${trade.id}/edit`, query: { from: 'trade-detail' } }" class="btn-secondary">
             Edit
           </router-link>
-          <button @click="deleteTrade" class="btn-secondary justify-center text-red-600 dark:text-red-400">
+          <button @click="deleteTrade" class="btn-danger-outline justify-center">
             Delete
           </button>
         </div>
@@ -458,8 +458,8 @@
                   <dd class="mt-1">
                     <div class="flex items-center space-x-3">
                       <div class="flex space-x-1">
-                        <div v-for="i in 10" :key="i" class="w-2 h-2 rounded-full"
-                          :class="i <= trade.confidence ? 'switch-on' : ''">
+                        <div v-for="i in 10" :key="i" class="dot"
+                          :class="i <= trade.confidence ? 'dot-on' : ''">
                         </div>
                       </div>
                       <span class="text-sm font-medium text-gray-900 dark:text-white">{{ trade.confidence }}/10</span>
@@ -471,7 +471,7 @@
                   <dd class="mt-1">
                     <div v-if="trade.qualityGrade" class="flex items-center space-x-3">
                       <span class="badge"
-                        :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
+                        :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-white text-primary-700 ring-1 ring-inset ring-primary-400 dark:bg-gray-800 dark:text-primary-300 dark:ring-primary-500': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                         Grade {{ trade.qualityGrade }}
                       </span>
                       <span v-if="trade.qualityScore" class="text-sm text-gray-600 dark:text-gray-400">
@@ -636,7 +636,7 @@
                   <span
                     v-if="trade.setupQuality?.grade"
                     class="badge"
-                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.setupQuality.grade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.setupQuality.grade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.setupQuality.grade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.setupQuality.grade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.setupQuality.grade === 'F' }"
+                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.setupQuality.grade === 'A', 'bg-white text-primary-700 ring-1 ring-inset ring-primary-400 dark:bg-gray-800 dark:text-primary-300 dark:ring-primary-500': trade.setupQuality.grade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.setupQuality.grade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.setupQuality.grade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.setupQuality.grade === 'F' }"
                   >
                     Grade {{ trade.setupQuality.grade }}
                   </span>
@@ -799,70 +799,13 @@
                         >
                           <div class="flex items-center justify-between gap-4">
                             <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
-                            <span :class="rule.passed ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'" class="text-xs font-semibold uppercase tracking-wide">
+                            <span :class="rule.passed ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'" class="text-xs font-semibold uppercase tracking-wide">
                               {{ rule.passed ? 'Passed' : 'Failed' }}
                             </span>
                           </div>
                           <div class="mt-2 text-xs text-gray-600 dark:text-gray-400">
                             <div><span class="font-medium">Expected:</span> {{ Array.isArray(rule.expected) ? rule.expected.join(', ') : (rule.expected || 'N/A') }}</div>
-                            <div><span class="font-medium">Actual:</span> {{ Array.isArray(rule.actual) ? rule.actual.join(', ') : (rule.actual || 'N/A') }}</div>
-                            <div v-if="rule.violationMessage" class="mt-1 text-red-700 dark:text-red-300">{{ rule.violationMessage }}</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <p v-else class="text-sm text-gray-500 dark:text-gray-400">
-                        Save a playbook review to evaluate stop loss, target R, side, timeframe, and configured strategy/setup/tag rules.
-                      </p>
-                    </div>
-                  </template>
-                </div>
-
-                <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-5">
-                  <div>
-                    <h4 class="heading-sub">Manual Grading Profile</h4>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Use structured 0-5 criteria when you want a setup score that is independent from automated market-data coverage.
-                    </p>
-                  </div>
-
-                  <div v-if="manualGradingProfiles.length === 0" class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-4 text-sm text-gray-500 dark:text-gray-400">
-                    Create a 0-5 grading profile to score setup quality manually.
-                  </div>
-
-                  <template v-else>
-                    <div>
-                      <div class="mb-1 flex items-center justify-between gap-3">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Grading Profile</label>
-                        <span
-                          v-if="trade.suggestedManualGradingProfileId && selectedManualGradingProfileId === trade.suggestedManualGradingProfileId && !trade.manualGradingReview"
-                          class="text-xs font-medium text-primary-700 dark:text-primary-300"
-                        >
-                          Suggested from trade rules
-                        </span>
-                      </div>
-                      <BaseSelect
-                        v-model="selectedManualGradingProfileId"
-                        :options="manualGradingProfileOptions"
-                        placeholder="Select a grading profile"
-                        @change="onManualGradingProfileChange"
-                      />
-                    </div>
-
-                    <div v-if="selectedManualGradingProfile" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                      <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-                        <div class="flex items-center justify-between mb-3">
-                          <div>
-                            <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Grading Criteria</h5>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">
-                              {{ getReviewCompletion(selectedManualGradingProfile, manualGradingReviewForm).label }}
-                            </p>
-                          </div>
-                          <span
-                            v-if="selectedManualGradingReview"
-                            class="badge"
-                            :class="selectedManualGradingReview.adherenceScore >= 80
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                            <div><span class="font-medium">Actual:</span> {{ Array.isArray(rule.actual) ? rule.actual.join(', ') : (rule.actual || 'N/A') }}</div> <div v-if="rule.violationMessage" class="mt-1 text-red-600 dark:text-red-300">{{ rule.violationMessage }}</div> </div> </div> </div> <p v-else class="text-sm text-gray-500 dark:text-gray-400"> Save a playbook review to evaluate stop loss, target R, side, timeframe, and configured strategy/setup/tag rules. </p> </div> </template> </div> <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-5"> <div> <h4 class="heading-sub">Manual Grading Profile</h4> <p class="mt-1 text-xs text-gray-500 dark:text-gray-400"> Use structured 0-5 criteria when you want a setup score that is independent from automated market-data coverage. </p> </div> <div v-if="manualGradingProfiles.length === 0" class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-4 text-sm text-gray-500 dark:text-gray-400"> Create a 0-5 grading profile to score setup quality manually. </div> <template v-else> <div> <div class="mb-1 flex items-center justify-between gap-3"> <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Grading Profile</label> <span v-if="trade.suggestedManualGradingProfileId && selectedManualGradingProfileId === trade.suggestedManualGradingProfileId && !trade.manualGradingReview" class="text-xs font-medium text-primary-700 dark:text-primary-300" > Suggested from trade rules </span> </div> <BaseSelect v-model="selectedManualGradingProfileId" :options="manualGradingProfileOptions" placeholder="Select a grading profile" @change="onManualGradingProfileChange" /> </div> <div v-if="selectedManualGradingProfile" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]"> <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4"> <div class="flex items-center justify-between mb-3"> <div> <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Grading Criteria</h5> <p class="text-xs text-gray-500 dark:text-gray-400"> {{ getReviewCompletion(selectedManualGradingProfile, manualGradingReviewForm).label }} </p> </div> <span v-if="selectedManualGradingReview" class="badge" :class="selectedManualGradingReview.adherenceScore >= 80 ?'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
                               : selectedManualGradingReview.adherenceScore >= 60
                               ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
                               : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
@@ -956,48 +899,13 @@
                         >
                           <div class="flex items-center justify-between gap-4">
                             <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
-                            <span :class="rule.passed ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'" class="text-xs font-semibold uppercase tracking-wide">
+                            <span :class="rule.passed ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'" class="text-xs font-semibold uppercase tracking-wide">
                               {{ rule.passed ? 'Passed' : 'Failed' }}
                             </span>
                           </div>
                           <div class="mt-2 text-xs text-gray-600 dark:text-gray-400">
                             <div><span class="font-medium">Expected:</span> {{ Array.isArray(rule.expected) ? rule.expected.join(', ') : (rule.expected || 'N/A') }}</div>
-                            <div><span class="font-medium">Actual:</span> {{ Array.isArray(rule.actual) ? rule.actual.join(', ') : (rule.actual || 'N/A') }}</div>
-                            <div v-if="rule.violationMessage" class="mt-1 text-red-700 dark:text-red-300">{{ rule.violationMessage }}</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <p v-else class="text-sm text-gray-500 dark:text-gray-400">
-                        Save a manual grading review to evaluate any configured side, timeframe, stop loss, target R, strategy, setup, or tag rules.
-                      </p>
-                    </div>
-                  </template>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Executions -->
-          <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
-            <div class="card-body">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="heading-card">
-                  Executions ({{ processedExecutions.length }})
-                </h3>
-                <div v-if="processedExecutions.length >= 2 && trade.exit_price && trade.exit_time" class="flex items-center space-x-2">
-                  <template v-if="splitMode">
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedExecutions.size }} selected</span>
-                    <button
-                      @click="splitSelectedTrades"
-                      :disabled="splittingTrade || selectedExecutions.size === 0 || selectedExecutions.size === entryExecutionIndices.length"
-                      class="btn-primary btn-sm"
-                    >
-                      <svg v-if="splittingTrade" class="animate-spin -ml-0.5 mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      {{ splittingTrade ? 'Splitting...' : 'Split Selected' }}
+                            <div><span class="font-medium">Actual:</span> {{ Array.isArray(rule.actual) ? rule.actual.join(', ') : (rule.actual || 'N/A') }}</div> <div v-if="rule.violationMessage" class="mt-1 text-red-600 dark:text-red-300">{{ rule.violationMessage }}</div> </div> </div> </div> <p v-else class="text-sm text-gray-500 dark:text-gray-400"> Save a manual grading review to evaluate any configured side, timeframe, stop loss, target R, strategy, setup, or tag rules. </p> </div> </template> </div> </div> </div> </div> <!-- Executions --> <div v-if="processedExecutions && processedExecutions.length > 0" class="card"> <div class="card-body"> <div class="flex items-center justify-between mb-4"> <h3 class="heading-card"> Executions ({{ processedExecutions.length }}) </h3> <div v-if="processedExecutions.length >= 2 && trade.exit_price && trade.exit_time" class="flex items-center space-x-2"> <template v-if="splitMode"> <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedExecutions.size }} selected</span> <button @click="splitSelectedTrades" :disabled="splittingTrade || selectedExecutions.size === 0 || selectedExecutions.size === entryExecutionIndices.length" class="btn-primary btn-sm" > <span v-if="splittingTrade" class="spinner spinner-xs spinner-current mr-2 -ml-0.5"></span> {{ splittingTrade ?'Splitting...' : 'Split Selected' }}
                     </button>
                     <button
                       @click="splitMode = false; selectedExecutions = new Set()"
@@ -1021,35 +929,35 @@
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead class="table-head">
                     <tr>
-                      <th v-if="splitMode" class="px-3 py-3 w-10 table-th"></th>
-                      <th class="px-3 py-3 text-left table-th">
+                      <th v-if="splitMode" class="w-10 table-th px-3 py-2"></th>
+                      <th class="text-left table-th px-3 py-2">
                         Action
                       </th>
-                      <th class="px-3 py-3 text-left table-th">
+                      <th class="text-left table-th px-3 py-2">
                         Quantity
                       </th>
-                      <th class="px-3 py-3 text-left table-th">
+                      <th class="text-left table-th px-3 py-2">
                         Entry Price
                       </th>
-                      <th class="px-3 py-3 text-left table-th">
+                      <th class="text-left table-th px-3 py-2">
                         Exit Price
                       </th>
-                      <th class="px-3 py-3 text-left table-th">
+                      <th class="text-left table-th px-3 py-2">
                         Gross P&L
                       </th>
-                      <th class="px-3 py-3 text-left table-th">
+                      <th class="text-left table-th px-3 py-2">
                         Net P&L
                       </th>
-                      <th class="px-3 py-3 text-left table-th">
+                      <th class="text-left table-th px-3 py-2">
                         Commission
                       </th>
-                      <th class="px-3 py-3 text-left table-th">
+                      <th class="text-left table-th px-3 py-2">
                         Fees
                       </th>
-                      <th class="px-3 py-3 text-left table-th">
+                      <th class="text-left table-th px-3 py-2">
                         Entry Time
                       </th>
-                      <th class="px-3 py-3 text-left table-th">
+                      <th class="text-left table-th px-3 py-2">
                         Exit Time
                       </th>
                     </tr>
@@ -1503,8 +1411,8 @@
                     Net P&L
                     <span v-if="!trade.exit_time && openUnrealizedPnL !== null" class="text-xs font-normal text-gray-400">(unrealized)</span>
                   </dt>
-                  <dd class="mt-1 text-2xl font-semibold" :class="[
-                    (trade.exit_time ? displayPnl : pnlClass(openUnrealizedPnL))
+                  <dd class="mt-1 stat-value" :class="[
+                    (trade.exit_time ? pnlClass(displayPnl) : pnlClass(openUnrealizedPnL))
                   ]">
                     <template v-if="trade.exit_time">{{ formatTradeCurrency(displayPnl) }}</template>
                     <template v-else-if="openUnrealizedPnL !== null">{{ formatTradeCurrency(openUnrealizedPnL) }}</template>
@@ -1977,7 +1885,7 @@ const qualityBreakdown = computed(() => {
   const profileType = m.profile === 'option' ? 'option' : 'stock'
   const w = qualityProfiles.value?.[profileType] || {}
 
-  const signedPct = (v) => (Number(v) > 0 ? '+' : '') + Number(v).toFixed(2) + '%'
+  const signedPct = (v) => (Number(v) > 0 ? '+' : '') + Number(v).toFixed(1) + '%'
 
   if (profileType === 'option') {
     return [

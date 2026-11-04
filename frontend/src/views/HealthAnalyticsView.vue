@@ -151,19 +151,19 @@
           <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead class="table-head">
               <tr>
-                <th class="px-6 py-3 text-left table-th">
+                <th class="text-left table-th px-4 py-2">
                   Condition
                 </th>
-                <th class="px-6 py-3 text-left table-th">
+                <th class="text-left table-th px-4 py-2">
                   Trades
                 </th>
-                <th class="px-6 py-3 text-left table-th">
+                <th class="text-left table-th px-4 py-2">
                   Win Rate
                 </th>
-                <th class="px-6 py-3 text-left table-th">
+                <th class="text-left table-th px-4 py-2">
                   Avg P&L
                 </th>
-                <th class="px-6 py-3 text-left table-th">
+                <th class="text-left table-th px-4 py-2">
                   Total P&L
                 </th>
               </tr>
@@ -226,10 +226,7 @@
           <button @click="refreshInsights" 
                   :disabled="loadingInsights"
                   class="btn-secondary">
-            <svg v-if="loadingInsights" class="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
+            <span v-if="loadingInsights" class="spinner spinner-xs spinner-current mr-2"></span>
             Refresh Insights
           </button>
         </div>

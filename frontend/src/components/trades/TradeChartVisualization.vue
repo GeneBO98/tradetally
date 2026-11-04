@@ -21,51 +21,7 @@
           <span
             v-if="chartData.source"
             class="badge-primary"
-            :class="{ 'cursor-help': sourceTitle }"
-            :title="sourceTitle"
-          >
-            {{ sourceLabel }}<template v-if="sourceTitle"> ·  fallback</template>
-          </span>
-        </div>
-      </div>
-
-      <ProUpgradePrompt
-        v-if="requiresProUpgrade"
-        variant="compact"
-        description="Trade charts with high-precision candlestick data are available with a Pro subscription."
-      />
-
-      <div v-else-if="!showChart && !loading" class="rounded-lg border border-dashed border-gray-300 px-6 py-12 text-center dark:border-gray-600">
-        <PresentationChartLineIcon class="mx-auto h-12 w-12 text-gray-400" />
-        <h4 class="heading-card mt-4">Open interactive chart</h4>
-        <p class="mx-auto mt-2 max-w-lg text-sm text-gray-600 dark:text-gray-400">
-          Inspect the trade with editable trend lines, price levels, Fibonacci tools, moving averages, and execution markers.
-        </p>
-        <button type="button" class="btn-primary mt-5" @click="loadChart">
-          Load Chart
-        </button>
-        <p class="mt-3 text-xs text-gray-500 dark:text-gray-500">
-          <span v-if="isBillingEnabled">Uses the configured high-precision market data provider.</span>
-          <span v-else>Uses configured providers first, with no-cost fallbacks when available.</span>
-        </p>
-      </div>
-
-      <div v-if="initialLoading" class="flex justify-center py-16">
-        <div class="spinner spinner-lg"></div>
-      </div>
-
-      <div v-else-if="!isConfigured" class="rounded-lg border border-gray-200 py-14 text-center dark:border-gray-700">
-        <PresentationChartLineIcon class="mx-auto h-12 w-12 text-gray-400" />
-        <p class="mt-3 font-medium text-gray-900 dark:text-white">Chart service not configured</p>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Configure a supported market-data provider to enable trade charts.</p>
-      </div>
-
-      <div v-else-if="error" class="callout-danger py-10 text-center">
-        <p class="font-medium text-red-700 dark:text-red-300">{{ error }}</p>
-        <button
-          type="button"
-          class="btn-secondary mt-4"
-          :disabled="error.includes('limit') || error.includes('not configured')"
+            :class="{ 'cursor-help': sourceTitle }" :title="sourceTitle" > {{ sourceLabel }}<template v-if="sourceTitle"> · fallback</template> </span> </div> </div> <ProUpgradePrompt v-if="requiresProUpgrade" variant="compact" description="Trade charts with high-precision candlestick data are available with a Pro subscription." /> <div v-else-if="!showChart && !loading" class="rounded-lg border border-dashed border-gray-300 px-6 py-12 text-center dark:border-gray-600"> <PresentationChartLineIcon class="mx-auto h-12 w-12 text-gray-400" /> <h4 class="heading-card mt-4">Open interactive chart</h4> <p class="mx-auto mt-2 max-w-lg text-sm text-gray-600 dark:text-gray-400"> Inspect the trade with editable trend lines, price levels, Fibonacci tools, moving averages, and execution markers. </p> <button type="button" class="btn-primary mt-5" @click="loadChart"> Load Chart </button> <p class="mt-3 text-xs text-gray-500 dark:text-gray-500"> <span v-if="isBillingEnabled">Uses the configured high-precision market data provider.</span> <span v-else>Uses configured providers first, with no-cost fallbacks when available.</span> </p> </div> <div v-if="initialLoading" class="flex justify-center py-16"> <div class="spinner spinner-lg"></div> </div> <div v-else-if="!isConfigured" class="rounded-lg border border-gray-200 py-14 text-center dark:border-gray-700"> <PresentationChartLineIcon class="mx-auto h-12 w-12 text-gray-400" /> <p class="mt-3 font-medium text-gray-900 dark:text-white">Chart service not configured</p> <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Configure a supported market-data provider to enable trade charts.</p> </div> <div v-else-if="error" class="callout-danger py-10 text-center"> <p class="font-medium text-red-600 dark:text-red-300">{{ error }}</p> <button type="button" class="btn-secondary mt-4" :disabled="error.includes('limit') || error.includes('not configured')"
           @click="loadChart"
         >
           Try Again
@@ -295,7 +251,7 @@ function formatPercent(value) {
   if (value === null || value === undefined || value === '') return 'N/A'
   const number = Number(value)
   if (!Number.isFinite(number)) return 'N/A'
-  return `${number >= 0 ? '+' : ''}${number.toFixed(2)}%`
+  return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`
 }
 
 function resolutionForInterval(interval) {

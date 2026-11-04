@@ -85,9 +85,29 @@
     @apply bg-primary-700 text-white shadow-sm hover:bg-primary-700 hover:text-white dark:hover:bg-primary-700 dark:hover:text-white;
   }
 
-  /* Text link styled as a button: inline "View all", "Show more", row actions. */
+  /* Text link styled as a button: inline "View all", "Show more", row actions.
+     Phones get the 44px touch target; desktop stays inline. */
   .btn-link {
     @apply inline-flex items-center gap-1 rounded text-sm font-medium text-primary-700 hover:text-primary-900 hover:underline focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-primary-400 dark:hover:text-primary-300;
+    @apply min-h-[44px] sm:min-h-0;
+  }
+
+  /* Destructive secondary action: outline danger. */
+  .btn-danger-outline {
+    @apply btn text-red-600 bg-white border-red-300 hover:bg-red-50 focus:ring-red-500 dark:bg-gray-800 dark:text-red-400 dark:border-red-700 dark:hover:bg-red-900/20;
+  }
+
+  /* Loading placeholder block; size it with width/height utilities at the call site. */
+  .skeleton {
+    @apply animate-pulse rounded bg-gray-200 dark:bg-gray-700;
+  }
+
+  /* Confidence / rating dot meter: `dot` + `dot-on`. */
+  .dot {
+    @apply h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600;
+  }
+  .dot-on {
+    @apply bg-primary-600 dark:bg-primary-500;
   }
 
   /* Bordered square icon button for toolbars (filters, settings, view toggles). */

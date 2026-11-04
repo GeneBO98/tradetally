@@ -618,7 +618,7 @@
 
     <!-- Chart Layout Settings Modal -->
     <div v-if="showLayoutSettings" class="fixed inset-0 z-50 overflow-y-auto" @click="showLayoutSettings = false">
-      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center ">
         <div class="modal-backdrop"></div>
 
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>

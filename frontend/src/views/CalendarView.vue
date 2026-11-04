@@ -99,7 +99,7 @@
                       <span class="text-data-secondary block truncate">
                         {{ format(expandedMonth, 'MMMM') }} {{ showRValue ? 'R-Value' : pnlTypeLabel }}
                       </span>
-                      <span class="mt-1 block text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="pnlClass(monthlyTotal)">
+                      <span class="mt-1 block stat-value whitespace-nowrap" :class="pnlClass(monthlyTotal)">
                         {{ showRValue ? formatRValue(monthlyTotal) : formatCurrency(monthlyTotal) }}
                       </span>
                       <span class="mt-2 block text-xs text-gray-500 dark:text-gray-400">
@@ -112,7 +112,7 @@
                       <dt class="text-data-secondary truncate">
                         Avg Initial Risk
                       </dt>
-                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap text-gray-900 dark:text-white">
+                      <dd class="mt-1 stat-value whitespace-nowrap text-gray-900 dark:text-white">
                         {{ monthlyRiskTradeCount > 0 ? formatCurrency(monthlyAvgRiskAmount) : 'N/A' }}
                       </dd>
                       <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -127,7 +127,7 @@
                       <dt class="text-data-secondary truncate">
                         Year To Date
                       </dt>
-                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="pnlClass(ytdTotal)">
+                      <dd class="mt-1 stat-value whitespace-nowrap" :class="pnlClass(ytdTotal)">
                         {{ formatCurrency(ytdTotal) }}
                       </dd>
                       <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -801,7 +801,7 @@ function changeMonth(direction) {
 
 function formatRValue(num, decimals = 2) {
   const value = parseFloat(num) || 0
-  const sign = value >= 0 ? '+' : ''
+  const sign = value > 0 ? '+' : ''
   return `${sign}${value.toFixed(decimals)}R`
 }
 

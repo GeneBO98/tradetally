@@ -72,14 +72,14 @@ describe('ScreenerStartPanel', () => {
     investmentsStore.fetchScreenerDiscover = vi.fn(() => new Promise((resolve) => { resolveFetch = resolve }))
 
     const wrapper = mount(ScreenerStartPanel)
-    expect(wrapper.find('.animate-pulse').exists()).toBe(true)
+    expect(wrapper.find('.skeleton').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('Nothing to browse yet')
 
     state.value = discoverPayload()
     resolveFetch(state.value)
     await flushPromises()
 
-    expect(wrapper.find('.animate-pulse').exists()).toBe(false)
+    expect(wrapper.find('.skeleton').exists()).toBe(false)
     const text = wrapper.text()
     expect(text).toContain('Value picks')
     expect(text).toContain('Most pillars passed')

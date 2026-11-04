@@ -445,19 +445,7 @@
                   @click="showSourceErrors = !showSourceErrors"
                   class="btn-link"
                 >
-                  {{ showSourceErrors ? 'Hide source errors' : `Show ${sourceErrorCount} source error${sourceErrorCount === 1 ? '' : 's'}` }}
-                </button>
-                <div v-if="showSourceErrors" class="space-y-3">
-                  <div
-                    v-for="source in failingSources"
-                    :key="source.id"
-                    class="rounded-md border border-red-200 dark:border-red-900/40 px-3 py-3"
-                  >
-                    <div class="flex items-start justify-between gap-3">
-                      <div>
-                        <p class="text-sm font-medium text-gray-900 dark:text-white">{{ source.name }}</p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ source.domain || source.source_type }}</p>
-                        <p class="text-xs text-red-600 dark:text-red-300 mt-2">{{ source.last_fetch_error || 'Fetch failed' }}</p>
+                  {{ showSourceErrors ? 'Hide source errors' : `Show ${sourceErrorCount} source error${sourceErrorCount === 1 ? '' : 's'}` }} </button> <div v-if="showSourceErrors" class="space-y-3"> <div v-for="source in failingSources" :key="source.id" class="rounded-md border border-red-200 dark:border-red-900/40 px-3 py-3" > <div class="flex items-start justify-between gap-3"> <div> <p class="text-sm font-medium text-gray-900 dark:text-white">{{ source.name }}</p> <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ source.domain || source.source_type }}</p> <p class="text-xs text-red-600 dark:text-red-400 mt-2">{{ source.last_fetch_error ||'Fetch failed' }}</p>
                       </div>
                       <span class="badge-warning">
                         error

@@ -31,9 +31,7 @@
           :disabled="!accountId || store.reviewLoading"
           @click="refresh"
         >
-          <svg class="h-3.5 w-3.5" :class="{ 'animate-spin': store.reviewLoading }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.2-4.5L20 7M20 15a9 9 0 01-14.2 4.5L4 17"/>
-          </svg>
+          <span class="spinner spinner-xs spinner-current mr-2"></span>
           Refresh
         </button>
       </div>
@@ -227,10 +225,7 @@
               <svg v-if="actingId !== item.id" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
               </svg>
-              <svg v-else class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
-                <path stroke-linecap="round" d="M12 2a10 10 0 0110 10"/>
-              </svg>
+              <span v-else class="spinner spinner-xs spinner-current mr-2"></span>
             </button>
             <button
               type="button"
@@ -272,10 +267,7 @@
             <svg v-if="actingId !== item.id" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4"/>
             </svg>
-            <svg v-else class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
-              <path stroke-linecap="round" d="M12 2a10 10 0 0110 10"/>
-            </svg>
+            <span v-else class="spinner spinner-xs spinner-current mr-2"></span>
             Untrack
           </button>
         </div>
@@ -451,10 +443,7 @@
             :disabled="bulkBusy"
             @click="executeConfirm"
           >
-            <svg v-if="bulkBusy" class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
-              <path stroke-linecap="round" d="M12 2a10 10 0 0110 10"/>
-            </svg>
+            <span v-if="bulkBusy" class="spinner spinner-xs spinner-current mr-2"></span>
             {{ bulkBusy ? 'Working…' : actionVerb }}
           </button>
         </div>

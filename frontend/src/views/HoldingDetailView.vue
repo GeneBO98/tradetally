@@ -211,37 +211,37 @@
                             <thead class="table-head">
                                 <tr>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Purchase Date
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Shares
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Cost/Share
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Total Cost
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Current Value
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Gain/Loss
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Actions
                                     </th>
@@ -391,27 +391,27 @@
                             <thead class="table-head">
                                 <tr>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Date
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Amount
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right table-th"
+                                        class="text-right table-th px-4 py-2"
                                     >
                                         Per Share
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Type
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left table-th"
+                                        class="text-left table-th px-4 py-2"
                                     >
                                         Notes
                                     </th>
@@ -581,7 +581,7 @@
                     </button>
                     <button
                         @click="deleteHolding"
-                        class="btn-primary bg-red-600 hover:bg-red-700"
+                        class="btn-danger"
                     >
                         Delete
                     </button>

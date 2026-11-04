@@ -201,27 +201,27 @@
                     <thead class="table-head">
                         <tr>
                             <th
-                                class="px-6 py-3 text-left table-th"
+                                class="text-left table-th px-4 py-2"
                             >
                                 CUSIP / Ticker
                             </th>
                             <th
-                                class="px-6 py-3 text-left table-th"
+                                class="text-left table-th px-4 py-2"
                             >
                                 Company
                             </th>
                             <th
-                                class="px-6 py-3 text-left table-th"
+                                class="text-left table-th px-4 py-2"
                             >
                                 Source / Status
                             </th>
                             <th
-                                class="px-6 py-3 text-left table-th"
+                                class="text-left table-th px-4 py-2"
                             >
                                 Usage
                             </th>
                             <th
-                                class="px-6 py-3 text-left table-th"
+                                class="text-left table-th px-4 py-2"
                             >
                                 Actions
                             </th>

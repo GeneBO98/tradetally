@@ -3,7 +3,7 @@
     <transition name="fade">
       <div
         v-if="yearWrappedStore.isModalOpen"
-        class="fixed inset-0 z-[9999] bg-black"
+        class="fixed inset-0 z-[100] bg-black"
         @keydown.escape="handleClose"
         @keydown.left="yearWrappedStore.prevSlide"
         @keydown.right="yearWrappedStore.nextSlide"

@@ -3,13 +3,13 @@
     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
       <thead class="table-head">
         <tr>
-          <th class="px-4 py-3 text-left sticky left-0 bg-gray-50 dark:bg-gray-700 table-th">
+          <th class="text-left sticky left-0 bg-gray-50 dark:bg-gray-700 table-th px-4 py-2">
             Metric
           </th>
           <th
             v-for="period in data"
             :key="period.year"
-            class="px-4 py-3 text-right min-w-[120px] table-th"
+            class="text-right min-w-[120px] table-th px-4 py-2"
           >
             {{ period.year }}
           </th>

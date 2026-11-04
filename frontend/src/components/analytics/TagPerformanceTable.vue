@@ -6,22 +6,22 @@
         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead class="table-head">
             <tr>
-              <th class="px-6 py-3 text-left table-th">
+              <th class="text-left table-th px-4 py-2">
                 Tag
               </th>
-              <th class="px-6 py-3 text-right table-th">
+              <th class="text-right table-th px-4 py-2">
                 Trades
               </th>
-              <th class="px-6 py-3 text-right table-th">
+              <th class="text-right table-th px-4 py-2">
                 Breakeven
               </th>
-              <th class="px-6 py-3 text-right table-th">
+              <th class="text-right table-th px-4 py-2">
                 Win Rate
               </th>
-              <th class="px-6 py-3 text-right table-th">
+              <th class="text-right table-th px-4 py-2">
                 {{ rValueMode ? 'Total R' : 'Total P&L' }}
               </th>
-              <th class="px-6 py-3 text-right table-th">
+              <th class="text-right table-th px-4 py-2">
                 {{ calculationMethod }} {{ rValueMode ? 'R' : 'P&L' }}
               </th>
             </tr>
@@ -37,7 +37,7 @@
                 {{ tag.total_trades }}
               </td>
               <td class="whitespace-nowrap text-right text-sm px-4 py-3">
-                <span v-if="(Number(tag.breakeven_trades) || 0) > 0" class="px-2 py-0.5 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 text-xs rounded-full">
+                <span v-if="(Number(tag.breakeven_trades) || 0) > 0" class="badge-neutral">
                   {{ tag.breakeven_trades }}
                 </span>
                 <span v-else class="text-gray-400">-</span>

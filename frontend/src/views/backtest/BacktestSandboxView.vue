@@ -130,13 +130,13 @@
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead class="table-head">
                 <tr>
-                  <th class="px-4 py-3 text-left table-th">Symbol</th>
-                  <th class="px-4 py-3 text-left table-th">Session</th>
-                  <th class="px-4 py-3 text-right table-th">P&amp;L</th>
-                  <th class="px-4 py-3 text-right table-th">Trades</th>
-                  <th class="px-4 py-3 text-right table-th">Win Rate</th>
-                  <th class="px-4 py-3 text-left table-th">Saved</th>
-                  <th class="px-4 py-3 text-right table-th">Actions</th>
+                  <th class="text-left table-th px-4 py-2">Symbol</th>
+                  <th class="text-left table-th px-4 py-2">Session</th>
+                  <th class="text-right table-th px-4 py-2">P&amp;L</th>
+                  <th class="text-right table-th px-4 py-2">Trades</th>
+                  <th class="text-right table-th px-4 py-2">Win Rate</th>
+                  <th class="text-left table-th px-4 py-2">Saved</th>
+                  <th class="text-right table-th px-4 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">

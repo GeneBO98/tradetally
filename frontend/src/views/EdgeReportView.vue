@@ -231,7 +231,7 @@ function formatPercent(value) {
 function formatSignedPercent(value) {
   const parsed = parseFloat(value)
   if (!Number.isFinite(parsed)) return '-'
-  return `${parsed >= 0 ? '+' : ''}${parsed.toFixed(1)}pp`
+  return `${parsed > 0 ? '+' : ''}${parsed.toFixed(1)}pp`
 }
 
 const TYPE_LABELS = {

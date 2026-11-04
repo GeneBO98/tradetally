@@ -84,54 +84,7 @@
             @change="handleAccountChange"
           />
           <p v-if="accountsWithoutIdentifiers" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {{ accountsWithoutIdentifiers }} account{{ accountsWithoutIdentifiers === 1 ? '' : 's' }} need an account identifier before holdings can be linked.
-          </p>
-        </div>
-
-        <!-- Broker (optional) -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Broker or custodian (optional)
-          </label>
-          <input
-            v-model="form.broker"
-            type="text"
-            placeholder="e.g., Cold storage, Schwab"
-            class="input"
-          />
-        </div>
-
-        <!-- Notes (optional) -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Notes (optional)
-          </label>
-          <textarea
-            v-model="form.notes"
-            rows="2"
-            placeholder="Any notes about this position..."
-            class="input"
-          ></textarea>
-        </div>
-
-        <!-- Total Cost Display -->
-        <div v-if="totalCost" class="bg-gray-50 dark:bg-gray-700 rounded-md p-3">
-          <div class="flex justify-between text-sm">
-            <span class="text-gray-600 dark:text-gray-400">Total Cost</span>
-            <span class="font-medium text-gray-900 dark:text-white">{{ formatCurrency(totalCost) }}</span>
-          </div>
-        </div>
-
-        <!-- Error -->
-        <div v-if="error" class="callout-danger">
-          <p class="text-sm text-red-700 dark:text-red-400">{{ error }}</p>
-        </div>
-
-        <!-- Actions -->
-        <div class="modal-footer">
-          <button
-            type="button"
-            @click="$emit('close')"
+            {{ accountsWithoutIdentifiers }} account{{ accountsWithoutIdentifiers === 1 ? '' : 's'}} need an account identifier before holdings can be linked. </p> </div> <!-- Broker (optional) --> <div> <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"> Broker or custodian (optional) </label> <input v-model="form.broker" type="text" placeholder="e.g., Cold storage, Schwab" class="input" /> </div> <!-- Notes (optional) --> <div> <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"> Notes (optional) </label> <textarea v-model="form.notes" rows="2" placeholder="Any notes about this position..." class="input" ></textarea> </div> <!-- Total Cost Display --> <div v-if="totalCost" class="bg-gray-50 dark:bg-gray-700 rounded-md p-3"> <div class="flex justify-between text-sm"> <span class="text-gray-600 dark:text-gray-400">Total Cost</span> <span class="font-medium text-gray-900 dark:text-white">{{ formatCurrency(totalCost) }}</span> </div> </div> <!-- Error --> <div v-if="error" class="callout-danger"> <p class="text-sm text-red-600 dark:text-red-400">{{ error }}</p> </div> <!-- Actions --> <div class="modal-footer"> <button type="button" @click="$emit('close')"
             class="btn-secondary"
           >
             Cancel

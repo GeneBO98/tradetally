@@ -89,11 +89,11 @@
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="table-head">
                   <tr class="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    <th class="px-3 py-3 table-th">Group</th>
-                    <th class="px-3 py-3 text-right table-th">Trades</th>
-                    <th class="px-3 py-3 text-right table-th">Win rate</th>
-                    <th class="px-3 py-3 text-right table-th">Commission &amp; fees</th>
-                    <th class="px-3 py-3 text-right table-th">P&amp;L</th>
+                    <th class="table-th px-3 py-2">Group</th>
+                    <th class="text-right table-th px-3 py-2">Trades</th>
+                    <th class="text-right table-th px-3 py-2">Win rate</th>
+                    <th class="text-right table-th px-3 py-2">Commission &amp; fees</th>
+                    <th class="text-right table-th px-3 py-2">P&amp;L</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -124,9 +124,9 @@
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="table-head">
                   <tr class="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    <th class="px-3 py-3 table-th">Month</th>
-                    <th v-for="group in visibleGroups" :key="group.id" class="px-3 py-3 text-right table-th">{{ group.name }}</th>
-                    <th class="px-3 py-3 text-right table-th">Total</th>
+                    <th class="table-th px-3 py-2">Month</th>
+                    <th v-for="group in visibleGroups" :key="group.id" class="text-right table-th px-3 py-2">{{ group.name }}</th>
+                    <th class="text-right table-th px-3 py-2">Total</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">

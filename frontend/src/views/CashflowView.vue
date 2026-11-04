@@ -126,11 +126,11 @@
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="table-head">
                   <tr>
-                    <th class="px-4 py-3 text-left table-th">Date</th>
-                    <th class="px-4 py-3 text-right table-th">Inflow</th>
-                    <th class="px-4 py-3 text-right table-th">Outflow</th>
-                    <th class="px-4 py-3 text-right table-th">Net</th>
-                    <th class="px-4 py-3 text-right table-th">Balance</th>
+                    <th class="text-left table-th px-4 py-2">Date</th>
+                    <th class="text-right table-th px-4 py-2">Inflow</th>
+                    <th class="text-right table-th px-4 py-2">Outflow</th>
+                    <th class="text-right table-th px-4 py-2">Net</th>
+                    <th class="text-right table-th px-4 py-2">Balance</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">

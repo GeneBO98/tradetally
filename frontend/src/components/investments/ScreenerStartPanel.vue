@@ -25,13 +25,13 @@
         :key="n"
         class="card card-body"
       >
-        <div class="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-        <div class="h-3 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mt-2"></div>
+        <div class="skeleton h-4 w-32"></div>
+        <div class="skeleton h-3 w-48 mt-2"></div>
         <div class="mt-5 space-y-4">
           <div v-for="r in 6" :key="r" class="flex items-center gap-3">
-            <div class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse"></div>
-            <div class="flex-1 h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-            <div class="w-12 h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+            <div class="skeleton w-8 h-8 rounded-full"></div>
+            <div class="skeleton flex-1 h-3"></div>
+            <div class="skeleton w-12 h-3"></div>
           </div>
         </div>
       </div>

@@ -1,7 +1,7 @@
 <template>
     <div v-if="isOpen" class="fixed inset-0 z-50 overflow-y-auto">
         <div
-            class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0"
+            class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center "
         >
             <!-- Background overlay -->
             <div
@@ -14,7 +14,7 @@
                 class="modal-panel w-full p-6 max-w-6xl"
             >
                 <!-- Header -->
-                <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6">
+                <div class="px-4 pt-5 pb-4 sm:p-6">
                     <div class="flex items-center justify-between">
                         <div>
                             <h3
@@ -137,32 +137,32 @@
                                 <thead class="table-head">
                                     <tr>
                                         <th
-                                            class="px-4 py-3 text-left table-th"
+                                            class="text-left table-th px-4 py-2"
                                         >
                                             CUSIP
                                         </th>
                                         <th
-                                            class="px-4 py-3 text-left table-th"
+                                            class="text-left table-th px-4 py-2"
                                         >
                                             Ticker
                                         </th>
                                         <th
-                                            class="px-4 py-3 text-left table-th"
+                                            class="text-left table-th px-4 py-2"
                                         >
                                             Company
                                         </th>
                                         <th
-                                            class="px-4 py-3 text-left table-th"
+                                            class="text-left table-th px-4 py-2"
                                         >
                                             Source
                                         </th>
                                         <th
-                                            class="px-4 py-3 text-left table-th"
+                                            class="text-left table-th px-4 py-2"
                                         >
                                             Trades
                                         </th>
                                         <th
-                                            class="px-4 py-3 text-left table-th"
+                                            class="text-left table-th px-4 py-2"
                                         >
                                             Actions
                                         </th>

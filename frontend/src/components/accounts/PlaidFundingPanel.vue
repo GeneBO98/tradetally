@@ -127,9 +127,7 @@
                 :disabled="isSyncing(connection.id)"
                 @click="triggerSync(connection.id)"
               >
-                <svg class="h-3 w-3" :class="{ 'animate-spin': isSyncing(connection.id) }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.2-4.5L20 7M20 15a9 9 0 01-14.2 4.5L4 17"/>
-                </svg>
+                <span class="spinner spinner-xs spinner-current mr-2"></span>
                 {{ isSyncing(connection.id) ? 'Syncing…' : 'Sync now' }}
               </button>
               <button

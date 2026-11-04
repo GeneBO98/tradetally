@@ -285,10 +285,7 @@
                   :disabled="!canSubmit"
                   class="btn-primary inline-flex items-center"
                 >
-                  <svg v-if="loading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                  <span v-if="loading" class="spinner spinner-xs spinner-light mr-2 -ml-1"></span>
                   <span v-if="loading">Importing...</span>
                   <span v-else>{{ importButtonLabel }}</span>
                 </button>
@@ -579,7 +576,7 @@
                   </button>
                   <div v-if="lookupResult" class="p-3 rounded-md" :class="[ lookupResult.found ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20' ]">
                     <p class="text-sm" :class="[
-                      lookupResult.found ? 'text-green-800 dark:text-green-400' : 'text-red-800 dark:text-red-400'
+                      lookupResult.found ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
                       <span v-if="lookupResult.found">
                         {{ lookupResult.cusip }} → {{ lookupResult.ticker }}
@@ -1142,7 +1139,7 @@
         v-if="!hasUsedTrial && (!trialInfo || !trialInfo.active)"
         type="button"
         :disabled="startingTrial"
-        class="btn w-full justify-center bg-green-600 text-white hover:bg-green-700 focus:ring-green-500"
+        class="btn-primary w-full justify-center"
         @click="startTrial"
       >
         <span v-if="startingTrial" class="spinner spinner-xs spinner-current inline-block mr-2"></span>

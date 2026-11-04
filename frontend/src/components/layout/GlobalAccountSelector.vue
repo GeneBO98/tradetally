@@ -36,7 +36,7 @@
     >
       <div
         v-if="isOpen"
-        class="popover absolute left-0 mt-2 w-72 z-50"
+        class="popover absolute left-0 mt-2 w-72 z-40"
       >
         <div class="py-1" role="menu">
           <!-- Header -->

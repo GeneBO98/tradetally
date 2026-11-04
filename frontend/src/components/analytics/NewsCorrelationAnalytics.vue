@@ -181,25 +181,25 @@
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead class="table-head">
                 <tr>
-                  <th class="px-4 py-3 text-left table-th">
+                  <th class="text-left table-th px-4 py-2">
                     Symbol
                   </th>
-                  <th class="px-4 py-3 text-left table-th">
+                  <th class="text-left table-th px-4 py-2">
                     Sentiment
                   </th>
-                  <th class="px-4 py-3 text-left table-th">
+                  <th class="text-left table-th px-4 py-2">
                     Side
                   </th>
-                  <th class="px-4 py-3 text-left table-th">
+                  <th class="text-left table-th px-4 py-2">
                     Trades
                   </th>
-                  <th class="px-4 py-3 text-left table-th">
+                  <th class="text-left table-th px-4 py-2">
                     Win Rate
                   </th>
-                  <th class="px-4 py-3 text-left table-th">
+                  <th class="text-left table-th px-4 py-2">
                     Total P&L
                   </th>
-                  <th class="px-4 py-3 text-left table-th">
+                  <th class="text-left table-th px-4 py-2">
                     Avg Return
                   </th>
                 </tr>

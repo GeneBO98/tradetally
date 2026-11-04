@@ -336,7 +336,7 @@
 
     <!-- Archive / restore confirmation modal -->
     <div v-if="showArchiveModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="archive-modal-title" role="dialog" aria-modal="true">
-      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center ">
         <div class="modal-backdrop" @click="showArchiveModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
         <div class="modal-panel w-full p-6 max-w-lg">
@@ -376,7 +376,7 @@
 
     <!-- Delete Confirmation Modal -->
     <div v-if="showDeleteModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center ">
         <div class="modal-backdrop" @click="closeDeleteModal()"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
         <div class="modal-panel w-full p-6 max-w-lg">

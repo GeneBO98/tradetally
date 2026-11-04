@@ -196,7 +196,7 @@ const { formatCurrency, formatSignedCurrency } = useCurrencyFormatter()
 // R-multiples are unitless; show a signed value with a trailing R.
 function formatSignedR(value) {
   const v = Number(value) || 0
-  return `${v >= 0 ? '+' : ''}${v.toFixed(1)}R`
+  return `${v > 0 ? '+' : ''}${v.toFixed(1)}R`
 }
 
 const summary = computed(() => props.analytics?.summary || {})

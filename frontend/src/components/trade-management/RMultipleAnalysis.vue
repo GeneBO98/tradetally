@@ -374,11 +374,11 @@ const getAssessmentTextClass = computed(() => {
   const color = props.analysis.management_score?.color
   switch (color) {
     case 'green':
-      return 'text-green-800 dark:text-green-200'
+      return 'text-green-700 dark:text-green-400'
     case 'yellow':
       return 'text-yellow-800 dark:text-yellow-200'
     case 'red':
-      return 'text-red-800 dark:text-red-200'
+      return 'text-red-600 dark:text-red-400'
     default:
       return 'text-gray-800 dark:text-gray-200'
   }

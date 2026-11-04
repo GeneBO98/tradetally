@@ -635,7 +635,7 @@
                       {{ formatSignedPositionAmount(getOptionPnL(position).unrealizedPnL, position) }}
                     </div>
                     <div class="text-xs font-medium" :class="[ getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400' ]">
-                      {{ getOptionPnL(position).unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
+                      {{ getOptionPnL(position).unrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
                     </div>
                   </template>
                   <span v-else class="text-xs text-gray-400">Enter premium below</span>
@@ -647,7 +647,7 @@
                     {{ formatSignedPositionAmount(position.unrealizedPnL, position) }}
                   </div>
                   <div class="text-xs font-medium" :class="pnlClass(position.unrealizedPnLPercent)">
-                    {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ Number(position.unrealizedPnLPercent).toFixed(1) }}%
+                    {{ position.unrealizedPnLPercent > 0 ? '+' : '' }}{{ Number(position.unrealizedPnLPercent).toFixed(1) }}%
                   </div>
                 </div>
               </div>
@@ -870,7 +870,7 @@
                           <div v-if="position.dayChangePercent !== undefined && position.dayChangePercent !== null" class="text-xs" :class="[
                             pnlClass(position.dayChangePercent)
                           ]" :title="position.dayChange !== undefined ? formatSignedPositionCurrency(position.dayChange, position) + ' today' : undefined">
-                            {{ position.dayChangePercent >= 0 ? '+' : '' }}{{ Number(position.dayChangePercent).toFixed(1) }}%
+                            {{ position.dayChangePercent > 0 ? '+' : '' }}{{ Number(position.dayChangePercent).toFixed(1) }}%
                           </div>
                           <div v-if="position.quoteSource === 'alpaca'" class="text-xs text-gray-400">via Alpaca</div>
                         </div>
@@ -901,7 +901,7 @@
                             {{ formatSignedPositionAmount(getOptionPnL(position).unrealizedPnL, position) }}
                           </div>
                           <div class="text-xs" :class="pnlClass(getOptionPnL(position).unrealizedPnLPercent)">
-                            {{ getOptionPnL(position).unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
+                            {{ getOptionPnL(position).unrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
                           </div>
                         </div>
                         <span v-else class="text-xs text-gray-400">Enter premium</span>
@@ -912,7 +912,7 @@
                             {{ formatSignedPositionAmount(position.unrealizedPnL, position) }}
                           </div>
                           <div class="text-xs" :class="pnlClass(position.unrealizedPnLPercent)">
-                            {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ Number(position.unrealizedPnLPercent).toFixed(1) }}%
+                            {{ position.unrealizedPnLPercent > 0 ? '+' : '' }}{{ Number(position.unrealizedPnLPercent).toFixed(1) }}%
                           </div>
                         </div>
                         <span v-else class="text-xs text-gray-400">-</span>
@@ -1011,7 +1011,7 @@
                         {{ totalUnrealizedPnLLabel }}
                       </div>
                       <div class="text-xs" :class="pnlClass(totalUnrealizedPnLPercent)">
-                        {{ totalUnrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(totalUnrealizedPnLPercent) }}%
+                        {{ totalUnrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(totalUnrealizedPnLPercent) }}%
                       </div>
                     </div>
                     <span v-else class="text-xs text-gray-400">-</span>
@@ -1082,9 +1082,9 @@
               <div v-if="analyticsLoading" class="flex-card-container">
                 <div v-for="n in 4" :key="n" class="card card-mobile-safe flex-1">
                   <div class="card-body">
-                    <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-                    <div class="mt-3 h-8 w-28 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-                    <div class="mt-3 h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+                    <div class="skeleton h-4 w-20"></div>
+                    <div class="skeleton mt-3 h-8 w-28"></div>
+                    <div class="skeleton mt-3 h-3 w-24"></div>
                   </div>
                 </div>
               </div>
@@ -1097,7 +1097,7 @@
                     <div class="mt-1 space-y-2">
                       <div>
                         <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Gross</div>
-                        <dd class="text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap text-mono-num" :class="[
+                        <dd class="stat-value whitespace-nowrap text-mono-num" :class="[
                           pnlClass(dashboardGrossPnl)
                         ]">
                           {{ formatCurrency(dashboardGrossPnl) }}
@@ -1123,7 +1123,7 @@
                     <dt class="text-data-secondary truncate">
                       Win Rate
                     </dt>
-                    <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
+                    <dd class="mt-1 stat-value whitespace-nowrap" :class="[
                       winRateClass(analytics.summary.winRate)
                     ]">
                       {{ formatPercent(analytics.summary.winRate) }}%
@@ -1139,7 +1139,7 @@
                     <dt class="text-data-secondary truncate">
                       Profit Factor
                     </dt>
-                    <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
+                    <dd class="mt-1 stat-value whitespace-nowrap" :class="[
                       profitFactorClass(analytics.summary.profitFactor)
                     ]">
                       {{ formatNumber(analytics.summary.profitFactor) }}
@@ -1151,7 +1151,7 @@
                 </div>
 
                 <div
-                  class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  class="card card-mobile-safe flex-1 cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
                   role="button"
                   tabindex="0"
                   aria-label="View max drawdown trades"
@@ -1163,7 +1163,7 @@
                     <dt class="text-data-secondary truncate">
                       Max Drawdown
                     </dt>
-                    <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold text-red-600 dark:text-red-400 whitespace-nowrap">
+                    <dd class="mt-1 stat-value text-red-600 dark:text-red-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.maxDrawdown, { abs: true }) }}
                     </dd>
                     <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -1179,14 +1179,14 @@
               <div v-if="analyticsLoading" class="flex-card-container">
                 <div v-for="n in 4" :key="n" class="card card-mobile-safe flex-1">
                   <div class="card-body">
-                    <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-                    <div class="mt-3 h-7 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+                    <div class="skeleton h-4 w-20"></div>
+                    <div class="skeleton mt-3 h-7 w-24"></div>
                   </div>
                 </div>
               </div>
               <div v-else class="flex-card-container">
                 <div
-                  class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  class="card card-mobile-safe flex-1 cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
                   role="button"
                   tabindex="0"
                   :aria-label="`View ${calculationMethod} winning trades`"
@@ -1205,7 +1205,7 @@
                 </div>
 
                 <div
-                  class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  class="card card-mobile-safe flex-1 cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
                   role="button"
                   tabindex="0"
                   :aria-label="`View ${calculationMethod} losing trades`"
@@ -1224,7 +1224,7 @@
                 </div>
 
                 <div
-                  class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  class="card card-mobile-safe flex-1 cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
                   role="button"
                   tabindex="0"
                   aria-label="View best trade"
@@ -1243,7 +1243,7 @@
                 </div>
 
                 <div
-                  class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  class="card card-mobile-safe flex-1 cursor-pointer transition-shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
                   role="button"
                   tabindex="0"
                   aria-label="View worst trade"
@@ -1270,8 +1270,8 @@
               <div v-if="analyticsLoading" class="grid grid-cols-1 gap-6">
                 <div class="card">
                   <div class="card-body">
-                    <div class="h-4 w-40 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4"></div>
-                    <div class="h-64 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"></div>
+                    <div class="skeleton h-4 w-40 mb-4"></div>
+                    <div class="skeleton h-64"></div>
                   </div>
                 </div>
               </div>
@@ -1290,7 +1290,7 @@
                       <!-- Center label below the arc -->
                       <div class="absolute bottom-0 left-0 right-0 flex justify-center pointer-events-none" style="margin-bottom: 0.25rem;">
                         <div class="text-center">
-                          <div class="text-3xl font-bold text-gray-900 dark:text-white text-mono-num">
+                          <div class="stat-value text-gray-900 dark:text-white">
                             {{ computedWinRate }}%
                           </div>
                           <div class="table-th">

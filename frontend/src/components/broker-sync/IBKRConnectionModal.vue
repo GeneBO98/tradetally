@@ -42,61 +42,7 @@
               Note: IBKR updates Activity Flex data once daily after close of business, so new trades appear on the next sync after the following business day. For advisor or linked accounts, the token is only available from the master account.
             </p>
             <p class="mt-2 text-xs text-primary-700 dark:text-primary-400">
-              <a href="https://www.interactivebrokers.com/campus/ibkr-api-page/flex-web-service/" target="_blank" class="underline">View IBKR's official Flex Web Service documentation</a>
-            </p>
-          </div>
-
-          <!-- Error Message -->
-          <div v-if="props.reconnecting" class="callout-warning mb-6">
-            Your Flex token no longer works. Generate a new token in IBKR (Performance &amp; Reports &gt; Flex Queries &gt; Flex Web Service Configuration), set "Should Expire After" to 1 Year, and paste it below. Your query ID, trades and sync settings are kept.
-          </div>
-
-          <div v-if="props.error" class="callout-danger mb-6">
-            <div class="flex">
-              <svg class="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-              </svg>
-              <p class="ml-3 text-sm text-red-700 dark:text-red-300">{{ props.error }}</p>
-            </div>
-          </div>
-
-          <form @submit.prevent="handleSubmit" class="space-y-4">
-            <div>
-              <label for="accountLabel" class="label">Account Label</label>
-              <input
-                id="accountLabel"
-                v-model="form.accountLabel"
-                type="text"
-                class="input"
-                placeholder="e.g., Main Account, Paper Trading"
-              />
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Optional name to identify this account
-              </p>
-            </div>
-
-            <div>
-              <label for="flexToken" class="label">Flex Token</label>
-              <input
-                id="flexToken"
-                v-model="form.flexToken"
-                type="password"
-                class="input"
-                placeholder="Enter your Flex Token"
-                required
-              />
-            </div>
-
-            <div>
-              <label for="flexQueryId" class="label">Flex Query ID</label>
-              <input
-                id="flexQueryId"
-                v-model="form.flexQueryId"
-                type="text"
-                class="input"
-                placeholder="e.g., 123456"
-                :readonly="Boolean(props.reconnecting)"
-                :class="{ 'opacity-70 cursor-not-allowed': props.reconnecting }"
+              <a href="https://www.interactivebrokers.com/campus/ibkr-api-page/flex-web-service/" target="_blank" class="underline">View IBKR's official Flex Web Service documentation</a> </p> </div> <!-- Error Message --> <div v-if="props.reconnecting" class="callout-warning mb-6"> Your Flex token no longer works. Generate a new token in IBKR (Performance &amp; Reports &gt; Flex Queries &gt; Flex Web Service Configuration), set "Should Expire After" to 1 Year, and paste it below. Your query ID, trades and sync settings are kept. </div> <div v-if="props.error" class="callout-danger mb-6"> <div class="flex"> <svg class="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"> <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /> </svg> <p class="ml-3 text-sm text-red-600 dark:text-red-300">{{ props.error }}</p> </div> </div> <form @submit.prevent="handleSubmit" class="space-y-4"> <div> <label for="accountLabel" class="label">Account Label</label> <input id="accountLabel" v-model="form.accountLabel" type="text" class="input" placeholder="e.g., Main Account, Paper Trading" /> <p class="mt-1 text-sm text-gray-500 dark:text-gray-400"> Optional name to identify this account </p> </div> <div> <label for="flexToken" class="label">Flex Token</label> <input id="flexToken" v-model="form.flexToken" type="password" class="input" placeholder="Enter your Flex Token" required /> </div> <div> <label for="flexQueryId" class="label">Flex Query ID</label> <input id="flexQueryId" v-model="form.flexQueryId" type="text" class="input" placeholder="e.g., 123456" :readonly="Boolean(props.reconnecting)" :class="{'opacity-70 cursor-not-allowed': props.reconnecting }"
                 required
               />
             </div>

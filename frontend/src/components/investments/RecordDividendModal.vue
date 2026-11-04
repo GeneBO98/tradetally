@@ -62,34 +62,7 @@
               { value: 'regular', label: 'Regular Dividend' },
               { value: 'special', label: 'Special Dividend' },
               { value: 'qualified', label: 'Qualified Dividend' },
-              { value: 'return_of_capital', label: 'Return of Capital' },
-            ]"
-          />
-        </div>
-
-        <!-- Notes (optional) -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Notes (optional)
-          </label>
-          <input
-            v-model="form.notes"
-            type="text"
-            placeholder="e.g., Q4 2025 dividend"
-            class="input"
-          />
-        </div>
-
-        <!-- Error -->
-        <div v-if="error" class="callout-danger">
-          <p class="text-sm text-red-700 dark:text-red-400">{{ error }}</p>
-        </div>
-
-        <!-- Actions -->
-        <div class="modal-footer">
-          <button
-            type="button"
-            @click="$emit('close')"
+              { value: 'return_of_capital', label: 'Return of Capital'}, ]" /> </div> <!-- Notes (optional) --> <div> <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"> Notes (optional) </label> <input v-model="form.notes" type="text" placeholder="e.g., Q4 2025 dividend" class="input" /> </div> <!-- Error --> <div v-if="error" class="callout-danger"> <p class="text-sm text-red-600 dark:text-red-400">{{ error }}</p> </div> <!-- Actions --> <div class="modal-footer"> <button type="button" @click="$emit('close')"
             class="btn-secondary"
           >
             Cancel

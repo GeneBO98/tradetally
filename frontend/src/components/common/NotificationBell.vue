@@ -28,7 +28,7 @@
     >
       <div
         v-if="isOpen"
-        class="absolute w-96 dropdown-menu rounded-lg z-50"
+        class="absolute w-96 dropdown-menu rounded-lg z-40"
         :class="placementClasses"
         @click.stop
       >

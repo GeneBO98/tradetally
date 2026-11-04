@@ -1,6 +1,6 @@
 <template>
   <div v-if="isOpen" class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="manual-review-title">
-    <div class="flex min-h-screen items-end justify-center px-4 pb-20 pt-4 text-center sm:block sm:p-0">
+    <div class="flex min-h-screen items-end justify-center px-4 pb-20 pt-4 text-center ">
       <div class="modal-backdrop" aria-hidden="true" @click="$emit('close')"></div>
 
       <span class="hidden sm:inline-block sm:h-screen sm:align-middle" aria-hidden="true">&#8203;</span>
