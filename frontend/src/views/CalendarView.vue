@@ -38,7 +38,7 @@
           @click="toggleRValue"
           class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
           :class="showRValue
-            ? 'bg-primary-600 text-white hover:bg-primary-700'
+            ? 'bg-primary-700 text-white hover:bg-primary-800'
             : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
         >
           {{ showRValue ? `Show ${pnlTypeLabel} (${currencySymbol})` : 'Show R-Value' }}
@@ -103,7 +103,7 @@
                       <span class="text-data-secondary block truncate">
                         {{ format(expandedMonth, 'MMMM') }} {{ showRValue ? 'R-Value' : pnlTypeLabel }}
                       </span>
-                      <span class="mt-1 block text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="monthlyTotal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      <span class="mt-1 block text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="monthlyTotal >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                         {{ showRValue ? formatRValue(monthlyTotal) : formatCurrency(monthlyTotal) }}
                       </span>
                       <span class="mt-2 block text-xs text-gray-500 dark:text-gray-400">
@@ -131,7 +131,7 @@
                       <dt class="text-data-secondary truncate">
                         Year To Date
                       </dt>
-                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="ytdTotal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="ytdTotal >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                         {{ formatCurrency(ytdTotal) }}
                       </dd>
                       <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -178,7 +178,7 @@
               </div>
               <!-- Week P/L or R-Value Column -->
               <div class="flex items-center justify-center border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 bg-gray-50 dark:bg-gray-800">
-                <p class="text-xs sm:text-sm font-semibold" :class="getWeekTotal(week) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                <p class="text-xs sm:text-sm font-semibold" :class="getWeekTotal(week) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                   {{ showRValue ? formatRValue(week.weekRValue || 0, 1) : formatCurrency(getWeekTotal(week), { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
                 </p>
               </div>
@@ -195,7 +195,7 @@
               <h3 class="font-medium text-gray-900 dark:text-white">
                 {{ format(month.date, 'MMMM') }}
               </h3>
-              <button @click="expandMonth(month.date)" class="text-primary-600 hover:text-primary-700 text-sm">
+              <button @click="expandMonth(month.date)" class="text-primary-700 hover:text-primary-800 text-sm">
                 Open
               </button>
             </div>
@@ -221,14 +221,14 @@
 
     <!-- Day Trades Modal -->
     <div v-if="selectedDay" class="modal-overlay overflow-y-auto">
-      <div
-        class="modal-panel mx-auto p-5 transition-all duration-300"
+      <div role="dialog" aria-modal="true"
+        class="modal-panel mx-auto p-6 transition-all duration-300"
         :class="isModalExpanded
           ? 'top-4 w-full max-w-6xl h-[calc(100vh-2rem)]'
           : 'top-20 w-full max-w-2xl'">
         <div class="h-full flex flex-col">
           <div class="flex justify-between items-center mb-4">
-            <h3 class="heading-card">
+            <h3 class="modal-title">
               Trades for {{ format(selectedDay.date, 'MMMM d, yyyy') }}
             </h3>
             <div class="flex items-center space-x-2">
@@ -252,8 +252,8 @@
               <div class="flex justify-between items-start">
                 <div>
                   <div class="flex items-center space-x-2 flex-wrap gap-y-1">
-                    <h4 class="font-medium text-gray-900 dark:text-white">{{ contrib.symbol }}</h4>
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                    <h4 class="heading-card">{{ contrib.symbol }}</h4>
+                    <span class="badge"
                       :class="[
                         contrib.side === 'long'
                           ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
@@ -261,10 +261,10 @@
                       ]">
                       {{ contrib.side }}
                     </span>
-                    <span v-if="contrib.is_partial" class="badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                    <span v-if="contrib.is_partial" class="badge-neutral">
                       {{ (contrib.exit_count || 1) > 1 ? `Partial exits (${contrib.exit_count})` : 'Partial exit' }}
                     </span>
-                    <span v-else class="badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                    <span v-else class="badge-neutral">
                       Trade
                     </span>
                   </div>
@@ -273,7 +273,7 @@
                   </p>
                 </div>
                 <div class="text-right">
-                  <p class="font-semibold" :class="getContributionDisplayPnl(contrib) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                  <p class="font-semibold" :class="getContributionDisplayPnl(contrib) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                     {{ showRValue && contrib.r_value != null ? formatRValue(contrib.r_value) : formatCurrency(getContributionDisplayPnl(contrib)) }}
                   </p>
                   <p v-if="showRValue && contrib.r_value == null && !contrib.is_partial" class="text-xs text-gray-400">
@@ -293,7 +293,7 @@
           <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div class="flex justify-between items-center">
               <span class="font-medium text-gray-900 dark:text-white">{{ showRValue ? 'Total R for day:' : `Total ${pnlTypeLabel} for day:` }}</span>
-              <span class="font-bold text-lg" :class="selectedDayTotal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+              <span class="font-bold text-lg" :class="selectedDayTotal >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                 {{ showRValue ? formatRValue(selectedDayTotalRValue) : formatCurrency(selectedDayTotal) }}
               </span>
             </div>
@@ -707,7 +707,7 @@ function getDayTextColor(day) {
 }
 
 function getDayPnlTextColor(day) {
-  if (!day.date || day.pnl === undefined) return getDayDisplayPnl(day) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+  if (!day.date || day.pnl === undefined) return getDayDisplayPnl(day) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
   // White bold text on colored backgrounds
   return 'text-white font-bold'
 }

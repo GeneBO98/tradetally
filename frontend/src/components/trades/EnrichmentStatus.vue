@@ -19,7 +19,7 @@
         <button
           v-if="!enrichmentStatus?.unresolvedCusips"
           @click="syncEnrichmentStatus"
-          class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white transition-colors"
+          class="btn-ghost btn-sm gap-1"
           title="Sync enrichment status with completed jobs"
         >
           <ArrowPathIcon class="h-3.5 w-3.5" />
@@ -27,14 +27,14 @@
         </button>
         <button
           @click="forceCompleteEnrichment"
-          class="rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+          class="btn-ghost btn-sm"
           title="Mark all pending enrichment jobs as complete"
         >
           Force complete
         </button>
         <button
           @click="dismiss"
-          class="ml-1 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition-colors"
+          class="btn-icon p-1 ml-1"
           aria-label="Dismiss"
         >
           <XMarkIcon class="h-4 w-4" />

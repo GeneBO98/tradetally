@@ -6,14 +6,14 @@
       <section class="modal-panel w-full max-w-2xl" role="dialog" aria-modal="true" aria-labelledby="allocation-title">
         <header class="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 dark:border-gray-700">
           <div>
-            <h2 id="allocation-title" class="heading-card">
+            <h2 id="allocation-title" class="modal-title">
               Allocate {{ trade?.symbol || 'trade' }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Divide this trade without changing its tags or brokerage record.
             </p>
           </div>
-          <button type="button" class="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200" aria-label="Close" @click="emit('close')">
+          <button type="button" class="btn-icon p-1" aria-label="Close" @click="emit('close')">
             <XMarkIcon class="h-5 w-5" />
           </button>
         </header>
@@ -40,8 +40,8 @@
                   </div>
                 </div>
                 <div class="inline-flex rounded-lg border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-800" role="group" aria-label="Allocation input method">
-                  <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium" :class="mode === 'percentage' ? selectedModeClass : unselectedModeClass" @click="changeMode('percentage')">Percentage</button>
                   <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium" :class="mode === 'quantity' ? selectedModeClass : unselectedModeClass" @click="changeMode('quantity')">Quantity</button>
+                  <button type="button" class="btn-ghost btn-sm" :class="mode === 'quantity' ? selectedModeClass : unselectedModeClass" @click="changeMode('quantity')">Quantity</button>
                 </div>
               </div>
 
@@ -70,7 +70,7 @@
                     </div>
                     <p v-if="tradePnl !== null" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ formatMoney(previewPnl(row)) }}</p>
                   </div>
-                  <button type="button" class="rounded-md p-2 text-gray-400 hover:bg-gray-100 hover:text-red-600 dark:hover:bg-gray-700 dark:hover:text-red-400" :disabled="rows.length <= 2" aria-label="Remove allocation" @click="removeRow(index)">
+                  <button type="button" class="btn-icon p-2" :disabled="rows.length <= 2" aria-label="Remove allocation" @click="removeRow(index)">
                     <TrashIcon class="h-5 w-5" />
                   </button>
                 </div>
@@ -81,10 +81,10 @@
                   <PlusIcon class="h-4 w-4" /> Add group
                 </button>
                 <div class="ml-auto flex items-center gap-3 text-sm">
-                  <span :class="Math.abs(remaining) <= tolerance ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-300'">
+                  <span :class="Math.abs(remaining) <= tolerance ? 'text-green-700 dark:text-green-400' : 'text-gray-600 dark:text-gray-300'">
                     {{ formatRemaining() }} remaining
                   </span>
-                  <button v-if="Math.abs(remaining) > tolerance" type="button" class="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400" @click="fillRemaining">Use remainder</button>
+                  <button v-if="Math.abs(remaining) > tolerance" type="button" class="text-sm font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400" @click="fillRemaining">Use remainder</button>
                 </div>
               </div>
 
@@ -98,7 +98,7 @@
         </div>
 
         <footer v-if="!loading && groups.length >= 2" class="flex flex-col-reverse gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700 sm:flex-row sm:justify-between">
-          <button v-if="hasExisting" type="button" class="rounded-md px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20" :disabled="saving" @click="clearAllocation">Clear allocation</button>
+          <button v-if="hasExisting" type="button" class="btn-ghost" :disabled="saving" @click="clearAllocation">Clear allocation</button>
           <div v-else></div>
           <div class="flex justify-end gap-3">
             <button type="button" class="btn-secondary" @click="emit('close')">Cancel</button>
@@ -134,7 +134,7 @@ const rows = ref([])
 const hasExisting = ref(false)
 let rowCounter = 0
 
-const selectedModeClass = 'bg-primary-600 text-white shadow-sm'
+const selectedModeClass = 'bg-primary-700 text-white shadow-sm'
 const unselectedModeClass = 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
 const tolerance = computed(() => mode.value === 'percentage' ? 0.01 : Math.max(0.000001, basisQuantity.value * 0.000001))
 const targetTotal = computed(() => mode.value === 'percentage' ? 100 : basisQuantity.value)

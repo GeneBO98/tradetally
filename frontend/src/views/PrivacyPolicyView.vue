@@ -6,10 +6,10 @@
                 <p class="text-gray-700 dark:text-gray-300 mb-6">
                     This policy explains how TradeTally handles data for our free trading journal and investment tracker, including cloud-hosted and self-hosted usage.
                     You can also review our
-                    <router-link to="/features" class="text-primary-600 dark:text-primary-400 hover:underline">features</router-link>,
-                    <router-link to="/pricing" class="text-primary-600 dark:text-primary-400 hover:underline">pricing</router-link>,
+                    <router-link to="/features" class="text-primary-700 dark:text-primary-400 hover:underline">features</router-link>,
+                    <router-link to="/pricing" class="text-primary-700 dark:text-primary-400 hover:underline">pricing</router-link>,
                     and
-                    <router-link to="/faq" class="text-primary-600 dark:text-primary-400 hover:underline">FAQ</router-link>
+                    <router-link to="/faq" class="text-primary-700 dark:text-primary-400 hover:underline">FAQ</router-link>
                     pages.
                 </p>
 
@@ -20,7 +20,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             1. Introduction
                         </h2>
@@ -40,13 +40,13 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             2. Information We Collect
                         </h2>
 
                         <h3
-                            class="text-xl font-semibold text-gray-900 dark:text-white mb-3 mt-6"
+                            class="heading-section mb-3 mt-6"
                         >
                             Personal Information
                         </h3>
@@ -63,7 +63,7 @@
                         </ul>
 
                         <h3
-                            class="text-xl font-semibold text-gray-900 dark:text-white mb-3 mt-6"
+                            class="heading-section mb-3 mt-6"
                         >
                             Trading Data
                         </h3>
@@ -84,7 +84,7 @@
                         </ul>
 
                         <h3
-                            class="text-xl font-semibold text-gray-900 dark:text-white mb-3 mt-6"
+                            class="heading-section mb-3 mt-6"
                         >
                             Usage Data
                         </h3>
@@ -104,7 +104,7 @@
                         </ul>
 
                         <h3
-                            class="text-xl font-semibold text-gray-900 dark:text-white mb-3 mt-6"
+                            class="heading-section mb-3 mt-6"
                         >
                             Acquisition Data
                         </h3>
@@ -123,7 +123,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             3. How We Use Your Information
                         </h2>
@@ -159,7 +159,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             4. Data Sharing and Disclosure
                         </h2>
@@ -198,7 +198,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             5. Data Security
                         </h2>
@@ -225,7 +225,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             6. Data Retention
                         </h2>
@@ -258,7 +258,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             7. Your Rights
                         </h2>
@@ -298,7 +298,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             8. California Privacy Rights
                         </h2>
@@ -329,7 +329,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             9. Children's Privacy
                         </h2>
@@ -345,7 +345,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             10. Third-Party Services
                         </h2>
@@ -377,7 +377,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             11. Email Tracking and Marketing Analytics
                         </h2>
@@ -407,7 +407,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             12. Changes to This Privacy Policy
                         </h2>
@@ -422,7 +422,7 @@
 
                     <section class="mb-8">
                         <h2
-                            class="text-2xl font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-section mb-4"
                         >
                             13. Contact Us
                         </h2>
@@ -435,7 +435,7 @@
                                 Email:
                                 <a
                                     href="mailto:support@tradetally.io"
-                                    class="text-primary-600 dark:text-primary-400 hover:underline"
+                                    class="text-primary-700 dark:text-primary-400 hover:underline"
                                     >support@tradetally.io</a
                                 >
                             </p>
@@ -445,7 +445,7 @@
                                     href="https://github.com/GeneBO98/tradetally"
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    class="text-primary-600 dark:text-primary-400 hover:underline"
+                                    class="text-primary-700 dark:text-primary-400 hover:underline"
                                     >https://github.com/GeneBO98/tradetally</a
                                 >
                             </p>

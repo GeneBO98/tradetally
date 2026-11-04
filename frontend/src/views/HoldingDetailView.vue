@@ -156,7 +156,7 @@
                         :class="[
                             'text-2xl font-bold',
                             holding.unrealizedPnL >= 0
-                                ? 'text-green-600 dark:text-green-400'
+                                ? 'text-green-700 dark:text-green-400'
                                 : 'text-red-600 dark:text-red-400',
                         ]"
                     >
@@ -187,14 +187,14 @@
                         :class="[
                             'py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap',
                             activeTab === tab.id
-                                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                                ? 'border-primary-500 text-primary-700 dark:text-primary-400'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400',
                         ]"
                     >
                         {{ tab.name }}
                         <span
                             v-if="tab.count !== undefined"
-                            class="badge ml-2 bg-gray-100 dark:bg-gray-700"
+                            class="badge-neutral ml-2"
                         >
                             {{ tab.count }}
                         </span>
@@ -223,37 +223,37 @@
                             <thead class="table-head">
                                 <tr>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Purchase Date
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Shares
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Cost/Share
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Total Cost
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Current Value
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Gain/Loss
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Actions
                                     </th>
@@ -269,7 +269,7 @@
                                         {{ formatDate(lot.purchaseDate) }}
                                         <span
                                             v-if="lot.source === 'plaid'"
-                                            class="ml-2 badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                            class="badge-neutral ml-2"
                                             title="Synced automatically from your linked brokerage"
                                             >Plaid</span
                                         >
@@ -306,7 +306,7 @@
                                         class="px-6 py-4 whitespace-nowrap text-sm text-right"
                                         :class="
                                             lot.gainLoss >= 0
-                                                ? 'text-green-600 dark:text-green-400'
+                                                ? 'text-green-700 dark:text-green-400'
                                                 : 'text-red-600 dark:text-red-400'
                                         "
                                     >
@@ -372,7 +372,7 @@
                                     >
                                         Total Dividends Received
                                     </p>
-                                    <p class="text-xl font-bold text-green-600 dark:text-green-400">
+                                    <p class="text-xl font-bold text-green-700 dark:text-green-400">
                                         {{ formatCurrency(totalDividends) }}
                                     </p>
                                 </div>
@@ -405,27 +405,27 @@
                             <thead class="table-head">
                                 <tr>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Date
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Amount
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Per Share
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Type
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Notes
                                     </th>
@@ -444,7 +444,7 @@
                                         {{ formatDate(dividend.paymentDate) }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600 dark:text-green-400 font-medium"
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-right text-green-700 dark:text-green-400 font-medium"
                                     >
                                         {{ formatCurrency(dividend.amount) }}
                                     </td>
@@ -510,7 +510,7 @@
 
                     <div
                         v-else
-                        class="card p-8 text-center"
+                        class="card card-body text-center"
                     >
                         <p class="text-gray-500 dark:text-gray-400 mb-4">
                             No 8 Pillars analysis available
@@ -524,10 +524,10 @@
                 <!-- Notes Tab -->
                 <div v-if="activeTab === 'notes'">
                     <div
-                        class="card p-6"
+                        class="card card-body"
                     >
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                            class="heading-card mb-4"
                         >
                             Position Notes
                         </h3>
@@ -573,11 +573,11 @@
             v-if="showDeleteConfirm"
             class="modal-overlay flex items-center justify-center"
         >
-            <div
+            <div role="dialog" aria-modal="true"
                 class="modal-panel max-w-md w-full mx-4 p-6"
             >
                 <h3
-                    class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                    class="modal-title mb-4"
                 >
                     Delete Holding
                 </h3>

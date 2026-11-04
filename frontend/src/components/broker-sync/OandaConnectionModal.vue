@@ -2,13 +2,13 @@
   <dialog ref="dialog" class="modal-panel w-full max-w-lg p-0 text-gray-900 backdrop:bg-black/50 dark:text-white" aria-labelledby="oanda-title" @cancel.prevent="close" @click="handle_backdrop">
     <form class="space-y-5 p-6" @submit.prevent="save">
       <div class="flex items-center justify-between">
-        <h2 id="oanda-title" class="text-lg font-semibold">Connect OANDA</h2>
-        <button type="button" class="text-sm text-primary-600 dark:text-primary-400" @click="close">Close</button>
+        <h2 id="oanda-title" class="modal-title">Connect OANDA</h2>
+        <button type="button" class="text-sm text-primary-700 dark:text-primary-400" @click="close">Close</button>
       </div>
       <p class="text-sm text-gray-600 dark:text-gray-300">
         Generate a personal access token under Manage API Access in your OANDA account.
         Connect an eligible v20 account to import forex, metals, and CFDs available in your region.
-        <a href="https://developer.oanda.com/rest-live-v20/introduction/" target="_blank" rel="noopener noreferrer" class="text-primary-600 underline dark:text-primary-400">OANDA setup guide</a>
+        <a href="https://developer.oanda.com/rest-live-v20/introduction/" target="_blank" rel="noopener noreferrer" class="text-primary-700 underline dark:text-primary-400">OANDA setup guide</a>
       </p>
       <p class="rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-600">
         TradeTally only reads your account. OANDA personal tokens also permit trading and access to your other subaccounts.
@@ -45,7 +45,7 @@
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Open trades are included with their full execution history. Leave blank for all history.</p>
       </div>
       <label class="flex items-center gap-2 text-sm">
-        <input v-model="form.auto_sync_enabled" type="checkbox" class="rounded text-primary-600 focus:ring-primary-500" :disabled="loading" />
+        <input v-model="form.auto_sync_enabled" type="checkbox" class="rounded text-primary-700 focus:ring-primary-500" :disabled="loading" />
         Sync automatically each day
       </label>
       <div v-if="form.auto_sync_enabled">

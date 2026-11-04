@@ -144,13 +144,13 @@
                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead class="table-head">
                             <tr>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">User</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Role / Tier</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Last Active</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Imports</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Trades</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                                <th class="px-4 py-3 text-left table-th">User</th>
+                                <th class="px-4 py-3 text-left table-th">Role / Tier</th>
+                                <th class="px-4 py-3 text-left table-th">Status</th>
+                                <th class="px-4 py-3 text-left table-th">Last Active</th>
+                                <th class="px-4 py-3 text-right table-th">Imports</th>
+                                <th class="px-4 py-3 text-right table-th">Trades</th>
+                                <th class="px-4 py-3 text-right table-th">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -193,7 +193,7 @@
                                         <span :class="getTierBadgeClass(getUserDisplayTier(user))" class="badge">
                                             {{ getUserDisplayTier(user) }}
                                         </span>
-                                        <span v-if="user.role === 'owner'" class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400">
+                                        <span v-if="user.role === 'owner'" class="badge-primary">
                                             owner
                                         </span>
                                     </div>
@@ -250,7 +250,7 @@
                                             v-if="!user.is_verified"
                                             @click="verifyUser(user)"
                                             :disabled="isUpdating"
-                                            class="px-2 py-1 rounded text-xs font-medium text-primary-700 hover:bg-primary-50 transition disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                                            class="btn-ghost btn-sm disabled:opacity-50"
                                         >
                                             Verify
                                         </button>
@@ -281,14 +281,14 @@
                                         <button
                                             @click="openTierModal(user)"
                                             :disabled="isUpdating"
-                                            class="px-2 py-1 rounded text-xs font-medium text-primary-700 hover:bg-primary-50 transition disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                                            class="btn-ghost btn-sm disabled:opacity-50"
                                         >
                                             Tier
                                         </button>
                                         <button
                                             @click="confirmDeleteUser(user)"
                                             :disabled="isUpdating || user.id === currentUserId || (user.role === 'admin' && adminCount <= 1)"
-                                            class="px-2 py-1 rounded text-xs font-medium text-red-700 hover:bg-red-50 transition disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                                            class="btn-ghost btn-sm disabled:opacity-50"
                                         >
                                             Delete
                                         </button>
@@ -342,13 +342,13 @@
 
     <!-- Delete Confirmation Modal -->
     <div v-if="showDeleteConfirm" class="modal-overlay flex items-center justify-center px-4">
-        <div class="modal-panel w-full max-w-md p-6">
+        <div role="dialog" aria-modal="true" class="modal-panel w-full max-w-md p-6">
             <div class="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400">
                 <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
             </div>
-            <h3 class="heading-card mt-3">Delete {{ userToDelete?.username }}?</h3>
+            <h3 class="modal-title mt-3">Delete {{ userToDelete?.username }}?</h3>
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
                 This permanently removes the user and their related data. The action cannot be undone.
             </p>
@@ -363,13 +363,13 @@
 
     <!-- Tier Modal -->
     <div v-if="showTierModal" class="modal-overlay flex items-center justify-center px-4 py-8">
-        <div class="modal-panel w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div role="dialog" aria-modal="true" class="modal-panel w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
             <div class="flex items-start justify-between gap-4">
                 <div>
                     <p class="table-th">Tier Controls</p>
-                    <h3 class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">Manage {{ selectedUser?.username }}</h3>
+                    <h3 class="modal-title mt-1">Manage {{ selectedUser?.username }}</h3>
                 </div>
-                <button @click="closeTierModal" class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition">
+                <button @click="closeTierModal" class="btn-icon">
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>

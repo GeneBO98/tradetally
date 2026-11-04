@@ -1,7 +1,7 @@
 <template>
   <div
     v-if="!aiStore.credits.unlimited"
-    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+    class="badge gap-1.5"
     :class="badgeClass"
     :title="tooltipText"
   >
@@ -12,7 +12,7 @@
   </div>
   <div
     v-else
-    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
+    class="badge-primary gap-1.5"
     :title="aiStore.credits.own_provider ? 'Using your own AI provider. No TradeTally credits are used.' : 'Unlimited AI credits (self-hosted)'"
   >
     <SparklesIcon class="h-3.5 w-3.5" />
@@ -29,20 +29,18 @@ const aiStore = useAIStore()
 
 const badgeClass = computed(() => {
   if (aiStore.credits.unlimited) {
-    return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+    return 'bg-primary-100 dark:bg-primary-900/40 text-primary-800 dark:text-primary-300'
   }
 
   const remaining = aiStore.credits.remaining ?? 0
   const allocated = aiStore.credits.allocated ?? 100
   const percentRemaining = allocated > 0 ? (remaining / allocated) * 100 : 0
 
-  if (percentRemaining <= 10) {
-    return 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-  } else if (percentRemaining <= 30) {
-    return 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
-  } else {
-    return 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
+  // Green/red are reserved for P&L direction; a low balance is a warning.
+  if (percentRemaining <= 30) {
+    return 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300'
   }
+  return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
 })
 
 const tooltipText = computed(() => {

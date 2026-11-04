@@ -11,7 +11,7 @@
       <button
         v-if="hasScanData"
         type="button"
-        class="text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 whitespace-nowrap"
+        class="text-sm font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 whitespace-nowrap"
         @click="emit('open-scanner')"
       >
         Open full scanner
@@ -23,7 +23,7 @@
       <div
         v-for="n in 3"
         :key="n"
-        class="card p-6"
+        class="card card-body"
       >
         <div class="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
         <div class="h-3 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mt-2"></div>
@@ -46,7 +46,7 @@
           class="card overflow-hidden flex flex-col"
         >
           <header class="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ list.title }}</h3>
+            <h3 class="heading-sub">{{ list.title }}</h3>
             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ list.subtitle }}</p>
           </header>
 
@@ -63,7 +63,7 @@
                 <StockLogo :symbol="item.symbol" :logo-url="item.logo" size-class="w-8 h-8" />
                 <div class="min-w-0 flex-1">
                   <div class="flex items-baseline gap-2 min-w-0">
-                    <span class="text-sm font-medium text-primary-600 dark:text-primary-400">
+                    <span class="text-sm font-medium text-primary-700 dark:text-primary-400">
                       {{ item.symbol }}
                     </span>
                     <span class="text-sm text-gray-600 dark:text-gray-400 truncate">
@@ -98,10 +98,10 @@
     </template>
 
     <!-- No scan data yet (fresh install) -->
-    <div v-else class="card p-6">
+    <div v-else class="card card-body">
       <div class="lg:flex lg:items-start lg:justify-between lg:gap-8">
         <div class="max-w-xl">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+          <h3 class="heading-sub">
             {{ fallbackTitle }}
           </h3>
           <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -109,7 +109,7 @@
               We could not load the starter lists.
               <button
                 type="button"
-                class="font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700"
+                class="font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800"
                 @click="load(true)"
               >Try again</button>
               or analyze a well-known name to get going.
@@ -137,7 +137,7 @@
             v-for="symbol in starterSymbols"
             :key="symbol"
             type="button"
-            class="px-3 py-1.5 rounded-md text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:border-primary-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            class="btn-secondary btn-sm"
             @click="emit('select', symbol)"
           >
             {{ symbol }}

@@ -72,7 +72,7 @@
         </div>
 
         <div class="text-center">
-          <router-link to="/login" class="text-sm text-primary-600 hover:text-primary-500">
+          <router-link to="/login" class="text-sm text-primary-700 hover:text-primary-500">
             Back to sign in
           </router-link>
         </div>

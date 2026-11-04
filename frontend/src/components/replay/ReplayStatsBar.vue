@@ -74,7 +74,7 @@ const clockLabel = computed(() => {
 })
 
 function pnlClass(value) {
-  if (value > 0) return 'text-green-600 dark:text-green-400'
+  if (value > 0) return 'text-green-700 dark:text-green-400'
   if (value < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-900 dark:text-white'
 }

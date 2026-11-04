@@ -91,7 +91,7 @@ const labelClass = computed(() => {
   if (props.currentPrice !== null && props.currentPrice !== undefined && 
       props.fairValue !== null && props.fairValue !== undefined) {
     if (props.currentPrice <= props.fairValue) {
-      return 'text-green-600 dark:text-green-400'
+      return 'text-green-700 dark:text-green-400'
     } else {
       return 'text-red-600 dark:text-red-400'
     }
@@ -114,14 +114,14 @@ const valueClass = computed(() => {
 
 const mosClass = computed(() => {
   if (props.marginOfSafety === null) return 'text-gray-500'
-  if (props.marginOfSafety >= 0.15) return 'text-green-600 dark:text-green-400'
+  if (props.marginOfSafety >= 0.15) return 'text-green-700 dark:text-green-400'
   if (props.marginOfSafety >= 0) return 'text-yellow-600 dark:text-yellow-400'
   return 'text-red-600 dark:text-red-400'
 })
 
 const returnClass = computed(() => {
   if (props.currentPriceReturn === null || props.currentPriceReturn === undefined) return 'text-gray-500'
-  if (props.currentPriceReturn >= 0.10) return 'text-green-600 dark:text-green-400'
+  if (props.currentPriceReturn >= 0.10) return 'text-green-700 dark:text-green-400'
   if (props.currentPriceReturn >= 0) return 'text-yellow-600 dark:text-yellow-400'
   return 'text-red-600 dark:text-red-400'
 })

@@ -61,10 +61,10 @@
         <!-- Cashflow Summary Cards -->
         <div v-if="cashflow" class="grid gap-4 grid-cols-1 sm:grid-cols-3">
           <!-- YTD Deposits / Withdrawals -->
-          <div class="card p-5 flex flex-col gap-4">
+          <div class="card card-body flex flex-col gap-4">
             <div>
               <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">YTD Deposits</div>
-              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-600 dark:text-green-400">
+              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-700 dark:text-green-400">
                 {{ formatSignedCurrency(cashflow.summary.ytdDeposits) }}
               </div>
             </div>
@@ -76,10 +76,10 @@
             </div>
           </div>
           <!-- Total Inflow / Outflow -->
-          <div class="card p-5 flex flex-col gap-4">
+          <div class="card card-body flex flex-col gap-4">
             <div>
               <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Inflow</div>
-              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-600 dark:text-green-400">
+              <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-700 dark:text-green-400">
                 {{ formatSignedCurrency(cashflow.summary.totalInflow) }}
               </div>
             </div>
@@ -91,7 +91,7 @@
             </div>
           </div>
           <!-- Current Balance -->
-          <div class="card p-5 flex flex-col justify-center">
+          <div class="card card-body flex flex-col justify-center">
             <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Current Balance</div>
             <div class="mt-1 text-2xl font-bold tabular-nums tracking-tight whitespace-nowrap" :class="balanceClass">
               {{ formatCurrency(cashflow.summary.currentBalance) }}
@@ -124,7 +124,7 @@
 
             <div v-else class="overflow-x-auto">
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead>
+                <thead class="table-head">
                   <tr>
                     <th class="px-4 py-3 text-left table-th">Date</th>
                     <th class="px-4 py-3 text-right table-th">Inflow</th>
@@ -152,7 +152,7 @@
                           {{ formatDate(row.date) }}
                         </div>
                       </td>
-                      <td class="px-4 py-3 text-sm text-right text-green-600 dark:text-green-400 whitespace-nowrap">
+                      <td class="px-4 py-3 text-sm text-right text-green-700 dark:text-green-400 whitespace-nowrap">
                         <span v-if="row.inflow > 0">{{ formatSignedCurrency(row.inflow) }}</span>
                         <span v-else class="text-gray-400">-</span>
                       </td>
@@ -160,7 +160,7 @@
                         <span v-if="row.outflow > 0">{{ formatSignedCurrency(-row.outflow) }}</span>
                         <span v-else class="text-gray-400">-</span>
                       </td>
-                      <td class="px-4 py-3 text-sm text-right font-medium whitespace-nowrap" :class="row.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      <td class="px-4 py-3 text-sm text-right font-medium whitespace-nowrap" :class="row.net >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                         {{ formatSignedCurrency(row.net) }}
                       </td>
                       <td class="px-4 py-3 text-sm text-right font-semibold text-gray-900 dark:text-white whitespace-nowrap">
@@ -204,13 +204,13 @@
                                     </span>
                                   </div>
                                   <div class="shrink-0 whitespace-nowrap text-right">
-                                    <span :class="t.direction === 'inflow' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                                    <span :class="t.direction === 'inflow' ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                                       {{ formatSignedCurrency(t.direction === 'inflow' ? t.grossAmount : -t.grossAmount) }}
                                     </span>
                                     <span
                                       v-if="t.eventType === 'exit' && t.pnl !== null"
                                       class="ml-2 text-xs"
-                                      :class="t.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                                      :class="t.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                     >
                                       ({{ formatSignedCurrency(t.pnl) }} P&L)
                                     </span>
@@ -236,12 +236,12 @@
                                     <span v-if="tx.description" class="truncate text-gray-500 dark:text-gray-400">{{ tx.description }}</span>
                                     <span
                                       v-if="tx.sourceType === 'plaid'"
-                                      class="shrink-0 rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                                      class="badge bg-primary-100 uppercase text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
                                     >
                                       Plaid
                                     </span>
                                   </div>
-                                  <span class="shrink-0 whitespace-nowrap" :class="tx.transactionType === 'deposit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                                  <span class="shrink-0 whitespace-nowrap" :class="tx.transactionType === 'deposit' ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                                     {{ formatSignedCurrency(tx.transactionType === 'deposit' ? tx.amount : -tx.amount) }}
                                   </span>
                                 </li>
@@ -265,7 +265,7 @@
                 <button
                   @click="goToCashflowPage(cashflowPage - 1)"
                   :disabled="cashflowPage <= 1"
-                  class="btn-secondary text-sm"
+                  class="btn-secondary"
                 >
                   Previous
                 </button>
@@ -297,7 +297,7 @@
           <div class="card-body">
             <div class="flex items-center justify-between mb-4">
               <h3 class="heading-card">Accounts</h3>
-              <button @click="openAddAccountModal" class="btn-primary text-sm">
+              <button @click="openAddAccountModal" class="btn-primary">
                 Add Account
               </button>
             </div>
@@ -324,7 +324,7 @@
                   <div class="flex-1 min-w-0">
                     <div class="font-medium text-gray-900 dark:text-white truncate">
                       {{ account.accountName }}
-                      <span v-if="account.isPrimary" class="ml-2 text-xs text-primary-600 dark:text-primary-400">Primary</span>
+                      <span v-if="account.isPrimary" class="ml-2 text-xs text-primary-700 dark:text-primary-400">Primary</span>
                     </div>
                     <div v-if="account.broker" class="text-sm text-gray-500 dark:text-gray-400">
                       {{ account.broker }}
@@ -445,14 +445,14 @@
                 class="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-800"
               >
                 <div>
-                  <div class="text-sm font-medium" :class="tx.transactionType === 'deposit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                  <div class="text-sm font-medium" :class="tx.transactionType === 'deposit' ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                     {{ formatSignedCurrency(tx.transactionType === 'deposit' ? tx.amount : -tx.amount) }}
                   </div>
                   <div class="text-xs text-gray-500 dark:text-gray-400">
                     {{ formatDate(tx.transactionDate) }}
                     <span v-if="tx.description" class="ml-1">- {{ tx.description }}</span>
                   </div>
-                  <div v-if="tx.sourceType === 'plaid'" class="mt-1 text-[11px] uppercase tracking-wide text-primary-600 dark:text-primary-400">
+                  <div v-if="tx.sourceType === 'plaid'" class="mt-1 text-xs uppercase tracking-wide text-primary-700 dark:text-primary-400">
                     Imported from Plaid
                   </div>
                 </div>
@@ -614,7 +614,7 @@ watch(reversedCashflow, () => {
 const balanceClass = computed(() => {
   if (!cashflow.value) return 'text-gray-900 dark:text-white'
   const diff = cashflow.value.summary.currentBalance - cashflow.value.summary.initialBalance
-  return diff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+  return diff >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
 })
 
 // Methods

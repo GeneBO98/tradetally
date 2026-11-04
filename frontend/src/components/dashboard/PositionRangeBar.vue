@@ -22,14 +22,14 @@
         title="Current price"
       ></div>
     </div>
-    <div class="mt-1 flex justify-between gap-2 text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+    <div class="mt-1 flex justify-between gap-2 text-xs leading-4 text-gray-500 dark:text-gray-400">
       <span>{{ startLabel }}</span>
       <span class="text-gray-700 dark:text-gray-300">{{ caption }}</span>
       <span>{{ endLabel }}</span>
     </div>
-    <div v-if="startNote || endNote" class="flex justify-between gap-2 text-[11px] leading-4">
+    <div v-if="startNote || endNote" class="flex justify-between gap-2 text-xs leading-4">
       <span class="text-red-600 dark:text-red-400" title="Change from here if the stop is hit">{{ startNote }}</span>
-      <span class="text-green-600 dark:text-green-400" title="Change from here if the target is reached">{{ endNote }}</span>
+      <span class="text-green-700 dark:text-green-400" title="Change from here if the target is reached">{{ endNote }}</span>
     </div>
   </div>
 </template>

@@ -27,7 +27,7 @@
         </h2>
         <p v-if="allowRegistration" class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
           Or
-          <router-link to="/register" class="font-medium text-primary-600 hover:text-primary-500">
+          <router-link to="/register" class="font-medium text-primary-700 hover:text-primary-500">
             create a new account
           </router-link>
         </p>
@@ -84,7 +84,7 @@
             <button
               @click="handleResendVerification"
               :disabled="resendLoading || resendCooldown > 0"
-              class="text-sm text-primary-600 hover:text-primary-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              class="text-sm text-primary-700 hover:text-primary-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span v-if="resendLoading">Sending...</span>
               <span v-else-if="resendCooldown > 0">Resend in {{ resendCooldown }}s</span>
@@ -143,7 +143,7 @@
         </div>
 
         <div class="text-center mt-4">
-          <router-link to="/forgot-password" class="text-sm text-primary-600 hover:text-primary-500">
+          <router-link to="/forgot-password" class="text-sm text-primary-700 hover:text-primary-500">
             Forgot your password?
           </router-link>
         </div>

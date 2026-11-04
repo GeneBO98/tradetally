@@ -17,7 +17,7 @@
             v-model="newChart.url"
             type="url"
             placeholder="https://www.tradingview.com/x/..."
-            class="mt-1 shadow-sm focus:ring-primary-500 focus:border-primary-500 block w-full sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
+            class="input mt-1 w-full"
             @keypress.enter="addChart"
           />
         </div>
@@ -31,7 +31,7 @@
             v-model="newChart.title"
             type="text"
             placeholder="Entry setup, Exit point, etc."
-            class="mt-1 shadow-sm focus:ring-primary-500 focus:border-primary-500 block w-full sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
+            class="input mt-1 w-full"
             @keypress.enter="addChart"
           />
         </div>
@@ -50,7 +50,7 @@
 
     <!-- Pending charts (create mode) -->
     <div v-if="pendingCharts.length > 0" class="space-y-2">
-      <h4 class="text-sm font-medium text-gray-900 dark:text-white">Pending Charts ({{ pendingCharts.length }})</h4>
+      <h4 class="heading-sub">Pending Charts ({{ pendingCharts.length }})</h4>
       <div class="space-y-2">
         <div
           v-for="(chart, index) in pendingCharts"

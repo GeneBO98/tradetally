@@ -23,7 +23,7 @@
       <div v-if="replayData" class="flex items-center space-x-2">
         <span
           v-if="replayData.trade.side"
-          class="text-xs px-2 py-1 rounded-full font-medium"
+          class="badge"
           :class="replayData.trade.side === 'long'
             ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
             : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'"
@@ -38,7 +38,7 @@
         </span>
         <span
           v-if="quotaChip"
-          class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
+          class="badge-primary"
         >
           {{ quotaChip }}
         </span>
@@ -64,7 +64,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
         <p class="text-red-600 dark:text-red-400 font-medium mb-2">{{ error }}</p>
-        <button @click="loadReplay" class="btn-secondary text-sm mt-2">Try Again</button>
+        <button @click="loadReplay" class="btn-secondary mt-2">Try Again</button>
       </div>
     </div>
 
@@ -131,7 +131,7 @@
               @click="indicators[option.key] = !indicators[option.key]"
               class="px-2 py-1 text-xs rounded-md font-medium"
               :class="indicators[option.key]
-                ? 'bg-primary-600 text-white'
+                ? 'bg-primary-700 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
             >
               {{ option.label }}

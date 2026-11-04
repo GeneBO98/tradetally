@@ -48,7 +48,7 @@
       <div class="spinner spinner-lg"></div>
     </div>
 
-    <div v-else-if="error" class="card p-8 text-center">
+    <div v-else-if="error" class="card card-body text-center">
       <p class="text-danger mb-4">{{ error }}</p>
       <button @click="loadData" class="btn-primary">Retry</button>
     </div>
@@ -80,7 +80,7 @@
       </div>
 
       <!-- No data state -->
-      <div v-if="filteredPartials.length === 0" class="card p-8 text-center">
+      <div v-if="filteredPartials.length === 0" class="card card-body text-center">
         <p class="text-gray-500 dark:text-gray-400">
           {{ analytics.partials?.length > 0 && minEligibleTrades > 0
             ? `No partial levels have ${minEligibleTrades}+ eligible trades. Try lowering the threshold.`
@@ -94,37 +94,37 @@
           <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead class="table-head">
               <tr>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th class="px-4 py-3 text-left table-th">
                   Partial
                 </th>
-                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th class="px-4 py-3 text-center table-th">
                   Eligible
                 </th>
-                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th class="px-4 py-3 text-center table-th">
                   Abs. Hit %
                 </th>
-                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th class="px-4 py-3 text-center table-th">
                   Cond. Hit %
                 </th>
-                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th class="px-4 py-3 text-center table-th">
                   Profitable
                 </th>
-                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th class="px-4 py-3 text-center table-th">
                   BE/Scratch
                 </th>
-                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th class="px-4 py-3 text-center table-th">
                   Loss
                 </th>
-                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th class="px-4 py-3 text-right table-th">
                   Avg Exit (pts)
                 </th>
-                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th class="px-4 py-3 text-right table-th">
                   Avg Exit Profit (pts)
                 </th>
-                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th class="px-4 py-3 text-right table-th">
                   Avg R
                 </th>
-                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th class="px-4 py-3 text-right table-th">
                   Avg SL (pts)
                 </th>
               </tr>
@@ -143,7 +143,7 @@
                     </span>
                     <span
                       v-if="partial.is_last"
-                      class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-600 dark:text-gray-300"
+                      class="badge-neutral"
                     >
                       last
                     </span>
@@ -166,7 +166,7 @@
                 </td>
 
                 <!-- Profitable Count -->
-                <td class="px-4 py-3 whitespace-nowrap text-center text-sm text-green-600 dark:text-green-400">
+                <td class="px-4 py-3 whitespace-nowrap text-center text-sm text-green-700 dark:text-green-400">
                   {{ partial.profitable_count }}
                 </td>
 
@@ -186,7 +186,7 @@
                 </td>
 
                 <!-- Avg Exit Pts (profitable) -->
-                <td class="px-4 py-3 whitespace-nowrap text-right text-sm" :class="partial.avg_exit_pts_profitable !== null ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
+                <td class="px-4 py-3 whitespace-nowrap text-right text-sm" :class="partial.avg_exit_pts_profitable !== null ? 'text-green-700 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
                   {{ partial.avg_exit_pts_profitable !== null ? formatPts(partial.avg_exit_pts_profitable) : '--' }}
                 </td>
 
@@ -285,13 +285,13 @@ const loadData = async () => {
 }
 
 const hitRateColor = (rate) => {
-  if (rate >= 50) return 'text-green-600 dark:text-green-400'
+  if (rate >= 50) return 'text-green-700 dark:text-green-400'
   if (rate >= 25) return 'text-yellow-600 dark:text-yellow-400'
   return 'text-red-600 dark:text-red-400'
 }
 
 const ptsColor = (pts) => {
-  if (pts > 0) return 'text-green-600 dark:text-green-400'
+  if (pts > 0) return 'text-green-700 dark:text-green-400'
   if (pts < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-600 dark:text-gray-400'
 }

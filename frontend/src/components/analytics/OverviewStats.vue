@@ -5,7 +5,7 @@
       <!-- Total P&L -->
       <div class="px-4 py-3.5">
         <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">Total P&L</dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="overview.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="overview.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
           {{ formatCurrency(overview.total_pnl) }}
         </dd>
       </div>
@@ -13,7 +13,7 @@
       <!-- Win Rate -->
       <div class="px-4 py-3.5">
         <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">
-          Win Rate<span v-if="overview.position_grouping" class="ml-1 normal-case text-primary-600 dark:text-primary-400">· whole trade</span>
+          Win Rate<span v-if="overview.position_grouping" class="ml-1 normal-case text-primary-700 dark:text-primary-400">· whole trade</span>
         </dt>
         <dd class="mt-1 text-lg lg:text-xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
           {{ overview.win_rate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
@@ -32,7 +32,7 @@
       <!-- Average / Median Trade -->
       <div class="px-4 py-3.5">
         <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">{{ calculationMethod }} Trade</dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="overview.avg_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="overview.avg_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
           {{ formatCurrency(overview.avg_pnl) }}
         </dd>
       </div>
@@ -57,7 +57,7 @@
           <dd v-if="!rMultipleFlipped" key="avg" class="mt-1 text-lg lg:text-xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
             {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(1) + 'R' : '0.0R' }}
           </dd>
-          <dd v-else key="total" class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="(overview.total_r_value ?? 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+          <dd v-else key="total" class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="(overview.total_r_value ?? 0) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
             {{ overview.total_r_value !== undefined && overview.total_r_value !== null ? Number(overview.total_r_value).toFixed(2) + 'R' : '0.00R' }}
           </dd>
         </transition>
@@ -75,7 +75,7 @@
           </svg>
         </div>
         <div>
-          <h4 class="text-sm font-medium text-gray-900 dark:text-white">K-Ratio Requires Account Equity Tracking</h4>
+          <h4 class="heading-sub">K-Ratio Requires Account Equity Tracking</h4>
           <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
             To calculate your K-Ratio, you need to track your account equity over time. The K-Ratio requires at least 3 equity entries to calculate meaningful consistency metrics.
           </p>

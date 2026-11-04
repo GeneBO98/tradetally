@@ -37,7 +37,7 @@
                         @click="activeTab = 'watchlists'"
                         :class="[
                             activeTab === 'watchlists'
-                                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                                ? 'border-primary-500 text-primary-700 dark:text-primary-400'
                                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600',
                             'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm',
                         ]"
@@ -61,7 +61,7 @@
                         @click="activeTab = 'alerts'"
                         :class="[
                             activeTab === 'alerts'
-                                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                                ? 'border-primary-500 text-primary-700 dark:text-primary-400'
                                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600',
                             'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm',
                         ]"
@@ -129,7 +129,7 @@
                                 </h3>
                                 <span
                                     v-if="watchlist.is_default"
-                                    class="badge bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200"
+                                    class="badge-primary"
                                 >
                                     Default
                                 </span>
@@ -181,7 +181,7 @@
                         ></path>
                     </svg>
                     <h3
-                        class="mt-2 text-sm font-medium text-gray-900 dark:text-white"
+                        class="heading-sub mt-2"
                     >
                         No watchlists
                     </h3>
@@ -283,7 +283,7 @@
                         <button
                             v-if="!notificationPermissionGranted"
                             @click="requestBrowserNotifications"
-                            class="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                            class="text-sm text-primary-700 hover:text-primary-800 font-medium"
                         >
                             Enable browser notifications
                         </button>
@@ -293,7 +293,7 @@
                         class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700"
                     >
                         <h4
-                            class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                            class="heading-sub mb-2"
                         >
                             Recent Alerts
                         </h4>
@@ -369,42 +369,42 @@
                             <thead class="table-head">
                                 <tr>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Symbol
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Alert Type
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Target
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Current Price
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Status
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Notifications
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Created
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Actions
                                     </th>
@@ -456,7 +456,7 @@
                                                 alert.is_active &&
                                                 !alert.triggered_at
                                             "
-                                            class="badge bg-green-100 text-green-800"
+                                            class="badge-success"
                                         >
                                             Active
                                         </span>
@@ -480,7 +480,7 @@
                                         </span>
                                         <span
                                             v-else
-                                            class="badge bg-gray-100 text-gray-800"
+                                            class="badge-neutral"
                                         >
                                             Inactive
                                         </span>
@@ -561,7 +561,7 @@
                         />
                     </svg>
                     <h3
-                        class="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100"
+                        class="heading-sub mt-2"
                     >
                         No price alerts
                     </h3>
@@ -589,11 +589,11 @@
             @click.self="cancelEditWatchlist"
         >
             <div
-                class="modal-panel top-20 mx-4 sm:mx-auto p-5 w-full max-w-sm"
+                class="modal-panel top-20 mx-4 sm:mx-auto p-6 w-full max-w-sm"
             >
                 <div class="mt-3">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                        class="modal-title mb-4"
                     >
                         {{
                             editingWatchlist
@@ -636,7 +636,7 @@
                                 <input
                                     v-model="watchlistForm.is_default"
                                     type="checkbox"
-                                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                    class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                                 />
                                 <span
                                     class="ml-2 text-sm text-gray-700 dark:text-gray-300"
@@ -680,11 +680,11 @@
             @click.self="cancelEditAlert"
         >
             <div
-                class="modal-panel top-20 mx-4 sm:mx-auto p-5 w-full max-w-lg"
+                class="modal-panel top-20 mx-4 sm:mx-auto p-6 w-full max-w-lg"
             >
                 <div class="mt-3">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4"
+                        class="modal-title mb-4"
                     >
                         {{
                             editingAlert
@@ -778,7 +778,7 @@
                                     <input
                                         v-model="alertForm.email_enabled"
                                         type="checkbox"
-                                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                                     />
                                     <span
                                         class="ml-2 text-sm text-gray-700 dark:text-gray-300"
@@ -789,7 +789,7 @@
                                     <input
                                         v-model="alertForm.browser_enabled"
                                         type="checkbox"
-                                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                                     />
                                     <span
                                         class="ml-2 text-sm text-gray-700 dark:text-gray-300"
@@ -800,7 +800,7 @@
                                     <input
                                         v-model="alertForm.repeat_enabled"
                                         type="checkbox"
-                                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                                     />
                                     <span
                                         class="ml-2 text-sm text-gray-700 dark:text-gray-300"

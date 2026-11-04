@@ -46,11 +46,11 @@
                   <MdiIcon :icon="iconFor(challenge)" :size="22" />
                 </div>
                 <div class="min-w-0">
-                  <h3 class="truncate font-semibold text-gray-900 dark:text-white">{{ challenge.name }}</h3>
+                  <h3 class="heading-card truncate">{{ challenge.name }}</h3>
                   <p class="text-sm text-gray-600 dark:text-gray-400">{{ challenge.description }}</p>
                 </div>
               </div>
-              <span class="flex-shrink-0 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-bold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300">
+              <span class="badge-warning flex-shrink-0">
                 +{{ challenge.reward_points }} XP
               </span>
             </div>
@@ -201,9 +201,9 @@ function unitLabel(challenge) {
 }
 
 function iconClass(challenge) {
-  if (challenge.user_status === 'completed') return 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400'
+  if (challenge.user_status === 'completed') return 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
   if (challenge.locked) return 'bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500'
-  return 'bg-primary-100 text-primary-600 dark:bg-primary-900/40 dark:text-primary-400'
+  return 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-400'
 }
 
 function progressValue(challenge) {

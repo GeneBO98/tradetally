@@ -102,7 +102,7 @@
                   <span class="text-red-600 dark:text-red-400 font-bold text-lg">IB</span>
                 </div>
                 <div>
-                  <h4 class="font-medium text-gray-900 dark:text-white">Interactive Brokers</h4>
+                  <h4 class="heading-card">Interactive Brokers</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {{ store.ibkrConnections.length > 0 ? 'Add another IBKR account' : 'Connect via Flex Query' }}
                   </p>
@@ -125,10 +125,10 @@
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
                   <div v-if="schwabConnecting" class="spinner spinner-sm"></div>
-                  <span v-else class="text-primary-600 dark:text-primary-400 font-bold text-lg">CS</span>
+                  <span v-else class="text-primary-700 dark:text-primary-400 font-bold text-lg">CS</span>
                 </div>
                 <div>
-                  <h4 class="font-medium text-gray-900 dark:text-white">Charles Schwab</h4>
+                  <h4 class="heading-card">Charles Schwab</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {{ store.schwabConnection ? 'Already connected' : schwabConnecting ? 'Connecting...' : 'Connect via OAuth' }}
                   </p>
@@ -138,7 +138,7 @@
 
             <button type="button" class="rounded-lg border-2 border-dashed border-gray-300 p-6 text-left transition-colors hover:border-primary-500 dark:border-gray-600 dark:hover:border-primary-400" @click="reconnecting_oanda = null; show_oanda_modal = true">
               <span class="flex items-center gap-4">
-                <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-lg font-bold text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">OA</span>
+                <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-lg font-bold text-primary-700 dark:bg-primary-900/30 dark:text-primary-400">OA</span>
                 <span><span class="block font-medium text-gray-900 dark:text-white">OANDA</span><span class="block text-sm text-gray-500 dark:text-gray-400">Connect a practice or live v20 account</span></span>
               </span>
             </button>
@@ -153,10 +153,10 @@
             >
               <div class="flex items-center space-x-4">
                 <div class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-900/30">
-                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">T2</span>
+                  <span class="text-lg font-bold text-primary-700 dark:text-primary-400">T2</span>
                 </div>
                 <div>
-                  <h4 class="font-medium text-gray-900 dark:text-white">Trading 212</h4>
+                  <h4 class="heading-card">Trading 212</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {{ store.trading212Connections.length > 0 ? 'Add another environment' : 'Connect with an API key' }}
                   </p>
@@ -176,7 +176,7 @@
                   <span v-else class="text-emerald-600 dark:text-emerald-400 font-bold text-lg">TS</span>
                 </div>
                 <div>
-                  <h4 class="font-medium text-gray-900 dark:text-white">TradeStation</h4>
+                  <h4 class="heading-card">TradeStation</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {{ brokerConnection('tradestation') ? 'Already connected' : brokerConnecting.tradestation ? 'Connecting...' : 'Connect via OAuth' }}
                   </p>
@@ -196,10 +196,10 @@
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
                   <div v-if="brokerConnecting.tradovate" class="spinner spinner-sm"></div>
-                  <span v-else class="text-primary-600 dark:text-primary-400 font-bold text-lg">TV</span>
+                  <span v-else class="text-primary-700 dark:text-primary-400 font-bold text-lg">TV</span>
                 </div>
                 <div>
-                  <h4 class="font-medium text-gray-900 dark:text-white">Tradovate</h4>
+                  <h4 class="heading-card">Tradovate</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {{ brokerConnecting.tradovate ? 'Connecting...' : brokerConnection('tradovate') ? 'Connect another login' : 'Futures & prop firms via OAuth' }}
                   </p>
@@ -219,7 +219,7 @@
                   <span v-else class="text-cyan-600 dark:text-cyan-400 font-bold text-lg">AL</span>
                 </div>
                 <div>
-                  <h4 class="font-medium text-gray-900 dark:text-white">Alpaca Live</h4>
+                  <h4 class="heading-card">Alpaca Live</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {{ brokerConnection('alpaca', 'live') ? 'Already connected' : brokerConnecting.alpacaLive ? 'Connecting...' : 'Connect via OAuth' }}
                   </p>
@@ -236,10 +236,10 @@
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
                   <div v-if="brokerConnecting.alpacaPaper" class="spinner spinner-sm"></div>
-                  <span v-else class="text-primary-600 dark:text-primary-400 font-bold text-lg">AP</span>
+                  <span v-else class="text-primary-700 dark:text-primary-400 font-bold text-lg">AP</span>
                 </div>
                 <div>
-                  <h4 class="font-medium text-gray-900 dark:text-white">Alpaca Paper</h4>
+                  <h4 class="heading-card">Alpaca Paper</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {{ brokerConnection('alpaca', 'paper') ? 'Already connected' : brokerConnecting.alpacaPaper ? 'Connecting...' : 'Connect via OAuth' }}
                   </p>
@@ -256,10 +256,10 @@
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
                   <div v-if="brokerConnecting.webull" class="spinner spinner-sm"></div>
-                  <span v-else class="text-primary-600 dark:text-primary-400 font-bold text-lg">WB</span>
+                  <span v-else class="text-primary-700 dark:text-primary-400 font-bold text-lg">WB</span>
                 </div>
                 <div>
-                  <h4 class="font-medium text-gray-900 dark:text-white">Webull</h4>
+                  <h4 class="heading-card">Webull</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {{ brokerConnection('webull') ? 'Already connected' : brokerConnecting.webull ? 'Connecting...' : 'Connect via OAuth' }}
                   </p>
@@ -291,7 +291,7 @@
           <div class="mt-4 max-h-64 overflow-auto divide-y divide-gray-200 dark:divide-gray-700">
             <div v-for="entry in excludedTrades" :key="entry.id" class="flex items-center justify-between gap-3 py-2 text-sm">
               <span class="text-gray-800 dark:text-gray-200">{{ entry.symbol }} · {{ entry.side }}<template v-if="entry.account_identifier"> · {{ entry.account_identifier }}</template> · {{ formatDate(entry.entry_time) }}</span>
-              <button type="button" class="text-primary-600 hover:text-primary-700 dark:text-primary-400"
+              <button type="button" class="text-primary-700 hover:text-primary-800 dark:text-primary-400"
                 :disabled="restoringExclusion === entry.id" @click="restoreExclusion(entry.id)">
                 {{ restoringExclusion === entry.id ? 'Restoring…' : 'Allow future import' }}
               </button>
@@ -307,7 +307,7 @@
             <h3 class="heading-card">Sync History</h3>
             <button
               @click="refreshLogs"
-              class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+              class="text-sm text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300"
             >
               Refresh
             </button>
@@ -319,7 +319,7 @@
 
           <div v-else class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead>
+              <thead class="table-head">
                 <tr>
                   <th class="px-4 py-3 text-left table-th">Broker</th>
                   <th class="px-4 py-3 text-left table-th">Type</th>
@@ -340,7 +340,7 @@
                   </td>
                   <td class="px-4 py-3 whitespace-nowrap">
                     <span
-                      class="px-2 py-1 text-xs rounded-full"
+                      class="badge"
                       :class="getStatusClass(log)"
                     >
                       {{ getStatusLabel(log) }}
@@ -372,7 +372,7 @@
                     <button
                       v-if="manualReviewItemsFromSyncLog(log).length > 0"
                       type="button"
-                      class="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                      class="text-sm font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
                       @click="openManualReviewFromSyncLog(log, true)"
                     >
                       Review {{ manualReviewItemsFromSyncLog(log).length }}

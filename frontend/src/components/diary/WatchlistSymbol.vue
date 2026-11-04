@@ -8,7 +8,7 @@
       <button
         @click="handleAddToWatchlist"
         :disabled="addingToWatchlist"
-        class="p-0.5 rounded hover:bg-primary-200 dark:hover:bg-primary-700 transition-colors disabled:opacity-50"
+        class="btn-icon p-0.5 disabled:opacity-50"
         title="Add to main watchlist"
       >
         <PlusCircleIcon class="w-3.5 h-3.5" />
@@ -17,7 +17,7 @@
       <!-- Create Price Alert Button -->
       <button
         @click="handleCreateAlert"
-        class="p-0.5 rounded hover:bg-primary-200 dark:hover:bg-primary-700 transition-colors"
+        class="btn-icon p-0.5"
         title="Create price alert"
       >
         <BellAlertIcon class="w-3.5 h-3.5" />
@@ -32,8 +32,8 @@
       class="modal-overlay flex items-center justify-center p-4"
       @click.self="showAlertModal = false"
     >
-      <div class="modal-panel max-w-md w-full p-6">
-        <h3 class="heading-card mb-4">
+      <div role="dialog" aria-modal="true" class="modal-panel max-w-md w-full p-6">
+        <h3 class="modal-title mb-4">
           Create Price Alert for {{ symbol }}
         </h3>
 
@@ -80,7 +80,7 @@
               <input
                 v-model="alertForm.emailEnabled"
                 type="checkbox"
-                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
               />
               <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Email</span>
             </label>
@@ -88,7 +88,7 @@
               <input
                 v-model="alertForm.browserEnabled"
                 type="checkbox"
-                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
               />
               <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Browser Push</span>
             </label>

@@ -21,7 +21,7 @@
     <!-- Empty state -->
     <div v-else-if="profiles.length === 0" class="text-center py-16">
       <ShieldCheckIcon class="mx-auto h-12 w-12 text-gray-400" />
-      <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No rule profiles yet</h3>
+      <h3 class="heading-sub mt-2">No rule profiles yet</h3>
       <p class="mt-1 mx-auto max-w-md text-sm text-gray-500 dark:text-gray-400">
         Attach your prop firm's rules to a trading account and TradeTally will track
         your headroom against daily loss limits, drawdown, and profit targets.
@@ -43,7 +43,7 @@
                   {{ profile.label || profile.account_identifier }}
                 </h2>
                 <span
-                  class="rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase"
+                  class="badge uppercase"
                   :class="stateBadgeClass(profile.status?.state)"
                 >{{ stateLabel(profile.status?.state) }}</span>
               </div>
@@ -52,9 +52,9 @@
               </p>
             </div>
             <div class="flex items-center gap-2">
-              <button class="btn-secondary text-sm" @click="openEdit(profile)">Edit</button>
+              <button class="btn-secondary" @click="openEdit(profile)">Edit</button>
               <button
-                class="btn-secondary text-sm text-danger"
+                class="btn-secondary text-danger"
                 aria-label="Delete rule profile"
                 @click="confirmDelete(profile)"
               >Delete</button>
@@ -318,7 +318,7 @@ function stateBadgeClass(state) {
     on_track: 'bg-success/15 text-success',
     warning: 'bg-warning/15 text-warning',
     breached: 'bg-danger/15 text-danger',
-    passed: 'bg-primary-500/15 text-primary-600 dark:text-primary-400'
+    passed: 'bg-primary-500/15 text-primary-700 dark:text-primary-400'
   }[state] || 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
 }
 

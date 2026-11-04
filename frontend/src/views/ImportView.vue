@@ -50,7 +50,7 @@
                 @click="!isAnalyzingFile && fileInput && fileInput.click()"
               >
                 <div v-if="isAnalyzingFile" class="space-y-3 text-center">
-                  <div class="animate-spin mx-auto h-12 w-12 rounded-full border-4 border-primary-200 border-t-primary-600"></div>
+                  <div class="spinner spinner-lg mx-auto"></div>
                   <p class="text-base font-medium text-gray-900 dark:text-white">Analyzing file...</p>
                   <p class="text-sm text-gray-500 dark:text-gray-400">Checking headers and row count</p>
                 </div>
@@ -60,7 +60,7 @@
                   <div class="flex text-sm text-gray-600 dark:text-gray-400">
                     <label
                       for="file-upload"
-                      class="relative cursor-pointer rounded-md font-medium text-primary-600 hover:text-primary-500"
+                      class="relative cursor-pointer rounded-md font-medium text-primary-700 hover:text-primary-500"
                       @click.stop
                     >
                       <span>Browse files</span>
@@ -110,7 +110,7 @@
                   type="button"
                   class="flex-shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition"
                   :class="selectedBroker === brokerOption.value
-                    ? 'bg-primary-600 text-white'
+                    ? 'bg-primary-700 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-700'"
                   @click="selectQuickBroker(brokerOption.value)"
                 >
@@ -139,12 +139,12 @@
             <div v-if="showBrokerGuide" class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/40">
               <div class="flex items-start gap-3">
                 <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-primary-50 ring-1 ring-primary-100 dark:bg-primary-900/30 dark:ring-primary-800/60">
-                  <DocumentTextIcon class="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                  <DocumentTextIcon class="h-4 w-4 text-primary-700 dark:text-primary-400" />
                 </div>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-baseline justify-between gap-3">
-                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ activeBrokerGuide.title }}</h3>
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-primary-600 dark:text-primary-400">
+                    <h3 class="heading-sub">{{ activeBrokerGuide.title }}</h3>
+                    <span class="text-xs font-semibold uppercase tracking-wider text-primary-700 dark:text-primary-400">
                       {{ activeBrokerGuide.badge }}
                     </span>
                   </div>
@@ -176,7 +176,7 @@
               <BaseSelect id="account" v-model="selectedAccountId" :options="accountOptions" />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Leave on "Automatically detect from file" to use the account embedded in the export, or pick a specific account to override it.
-                <router-link to="/accounts" class="text-primary-600 hover:text-primary-500">Manage accounts</router-link>
+                <router-link to="/accounts" class="text-primary-700 hover:text-primary-500">Manage accounts</router-link>
               </p>
             </div>
 
@@ -197,7 +197,7 @@
               <input
                 v-model="includeImportedNotes"
                 type="checkbox"
-                class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
+                class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
               />
               <span>
                 <span class="block text-sm font-medium text-gray-900 dark:text-white">Import notes and descriptions</span>
@@ -207,7 +207,7 @@
               </span>
             </label>
 
-            <div v-if="selectedFile" class="rounded-2xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/50">
+            <div v-if="selectedFile" class="rounded-lg border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/50">
               <div class="flex flex-col gap-1">
                 <p class="text-sm font-semibold text-gray-900 dark:text-white">Pre-import check</p>
                 <p class="text-sm text-gray-600 dark:text-gray-400">
@@ -254,7 +254,7 @@
                   <span
                     v-for="header in displayedHeaderPreview"
                     :key="header"
-                    class="rounded-full bg-white px-3 py-1 text-xs text-gray-700 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700"
+                    class="badge bg-white text-gray-700 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700"
                   >
                     {{ header }}
                   </span>
@@ -330,14 +330,14 @@
                   type="checkbox"
                   :checked="importHistory.length > 0 && selectedImportIds.size === importHistory.length"
                   @change="toggleSelectAll"
-                  class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+                  class="rounded border-gray-300 dark:border-gray-600 text-primary-700 focus:ring-primary-500"
                 />
                 <span>Select All</span>
               </label>
               <button
                 v-if="authStore.user?.role === 'admin' || authStore.user?.role === 'owner'"
                 @click="fetchLogs()"
-                class="btn-secondary text-sm"
+                class="btn-secondary"
               >
                 View Logs
               </button>
@@ -355,7 +355,7 @@
                   type="checkbox"
                   :checked="selectedImportIds.has(importLog.id)"
                   @change="toggleImportSelection(importLog.id)"
-                  class="flex-shrink-0 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+                  class="flex-shrink-0 rounded border-gray-300 dark:border-gray-600 text-primary-700 focus:ring-primary-500"
                 />
                 <div class="min-w-0">
                   <p class="truncate font-medium text-gray-900 dark:text-white">{{ importLog.file_name }}</p>
@@ -367,7 +367,7 @@
               <div class="flex items-center justify-between space-x-3 sm:justify-end">
                 <div class="text-left sm:text-right">
                   <div class="flex items-center space-x-2 sm:justify-end">
-                    <span class="px-2 py-1 text-xs rounded-full" :class="getStatusClass(importLog.status)">
+                    <span class="badge" :class="getStatusClass(importLog.status)">
                       {{ getStatusText(importLog.status) }}
                     </span>
                   </div>
@@ -393,7 +393,7 @@
           <div v-if="pagination.hasMore" class="mt-4 text-center">
             <button
               @click="loadMoreHistory"
-              class="btn-secondary text-sm"
+              class="btn-secondary"
             >
               Load More ({{ pagination.total - importHistory.length }} remaining)
             </button>
@@ -408,7 +408,7 @@
             <h3 class="heading-card">Custom Importers</h3>
             <button
               @click="showCustomMappings = !showCustomMappings"
-              class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
+              class="flex items-center space-x-2 text-sm text-primary-700 dark:text-primary-400 hover:text-primary-500"
             >
               <span>{{ showCustomMappings ? 'Hide' : 'Show' }} Importers</span>
               <svg
@@ -434,7 +434,7 @@
               class="flex items-start justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
             >
               <div class="flex-1 min-w-0">
-                <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+                <h4 class="heading-sub">
                   {{ mapping.mapping_name }}
                 </h4>
                 <p v-if="mapping.description" class="text-sm text-gray-600 dark:text-gray-400 mt-1">
@@ -474,7 +474,7 @@
               <div class="flex items-center gap-2">
                 <button
                   @click="showAllMappingsModal = true"
-                  class="btn-secondary text-sm"
+                  class="btn-secondary"
                 >
                   <Cog6ToothIcon class="h-5 w-5 sm:mr-2" />
                   <span class="hidden sm:inline">Manage All</span>
@@ -492,7 +492,7 @@
             </div>
             <button
               @click="showCusipManagement = !showCusipManagement"
-              class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
+              class="flex items-center space-x-2 text-sm text-primary-700 dark:text-primary-400 hover:text-primary-500"
             >
               <span>{{ showCusipManagement ? 'Hide' : 'Show' }}</span>
               <svg
@@ -525,7 +525,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <!-- Add New Mapping -->
               <div>
-                <h4 class="font-medium text-gray-900 dark:text-white mb-3">Add CUSIP Mapping</h4>
+                <h4 class="heading-card mb-3">Add CUSIP Mapping</h4>
                 <div class="space-y-3">
                   <div>
                     <label for="cusip" class="label">CUSIP (9 characters)</label>
@@ -561,7 +561,7 @@
 
               <!-- Lookup Existing -->
               <div>
-                <h4 class="font-medium text-gray-900 dark:text-white mb-3">Lookup CUSIP</h4>
+                <h4 class="heading-card mb-3">Lookup CUSIP</h4>
                 <div class="space-y-3">
                   <div>
                     <label for="lookupCusip" class="label">CUSIP to Lookup</label>
@@ -613,7 +613,7 @@
             <h3 class="heading-card">Supported CSV Formats</h3>
             <button
               @click="showFormats = !showFormats"
-              class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
+              class="flex items-center space-x-2 text-sm text-primary-700 dark:text-primary-400 hover:text-primary-500"
             >
               <span>{{ showFormats ? 'Hide' : 'Show' }} Formats</span>
               <svg 
@@ -630,7 +630,7 @@
           
           <div v-if="showFormats" class="space-y-6">
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">Generic CSV</h4>
+              <h4 class="heading-card">Generic CSV</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Use this format if your broker isn't listed or for custom CSV files. Supports comma, semicolon, or tab separators.
               </p>
@@ -645,7 +645,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">Lightspeed Trader</h4>
+              <h4 class="heading-card">Lightspeed Trader</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export from Lightspeed's "Reports" > "Trade Blotter" section as CSV.
               </p>
@@ -660,7 +660,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">Charles Schwab</h4>
+              <h4 class="heading-card">Charles Schwab</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Supports both completed trades export and transaction history. Tab-separated files are automatically detected.
               </p>
@@ -679,7 +679,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">ThinkorSwim</h4>
+              <h4 class="heading-card">ThinkorSwim</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export from ThinkorSwim's "Account Statement" section. Only processes trade (TRD) records. Times are read in the timezone you pick above, since thinkorswim exports them in the platform's local time.
               </p>
@@ -694,7 +694,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">Interactive Brokers</h4>
+              <h4 class="heading-card">Interactive Brokers</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Supports both Activity Statement and Trade Confirmation exports. Also supports Flex Query exports.
               </p>
@@ -713,7 +713,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">Webull</h4>
+              <h4 class="heading-card">Webull</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export from Webull's "Orders" > "Options Orders" history. Supports options trading with automatic roundtrip trade detection.
               </p>
@@ -728,7 +728,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">E*TRADE</h4>
+              <h4 class="heading-card">E*TRADE</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export from E*TRADE's transaction history.
               </p>
@@ -743,7 +743,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">PaperMoney</h4>
+              <h4 class="heading-card">PaperMoney</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export from ThinkorSwim's PaperMoney platform. Filled orders are treated as actual executed trades for analysis and tracking.
               </p>
@@ -759,7 +759,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">TradingView</h4>
+              <h4 class="heading-card">TradingView</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export filled orders from TradingView's paper or live trading. Supports futures contracts with leverage detection.
               </p>
@@ -774,7 +774,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">Tradovate</h4>
+              <h4 class="heading-card">Tradovate</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export order history from Tradovate. Supports futures contracts with automatic contract month/year parsing and point value calculations.
               </p>
@@ -789,7 +789,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">NinjaTrader</h4>
+              <h4 class="heading-card">NinjaTrader</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export the Executions or Trade Performance grid from NinjaTrader. Futures contracts, account identifiers, commissions, and exchange fees are imported automatically.
               </p>
@@ -803,7 +803,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">Sierra Chart</h4>
+              <h4 class="heading-card">Sierra Chart</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export Trade Activity Log with File &gt; Export, or upload its raw UTC .data file. Fill executions are reconstructed into flat-to-flat futures trades.
               </p>
@@ -817,7 +817,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">Questrade</h4>
+              <h4 class="heading-card">Questrade</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export trade executions from Questrade. Supports stocks and options with automatic option symbol parsing.
               </p>
@@ -832,7 +832,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">TradeStation</h4>
+              <h4 class="heading-card">TradeStation</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export transaction history from TradeStation. Supports both equity and options trades with detailed fee breakdown.
               </p>
@@ -847,7 +847,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">Tastytrade</h4>
+              <h4 class="heading-card">Tastytrade</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export transaction history from Tastytrade. Supports stocks, options, and futures with OCC option symbol parsing.
               </p>
@@ -862,7 +862,7 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">TradingView Performance</h4>
+              <h4 class="heading-card">TradingView Performance</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export performance data from TradingView. Contains completed trades with calculated P&L.
               </p>
@@ -882,10 +882,10 @@
 
       <!-- Logs Modal -->
       <div v-if="showLogs" class="modal-overlay flex items-center justify-center">
-        <div class="modal-panel w-11/12 max-w-4xl h-3/4 flex flex-col">
+        <div role="dialog" aria-modal="true" class="modal-panel w-11/12 max-w-4xl h-3/4 flex flex-col">
           <!-- Header -->
           <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-            <h3 class="heading-card">Import Logs</h3>
+            <h3 class="modal-title">Import Logs</h3>
             <button @click="showLogs = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
               <XMarkIcon class="h-6 w-6" />
             </button>
@@ -922,7 +922,7 @@
                     v-for="logFile in logFiles"
                     :key="logFile.name"
                     @click="loadLogFile(logFile.name)"
-                    class="w-full text-left p-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                    class="btn-secondary w-full"
                     :class="{ 'bg-primary-50 dark:bg-primary-900/20': selectedLogFile === logFile.name }"
                   >
                     {{ logFile.name }}
@@ -932,7 +932,7 @@
                   <div v-if="logFilesPagination.hasMore" class="text-center pt-2">
                     <button
                       @click="loadMoreLogFiles"
-                      class="btn-secondary text-sm"
+                      class="btn-secondary"
                     >
                       Load More ({{ logFilesPagination.total - logFiles.length }} remaining)
                     </button>
@@ -956,7 +956,7 @@
                         Showing {{ Math.min(logPagination.page * logPagination.limit, logPagination.total) }} of {{ logPagination.total }} lines
                         <span v-if="logSearchQuery">(filtered)</span>
                       </span>
-                      <span v-if="!logPagination.showAll && logPagination.filteredOut > 0" class="text-xs text-primary-600 dark:text-primary-400">
+                      <span v-if="!logPagination.showAll && logPagination.filteredOut > 0" class="text-xs text-primary-700 dark:text-primary-400">
                         (Last 24 hours)
                       </span>
                     </div>
@@ -1002,7 +1002,7 @@
                     <div class="text-center">
                       <MagnifyingGlassIcon class="h-12 w-12 mx-auto mb-3 opacity-50" />
                       <p class="text-sm">No results found for "{{ logSearchQuery }}"</p>
-                      <button @click="clearSearch" class="mt-2 text-xs text-primary-600 dark:text-primary-400 hover:underline">
+                      <button @click="clearSearch" class="mt-2 text-xs text-primary-700 dark:text-primary-400 hover:underline">
                         Clear search
                       </button>
                     </div>
@@ -1013,7 +1013,7 @@
                 <div v-if="logPagination.hasMore" class="text-center mt-4">
                   <button
                     @click="loadMoreLogs"
-                    class="btn-secondary text-sm"
+                    class="btn-secondary"
                   >
                     Load More ({{ logPagination.total - (logPagination.page * logPagination.limit) }} lines remaining)
                   </button>
@@ -1134,7 +1134,7 @@
   >
     <div class="flex flex-col items-center text-center">
       <div class="flex h-12 w-12 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/40">
-        <svg class="h-6 w-6 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <svg class="h-6 w-6 text-primary-700 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </div>

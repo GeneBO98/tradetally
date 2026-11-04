@@ -9,7 +9,7 @@
         <div class="flex-1 min-w-0">
           <!-- Step indicator -->
           <div v-if="step && totalSteps" class="flex items-center gap-3 mb-2">
-            <span class="text-xs font-medium text-primary-600 dark:text-primary-400">
+            <span class="text-xs font-medium text-primary-700 dark:text-primary-400">
               Step {{ step }} of {{ totalSteps }}
             </span>
             <div class="flex-1 max-w-[200px] h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -20,7 +20,7 @@
             </div>
           </div>
 
-          <h2 id="onboarding-card-title" class="text-base font-semibold text-gray-900 dark:text-white">
+          <h2 id="onboarding-card-title" class="heading-card">
             {{ title }}
           </h2>
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -54,7 +54,7 @@
         </div>
         <button
           type="button"
-          class="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          class="btn-icon p-1"
           aria-label="Dismiss"
           @click="handleSkip"
         >

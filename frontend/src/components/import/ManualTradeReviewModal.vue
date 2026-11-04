@@ -8,7 +8,7 @@
       <div class="modal-panel inline-block w-full max-w-4xl transform overflow-hidden px-4 pb-4 pt-5 text-left align-bottom transition-all sm:my-8 sm:p-6 sm:align-middle">
         <div class="flex items-start justify-between gap-4">
           <div>
-            <h3 id="manual-review-title" class="heading-card">
+            <h3 id="manual-review-title" class="modal-title">
               Review sell-only executions
             </h3>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -76,7 +76,7 @@
                 <label class="flex cursor-pointer rounded-md border p-2 text-sm" :class="optionClass(item, index, 'import_as_short')">
                   <input
                     v-model="decisions[reviewKey(item, index)]"
-                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
                     type="radio"
                     value="import_as_short"
                   >
@@ -89,7 +89,7 @@
                 <label class="flex cursor-pointer rounded-md border p-2 text-sm" :class="optionClass(item, index, 'import_as_close_only')">
                   <input
                     v-model="decisions[reviewKey(item, index)]"
-                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
                     type="radio"
                     value="import_as_close_only"
                   >
@@ -102,7 +102,7 @@
                 <label class="flex cursor-pointer rounded-md border p-2 text-sm" :class="optionClass(item, index, 'import_as_gifted_shares')">
                   <input
                     v-model="decisions[reviewKey(item, index)]"
-                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
                     type="radio"
                     value="import_as_gifted_shares"
                   >
@@ -115,7 +115,7 @@
                 <label class="flex cursor-pointer rounded-md border p-2 text-sm" :class="optionClass(item, index, 'ignore')">
                   <input
                     v-model="decisions[reviewKey(item, index)]"
-                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                    class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
                     type="radio"
                     value="ignore"
                   >

@@ -78,7 +78,7 @@
                                         type="checkbox"
                                         :checked="selectedStrategies.length === 0"
                                         @change="selectedStrategies = []"
-                                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                                     />
                                     <span
                                         class="ml-3 text-sm text-gray-900 dark:text-white"
@@ -102,7 +102,7 @@
                                             type="checkbox"
                                             :value="strategy"
                                             v-model="selectedStrategies"
-                                            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                                            class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                                         />
                                         <span
                                             class="ml-3 text-sm text-gray-900 dark:text-white"
@@ -128,7 +128,7 @@
                     <button
                         type="button"
                         @click="clearFilters"
-                        class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                        class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
                     >
                         Clear filters
                     </button>
@@ -143,7 +143,7 @@
             ></div>
         </div>
 
-        <div v-else-if="error" class="card p-8 text-center">
+        <div v-else-if="error" class="card card-body text-center">
             <p class="text-danger mb-4">{{ error }}</p>
             <button @click="loadMonthlyData" class="btn-primary">Retry</button>
         </div>
@@ -167,7 +167,7 @@
             <div class="card">
                 <div class="card-body">
                     <h2
-                        class="text-xl font-semibold text-gray-900 dark:text-white mb-6"
+                        class="heading-section mb-6"
                     >
                         {{ selectedYear }} Year Summary
                     </h2>
@@ -292,7 +292,7 @@
                 <div class="card-body">
                     <div class="flex items-center justify-between mb-6">
                         <h2
-                            class="text-xl font-semibold text-gray-900 dark:text-white"
+                            class="heading-section"
                         >
                             Month-by-Month Breakdown
                         </h2>
@@ -301,7 +301,7 @@
                             class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
                             :class="
                                 showRValue
-                                    ? 'bg-primary-600 text-white hover:bg-primary-700'
+                                    ? 'bg-primary-700 text-white hover:bg-primary-800'
                                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
                             "
                             :title="showRValue ? 'Showing R-multiples (dollar columns hidden)' : 'Show R-multiples and hide dollar columns'"
@@ -316,71 +316,71 @@
                             <thead class="table-head">
                                 <tr>
                                     <th
-                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-left table-th"
                                     >
                                         Month
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-center table-th"
                                     >
                                         Trades
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-center table-th"
                                     >
                                         Wins
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-center table-th"
                                     >
                                         Losses
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-center table-th"
                                     >
                                         Breakeven
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-center table-th"
                                     >
                                         Win Rate
                                     </th>
                                     <th
                                         v-if="!showRValue"
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Total P&L
                                     </th>
                                     <th
                                         v-if="!showRValue"
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Avg P&L
                                     </th>
                                     <th
                                         v-if="!showRValue"
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Avg Win
                                     </th>
                                     <th
                                         v-if="!showRValue"
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-right table-th"
                                     >
                                         Avg Loss
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-center table-th"
                                     >
                                         Avg R
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-center table-th"
                                     >
                                         Total R
                                     </th>
                                     <th
-                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-6 py-3 text-center table-th"
                                     >
                                         Days
                                     </th>
@@ -415,7 +415,7 @@
                                     >
                                         <span
                                             v-if="month.trades.wins > 0"
-                                            class="badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                            class="badge-success"
                                         >
                                             {{ month.trades.wins }}
                                         </span>
@@ -428,7 +428,7 @@
                                     >
                                         <span
                                             v-if="month.trades.losses > 0"
-                                            class="badge bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                                            class="badge-danger"
                                         >
                                             {{ month.trades.losses }}
                                         </span>
@@ -441,7 +441,7 @@
                                     >
                                         <span
                                             v-if="month.trades.breakeven > 0"
-                                            class="badge bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                                            class="badge-neutral"
                                         >
                                             {{ month.trades.breakeven }}
                                         </span>
@@ -457,7 +457,7 @@
                                             class="flex flex-col items-center"
                                         >
                                             <span
-                                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold"
+                                                class="badge"
                                                 :class="
                                                     getWinRateBadgeClass(
                                                         month.metrics.winRate,
@@ -472,7 +472,7 @@
                                             </span>
                                             <span
                                                 v-if="month.trades.breakeven > 0"
-                                                class="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400"
+                                                class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
                                             >
                                                 {{
                                                     formatPercentage(
@@ -546,7 +546,7 @@
                                         }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-primary-600"
+                                        class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-primary-700"
                                     >
                                         {{
                                             month.metrics.avgRValue !== 0
@@ -582,7 +582,7 @@
                                     >
                                         <span
                                             v-if="month.metrics.tradingDays > 0"
-                                            class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
+                                            class="badge-primary"
                                         >
                                             {{ month.metrics.tradingDays }}
                                         </span>
@@ -611,7 +611,7 @@
                                 class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
                                 :class="
                                     showRValue
-                                        ? 'bg-primary-600 text-white hover:bg-primary-700'
+                                        ? 'bg-primary-700 text-white hover:bg-primary-800'
                                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
                                 "
                             >
@@ -634,7 +634,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h3
-                            class="text-lg font-semibold text-gray-900 dark:text-white mb-4"
+                            class="heading-card mb-4"
                         >
                             Win Rate by Month
                         </h3>
@@ -990,8 +990,8 @@ const createWinRateChart = () => {
                 {
                     label: "Win Rate %",
                     data,
-                    borderColor: "rgb(59, 130, 246)",
-                    backgroundColor: "rgba(59, 130, 246, 0.1)",
+                    borderColor: "rgb(240, 129, 42)", // primary-500
+                    backgroundColor: "rgba(240, 129, 42, 0.1)",
                     borderWidth: 2,
                     tension: 0.3,
                     fill: true,

@@ -79,7 +79,7 @@
           <component
             :is="item.icon"
             class="h-5 w-5 shrink-0 transition-colors"
-            :class="isItemActive(item) ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 group-hover/nav:text-gray-600 dark:text-gray-500 dark:group-hover/nav:text-gray-300'"
+            :class="isItemActive(item) ? 'text-primary-700 dark:text-primary-400' : 'text-gray-400 group-hover/nav:text-gray-600 dark:text-gray-500 dark:group-hover/nav:text-gray-300'"
           />
           <span v-if="!isCollapsed" class="flex-1">{{ item.name }}</span>
           <span
@@ -108,7 +108,7 @@
             <component
               :is="item.icon"
               class="h-5 w-5 shrink-0 transition-colors"
-              :class="isGroupActive(item) ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 group-hover/nav:text-gray-600 dark:text-gray-500 dark:group-hover/nav:text-gray-300'"
+              :class="isGroupActive(item) ? 'text-primary-700 dark:text-primary-400' : 'text-gray-400 group-hover/nav:text-gray-600 dark:text-gray-500 dark:group-hover/nav:text-gray-300'"
             />
             <span v-if="!isCollapsed" class="flex-1 text-left">{{ item.name }}</span>
             <ChevronRightIcon
@@ -169,12 +169,12 @@
       <router-link
         to="/pricing"
         @click="closeDrawer"
-        class="upgrade-card group relative block overflow-hidden rounded-xl bg-gradient-to-br from-primary-50 to-primary-100 p-3 ring-1 ring-primary-200/80 transition-all hover:ring-primary-300 dark:from-primary-950/40 dark:to-primary-900/20 dark:ring-primary-900/40 dark:hover:ring-primary-800/60"
+        class="upgrade-card group relative block overflow-hidden rounded-lg bg-gradient-to-br from-primary-50 to-primary-100 p-3 ring-1 ring-primary-200/80 transition-all hover:ring-primary-300 dark:from-primary-950/40 dark:to-primary-900/20 dark:ring-primary-900/40 dark:hover:ring-primary-800/60"
       >
         <div class="relative">
           <div class="flex items-start justify-between gap-2">
             <div class="min-w-0 flex-1">
-              <div class="text-[10px] font-semibold uppercase tracking-wide text-primary-600 dark:text-primary-400">
+              <div class="text-[10px] font-semibold uppercase tracking-wide text-primary-700 dark:text-primary-400">
                 Free Plan
               </div>
               <div class="mt-1 text-xs font-semibold text-gray-900 dark:text-white">
@@ -185,10 +185,10 @@
               </div>
             </div>
             <div class="shrink-0 rounded-md bg-white/60 p-1 ring-1 ring-primary-200 dark:bg-gray-900/40 dark:ring-primary-900/40">
-              <ArrowUpRightIcon class="h-3.5 w-3.5 text-primary-600 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 dark:text-primary-400" />
+              <ArrowUpRightIcon class="h-3.5 w-3.5 text-primary-700 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 dark:text-primary-400" />
             </div>
           </div>
-          <div class="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-primary-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors group-hover:bg-primary-700">
+          <div class="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-primary-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors group-hover:bg-primary-800">
             Upgrade
           </div>
         </div>
@@ -244,7 +244,7 @@
       >
         <div
           v-if="userMenuOpen"
-          class="user-popover absolute bottom-full left-2 right-2 z-50 mb-2 origin-bottom-left overflow-hidden rounded-xl bg-white/95 shadow-2xl ring-1 ring-gray-200/80 backdrop-blur-xl lg:left-3 lg:right-auto lg:w-72 dark:bg-gray-900/95 dark:ring-gray-700/60"
+          class="user-popover absolute bottom-full left-2 right-2 z-50 mb-2 origin-bottom-left popover overflow-hidden lg:left-3 lg:right-auto lg:w-72 dark:bg-gray-900/95 dark:ring-gray-700/60"
         >
           <!-- Header -->
           <div class="px-5 pt-4 pb-4">
@@ -368,7 +368,7 @@
     >
       <Cog6ToothIcon
         class="h-5 w-5 shrink-0 transition-colors"
-        :class="$route.name === 'settings' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 group-hover/nav:text-gray-600 dark:text-gray-500 dark:group-hover/nav:text-gray-300'"
+        :class="$route.name === 'settings' ? 'text-primary-700 dark:text-primary-400' : 'text-gray-400 group-hover/nav:text-gray-600 dark:text-gray-500 dark:group-hover/nav:text-gray-300'"
       />
       <span v-if="!isCollapsed" class="flex-1">Settings</span>
     </router-link>
@@ -399,7 +399,7 @@
       <NotificationBell placement="top-left" />
       <button
         @click="toggleDarkMode"
-        class="rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+        class="btn-icon p-2"
         :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
         :title="isDark ? 'Light mode' : 'Dark mode'"
       >

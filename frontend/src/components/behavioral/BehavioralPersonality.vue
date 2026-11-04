@@ -61,7 +61,7 @@
                             </svg>
                         </div>
                         <h4
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-2"
+                            class="heading-card mb-2"
                         >
                             No Trading Personality Profile Yet
                         </h4>
@@ -161,7 +161,7 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-700 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -198,7 +198,7 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-700 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -237,7 +237,7 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-700 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -274,7 +274,7 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-700 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -311,7 +311,7 @@
                                         }}%
                                     </p>
                                     <p
-                                        class="text-xs text-primary-600 dark:text-primary-400 mt-1 flex items-center justify-center"
+                                        class="text-xs text-primary-700 dark:text-primary-400 mt-1 flex items-center justify-center"
                                     >
                                         <MdiIcon
                                             :icon="mdiChartBox"
@@ -447,7 +447,7 @@
                                         }}th
                                     </p>
                                     <p
-                                        class="text-xs text-primary-600 dark:text-primary-400"
+                                        class="text-xs text-primary-700 dark:text-primary-400"
                                     >
                                         {{
                                             personalityData.peerComparison
@@ -473,7 +473,7 @@
                                         }}
                                     </p>
                                     <p
-                                        class="text-xs text-primary-600 dark:text-primary-400"
+                                        class="text-xs text-primary-700 dark:text-primary-400"
                                     >
                                         vs
                                         {{
@@ -500,7 +500,7 @@
                                         }}
                                     </p>
                                     <p
-                                        class="text-xs text-primary-600 dark:text-primary-400"
+                                        class="text-xs text-primary-700 dark:text-primary-400"
                                     >
                                         Elite performers
                                     </p>
@@ -535,7 +535,7 @@
                                             }}m</span
                                         >
                                         <span class="text-gray-500">vs</span>
-                                        <span class="text-green-600 dark:text-green-400 font-medium"
+                                        <span class="text-green-700 dark:text-green-400 font-medium"
                                             >{{
                                                 personalityData.peerComparison
                                                     .behaviorComparison
@@ -569,7 +569,7 @@
                                             }}/d</span
                                         >
                                         <span class="text-gray-500">vs</span>
-                                        <span class="text-green-600 dark:text-green-400 font-medium"
+                                        <span class="text-green-700 dark:text-green-400 font-medium"
                                             >{{
                                                 personalityData.peerComparison
                                                     .behaviorComparison
@@ -600,7 +600,7 @@
                                         }}</span>
                                         <span class="text-gray-500">vs</span>
                                         <span
-                                            class="text-green-600 dark:text-green-400 font-medium"
+                                            class="text-green-700 dark:text-green-400 font-medium"
                                             >{{
                                                 personalityData.peerComparison
                                                     .behaviorComparison
@@ -753,7 +753,7 @@
                                         <p
                                             class="font-medium"
                                             :class="{
-                                                'text-green-600 dark:text-green-400':
+                                                'text-green-700 dark:text-green-400':
                                                     personalityData
                                                         .driftAnalysis
                                                         .performanceImpact < 0,

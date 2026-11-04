@@ -49,9 +49,9 @@
                 <div class="flex items-start justify-between gap-4">
                   <div>
                     <div class="flex items-center gap-2">
-                      <h3 class="font-semibold text-gray-900 dark:text-white">{{ playbook.name }}</h3>
+                      <h3 class="heading-card">{{ playbook.name }}</h3>
                       <span
-                        class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+                        class="badge"
                         :class="playbook.isActive
                           ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
                           : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'"
@@ -101,7 +101,7 @@
           <div class="card-body">
             <div class="flex items-center justify-between mb-4">
               <h2 class="heading-card">Adherence Analytics</h2>
-              <router-link to="/trades" class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400">
+              <router-link to="/trades" class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400">
                 Review trades
               </router-link>
             </div>
@@ -129,7 +129,7 @@
 
             <div v-if="analytics.playbooks.length > 0" class="mt-6 overflow-x-auto">
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead>
+                <thead class="table-head">
                   <tr class="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     <th class="py-3 pr-4">Profile</th>
                     <th class="py-3 pr-4">Reviewed</th>
@@ -153,7 +153,7 @@
             </div>
 
             <div v-if="analytics.recentTrades.length > 0" class="mt-6">
-              <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Recent Reviews</h3>
+              <h3 class="heading-sub mb-3">Recent Reviews</h3>
               <div class="space-y-3">
                 <div
                   v-for="review in analytics.recentTrades"
@@ -168,7 +168,7 @@
                   </div>
                   <div class="text-right">
                     <div class="font-semibold text-gray-900 dark:text-white">{{ Number(review.adherence_score || 0).toFixed(2) }}</div>
-                    <div :class="review.followed_plan ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                    <div :class="review.followed_plan ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                       {{ review.followed_plan ? 'Followed plan' : 'Broke plan' }}
                     </div>
                   </div>
@@ -224,7 +224,7 @@
                       ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
                       : 'border-gray-200 dark:border-gray-700'"
                   >
-                    <input v-model="form.reviewMode" value="checklist" type="radio" class="mt-1 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500" />
+                    <input v-model="form.reviewMode" value="checklist" type="radio" class="mt-1 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500" />
                     <span>
                       <span class="block text-sm font-medium text-gray-900 dark:text-white">Checklist</span>
                       <span class="block text-xs text-gray-500 dark:text-gray-400">Pass/fail items weighted into adherence.</span>
@@ -236,7 +236,7 @@
                       ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
                       : 'border-gray-200 dark:border-gray-700'"
                   >
-                    <input v-model="form.reviewMode" value="score" type="radio" class="mt-1 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500" />
+                    <input v-model="form.reviewMode" value="score" type="radio" class="mt-1 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500" />
                     <span>
                       <span class="block text-sm font-medium text-gray-900 dark:text-white">0-5 Grading</span>
                       <span class="block text-xs text-gray-500 dark:text-gray-400">Self-score each criterion, then apply hard-rule penalties.</span>
@@ -322,7 +322,7 @@
                   <span
                     v-for="tag in selectedTags"
                     :key="tag"
-                    class="badge bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
+                    class="badge-primary"
                   >
                     {{ tag }}
                     <button
@@ -355,11 +355,11 @@
                 </div>
               </div>
               <label class="inline-flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 md:col-span-2">
-                <input v-model="form.requireStopLoss" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                <input v-model="form.requireStopLoss" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500" />
                 <span class="text-sm text-gray-700 dark:text-gray-300">Require stop loss for a passing review</span>
               </label>
               <label class="inline-flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 md:col-span-2">
-                <input v-model="form.autoAssignEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                <input v-model="form.autoAssignEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500" />
                 <span>
                   <span class="block text-sm text-gray-700 dark:text-gray-300">Auto-suggest for matching trades</span>
                   <span class="block text-xs text-gray-500 dark:text-gray-400">Uses configured strategy, setup, side, timeframe, or tag rules on unreviewed trades.</span>
@@ -370,14 +370,14 @@
             <div>
               <div class="flex items-center justify-between mb-3">
                 <div>
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ form.reviewMode === 'score' ? 'Grading Criteria' : 'Checklist' }}</h3>
+                  <h3 class="heading-sub">{{ form.reviewMode === 'score' ? 'Grading Criteria' : 'Checklist' }}</h3>
                   <p class="text-xs text-gray-500 dark:text-gray-400">
                     {{ form.reviewMode === 'score'
                       ? 'Each criterion is graded from 0 to 5 before hard-rule penalties are applied.'
                       : 'These items are scored directly before hard-rule penalties are applied.' }}
                   </p>
                 </div>
-                <button type="button" @click="addChecklistItem" class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400">
+                <button type="button" @click="addChecklistItem" class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400">
                   Add {{ form.reviewMode === 'score' ? 'criterion' : 'item' }}
                 </button>
               </div>
@@ -398,7 +398,7 @@
                       <input v-model.number="item.weight" type="number" min="0.25" step="0.25" class="input" required />
                     </div>
                     <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mt-6">
-                      <input v-model="item.isRequired" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                      <input v-model="item.isRequired" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500" />
                       Required
                     </label>
                     <div class="flex items-end justify-end">

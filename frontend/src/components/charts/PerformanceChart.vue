@@ -8,6 +8,9 @@
 import { ref, onMounted, watch } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import { format } from 'date-fns'
+import { useDarkMode } from '@/composables/useDarkMode'
+
+const { isDark: darkMode } = useDarkMode()
 
 const props = defineProps({
   data: {
@@ -58,7 +61,7 @@ function createChart() {
           data: dailyData,
           borderColor: '#F0812A',
           backgroundColor: 'rgba(240, 129, 42, 0.1)',
-          tension: 0.4,
+          pointRadius: labels.length > 60 ? 0 : 2,
           yAxisID: 'y'
         },
         {
@@ -66,7 +69,6 @@ function createChart() {
           data: cumulativeData,
           borderColor: '#10B981',
           backgroundColor: 'rgba(16, 185, 129, 0.1)',
-          tension: 0.4,
           yAxisID: 'y1'
         }
       ]
@@ -139,7 +141,7 @@ watch(() => props.rValueMode, () => {
   }
 })
 
-watch(() => document.documentElement.classList.contains('dark'), () => {
+watch(darkMode, () => {
   if (props.data.length > 0) {
     createChart()
   }

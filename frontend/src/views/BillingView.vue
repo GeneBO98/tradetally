@@ -26,7 +26,7 @@
                     </svg>
                 </div>
                 <h3
-                    class="text-lg font-medium text-gray-900 dark:text-white mb-2"
+                    class="heading-card mb-2"
                 >
                     Self-Hosted Instance
                 </h3>
@@ -75,7 +75,7 @@
                     >
                         <div>
                             <h4
-                                class="text-sm font-medium text-gray-900 dark:text-white mb-2"
+                                class="heading-sub mb-2"
                             >
                                 Plan Details
                             </h4>
@@ -102,7 +102,7 @@
 
                         <div>
                             <h4
-                                class="text-sm font-medium text-gray-900 dark:text-white mb-2"
+                                class="heading-sub mb-2"
                             >
                                 Billing Cycle
                             </h4>
@@ -164,7 +164,7 @@
                             </svg>
                         </div>
                         <h4
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-2"
+                            class="heading-card mb-2"
                         >
                             No Active Subscription
                         </h4>
@@ -183,7 +183,7 @@
             <div v-if="subscription.subscription" class="card">
                 <div class="card-body">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                        class="heading-card mb-6"
                     >
                         Manage Subscription
                     </h3>
@@ -331,8 +331,8 @@
             class="modal-overlay flex items-center justify-center"
             @click.self="closeCancelModal"
         >
-            <div class="modal-panel max-w-md w-full mx-4 p-6">
-                <h3 class="heading-card mb-2">
+            <div role="dialog" aria-modal="true" class="modal-panel max-w-md w-full mx-4 p-6">
+                <h3 class="modal-title mb-2">
                     Cancel Subscription
                 </h3>
                 <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">

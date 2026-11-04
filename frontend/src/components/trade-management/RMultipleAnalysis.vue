@@ -13,7 +13,7 @@
         <!-- Actual R -->
         <div class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 rounded-lg" :class="getActualRClass">
           <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">Actual R (Net)</div>
-          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate" :class="analysis.actual_r >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate" :class="analysis.actual_r >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
             {{ formatR(analysis.actual_r) }}
           </div>
           <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 truncate shrink-0">
@@ -27,7 +27,7 @@
             Target R (Net)
             <span v-if="showWeightedAverageHint" class="text-xs font-normal">(weighted avg)</span>
           </div>
-          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate text-primary-600 dark:text-primary-400">
+          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate text-primary-700 dark:text-primary-400">
             {{ formatR(effectiveTargetR) }}
           </div>
           <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 truncate shrink-0">
@@ -110,7 +110,7 @@
       <div class="p-4 rounded-lg" :class="getAssessmentClass">
         <div class="flex items-center">
           <div class="flex-shrink-0 mr-3">
-            <svg v-if="analysis.management_score.color === 'green'" class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg v-if="analysis.management_score.color === 'green'" class="w-6 h-6 text-green-700 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <svg v-else-if="analysis.management_score.color === 'yellow'" class="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -297,7 +297,7 @@ const getRLostTextClass = computed(() => {
   if (effectiveRLost.value === 0) {
     return 'text-yellow-600 dark:text-yellow-400'
   }
-  return 'text-green-600 dark:text-green-400'
+  return 'text-green-700 dark:text-green-400'
 })
 
 const getRLostDescription = computed(() => {
@@ -325,7 +325,7 @@ const getManagementRClass = computed(() => {
 const getManagementRTextClass = computed(() => {
   const mgmtR = props.analysis.management_r
   if (mgmtR > 0) {
-    return 'text-green-600 dark:text-green-400'
+    return 'text-green-700 dark:text-green-400'
   }
   // 0 or negative gets yellow/orange text
   return 'text-yellow-600 dark:text-yellow-400'

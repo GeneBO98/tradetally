@@ -95,14 +95,14 @@ function renderChart() {
             beginAtZero: false,
             grid: { color: 'rgba(156, 163, 175, 0.08)' },
             ticks: {
-              font: { family: 'ui-monospace, SFMono-Regular, Menlo, monospace', size: 10 },
+              font: { size: 11 },
               callback: v => props.currencySymbol + Number(v).toLocaleString()
             }
           },
           x: {
             grid: { display: false },
             ticks: {
-              font: { family: 'ui-monospace, SFMono-Regular, Menlo, monospace', size: 10 },
+              font: { size: 11 },
               maxRotation: 0,
               autoSkipPadding: 24
             }

@@ -13,7 +13,7 @@
           </div>
 
           <div class="mt-3 text-center sm:mt-5">
-            <h3 class="heading-card" id="modal-title">
+            <h3 class="modal-title" id="modal-title">
               Broker Format Mismatch
             </h3>
             <div class="mt-2">
@@ -32,7 +32,7 @@
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Detected Format</p>
-                <p class="mt-1 text-sm font-medium text-primary-600 dark:text-primary-400">{{ formatBrokerName(detectedBroker) }}</p>
+                <p class="mt-1 text-sm font-medium text-primary-700 dark:text-primary-400">{{ formatBrokerName(detectedBroker) }}</p>
               </div>
             </div>
           </div>

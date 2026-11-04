@@ -13,7 +13,7 @@
           <div v-if="entry?.market_bias" class="ml-3 flex items-center">
             <span class="text-sm text-gray-500 dark:text-gray-400 mr-2">Market Bias:</span>
             <span 
-              class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
+              class="badge"
               :class="marketBiasClasses(entry.market_bias)"
             >
               <component :is="marketBiasIcon(entry.market_bias)" class="w-3 h-3 mr-1" />
@@ -26,7 +26,7 @@
           <button
             v-if="entry"
             @click="createFullEntry"
-            class="btn-primary text-sm"
+            class="btn-primary"
           >
             <PlusIcon class="w-4 h-4 mr-1" />
             New Entry
@@ -34,7 +34,7 @@
           <button
             v-if="entry"
             @click="editEntry"
-            class="btn-secondary text-sm"
+            class="btn-secondary"
           >
             <PencilIcon class="w-4 h-4 mr-1" />
             Edit
@@ -42,7 +42,7 @@
           
           <router-link
             to="/diary"
-            class="text-sm text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
+            class="text-sm text-primary-700 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
           >
             View All →
           </router-link>
@@ -66,7 +66,7 @@
         </p>
         <!-- Title -->
         <div v-if="entry.title" class="border-l-4 border-primary-500 pl-3">
-          <h4 class="font-medium text-gray-900 dark:text-white">{{ entry.title }}</h4>
+          <h4 class="heading-card">{{ entry.title }}</h4>
         </div>
 
         <!-- Content (split into cards if appended) -->
@@ -92,7 +92,7 @@
           <button
             v-if="!expanded && entry.content.length > 200"
             @click="expanded = true"
-            class="text-primary-600 hover:text-primary-900 dark:text-primary-400 text-sm mt-2"
+            class="text-primary-700 hover:text-primary-900 dark:text-primary-400 text-sm mt-2"
           >
             Show more...
           </button>
@@ -111,7 +111,7 @@
             <span
               v-for="symbol in entry.watchlist"
               :key="symbol"
-              class="badge bg-primary-100 dark:bg-primary-800 text-primary-800 dark:text-primary-200"
+              class="badge-primary"
             >
               {{ symbol }}
             </span>
@@ -123,7 +123,7 @@
           <span
             v-for="tag in entry.tags"
             :key="tag"
-            class="badge bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
+            class="badge-neutral"
           >
             #{{ tag }}
           </span>
@@ -134,7 +134,7 @@
           <div class="flex items-center text-sm">
             <span class="text-gray-500 dark:text-gray-400 mr-2">Followed Plan:</span>
             <span 
-              :class="entry.followed_plan ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+              :class="entry.followed_plan ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
               class="font-medium"
             >
               {{ entry.followed_plan ? 'Yes' : 'No' }}
@@ -198,7 +198,7 @@
               <textarea
                 v-model="quickEntry.content"
                 rows="3"
-                class="input text-sm"
+                class="input input-sm"
                 placeholder="What's your plan for today?"
               ></textarea>
             </div>
@@ -207,13 +207,13 @@
               <button
                 type="button"
                 @click="cancelQuickEntry"
-                class="btn-secondary text-sm"
+                class="btn-secondary"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                class="btn-primary text-sm"
+                class="btn-primary"
                 :disabled="saving"
               >
                 {{ saving ? 'Saving...' : 'Save Entry' }}

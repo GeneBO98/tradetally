@@ -2,7 +2,7 @@
   <div class="card p-4">
     <!-- Header -->
     <div class="flex items-center justify-between mb-3">
-      <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+      <h4 class="heading-sub">
         Target Hit Analysis
       </h4>
       <div class="flex items-center space-x-2">
@@ -63,7 +63,7 @@
             <input
               :checked="target.status === 'hit'"
               type="checkbox"
-              class="rounded border-gray-300 text-green-600 dark:text-green-400 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-700"
+              class="rounded border-gray-300 text-green-700 dark:text-green-400 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-700"
               :disabled="saving"
               @change="toggleTarget('tp', index, $event.target.checked)"
             />
@@ -71,11 +71,11 @@
             <span class="text-sm text-gray-700 dark:text-gray-300">
               TP{{ index + 1 }} ({{ currencySymbol }}{{ formatPrice(target.price) }})
             </span>
-            <span v-if="target.rValue" class="text-xs text-primary-600 dark:text-primary-400 font-medium">
+            <span v-if="target.rValue" class="text-xs text-primary-700 dark:text-primary-400 font-medium">
               {{ target.rValue }}R
             </span>
           </label>
-          <span v-if="target.status === 'hit'" class="badge bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+          <span v-if="target.status === 'hit'" class="badge-success">
             Hit
           </span>
         </div>
@@ -98,7 +98,7 @@
               Stop Loss ({{ currencySymbol }}{{ formatPrice(trade.stop_loss) }})
             </span>
           </label>
-          <span v-if="slHit" class="badge bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+          <span v-if="slHit" class="badge-danger">
             Hit
           </span>
         </div>
@@ -166,7 +166,7 @@
       <div v-else-if="!analysis && !trade.manual_target_hit_first" class="text-center py-4">
         <button
           @click="runAnalysis"
-          class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+          class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
         >
           Analyze with API
         </button>
@@ -232,7 +232,7 @@
               <span class="text-sm text-gray-700 dark:text-gray-300">{{ tp.label }} ({{ currencySymbol }}{{ formatPrice(tp.price) }})</span>
             </div>
             <div class="text-right">
-              <span v-if="tp.was_crossed" class="text-xs text-green-600 dark:text-green-400">
+              <span v-if="tp.was_crossed" class="text-xs text-green-700 dark:text-green-400">
                 Reached
               </span>
               <span v-else class="text-xs text-gray-400 dark:text-gray-500">

@@ -45,7 +45,7 @@
                 This trade is private. Make it public to get a link anyone can open.
               </p>
             </div>
-            <button type="button" class="btn-secondary text-sm flex-shrink-0" :disabled="makingPublic" @click="makePublic">
+            <button type="button" class="btn-secondary flex-shrink-0" :disabled="makingPublic" @click="makePublic">
               {{ makingPublic ? 'Updating...' : 'Make public' }}
             </button>
           </div>
@@ -66,7 +66,7 @@
         <div v-if="showCopyMenu" class="fixed inset-0 z-10" @click="showCopyMenu = false"></div>
         <div
           v-if="showCopyMenu"
-          class="absolute bottom-full left-0 z-20 mb-2 w-48 overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+          class="popover absolute bottom-full left-0 z-20 mb-2 w-48 overflow-hidden"
         >
           <button
             type="button"

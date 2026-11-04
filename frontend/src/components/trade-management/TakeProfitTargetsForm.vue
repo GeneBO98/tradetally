@@ -2,14 +2,14 @@
   <div class="space-y-4">
     <!-- Header -->
     <div class="flex items-center justify-between">
-      <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+      <h4 class="heading-sub">
         Take Profit Targets
       </h4>
       <button
         v-if="targets.length < maxTargets"
         type="button"
         @click="addTarget"
-        class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 flex items-center"
+        class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 flex items-center"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -54,19 +54,19 @@
           <!-- Status Badge -->
           <span
             v-if="target.status === 'hit'"
-            class="badge bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+            class="badge-success"
           >
             Hit
           </span>
           <span
             v-else-if="target.status === 'cancelled'"
-            class="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
+            class="badge-neutral"
           >
             Cancelled
           </span>
           <span
             v-else
-            class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400"
+            class="badge-primary"
           >
             Pending
           </span>
@@ -98,7 +98,7 @@
               type="number"
               step="0.01"
               :placeholder="getTargetPlaceholder(index)"
-              class="w-full pl-6 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+              class="input input-sm w-full pl-6 pr-3"
               @input="validateTarget(index)"
             />
           </div>
@@ -118,7 +118,7 @@
             step="1"
             :placeholder="`${Math.floor(tradeQuantity / targets.length)}`"
             :max="tradeQuantity"
-            class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+            class="input input-sm w-full"
             @input="validateQuantities"
           />
         </div>
@@ -145,7 +145,7 @@
       </span>
       <span :class="[
         'font-medium',
-        quantityDifference === 0 ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'
+        quantityDifference === 0 ? 'text-green-700 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'
       ]">
         {{ totalAllocatedQuantity }} / {{ tradeQuantity }}
         <span v-if="quantityDifference !== 0" class="text-xs">
@@ -160,13 +160,13 @@
       <div class="space-y-1">
         <div v-for="(target, index) in targets" :key="target.id" class="flex justify-between text-sm">
           <span class="text-gray-600 dark:text-gray-400">TP{{ index + 1 }} ({{ formatCurrency(target.price) }}):</span>
-          <span class="font-medium text-primary-600 dark:text-primary-400">
+          <span class="font-medium text-primary-700 dark:text-primary-400">
             {{ calculateTargetR(target.price) }}R
           </span>
         </div>
         <div v-if="targets.length > 1" class="flex justify-between text-sm pt-2 border-t border-primary-200 dark:border-primary-700 mt-2">
           <span class="text-gray-700 dark:text-gray-300 font-medium">Weighted Avg:</span>
-          <span class="font-bold text-primary-600 dark:text-primary-400">
+          <span class="font-bold text-primary-700 dark:text-primary-400">
             {{ calculateWeightedR() }}R
           </span>
         </div>

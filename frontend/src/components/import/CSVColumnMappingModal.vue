@@ -18,7 +18,7 @@
         </div>
 
         <div class="pr-8">
-          <h3 class="heading-card" id="modal-title">
+          <h3 class="modal-title" id="modal-title">
             Match your CSV columns
           </h3>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -29,7 +29,7 @@
         <form @submit.prevent="saveMapping" class="mt-5 space-y-4">
           <!-- Column mapper table -->
           <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
-            <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)] gap-3 bg-gray-50 dark:bg-gray-900/40 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)] gap-3 bg-gray-50 dark:bg-gray-900/40 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
               <div>Your column</div>
               <div>Sample value</div>
               <div>TradeTally field</div>
@@ -122,7 +122,7 @@
                   id="hasHeaderRow"
                   v-model="mappingForm.has_header_row"
                   type="checkbox"
-                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                 />
                 <label for="hasHeaderRow" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
                   First row contains column headers
@@ -153,7 +153,7 @@
             Not sure?
             <a
               :href="supportMailtoLink"
-              class="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400"
+              class="font-medium text-primary-700 hover:text-primary-500 dark:text-primary-400"
               @click="$emit('support-clicked', { source: 'mapping_modal', detectedBroker: selectedBroker, headerCount: csvHeaders.length })"
             >
               Send us the headers
@@ -602,18 +602,26 @@ async function saveMapping() {
 .row-select {
   display: block;
   width: 100%;
-  padding: 0.375rem 0.625rem;
-  font-size: 0.8125rem;
+  /* Mirrors .input.input-sm: 16px on phones (no iOS zoom), 14px from sm up. */
+  padding: 0.25rem 0.5rem;
+  min-height: 32px;
+  font-size: 16px;
   line-height: 1.25rem;
   background-color: white;
   border: 1px solid rgb(209 213 219);
   border-radius: 0.375rem;
 }
 
+@media (min-width: 640px) {
+  .row-select {
+    font-size: 0.875rem;
+  }
+}
+
 .row-select:focus {
   outline: none;
-  border-color: rgb(240 129 42);
-  box-shadow: 0 0 0 2px rgba(240, 129, 42, 0.2);
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary-500) 25%, transparent);
 }
 
 .dark .row-select {

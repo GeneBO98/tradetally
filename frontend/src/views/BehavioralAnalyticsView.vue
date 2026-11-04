@@ -279,7 +279,7 @@
                                     class="h-8 w-8 rounded-full bg-primary-100 dark:bg-primary-900/20 flex items-center justify-center"
                                 >
                                     <svg
-                                        class="h-5 w-5 text-primary-600 dark:text-primary-400"
+                                        class="h-5 w-5 text-primary-700 dark:text-primary-400"
                                         fill="none"
                                         viewBox="0 0 24 24"
                                         stroke="currentColor"
@@ -347,7 +347,7 @@
                                     <svg
                                         class="h-5 w-5"
                                         :class="{
-                                            'text-green-600 dark:text-green-400':
+                                            'text-green-700 dark:text-green-400':
                                                 parseFloat(
                                                     revengeAnalysis?.statistics
                                                         ?.total_additional_loss ||
@@ -409,7 +409,7 @@
                                     <dd
                                         class="text-lg font-medium"
                                         :class="{
-                                            'text-green-600 dark:text-green-400':
+                                            'text-green-700 dark:text-green-400':
                                                 parseFloat(
                                                     revengeAnalysis?.statistics
                                                         ?.total_additional_loss ||
@@ -493,7 +493,7 @@
             <div v-if="activeBehavioralTab === 'overview' && insights" class="card">
                 <div class="card-body">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                        class="heading-card mb-6"
                     >
                         Behavioral Insights
                     </h3>
@@ -543,7 +543,7 @@
                                 class="rounded-md border border-gray-200 dark:border-gray-700 px-3 py-2"
                             >
                                 <p
-                                    class="text-[11px] text-gray-500 dark:text-gray-400"
+                                    class="text-xs text-gray-500 dark:text-gray-400"
                                 >
                                     {{ component.label }}
                                 </p>
@@ -572,7 +572,7 @@
                             }"
                         >
                             <h4
-                                class="font-medium text-gray-900 dark:text-white"
+                                class="heading-card"
                             >
                                 {{ insight.title }}
                             </h4>
@@ -597,7 +597,7 @@
                     <!-- Recommendations -->
                     <div v-if="insights.recommendations?.length" class="mt-6">
                         <h4
-                            class="font-medium text-gray-900 dark:text-white mb-3"
+                            class="heading-card mb-3"
                         >
                             Recommended Actions
                         </h4>
@@ -651,14 +651,14 @@
             <div v-if="activeBehavioralTab === 'settings'" class="card">
                 <div class="card-body">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                        class="heading-card mb-4"
                     >
                         Risk Level Legend
                     </h3>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div class="flex items-center space-x-3">
                             <span
-                                class="badge bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400"
+                                class="badge-danger"
                             >
                                 HIGH RISK
                             </span>
@@ -671,7 +671,7 @@
                         </div>
                         <div class="flex items-center space-x-3">
                             <span
-                                class="badge bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
+                                class="badge-warning"
                             >
                                 MEDIUM RISK
                             </span>
@@ -684,7 +684,7 @@
                         </div>
                         <div class="flex items-center space-x-3">
                             <span
-                                class="badge bg-primary-100 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400"
+                                class="badge-primary"
                             >
                                 LOW RISK
                             </span>
@@ -942,7 +942,7 @@
                             class="space-y-4"
                         >
                             <h4
-                                class="text-lg font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center"
+                                class="heading-card mb-4 flex items-center"
                             >
                                 <MdiIcon
                                     :icon="mdiTarget"
@@ -1037,7 +1037,7 @@
                                             missed opportunity
                                         </p>
                                         <p
-                                            class="text-sm font-medium text-green-600 dark:text-green-400"
+                                            class="text-sm font-medium text-green-700 dark:text-green-400"
                                         >
                                             +${{
                                                 (
@@ -1089,7 +1089,7 @@
                                             Actual Profit
                                         </p>
                                         <p
-                                            class="font-medium text-green-600 dark:text-green-400"
+                                            class="font-medium text-green-700 dark:text-green-400"
                                         >
                                             ${{
                                                 (
@@ -1225,7 +1225,7 @@
                                         class="flex items-start space-x-2 mb-2"
                                     >
                                         <svg
-                                            class="w-5 h-5 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0"
+                                            class="w-5 h-5 text-primary-700 dark:text-primary-400 mt-0.5 flex-shrink-0"
                                             fill="none"
                                             viewBox="0 0 24 24"
                                             stroke="currentColor"
@@ -1262,7 +1262,7 @@
                                                         }}
                                                     </p>
                                                     <p
-                                                        class="text-xs text-primary-600 dark:text-primary-500"
+                                                        class="text-xs text-primary-700 dark:text-primary-500"
                                                     >
                                                         {{
                                                             trade.entryAnalysis
@@ -1287,7 +1287,7 @@
                                                         }}%
                                                     </p>
                                                     <p
-                                                        class="text-xs text-primary-600 dark:text-primary-500"
+                                                        class="text-xs text-primary-700 dark:text-primary-500"
                                                     >
                                                         ${{
                                                             trade.entryAnalysis.improvementDollar.toFixed(
@@ -1318,7 +1318,7 @@
                                                         }}
                                                     </p>
                                                     <p
-                                                        class="text-xs text-green-600 dark:text-green-500"
+                                                        class="text-xs text-green-700 dark:text-green-500"
                                                     >
                                                         +${{
                                                             trade.entryAnalysis.improvedPnL.improvement.toFixed(
@@ -1389,7 +1389,7 @@
                                 >
                                     <div class="flex items-start space-x-2">
                                         <svg
-                                            class="w-5 h-5 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0"
+                                            class="w-5 h-5 text-primary-700 dark:text-primary-400 mt-0.5 flex-shrink-0"
                                             fill="none"
                                             viewBox="0 0 24 24"
                                             stroke="currentColor"
@@ -1429,7 +1429,7 @@
                                         showAllMissedTrades =
                                             !showAllMissedTrades
                                     "
-                                    class="px-4 py-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-200"
+                                    class="px-4 py-2 text-sm font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-200"
                                 >
                                     {{
                                         showAllMissedTrades
@@ -1524,7 +1524,7 @@
                                 </svg>
                             </div>
                             <h3
-                                class="mt-2 text-sm font-medium text-gray-900 dark:text-white"
+                                class="heading-sub mt-2"
                             >
                                 {{
                                     topMissedTrades.message ||
@@ -1571,7 +1571,7 @@
             <div v-if="activeBehavioralTab === 'settings'" class="card">
                 <div class="card-body">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                        class="heading-card mb-6"
                     >
                         Behavioral Settings
                     </h3>
@@ -1581,7 +1581,7 @@
                             <div class="flex items-center justify-between">
                                 <div>
                                     <h4
-                                        class="text-sm font-medium text-gray-900 dark:text-white"
+                                        class="heading-sub"
                                     >
                                         Revenge Trading Detection
                                     </h4>
@@ -1642,7 +1642,7 @@
                             <div class="flex items-center justify-between">
                                 <div>
                                     <h4
-                                        class="text-sm font-medium text-gray-900 dark:text-white"
+                                        class="heading-sub"
                                     >
                                         Cooling Period
                                     </h4>

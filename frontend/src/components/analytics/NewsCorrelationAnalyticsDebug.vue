@@ -18,7 +18,7 @@
     <!-- Original Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">News Sentiment Analytics (Debug)</h2>
+        <h2 class="heading-section">News Sentiment Analytics (Debug)</h2>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
           Analyze your trading patterns in correlation with news sentiment
         </p>
@@ -26,7 +26,7 @@
       <button
         @click="refreshAnalytics"
         :disabled="loading"
-        class="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+        class="btn-secondary btn-sm disabled:opacity-50"
       >
         <span :class="{ 'animate-spin': loading }">[PROCESS]</span>
         <span class="ml-2">Refresh</span>

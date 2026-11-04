@@ -9,7 +9,7 @@
       </div>
       <button
         type="button"
-        class="shrink-0 inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 hover:bg-primary-100 dark:hover:bg-primary-900/50 border border-primary-200 dark:border-primary-700"
+        class="btn-secondary btn-sm shrink-0 gap-2"
         :disabled="loading"
         @click="fetchRPerformance"
       >
@@ -24,9 +24,15 @@
       </button>
     </div>
 
-    <div class="p-6">
-      <!-- Loading State -->
-      <div v-if="loading" class="flex flex-col items-center justify-center py-12">
+    <div class="card-body relative">
+      <div v-if="loading && !initialLoading" class="absolute top-2 right-2 z-10">
+        <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+          <span class="spinner spinner-xs"></span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
+        </div>
+      </div>
+      <!-- Loading State (first load only) -->
+      <div v-if="initialLoading" class="flex flex-col items-center justify-center py-12">
         <div class="spinner spinner-lg mb-4"></div>
         <p class="text-sm text-gray-500 dark:text-gray-400">Loading R performance data...</p>
       </div>
@@ -45,11 +51,11 @@
       <!-- Chart and Summary -->
       <div v-else>
         <!-- Summary Stats Grid: equal-height cards with consistent alignment -->
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 mb-6">
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 text-mono-num">
           <!-- Total Actual R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Actual R (Net)</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.total_actual_r >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.total_actual_r >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
               {{ formatR(summary.total_actual_r) }}
             </div>
           </div>
@@ -57,7 +63,7 @@
           <!-- Total Potential R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Target R (Net)</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-primary-600 dark:text-primary-400">
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-primary-700 dark:text-primary-400">
               {{ formatR(summary.total_potential_r) }}
             </div>
           </div>
@@ -80,7 +86,7 @@
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">R Left on Table</div>
             <template v-if="summary.trades_with_target > 0">
-              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-red-600 dark:text-red-400' : summary.r_left_on_table < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-red-600 dark:text-red-400' : summary.r_left_on_table < 0 ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
                 {{ formatR(summary.r_left_on_table) }}
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
@@ -115,7 +121,7 @@
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Avg R</div>
             <div class="flex items-center gap-1 sm:gap-2 mt-0.5 flex-wrap min-h-[1.75rem]">
-              <span class="text-base sm:text-lg font-bold text-green-600 dark:text-green-400">+{{ summary.avg_win_r }}</span>
+              <span class="text-base sm:text-lg font-bold text-green-700 dark:text-green-400">+{{ summary.avg_win_r }}</span>
               <span class="text-gray-400 shrink-0">/</span>
               <span class="text-base sm:text-lg font-bold text-red-600 dark:text-red-400">{{ summary.avg_loss_r }}</span>
             </div>
@@ -134,11 +140,11 @@
             <span class="text-gray-600 dark:text-gray-400">Actual Performance (Net)</span>
           </div>
           <div class="flex items-center">
-            <span class="w-6 h-1 rounded-full mr-2" style="background-color: #6366f1;"></span>
+            <span class="w-6 h-1 rounded-full bg-primary-500 mr-2"></span>
             <span class="text-gray-600 dark:text-gray-400">Target Performance (Net)</span>
           </div>
           <div class="flex items-center">
-            <span class="w-6 h-1 rounded-full bg-amber-500 dark:bg-amber-400 mr-2"></span>
+            <span class="w-6 h-1 rounded-full bg-slate-500 dark:bg-slate-400 mr-2"></span>
             <span class="text-gray-600 dark:text-gray-400">Trade Management Impact</span>
           </div>
         </div>
@@ -159,6 +165,9 @@
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
+import { useDarkMode } from '@/composables/useDarkMode'
+
+const { isDark: darkMode } = useDarkMode()
 
 const props = defineProps({
   filters: {
@@ -173,6 +182,7 @@ const props = defineProps({
 
 const chartCanvas = ref(null)
 const loading = ref(false)
+const initialLoading = ref(true)
 const chartData = ref(null)
 const summary = ref(null)
 let chartInstance = null
@@ -201,13 +211,15 @@ async function fetchRPerformance() {
     chartData.value = response.data.chart_data
     summary.value = response.data.summary
 
-    // IMPORTANT: Set loading to false BEFORE nextTick so the canvas element renders
-    // The template uses v-if="loading" which hides the chart container
+    // Set loading flags BEFORE nextTick so the canvas element renders
+    // (the first-load state uses v-if="initialLoading" and hides the chart container)
     loading.value = false
+    initialLoading.value = false
 
     await nextTick()
     createChart()
   } catch (err) {
+    initialLoading.value = false
     console.error('[R-PERF] Error fetching R performance:', err)
     chartData.value = []
     summary.value = null
@@ -240,7 +252,8 @@ function createChart() {
   const hasManagementData = managementData.some(v => v !== 0)
 
   // Get primary color from CSS custom property or use default
-  const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--color-primary-600').trim() || '#6366f1'
+  // Theme accent; --color-primary-500 is exported from tailwind.config.js in main.css.
+  const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--color-primary-500').trim() || '#F0812A'
 
   const datasets = [
     {
@@ -257,7 +270,7 @@ function createChart() {
     {
       label: 'Target R (Net)',
       data: potentialData,
-      borderColor: '#6366f1', // primary-500 - theme-adjacent
+      borderColor: primaryColor,
       backgroundColor: 'transparent',
       fill: false,
       tension: 0.2,
@@ -273,8 +286,9 @@ function createChart() {
     datasets.push({
       label: 'Management R',
       data: managementData,
-      borderColor: '#f59e0b', // amber-500
-      backgroundColor: 'rgba(245, 158, 11, 0.08)',
+      // Neutral slate so it can't be confused with the orange Target line
+      borderColor: isDark ? '#94a3b8' : '#64748b',
+      backgroundColor: 'transparent',
       fill: false,
       tension: 0.2,
       pointRadius: 0,
@@ -373,9 +387,14 @@ function formatR(value) {
 
 function getManagementRColor(managementR) {
   if (!managementR || managementR === 0) return 'text-gray-500 dark:text-gray-400'
-  if (managementR > 0) return 'text-green-600 dark:text-green-400'
-  return 'text-amber-600 dark:text-amber-400'
+  if (managementR > 0) return 'text-green-700 dark:text-green-400'
+  return 'text-red-600 dark:text-red-400'
 }
+
+// Re-render with theme colors when the user toggles dark mode
+watch(darkMode, () => {
+  createChart()
+})
 
 // Watch for filter changes
 watch(() => props.filters, () => {

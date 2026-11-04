@@ -25,7 +25,7 @@
         </h2>
         <p class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
           Or
-          <router-link to="/login" class="font-medium text-primary-600 hover:text-primary-500">
+          <router-link to="/login" class="font-medium text-primary-700 hover:text-primary-500">
             sign in to existing account
           </router-link>
         </p>
@@ -87,7 +87,7 @@
               v-model="form.marketing_consent"
               name="marketing_consent"
               type="checkbox"
-              class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+              class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
             />
           </div>
           <div class="ml-3 text-sm">

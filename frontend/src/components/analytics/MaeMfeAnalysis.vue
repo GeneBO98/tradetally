@@ -12,7 +12,7 @@
           </p>
           <button
             type="button"
-            class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+            class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
             :aria-expanded="showGuide"
             aria-controls="mae-mfe-guide"
             @click="showGuide = !showGuide"
@@ -29,7 +29,7 @@
             <button
               type="button"
               class="px-3 py-1.5 text-xs font-medium transition-colors"
-              :class="displayMode === 'dollars' ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+              :class="displayMode === 'dollars' ? 'bg-primary-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
               @click="displayMode = 'dollars'"
             >
               {{ currencyCode }}
@@ -37,7 +37,7 @@
             <button
               type="button"
               class="px-3 py-1.5 text-xs font-medium border-l border-gray-200 dark:border-gray-700 transition-colors"
-              :class="displayMode === 'points' && canUsePoints ? 'bg-primary-600 text-white' : canUsePoints ? 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'"
+              :class="displayMode === 'points' && canUsePoints ? 'bg-primary-700 text-white' : canUsePoints ? 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'"
               :disabled="!canUsePoints"
               :title="canUsePoints ? 'Switch to futures points view' : 'Points view is available when all displayed trades are futures with quantity and point value set'"
               @click="canUsePoints ? (displayMode = 'points') : null"
@@ -47,7 +47,7 @@
             <button
               type="button"
               class="px-3 py-1.5 text-xs font-medium border-l border-gray-200 dark:border-gray-700 transition-colors"
-              :class="displayMode === 'r' && hasRValues ? 'bg-primary-600 text-white' : hasRValues ? 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'"
+              :class="displayMode === 'r' && hasRValues ? 'bg-primary-700 text-white' : hasRValues ? 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'"
               :disabled="!hasRValues"
               :title="hasRValues ? 'Switch to R-multiple view' : 'R-multiples require a stop loss set on trades'"
               @click="hasRValues ? (displayMode = 'r') : null"
@@ -62,7 +62,7 @@
             <button
               type="button"
               class="px-3 py-1.5 text-xs font-medium transition-colors"
-              :class="chartOptions.hideOutliers ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+              :class="chartOptions.hideOutliers ? 'bg-primary-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
               :aria-pressed="chartOptions.hideOutliers"
               title="Exclude trades whose MAE, MFE, or result is far outside the rest of your trades"
               @click="setChartOption('hideOutliers', !chartOptions.hideOutliers)"
@@ -72,7 +72,7 @@
             <button
               type="button"
               class="px-3 py-1.5 text-xs font-medium border-l border-gray-200 dark:border-gray-700 transition-colors"
-              :class="chartOptions.logScale ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+              :class="chartOptions.logScale ? 'bg-primary-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
               :aria-pressed="chartOptions.logScale"
               title="Use a logarithmic scale so small and very large moves are both readable"
               @click="setChartOption('logScale', !chartOptions.logScale)"
@@ -87,7 +87,7 @@
       <div v-if="showGuide" id="mae-mfe-guide" class="mb-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <section>
-            <h4 class="text-sm font-semibold text-gray-900 dark:text-white">The two measurements</h4>
+            <h4 class="heading-sub">The two measurements</h4>
             <dl class="mt-2 space-y-2 text-sm text-gray-600 dark:text-gray-400">
               <div>
                 <dt class="font-medium text-gray-800 dark:text-gray-200">MAE (maximum adverse excursion)</dt>
@@ -108,7 +108,7 @@
           </section>
 
           <section>
-            <h4 class="text-sm font-semibold text-gray-900 dark:text-white">MFE vs. Result</h4>
+            <h4 class="heading-sub">MFE vs. Result</h4>
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
               Each dot is a trade. Further right means it ran further in your favor; higher means you kept more when you closed.
             </p>
@@ -122,7 +122,7 @@
           </section>
 
           <section>
-            <h4 class="text-sm font-semibold text-gray-900 dark:text-white">MAE Distribution: Winners</h4>
+            <h4 class="heading-sub">MAE Distribution: Winners</h4>
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
               How much heat your winning trades took before they worked. Each bar counts winners whose MAE fell in that range.
             </p>
@@ -187,7 +187,7 @@
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400" title="Average realized P&L divided by best available MFE on winning trades. After-trade MFE is used when present.">Exit efficiency</p>
-            <p class="text-lg font-semibold text-mono-num mt-1" :class="exitEfficiency >= 60 ? 'text-green-600 dark:text-green-400' : exitEfficiency >= 40 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'">
+            <p class="text-lg font-semibold text-mono-num mt-1" :class="exitEfficiency >= 60 ? 'text-green-700 dark:text-green-400' : exitEfficiency >= 40 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'">
               <span v-if="loading" class="text-gray-300 dark:text-gray-600">—</span>
               <span v-else-if="exitEfficiency != null">{{ exitEfficiency.toFixed(0) }}%</span>
               <span v-else class="text-gray-400">—</span>
@@ -196,7 +196,7 @@
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400" title="Additional favorable movement after the in-trade MFE peak, measured within the configured post-exit window.">After-trade continuation</p>
-            <p class="text-lg font-semibold text-primary-600 dark:text-primary-400 text-mono-num mt-1">
+            <p class="text-lg font-semibold text-primary-700 dark:text-primary-400 text-mono-num mt-1">
               <span v-if="loading" class="text-gray-300 dark:text-gray-600">—</span>
               <span v-else-if="displayStats.avg_post_exit_mfe_delta != null">{{ formatValue(displayStats.avg_post_exit_mfe_delta) }}</span>
               <span v-else class="text-gray-400">—</span>
@@ -205,7 +205,7 @@
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400" title="Potential profit between the actual exit and the best favorable move in the post-exit window.">Missed after exit</p>
-            <p class="text-lg font-semibold text-primary-600 dark:text-primary-400 text-mono-num mt-1">
+            <p class="text-lg font-semibold text-primary-700 dark:text-primary-400 text-mono-num mt-1">
               <span v-if="loading" class="text-gray-300 dark:text-gray-600">—</span>
               <span v-else-if="displayStats.avg_missed_after_exit != null">{{ formatValue(displayStats.avg_missed_after_exit) }}</span>
               <span v-else class="text-gray-400">—</span>
@@ -216,7 +216,7 @@
 
         <p v-if="chartOptions.hideOutliers && outlierTrades.size > 0" class="mb-4 text-xs text-gray-500 dark:text-gray-400">
           Hiding {{ outlierTrades.size }} outlier trade{{ outlierTrades.size === 1 ? '' : 's' }} ({{ outlierSymbols }}) from the stats and charts.
-          <button type="button" class="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400" @click="setChartOption('hideOutliers', false)">Show all</button>
+          <button type="button" class="font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400" @click="setChartOption('hideOutliers', false)">Show all</button>
         </p>
         <p v-else-if="chartOptions.hideOutliers" class="mb-4 text-xs text-gray-500 dark:text-gray-400">
           No outliers found in these trades.
@@ -227,7 +227,7 @@
           <!-- MFE vs Result Scatter Plot -->
           <div>
             <div class="flex items-center gap-2 mb-3">
-              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">MFE vs. Result</h4>
+              <h4 class="heading-sub">MFE vs. Result</h4>
               <span class="text-xs text-gray-400 dark:text-gray-500">— primary points show after-trade continuation</span>
             </div>
             <div class="h-72 relative">
@@ -238,7 +238,7 @@
           <!-- MAE Histogram (winners only) -->
           <div>
             <div class="flex items-center gap-2 mb-3">
-              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">MAE Distribution — Winners</h4>
+              <h4 class="heading-sub">MAE Distribution — Winners</h4>
               <span class="text-xs text-gray-400 dark:text-gray-500">— calibrate your stop loss</span>
             </div>
             <div class="h-72 relative">
@@ -369,8 +369,8 @@ function formatAxisTick(value) {
 
 function axisScale(title) {
   const base = {
-    title: { display: true, text: `${title} (${unitLabel.value}${chartOptions.value.logScale ? ', log' : ''})`, color: '#6b7280', font: { size: 11 } },
-    ticks: { color: '#6b7280', font: { size: 10 } },
+    title: { display: true, text: `${title} (${unitLabel.value}${chartOptions.value.logScale ? ', log' : ''})`, color: Chart.defaults.color, font: { size: 11 } },
+    ticks: { color: Chart.defaults.color, font: { size: 10 } },
     grid: { color: 'rgba(107,114,128,0.1)' }
   }
   if (!chartOptions.value.logScale) return base
@@ -724,7 +724,7 @@ function renderScatter() {
       plugins: {
         legend: {
           labels: {
-            color: getComputedStyle(document.documentElement).getPropertyValue('--color-text') || '#6b7280',
+            color: Chart.defaults.color,
             boxWidth: 10,
             font: { size: 11 },
             filter(item, data) {
@@ -818,13 +818,13 @@ function renderHistogram() {
       },
       scales: {
         x: {
-          title: { display: true, text: `MAE (${unitLabel.value}${chartOptions.value.logScale ? ', log bins' : ''})`, color: '#6b7280', font: { size: 11 } },
-          ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 30 },
+          title: { display: true, text: `MAE (${unitLabel.value}${chartOptions.value.logScale ? ', log bins' : ''})`, color: Chart.defaults.color, font: { size: 11 } },
+          ticks: { color: Chart.defaults.color, font: { size: 9 }, maxRotation: 30 },
           grid: { display: false }
         },
         y: {
-          title: { display: true, text: 'Trades', color: '#6b7280', font: { size: 11 } },
-          ticks: { color: '#6b7280', font: { size: 10 }, stepSize: 1 },
+          title: { display: true, text: 'Trades', color: Chart.defaults.color, font: { size: 11 } },
+          ticks: { color: Chart.defaults.color, font: { size: 10 }, stepSize: 1 },
           grid: { color: 'rgba(107,114,128,0.1)' }
         }
       }

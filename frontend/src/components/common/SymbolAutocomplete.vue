@@ -63,7 +63,7 @@
               :logo-url="item.logo"
               size-class="w-7 h-7"
               rounded-class="rounded-md"
-              fallback-text-class="text-[10px] font-semibold"
+              fallback-text-class="text-xs font-semibold"
             />
             <span class="font-medium flex-shrink-0">{{ item.symbol }}</span>
             <span
@@ -75,7 +75,7 @@
           </div>
           <span
             v-if="item.source === 'user_trades' || item.asset_type === 'crypto'"
-            class="text-xs px-1.5 py-0.5 rounded flex-shrink-0 ml-2"
+            class="badge flex-shrink-0 ml-2"
             :class="item.asset_type === 'crypto'
               ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
               : 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300'"

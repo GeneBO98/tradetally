@@ -4,7 +4,7 @@
         <div class="flex items-center mb-8">
             <button
                 @click="$router.push('/markets')"
-                class="mr-4 p-2 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                class="btn-icon p-2 mr-4"
             >
                 <svg
                     class="w-5 h-5"
@@ -83,27 +83,27 @@
                                 Symbol
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Current Price
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Change
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 % Change
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Added
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Actions
                             </th>
@@ -181,7 +181,7 @@
                             >
                                 <button
                                     @click="createPriceAlert(item.symbol)"
-                                    class="text-primary-600 hover:text-primary-900"
+                                    class="text-primary-700 hover:text-primary-900"
                                 >
                                     Alert
                                 </button>
@@ -219,7 +219,7 @@
                     d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
                 ></path>
             </svg>
-            <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+            <h3 class="heading-sub mt-2">
                 No symbols in watchlist
             </h3>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -242,10 +242,10 @@
                     class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
                 >
                     <h2
-                        class="text-lg font-medium text-gray-900 dark:text-white flex items-center"
+                        class="heading-card flex items-center"
                     >
                         <svg
-                            class="w-5 h-5 mr-2 text-primary-600"
+                            class="w-5 h-5 mr-2 text-primary-700"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -273,7 +273,7 @@
                         <button
                             @click="loadWatchlistNews"
                             :disabled="loadingNews"
-                            class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
+                            class="text-sm text-primary-700 hover:text-primary-800 disabled:opacity-50"
                         >
                             {{ loadingNews ? "Loading..." : "Refresh" }}
                         </button>
@@ -309,7 +309,7 @@
                                     rounded-class="rounded-full"
                                 />
                                 <span
-                                    class="badge bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200"
+                                    class="badge-primary"
                                 >
                                     {{ article.symbol }}
                                 </span>
@@ -322,7 +322,7 @@
                                     class="block hover:text-primary-600 transition-colors"
                                 >
                                     <h3
-                                        class="text-sm font-medium text-gray-900 dark:text-white mb-1"
+                                        class="heading-sub mb-1"
                                     >
                                         {{ article.headline }}
                                     </h3>
@@ -379,10 +379,10 @@
                     class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
                 >
                     <h2
-                        class="text-lg font-medium text-gray-900 dark:text-white flex items-center"
+                        class="heading-card flex items-center"
                     >
                         <svg
-                            class="w-5 h-5 mr-2 text-green-600 dark:text-green-400"
+                            class="w-5 h-5 mr-2 text-green-700 dark:text-green-400"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -409,7 +409,7 @@
                         <button
                             @click="loadWatchlistEarnings"
                             :disabled="loadingEarnings"
-                            class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
+                            class="text-sm text-primary-700 hover:text-primary-800 disabled:opacity-50"
                         >
                             {{ loadingEarnings ? "Loading..." : "Refresh" }}
                         </button>
@@ -442,7 +442,7 @@
                                     rounded-class="rounded-full"
                                 />
                                 <span
-                                    class="badge bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
+                                    class="badge-success"
                                 >
                                     {{ earnings.symbol }}
                                 </span>
@@ -514,7 +514,7 @@
                     class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
                 >
                     <h2
-                        class="text-lg font-medium text-gray-900 dark:text-white flex items-center"
+                        class="heading-card flex items-center"
                     >
                         <svg
                             class="w-5 h-5 mr-2 text-orange-600"
@@ -541,7 +541,7 @@
                             v-if="pillarsLoaded"
                             @click="loadWatchlistPillars"
                             :disabled="loadingPillars"
-                            class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
+                            class="text-sm text-primary-700 hover:text-primary-800 disabled:opacity-50"
                         >
                             {{ loadingPillars ? "Analyzing..." : "Refresh" }}
                         </button>
@@ -582,7 +582,7 @@
                     </p>
                     <button
                         @click="loadWatchlistPillars"
-                        class="btn-primary text-sm"
+                        class="btn-primary"
                     >
                         Analyze All Symbols
                     </button>
@@ -641,7 +641,7 @@
                                             :class="[
                                                 'w-4 h-4 rounded-full flex items-center justify-center text-xs',
                                                 getPillarPassed(analysis, n)
-                                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                                                     : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
                                             ]"
                                             :title="getPillarName(analysis, n)"
@@ -686,7 +686,7 @@
                                         :class="[
                                             'text-lg font-bold',
                                             analysis.pillarsPassed >= 6
-                                                ? 'text-green-600 dark:text-green-400'
+                                                ? 'text-green-700 dark:text-green-400'
                                                 : analysis.pillarsPassed >= 4
                                                   ? 'text-yellow-600'
                                                   : 'text-red-600 dark:text-red-400',
@@ -702,7 +702,7 @@
                                 </div>
                                 <router-link
                                     :to="`/analysis/analyze/${analysis.symbol}`"
-                                    class="text-sm text-primary-600 hover:text-primary-800 whitespace-nowrap"
+                                    class="text-sm text-primary-700 hover:text-primary-800 whitespace-nowrap"
                                 >
                                     View Details
                                 </router-link>
@@ -723,14 +723,14 @@
         <!-- Add Symbol Modal -->
         <div
             v-if="showAddSymbolModal"
-            class="modal-overlay overflow-y-auto"
+            class="modal-overlay flex items-center justify-center overflow-y-auto p-4"
         >
-            <div
-                class="modal-panel top-20 mx-auto p-5 w-96"
+            <div role="dialog" aria-modal="true"
+                class="modal-panel p-6 w-full max-w-md"
             >
                 <div class="mt-3">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                        class="modal-title mb-4"
                     >
                         Add Symbol to Watchlist
                     </h3>
@@ -786,14 +786,14 @@
         <!-- Edit Notes Modal -->
         <div
             v-if="editingItem"
-            class="modal-overlay overflow-y-auto"
+            class="modal-overlay flex items-center justify-center overflow-y-auto p-4"
         >
-            <div
-                class="modal-panel top-20 mx-auto p-5 w-96"
+            <div role="dialog" aria-modal="true"
+                class="modal-panel p-6 w-full max-w-md"
             >
                 <div class="mt-3">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                        class="modal-title mb-4"
                     >
                         Edit Notes for {{ editingItem.symbol }}
                     </h3>
@@ -816,7 +816,7 @@
                             <button
                                 type="button"
                                 @click="cancelEditNotes"
-                                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-200 dark:hover:bg-gray-500"
+                                class="btn-secondary"
                             >
                                 Cancel
                             </button>
@@ -1144,7 +1144,7 @@ const initialLoading = ref(true);
         };
 
         const priceChangeClass = (change) => {
-            if (change > 0) return "text-green-600 dark:text-green-400";
+            if (change > 0) return "text-green-700 dark:text-green-400";
             if (change < 0) return "text-red-600 dark:text-red-400";
             return "text-gray-600";
         };

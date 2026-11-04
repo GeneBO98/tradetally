@@ -32,14 +32,14 @@
               type="checkbox"
               v-model="removeOutliers"
               @change="updateChart"
-              class="mr-2 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+              class="mr-2 rounded border-gray-300 dark:border-gray-600 text-primary-700 focus:ring-primary-500"
             />
             Remove Outliers
           </label>
         </div>
       </div>
 
-      <p v-if="loading && !initialLoading" class="text-xs text-primary-600 mb-2" role="status">Updating...</p>
+      <p v-if="loading && !initialLoading" class="text-xs text-primary-700 mb-2" role="status">Updating...</p>
       <div v-if="initialLoading" class="flex justify-center py-12">
         <div class="spinner spinner-lg"></div>
       </div>
@@ -61,7 +61,7 @@
 
         <!-- Correlation Statistics -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+          <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400">Correlation Coefficient</div>
             <div class="text-xl font-semibold" :class="getCorrelationClass(statistics.correlation)">
               {{ statistics.correlation.toFixed(3) }}
@@ -71,19 +71,19 @@
             </div>
           </div>
           
-          <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+          <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400">Average P&L Impact</div>
-            <div class="text-xl font-semibold" :class="statistics.avgImpact >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-              ${{ Math.abs(statistics.avgImpact).toFixed(2) }}
+            <div class="text-xl font-semibold text-mono-num" :class="statistics.avgImpact >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+              {{ formatSignedCurrency(statistics.avgImpact) }}
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
               Per {{ getMetricUnit(selectedMetric) }}
             </div>
           </div>
 
-          <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+          <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400">Win Rate Impact</div>
-            <div class="text-xl font-semibold" :class="statistics.winRateImpact >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+            <div class="text-xl font-semibold" :class="statistics.winRateImpact >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
               {{ statistics.winRateImpact > 0 ? '+' : '' }}{{ statistics.winRateImpact.toFixed(1) }}%
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -94,7 +94,7 @@
 
         <!-- Insights -->
         <div v-if="insights.length > 0" class="space-y-3">
-          <h4 class="text-sm font-medium text-gray-900 dark:text-white">Key Insights</h4>
+          <h4 class="heading-sub">Key Insights</h4>
           <div v-for="(insight, index) in insights" :key="index" 
                class="p-3 rounded-lg border"
                :class="getInsightClass(insight.type)">
@@ -124,6 +124,7 @@
 <script setup>
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
@@ -134,6 +135,7 @@ const props = defineProps({
 })
 
 const { selectedAccount } = useGlobalAccountFilter()
+const { formatSignedCurrency } = useCurrencyFormatter()
 watch(selectedAccount, () => loadCorrelationData())
 
 const loading = ref(false)
@@ -542,7 +544,7 @@ function getMetricCondition(metric) {
 
 function getCorrelationClass(correlation) {
   const abs = Math.abs(correlation)
-  if (abs > 0.7) return correlation > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+  if (abs > 0.7) return correlation > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
   if (abs > 0.4) return correlation > 0 ? 'text-green-500' : 'text-orange-500'
   return 'text-gray-600'
 }

@@ -25,7 +25,7 @@
                                 class="mt-2 flex items-center"
                             >
                                 <span
-                                    class="badge bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
+                                    class="badge-primary"
                                 >
                                     Your leaderboard name: {{ anonymousName }}
                                 </span>
@@ -34,7 +34,7 @@
                         <div class="flex items-center space-x-4">
                             <div class="text-right">
                                 <div
-                                    class="text-2xl font-bold text-primary-600 dark:text-primary-400"
+                                    class="text-2xl font-bold text-primary-700 dark:text-primary-400"
                                 >
                                     Level {{ userStats.level || 1 }}
                                 </div>
@@ -93,7 +93,7 @@
                                     class="absolute inset-0 flex items-center justify-center"
                                 >
                                     <span
-                                        class="text-lg font-bold text-primary-600 dark:text-primary-400"
+                                        class="text-lg font-bold text-primary-700 dark:text-primary-400"
                                     >
                                         {{ userStats.level || 1 }}
                                     </span>
@@ -116,7 +116,7 @@
                         :class="[
                             'py-3 px-1 border-b-2 font-medium text-sm',
                             activeTab === tab.key
-                                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                                ? 'border-primary-500 text-primary-700 dark:text-primary-400'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
                         ]"
                     >
@@ -318,7 +318,7 @@
                         class="px-6 py-4 border-b border-gray-200 dark:border-gray-700"
                     >
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white flex items-center"
+                            class="heading-card flex items-center"
                         >
                             <MdiIcon
                                 :icon="mdiTrophy"
@@ -358,7 +358,7 @@
                                 </div>
                                 <div class="ml-4 flex-1">
                                     <h4
-                                        class="text-sm font-medium text-gray-900 dark:text-white"
+                                        class="heading-sub"
                                     >
                                         {{ achievement.name }}
                                     </h4>
@@ -370,7 +370,7 @@
                                 </div>
                                 <div class="text-right">
                                     <div
-                                        class="text-sm font-medium text-primary-600 dark:text-primary-400"
+                                        class="text-sm font-medium text-primary-700 dark:text-primary-400"
                                     >
                                         +{{ achievement.points }} XP
                                     </div>
@@ -380,7 +380,7 @@
                         <div class="mt-6 flex items-center justify-between">
                             <button
                                 @click="activeTab = 'achievements'"
-                                class="text-primary-600 dark:text-primary-400 hover:text-primary-500 text-sm font-medium"
+                                class="text-primary-700 dark:text-primary-400 hover:text-primary-500 text-sm font-medium"
                             >
                                 View all achievements →
                             </button>
@@ -438,7 +438,7 @@
                             <div class="flex justify-end mb-2">
                                 <span
                                     v-if="achievement.is_earned"
-                                    class="badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                    class="badge-success"
                                 >
                                     <MdiIcon
                                         :icon="mdiCheckCircle"
@@ -448,7 +448,7 @@
                                 </span>
                                 <span
                                     v-else
-                                    class="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
+                                    class="badge-neutral"
                                 >
                                     <MdiIcon :icon="mdiLock" :size="14" />
                                     Locked
@@ -490,7 +490,7 @@
                                         :class="[
                                             'text-sm font-medium',
                                             achievement.is_earned
-                                                ? 'text-primary-600 dark:text-primary-400'
+                                                ? 'text-primary-700 dark:text-primary-400'
                                                 : 'text-gray-500 dark:text-gray-500',
                                         ]"
                                     >
@@ -538,7 +538,7 @@
                         class="text-gray-400 mx-auto mb-4"
                     />
                     <h3
-                        class="mt-4 text-lg font-medium text-gray-900 dark:text-white"
+                        class="heading-card mt-4"
                     >
                         No achievements found
                     </h3>
@@ -564,7 +564,7 @@
                         >
                             <div class="flex items-center justify-between">
                                 <h3
-                                    class="text-lg font-medium text-gray-900 dark:text-white flex items-center"
+                                    class="heading-card flex items-center"
                                 >
                                     <MdiIcon
                                         :icon="mdiAccount"
@@ -608,7 +608,7 @@
                         </div>
                         <div
                             v-if="showFilters && isProUser"
-                            class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750"
+                            class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40"
                         >
                             <div v-if="loadingFilters" class="text-center py-4">
                                 <div
@@ -751,7 +751,7 @@
                                                     userRankings[0]
                                                         ?.total_filtered_users
                                                 "
-                                                class="badge ml-2 bg-primary-100 dark:bg-primary-800"
+                                                class="badge-primary ml-2"
                                             >
                                                 {{
                                                     userRankings[0]
@@ -770,7 +770,7 @@
                                 >
                                     <div class="flex items-center">
                                         <div
-                                            class="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-sm font-bold text-primary-600 dark:text-primary-400"
+                                            class="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-sm font-bold text-primary-700 dark:text-primary-400"
                                         >
                                             #{{ ranking.rank }}
                                         </div>
@@ -824,7 +824,7 @@
                 <!-- All Leaderboards Section -->
                 <div>
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                        class="heading-card mb-4"
                     >
                         {{
                             hasFiltersApplied
@@ -919,7 +919,7 @@
                                                 </div>
                                                 <div
                                                     v-if="entry.is_current_user"
-                                                    class="text-xs text-primary-600 dark:text-primary-400"
+                                                    class="text-xs text-primary-700 dark:text-primary-400"
                                                 >
                                                     You
                                                 </div>
@@ -947,7 +947,7 @@
                                         @click="
                                             viewFullLeaderboard(leaderboard)
                                         "
-                                        class="text-primary-600 dark:text-primary-400 hover:text-primary-500 text-sm font-medium flex items-center mx-auto"
+                                        class="text-primary-700 dark:text-primary-400 hover:text-primary-500 text-sm font-medium flex items-center mx-auto"
                                     >
                                         View all rankings
                                         <MdiIcon
@@ -968,7 +968,7 @@
                 <div class="mb-6">
                     <button
                         @click="activeTab = 'leaderboards'"
-                        class="flex items-center text-primary-600 dark:text-primary-400 hover:text-primary-500 mb-4"
+                        class="flex items-center text-primary-700 dark:text-primary-400 hover:text-primary-500 mb-4"
                     >
                         <MdiIcon
                             :icon="mdiChevronLeft"
@@ -978,7 +978,7 @@
                         Back to Rankings
                     </button>
                     <h2
-                        class="text-2xl font-bold text-gray-900 dark:text-white"
+                        class="heading-section"
                     >
                         {{ selectedLeaderboard?.name }} - Full Rankings
                     </h2>
@@ -1049,7 +1049,7 @@
                                         </div>
                                         <div
                                             v-if="entry.is_current_user"
-                                            class="text-sm text-primary-600 dark:text-primary-400"
+                                            class="text-sm text-primary-700 dark:text-primary-400"
                                         >
                                             You
                                         </div>
@@ -1642,10 +1642,10 @@ export default {
 
         const RARITY_TEXT_COLORS = {
             common: "text-slate-500 dark:text-slate-400",
-            uncommon: "text-green-600 dark:text-green-400",
+            uncommon: "text-green-700 dark:text-green-400",
             rare: "text-cyan-600 dark:text-cyan-400",
-            epic: "text-violet-600 dark:text-violet-400",
-            legendary: "text-primary-600 dark:text-primary-400",
+            epic: "text-purple-600 dark:text-purple-400",
+            legendary: "text-primary-700 dark:text-primary-400",
         };
 
         const rarityTextClass = (pct) => RARITY_TEXT_COLORS[rarityFromUnlockPct(pct)];

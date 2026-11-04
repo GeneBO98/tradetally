@@ -11,7 +11,7 @@
       <!-- Badge for unread count -->
       <span
         v-if="unreadCount > 0"
-        class="absolute top-0 right-0 bg-red-500 text-white text-[10px] leading-none rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center font-semibold tabular-nums"
+        class="absolute top-0 right-0 bg-red-500 text-white text-xs leading-none rounded-full h-[18px] min-w-[18px] px-1 flex items-center justify-center font-semibold tabular-nums"
       >
         {{ unreadCount > 99 ? '99+' : unreadCount }}
       </span>
@@ -42,7 +42,7 @@
               v-if="notifications.length > 0 && notifications.some(n => !n.is_read)"
               @click="markAllAsRead"
               :disabled="markingAsRead"
-              class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span v-if="markingAsRead" class="flex items-center">
                 <div class="spinner h-3 w-3 spinner-current mr-1"></div>
@@ -65,13 +65,13 @@
             <p class="text-gray-500 dark:text-gray-400">No unread notifications</p>
             <router-link
               :to="allNotificationsLink"
-              class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 mt-2 inline-flex items-center gap-1.5"
+              class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 mt-2 inline-flex items-center gap-1.5"
               @click="closeDropdown"
             >
               View all notifications
               <span
                 v-if="showProLock"
-                class="px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                class="badge-primary"
               >Pro</span>
             </router-link>
           </div>
@@ -160,13 +160,13 @@
         <div v-if="notifications.length > 0" class="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
           <router-link
             :to="allNotificationsLink"
-            class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 inline-flex items-center gap-1.5"
+            class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 inline-flex items-center gap-1.5"
             @click="closeDropdown"
           >
             View all notifications
             <span
               v-if="showProLock"
-              class="px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+              class="badge-primary"
             >Pro</span>
           </router-link>
         </div>

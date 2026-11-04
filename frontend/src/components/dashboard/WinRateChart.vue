@@ -75,7 +75,7 @@ function renderChart() {
           pointStyle: 'line',
           pointRadius: 8,
           pointHoverRadius: 10,
-          pointBorderColor: '#3f3f46',  // zinc-700
+          pointBorderColor: Chart.defaults.color,
           pointBorderWidth: 2,
           yAxisID: 'yPL'
         }

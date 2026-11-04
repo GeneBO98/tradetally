@@ -69,10 +69,10 @@
         <span v-else-if="hasPriceMismatch" class="font-medium text-amber-700 dark:text-amber-300">
           Recorded fill is outside the provider candle range. Marker is pinned to execution time.
         </span>
-        <span v-else-if="activeTool === 'pnl'" class="font-medium text-primary-600 dark:text-primary-400">
+        <span v-else-if="activeTool === 'pnl'" class="font-medium text-primary-700 dark:text-primary-400">
           P&L starts at the recorded entry price. Click a target price to measure the trade return.
         </span>
-        <span v-else-if="activeTool" class="font-medium text-primary-600 dark:text-primary-400">
+        <span v-else-if="activeTool" class="font-medium text-primary-700 dark:text-primary-400">
           Drawing mode active. Press Esc to cancel.
         </span>
         <span v-else>Drag drawing handles to edit. Right-click a drawing to remove it.</span>
@@ -91,7 +91,7 @@
             :data-resolution="option.value"
             class="rounded px-2 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-40"
             :class="selectedResolution === option.value
-              ? 'bg-primary-600 text-white shadow-sm'
+              ? 'bg-primary-700 text-white shadow-sm'
               : 'text-gray-500 hover:bg-white hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white'"
             :disabled="resolutionLoading || !availableResolutions.includes(option.value)"
             :aria-pressed="selectedResolution === option.value"

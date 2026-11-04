@@ -32,7 +32,7 @@
 
         <section id="webhook-destinations" class="mb-8">
             <div class="mb-4">
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                <h2 class="heading-section">
                     Webhook Destinations
                 </h2>
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -105,7 +105,7 @@
                 <button
                     v-if="!notificationPermissionGranted"
                     @click="requestBrowserNotifications"
-                    class="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                    class="text-sm text-primary-700 hover:text-primary-800 font-medium"
                 >
                     Enable browser notifications
                 </button>
@@ -115,7 +115,7 @@
                 class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700"
             >
                 <h4
-                    class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                    class="heading-sub mb-2"
                 >
                     Recent Alerts
                 </h4>
@@ -163,7 +163,7 @@
 
         <!-- Loading State -->
         <div
-            v-if="isProUser && loading"
+            v-if="isProUser && initialLoading"
             class="flex justify-center items-center py-12"
         >
             <div
@@ -183,42 +183,42 @@
                     <thead class="table-head">
                         <tr>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Symbol
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Alert Type
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Target
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Current Price
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Status
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Notifications
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Created
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Actions
                             </th>
@@ -264,7 +264,7 @@
                                     v-if="
                                         alert.is_active && !alert.triggered_at
                                     "
-                                    class="badge bg-green-100 text-green-800"
+                                    class="badge-success"
                                 >
                                     Active
                                 </span>
@@ -286,7 +286,7 @@
                                 </span>
                                 <span
                                     v-else
-                                    class="badge bg-gray-100 text-gray-800"
+                                    class="badge-neutral"
                                 >
                                     Inactive
                                 </span>
@@ -352,7 +352,7 @@
         </div>
 
         <!-- Empty State -->
-        <div v-else-if="isProUser && !loading" class="text-center py-12">
+        <div v-else-if="isProUser && !initialLoading" class="text-center py-12">
             <svg
                 class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500"
                 fill="none"
@@ -367,7 +367,7 @@
                 />
             </svg>
             <h3
-                class="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100"
+                class="heading-sub mt-2"
             >
                 No price alerts
             </h3>
@@ -393,11 +393,11 @@
             @click.self="cancelEdit"
         >
             <div
-                class="modal-panel top-20 mx-4 sm:mx-auto p-5 w-full max-w-lg"
+                class="modal-panel top-20 mx-4 sm:mx-auto p-6 w-full max-w-lg"
             >
                 <div class="mt-3">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4"
+                        class="modal-title mb-4"
                     >
                         {{
                             editingAlert
@@ -490,7 +490,7 @@
                                     <input
                                         v-model="alertForm.email_enabled"
                                         type="checkbox"
-                                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                                     />
                                     <span
                                         class="ml-2 text-sm text-gray-700 dark:text-gray-300"
@@ -501,7 +501,7 @@
                                     <input
                                         v-model="alertForm.browser_enabled"
                                         type="checkbox"
-                                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                                     />
                                     <span
                                         class="ml-2 text-sm text-gray-700 dark:text-gray-300"
@@ -512,7 +512,7 @@
                                     <input
                                         v-model="alertForm.repeat_enabled"
                                         type="checkbox"
-                                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                                     />
                                     <span
                                         class="ml-2 text-sm text-gray-700 dark:text-gray-300"
@@ -593,6 +593,7 @@ export default {
 
         const alerts = ref([]);
         const loading = ref(true);
+        const initialLoading = ref(true);
         const saving = ref(false);
         const showCreateAlertModal = ref(false);
         const editingAlert = ref(null);
@@ -651,6 +652,7 @@ export default {
         const loadAlerts = async () => {
             if (!isProUser.value) {
                 loading.value = false;
+                initialLoading.value = false;
                 return;
             }
 
@@ -670,6 +672,7 @@ export default {
                 showCriticalError("Error", "Failed to load price alerts");
             } finally {
                 loading.value = false;
+                initialLoading.value = false;
             }
         };
 
@@ -842,6 +845,7 @@ export default {
         });
 
         return {
+            initialLoading,
             alerts,
             loading,
             saving,

@@ -24,13 +24,13 @@
       <div class="flex items-center space-x-2">
         <span
           v-if="mode === 'review'"
-          class="badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+          class="badge-neutral"
         >
           Reviewing saved session
         </span>
         <span
           v-if="quotaChip"
-          class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
+          class="badge-primary"
         >
           {{ quotaChip }}
         </span>
@@ -67,7 +67,7 @@
                   @click="form.instrument = 'stock'"
                   class="h-full px-3 py-0 text-sm font-medium"
                   :class="form.instrument === 'stock'
-                    ? 'bg-primary-600 text-white'
+                    ? 'bg-primary-700 text-white'
                     : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
                 >
                   Stocks
@@ -78,7 +78,7 @@
                   :disabled="!futuresAvailable"
                   class="h-full px-3 py-0 text-sm font-medium border-l border-gray-300 dark:border-gray-600"
                   :class="form.instrument === 'future'
-                    ? 'bg-primary-600 text-white'
+                    ? 'bg-primary-700 text-white'
                     : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed'"
                   :title="futuresAvailable ? '' : 'Requires a Databento API key on the server (DATABENTO_API_KEY)'"
                 >
@@ -132,7 +132,7 @@
           </div>
           <div v-else class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead>
+              <thead class="table-head">
                 <tr>
                   <th class="px-4 py-3 text-left table-th">Symbol</th>
                   <th class="px-4 py-3 text-left table-th">Session</th>
@@ -149,7 +149,7 @@
                     {{ session.symbol }}
                     <span
                       v-if="session.instrument_type === 'future'"
-                      class="ml-1 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 font-medium"
+                      class="badge-neutral ml-1"
                     >
                       FUT
                     </span>
@@ -165,7 +165,7 @@
                   <td class="px-4 py-3 text-sm text-right tabular-nums text-gray-700 dark:text-gray-300">{{ winRateLabel(session) }}</td>
                   <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ formatSavedAt(session.created_at) }}</td>
                   <td class="px-4 py-3 text-sm text-right whitespace-nowrap">
-                    <button @click="reviewSession(session)" class="btn-secondary text-xs px-2.5 py-1.5 mr-2">
+                    <button @click="reviewSession(session)" class="btn-secondary mr-2 btn-sm">
                       Review
                     </button>
                     <button
@@ -204,7 +204,7 @@
               @click="indicators[option.key] = !indicators[option.key]"
               class="px-2 py-1 text-xs rounded-md font-medium"
               :class="indicators[option.key]
-                ? 'bg-primary-600 text-white'
+                ? 'bg-primary-700 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
             >
               {{ option.label }}
@@ -265,7 +265,7 @@
               <button
                 @click="placeOrder('buy')"
                 :disabled="!canTrade"
-                class="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Buy (B)"
               >
                 Buy
@@ -273,7 +273,7 @@
               <button
                 @click="placeOrder('sell')"
                 :disabled="!canTrade"
-                class="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Sell / Short (S)"
               >
                 Sell
@@ -281,7 +281,7 @@
               <button
                 @click="flattenPosition"
                 :disabled="!canTrade || stats.position === 0"
-                class="btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                class="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Flatten (F)"
               >
                 Flatten
@@ -344,7 +344,7 @@
             </p>
           </div>
           <p v-if="saveError" class="text-sm text-red-600 dark:text-red-400 mt-3">{{ saveError }}</p>
-          <p v-if="saveSuccess" class="text-sm text-green-600 dark:text-green-400 mt-3">
+          <p v-if="saveSuccess" class="text-sm text-green-700 dark:text-green-400 mt-3">
             Session saved. Use the back arrow to start another run or review past sessions.
           </p>
         </div>
@@ -490,7 +490,7 @@ function formatSignedCurrency(value) {
 
 function pnlClass(value) {
   const num = Number(value) || 0
-  if (num > 0) return 'text-green-600 dark:text-green-400'
+  if (num > 0) return 'text-green-700 dark:text-green-400'
   if (num < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-900 dark:text-white'
 }

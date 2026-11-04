@@ -1,10 +1,10 @@
 <template>
   <div class="modal-overlay flex items-center justify-center p-4">
-    <div class="modal-panel max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div role="dialog" aria-modal="true" class="modal-panel max-w-md w-full max-h-[90vh] overflow-y-auto">
       <div class="p-6">
         <!-- Header -->
         <div class="flex items-center justify-between mb-6">
-          <h3 class="heading-card">
+          <h3 class="modal-title">
             {{ isEditing ? 'Edit Account' : 'Add Account' }}
           </h3>
           <button
@@ -110,7 +110,7 @@
               id="isPrimary"
               v-model="form.isPrimary"
               type="checkbox"
-              class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+              class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
             />
             <label for="isPrimary" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
               Set as primary account

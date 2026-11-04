@@ -34,7 +34,7 @@
         <div class="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-gray-200 bg-white/95 px-3 backdrop-blur-sm lg:hidden dark:border-gray-700 dark:bg-gray-800/95">
           <button
             @click="openDrawer"
-            class="rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+            class="btn-icon p-2"
             aria-label="Open menu"
           >
             <Bars3Icon class="h-6 w-6" />
@@ -76,11 +76,11 @@
 
     <!-- Passkey registration prompt (shown after login if user has no passkeys) -->
     <div v-if="showPasskeyPrompt" class="modal-overlay flex items-center justify-center">
-      <div class="modal-panel max-w-md w-full mx-4 p-6 text-center">
-        <svg class="w-12 h-12 mx-auto mb-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div role="dialog" aria-modal="true" class="modal-panel max-w-md w-full mx-4 p-6 text-center">
+        <svg class="w-12 h-12 mx-auto mb-4 text-primary-700 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
         </svg>
-        <h3 class="heading-card mb-2">Add a passkey?</h3>
+        <h3 class="modal-title mb-2">Add a passkey?</h3>
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
           Sign in faster next time using your device's biometrics, security key, or PIN. No password needed.
         </p>
@@ -105,9 +105,9 @@
 
     <!-- Contact Support Modal -->
     <div v-if="showSupportModal" class="modal-overlay flex items-center justify-center" @click.self="showSupportModal = false">
-      <div class="modal-panel max-w-lg w-full mx-4 p-6">
+      <div role="dialog" aria-modal="true" class="modal-panel max-w-lg w-full mx-4 p-6">
         <div class="flex items-center justify-between mb-4">
-          <h3 class="heading-card">Contact Support</h3>
+          <h3 class="modal-title">Contact Support</h3>
           <button @click="showSupportModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -119,7 +119,7 @@
           <svg class="w-12 h-12 mx-auto text-green-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <h4 class="text-lg font-medium text-gray-900 dark:text-white mb-1">Message Sent</h4>
+          <h4 class="heading-card mb-1">Message Sent</h4>
           <p class="text-sm text-gray-600 dark:text-gray-400">We'll get back to you as soon as possible.</p>
           <button @click="showSupportModal = false; supportSent = false" class="mt-4 btn btn-primary">Close</button>
         </div>

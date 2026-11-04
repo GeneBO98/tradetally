@@ -1,5 +1,5 @@
 <template>
-  <div class="card">
+  <div class="card text-mono-num">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <div>
         <h3 class="heading-card">Position Summary</h3>
@@ -34,7 +34,7 @@
 
         <div v-if="analysis.target_pl_amount !== null && analysis.target_pl_amount !== undefined">
           <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Target P&L</div>
-          <div class="text-lg font-semibold text-primary-600 dark:text-primary-400">
+          <div class="text-lg font-semibold text-primary-700 dark:text-primary-400">
             {{ formatCurrency(analysis.target_pl_amount) }}
           </div>
           <div class="text-xs text-gray-500 dark:text-gray-400">
@@ -96,7 +96,7 @@
         <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Legs</div>
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm">
-            <thead>
+            <thead class="table-head">
               <tr class="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 <th class="pb-2 pr-4 font-medium">Leg</th>
                 <th class="pb-2 pr-4 font-medium">Side</th>
@@ -130,11 +130,11 @@
                 <td class="py-2 pr-4 text-right" :class="leg.stop_loss ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'">
                   {{ leg.stop_loss ? formatCurrency(leg.stop_loss) : 'Not set' }}
                 </td>
-                <td class="py-2 pr-4 text-right font-medium" :class="parseFloat(leg.pnl) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                <td class="py-2 pr-4 text-right font-medium" :class="parseFloat(leg.pnl) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                   {{ formatCurrency(leg.pnl) }}
                 </td>
                 <td class="py-2 pr-4 text-right">
-                  <span v-if="leg.included_in_analysis" :class="leg.actual_r >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                  <span v-if="leg.included_in_analysis" :class="leg.actual_r >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                     {{ formatR(leg.actual_r) }}
                   </span>
                   <span v-else class="text-xs text-gray-400 dark:text-gray-500" title="Excluded from the combined analysis">
@@ -144,7 +144,7 @@
                 <td class="py-2 text-right">
                   <router-link
                     :to="{ name: 'trade-detail', params: { id: leg.id } }"
-                    class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+                    class="text-xs text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300"
                   >
                     View
                   </router-link>
@@ -185,7 +185,7 @@ const props = defineProps({
 const pnlClass = computed(() => {
   const pnl = parseFloat(props.trade.pnl)
   return pnl >= 0
-    ? 'text-green-600 dark:text-green-400'
+    ? 'text-green-700 dark:text-green-400'
     : 'text-red-600 dark:text-red-400'
 })
 

@@ -78,7 +78,7 @@
               v-model="filters.startDate"
               @change="applyFilters"
               @keydown.enter="applyFilters"
-              class="input text-sm"
+              class="input input-sm"
               placeholder="Start Date"
             />
             <input
@@ -86,7 +86,7 @@
               v-model="filters.endDate"
               @change="applyFilters"
               @keydown.enter="applyFilters"
-              class="input text-sm"
+              class="input input-sm"
               placeholder="End Date"
             />
           </div>
@@ -108,7 +108,7 @@
             <span class="hidden sm:inline">Filters</span>
             <span
               v-if="activeAdvancedFilterCount > 0"
-              class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-primary-600 text-white text-[10px] font-semibold ring-2 ring-white dark:ring-gray-900"
+              class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-semibold ring-2 ring-white dark:ring-gray-900"
               aria-hidden="true"
             >{{ activeAdvancedFilterCount }}</span>
           </button>
@@ -125,7 +125,7 @@
             @click="isCustomizing = !isCustomizing"
             class="w-10 h-10 inline-flex items-center justify-center rounded-md border transition-colors"
             :class="isCustomizing
-              ? 'bg-primary-600 text-white border-primary-600 hover:bg-primary-700'
+              ? 'bg-primary-700 text-white border-primary-600 hover:bg-primary-800'
               : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'"
             :title="isCustomizing ? 'Exit customize mode' : 'Customize dashboard'"
             :aria-label="isCustomizing ? 'Exit customize mode' : 'Customize dashboard'"
@@ -176,7 +176,7 @@
             </RouterLink>
             <button
               type="button"
-              class="btn-secondary text-sm text-red-600 dark:text-red-400 border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+              class="btn-secondary text-red-600 dark:text-red-400 border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
               :disabled="removingSampleData"
               @click="removeSampleData"
             >
@@ -195,7 +195,7 @@
       <div class="card-body">
         <div class="flex items-start gap-3">
           <div class="flex-shrink-0 p-2 rounded-lg bg-primary-100 dark:bg-primary-900/40">
-            <svg class="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-5 h-5 text-primary-700 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
           </div>
@@ -219,7 +219,7 @@
               </RouterLink>
               <button
                 type="button"
-                class="inline-flex items-center px-3 py-1.5 text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                class="inline-flex items-center px-3 py-1.5 text-sm text-primary-700 dark:text-primary-400 hover:underline"
                 @click="onboardingBannerDismissed = true"
               >
                 Dismiss
@@ -228,7 +228,7 @@
           </div>
           <button
             type="button"
-            class="flex-shrink-0 p-1 rounded text-primary-500 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-200"
+            class="btn-icon p-1"
             aria-label="Dismiss"
             @click="onboardingBannerDismissed = true"
           >
@@ -251,7 +251,7 @@
       <div class="card-body">
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-3">
-            <span class="badge bg-primary-100 text-primary-800 dark:bg-primary-800 dark:text-primary-200">
+            <span class="badge-primary">
               Pro Trial
             </span>
             <span class="text-sm text-primary-800 dark:text-primary-200">
@@ -267,7 +267,7 @@
             </RouterLink>
             <button
               type="button"
-              class="p-1 rounded text-primary-500 hover:text-primary-700 dark:text-primary-400"
+              class="btn-icon p-1"
               aria-label="Dismiss"
               @click="trialBannerDismissed = true"
             >
@@ -302,7 +302,7 @@
             </RouterLink>
             <button
               type="button"
-              class="p-1 rounded text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              class="btn-icon p-1"
               aria-label="Dismiss"
               @click="postTrialBannerDismissed = true"
             >
@@ -431,7 +431,7 @@
                 type="button"
                 class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-colors"
                 :class="element.visible
-                  ? 'text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30'
+                  ? 'text-primary-700 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30'
                   : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
                 :title="element.visible ? 'Hide section' : 'Show section'"
                 @click="toggleSectionVisibility(element.id)"
@@ -580,7 +580,7 @@
                       <h3 class="heading-card">Open Positions</h3>
                       <button 
                         @click="navigateToOpenTrades"
-                        class="ml-3 text-sm text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
+                        class="ml-3 text-sm text-primary-700 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
                       >
                         View all →
                       </button>
@@ -602,10 +602,10 @@
                         </button>
                       </div>
                       <div v-if="loading" class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
-                        <div class="animate-spin rounded-full h-3 w-3 border-[1.5px] border-primary-600 border-t-transparent"></div>
+                        <div class="spinner spinner-xs h-3 w-3"></div>
                         <span>Updating...</span>
                       </div>
-                      <span class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400">
+                      <span class="badge-primary">
                         {{ openTrades.length }} {{ openTrades.length === 1 ? 'position' : 'positions' }}
                       </span>
                     </div>
@@ -627,7 +627,7 @@
                     <div v-if="formatOptionContract(position)" class="text-xs text-gray-500 dark:text-gray-400">
                       {{ formatOptionContract(position) }}
                     </div>
-                    <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full mt-1"
+                    <span class="badge mt-1"
                       :class="[
                         position.side === 'long'
                           ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
@@ -642,7 +642,7 @@
                 <div v-if="position.requires_manual_price" class="text-right">
                   <template v-if="getOptionPnL(position).unrealizedPnL !== null">
                     <div class="text-lg font-bold" :class="[
-                      getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
                       {{ formatSignedPositionAmount(getOptionPnL(position).unrealizedPnL, position) }}
                     </div>
@@ -656,7 +656,7 @@
                 </div>
                 <div v-else-if="position.unrealizedPnL !== null" class="text-right">
                   <div class="text-lg font-bold" :class="[
-                    position.unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    position.unrealizedPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ formatSignedPositionAmount(position.unrealizedPnL, position) }}
                   </div>
@@ -703,7 +703,7 @@
                           placeholder="Enter"
                           :value="getManualOptionPrice(position) ?? ''"
                           @input="setManualOptionPrice(position, $event.target.value)"
-                          class="w-20 text-right text-sm font-bold bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                          class="input input-sm w-20 text-right font-bold"
                         />
                       </div>
                     </template>
@@ -717,7 +717,7 @@
 
               <div class="table-card-row mb-3" title="Price change since previous close × current holdings">
                 <span class="table-card-label">Daily P&amp;L</span>
-                <span v-if="daily_position_pnl(position) !== null" class="table-card-value" :class="daily_position_pnl(position) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                <span v-if="daily_position_pnl(position) !== null" class="table-card-value" :class="daily_position_pnl(position) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                   {{ formatSignedPositionAmount(daily_position_pnl(position), position) }}
                 </span>
                 <span v-else class="text-xs text-gray-400">-</span>
@@ -756,7 +756,7 @@
                     </div>
                     <router-link
                       :to="`/trades/${trade.id}`"
-                      class="text-xs text-primary-600 hover:text-primary-900 dark:hover:text-primary-400 font-medium"
+                      class="text-xs text-primary-700 hover:text-primary-900 dark:hover:text-primary-400 font-medium"
                     >
                       View →
                     </router-link>
@@ -767,7 +767,7 @@
               <div v-else class="pt-3 border-t border-gray-200 dark:border-gray-700">
                 <router-link
                   :to="`/trades/${position.trades[0].id}`"
-                  class="text-sm text-primary-600 hover:text-primary-900 dark:hover:text-primary-400 font-medium"
+                  class="text-sm text-primary-700 hover:text-primary-900 dark:hover:text-primary-400 font-medium"
                 >
                   View Trade →
                 </router-link>
@@ -783,7 +783,7 @@
                     {{ totalOpenCostLabel }}
                   </div>
                   <div v-if="totalUnrealizedPnLAccount !== null" class="text-sm font-bold" :class="[
-                    totalUnrealizedPnLAccount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    totalUnrealizedPnLAccount >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ totalUnrealizedPnLLabel }}
                   </div>
@@ -791,7 +791,7 @@
               </div>
               <div v-if="total_daily_pnl !== null" class="flex justify-between items-center mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 text-sm">
                 <span class="text-gray-600 dark:text-gray-400">Daily P&amp;L<span v-if="daily_pnl_partial"> (partial)</span></span>
-                <span class="font-bold whitespace-nowrap" :class="total_daily_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                <span class="font-bold whitespace-nowrap" :class="total_daily_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                   {{ formatSignedCurrency(total_daily_pnl, { currency: accountCurrency }) }}
                 </span>
               </div>
@@ -801,7 +801,7 @@
                   <!-- Desktop Table View -->
                   <div class="hidden lg:block overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead>
+              <thead class="table-head">
                 <tr class="table-th whitespace-nowrap">
                   <th class="px-3 py-2 text-left font-medium">Symbol</th>
                   <th class="px-3 py-2 text-left font-medium">Side</th>
@@ -840,7 +840,7 @@
                       </div>
                     </td>
                     <td class="px-3 py-3">
-                      <span class="px-2 inline-flex text-xs leading-5 font-medium rounded-full"
+                      <span class="badge"
                         :class="[
                           position.side === 'long'
                             ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
@@ -875,7 +875,7 @@
                             placeholder="Premium"
                             :value="getManualOptionPrice(position) ?? ''"
                             @input="setManualOptionPrice(position, $event.target.value)"
-                            class="w-20 text-right text-sm bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                            class="input input-sm w-20 text-right"
                           />
                         </div>
                       </template>
@@ -884,7 +884,7 @@
                         <div v-if="position.currentPrice !== null" class="text-gray-900 dark:text-white">
                           {{ formatPositionCurrency(position.currentPrice, position) }}
                           <div v-if="position.dayChangePercent !== undefined && position.dayChangePercent !== null" class="text-xs" :class="[
-                            position.dayChangePercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                            position.dayChangePercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                           ]" :title="position.dayChange !== undefined ? formatSignedPositionCurrency(position.dayChange, position) + ' today' : undefined">
                             {{ position.dayChangePercent >= 0 ? '+' : '' }}{{ formatNumber(position.dayChangePercent) }}%
                           </div>
@@ -913,10 +913,10 @@
                     <td class="px-3 py-3 text-right">
                       <template v-if="position.requires_manual_price">
                         <div v-if="getOptionPnL(position).unrealizedPnL !== null" :title="nativeAmountTitle(getOptionPnL(position).unrealizedPnL, position)">
-                          <div class="font-semibold" :class="getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                          <div class="font-semibold" :class="getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                             {{ formatSignedPositionAmount(getOptionPnL(position).unrealizedPnL, position) }}
                           </div>
-                          <div class="text-xs" :class="getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                          <div class="text-xs" :class="getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                             {{ getOptionPnL(position).unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
                           </div>
                         </div>
@@ -924,10 +924,10 @@
                       </template>
                       <template v-else>
                         <div v-if="position.unrealizedPnL !== null" :title="nativeAmountTitle(position.unrealizedPnL, position)">
-                          <div class="font-semibold" :class="position.unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                          <div class="font-semibold" :class="position.unrealizedPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                             {{ formatSignedPositionAmount(position.unrealizedPnL, position) }}
                           </div>
-                          <div class="text-xs" :class="position.unrealizedPnLPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                          <div class="text-xs" :class="position.unrealizedPnLPercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                             {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
                           </div>
                         </div>
@@ -938,7 +938,7 @@
                       <span
                         v-if="daily_position_pnl(position) !== null"
                         class="font-semibold"
-                        :class="daily_position_pnl(position) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                        :class="daily_position_pnl(position) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                         :title="nativeAmountTitle(daily_position_pnl(position), position)"
                       >
                         {{ formatSignedPositionAmount(daily_position_pnl(position), position) }}
@@ -956,7 +956,7 @@
                       <router-link
                         v-if="position.trades.length === 1"
                         :to="`/trades/${position.trades[0].id}`"
-                        class="text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300 font-medium text-xs"
+                        class="text-primary-700 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300 font-medium text-xs"
                       >
                         View
                       </router-link>
@@ -992,7 +992,7 @@
                     <td class="px-3 py-2 text-right">
                       <router-link
                         :to="`/trades/${trade.id}`"
-                        class="text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300 font-medium text-xs"
+                        class="text-primary-700 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300 font-medium text-xs"
                       >
                         View
                       </router-link>
@@ -1023,17 +1023,17 @@
                   </td>
                   <td class="px-3 py-3 text-right">
                     <div v-if="totalUnrealizedPnLAccount !== null">
-                      <div class="font-semibold" :class="totalUnrealizedPnLAccount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      <div class="font-semibold" :class="totalUnrealizedPnLAccount >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                         {{ totalUnrealizedPnLLabel }}
                       </div>
-                      <div class="text-xs" :class="totalUnrealizedPnLPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      <div class="text-xs" :class="totalUnrealizedPnLPercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                         {{ totalUnrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(totalUnrealizedPnLPercent) }}%
                       </div>
                     </div>
                     <span v-else class="text-xs text-gray-400">-</span>
                   </td>
                   <td class="px-3 py-3 text-right">
-                    <span v-if="total_daily_pnl !== null" class="font-semibold" :class="total_daily_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                    <span v-if="total_daily_pnl !== null" class="font-semibold" :class="total_daily_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                       {{ formatSignedCurrency(total_daily_pnl, { currency: accountCurrency }) }}
                     </span>
                     <span v-else class="text-xs text-gray-400">-</span>
@@ -1055,7 +1055,7 @@
                   >
                     <button
                       type="button"
-                      class="inline-flex items-center gap-1 text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+                      class="inline-flex items-center gap-1 text-sm font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 transition-colors"
                       @click="showAllOpenTrades = !showAllOpenTrades"
                     >
                       <template v-if="showAllOpenTrades">
@@ -1112,17 +1112,17 @@
                     </dt>
                     <div class="mt-1 space-y-2">
                       <div>
-                        <div class="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Gross</div>
+                        <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Gross</div>
                         <dd class="text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
-                          dashboardGrossPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                          dashboardGrossPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                         ]">
                           {{ formatCurrency(dashboardGrossPnl) }}
                         </dd>
                       </div>
                       <div>
-                        <div class="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Net</div>
+                        <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Net</div>
                         <dd class="text-base sm:text-lg font-semibold whitespace-nowrap" :class="[
-                          dashboardNetPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                          dashboardNetPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                         ]">
                           {{ formatCurrency(dashboardNetPnl) }}
                         </dd>
@@ -1140,7 +1140,7 @@
                       Win Rate
                     </dt>
                     <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
-                      analytics.summary.winRate >= 50 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      analytics.summary.winRate >= 50 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
                       {{ formatPercent(analytics.summary.winRate) }}%
                     </dd>
@@ -1156,7 +1156,7 @@
                       Profit Factor
                     </dt>
                     <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
-                      analytics.summary.profitFactor >= 1 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      analytics.summary.profitFactor >= 1 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
                       {{ formatNumber(analytics.summary.profitFactor) }}
                     </dd>
@@ -1214,7 +1214,7 @@
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Win
                     </dt>
-                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 dark:text-green-400 whitespace-nowrap">
+                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-700 dark:text-green-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.avgWin) }}
                     </dd>
                   </div>
@@ -1252,7 +1252,7 @@
                     <dt class="text-data-secondary truncate">
                       Best Trade
                     </dt>
-                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 dark:text-green-400 whitespace-nowrap">
+                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-700 dark:text-green-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.bestTrade) }}
                     </dd>
                   </div>
@@ -1367,14 +1367,14 @@
             <template v-if="element.id === 'performance-tables'">
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <!-- Performance by Symbol -->
-                <div class="card">
+                <div class="card min-w-0">
                   <div class="card-body">
                     <h3 class="heading-card mb-4">
                       Performance by Symbol
                     </h3>
                     <div class="overflow-x-auto">
                       <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead>
+                        <thead class="table-head">
                           <tr>
                             <th class="px-3 py-2 text-left table-th">
                               Symbol
@@ -1407,7 +1407,7 @@
                               {{ symbol.trades }}
                             </td>
                             <td class="px-3 py-2 text-sm text-right" :class="[
-                              symbol.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                              symbol.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                             ]">
                               {{ formatCurrency(symbol.total_pnl) }}
                             </td>
@@ -1430,7 +1430,7 @@
                     
                     <div class="space-y-4">
                       <div>
-                        <h4 class="text-sm font-medium text-green-600 dark:text-green-400 mb-2">Best Trades</h4>
+                        <h4 class="text-sm font-medium text-green-700 dark:text-green-400 mb-2">Best Trades</h4>
                         <div class="space-y-1">
                           <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.id}-${trade.symbol}-${trade.trade_date}`"
                                @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
@@ -1438,12 +1438,12 @@
                             <span class="text-gray-900 dark:text-white flex items-center min-w-0">
                               <span class="truncate">{{ trade.symbol }} {{ formatDate(trade.trade_date) }}</span>
                               <span v-if="trade.group_detected_strategy"
-                                class="ml-2 px-1.5 py-0.5 text-xs font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap flex-shrink-0"
+                                class="badge-primary ml-2 flex-shrink-0"
                                 :title="`Auto-detected strategy: ${formatGroupStrategy(trade.group_detected_strategy)} (${trade.group_leg_count}-leg position)`">
                                 {{ formatGroupStrategy(trade.group_detected_strategy) }}
                               </span>
                             </span>
-                            <span class="text-green-600 dark:text-green-400 font-medium">
+                            <span class="text-green-700 dark:text-green-400 font-medium">
                               {{ formatCurrency(trade.pnl) }}
                             </span>
                           </div>
@@ -1460,13 +1460,13 @@
                             <span class="text-gray-900 dark:text-white flex items-center min-w-0">
                               <span class="truncate">{{ trade.symbol }} {{ formatDate(trade.trade_date) }}</span>
                               <span v-if="trade.group_detected_strategy"
-                                class="ml-2 px-1.5 py-0.5 text-xs font-semibold rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 whitespace-nowrap flex-shrink-0"
+                                class="badge-primary ml-2 flex-shrink-0"
                                 :title="`Auto-detected strategy: ${formatGroupStrategy(trade.group_detected_strategy)} (${trade.group_leg_count}-leg position)`">
                                 {{ formatGroupStrategy(trade.group_detected_strategy) }}
                               </span>
                             </span>
                             <span :class="[
-                              trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+                              trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400',
                               'font-medium'
                             ]">
                               {{ formatCurrency(trade.pnl) }}
@@ -1483,7 +1483,7 @@
                       <div v-if="analytics.topTrades.best?.length && analytics.topTrades.worst?.length" class="border-t border-gray-200 dark:border-gray-600 pt-3">
                         <div class="flex justify-between items-center px-2">
                           <span class="text-sm font-semibold text-gray-900 dark:text-white">Net Difference</span>
-                          <span class="text-sm font-semibold" :class="topTradesNetPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                          <span class="text-sm font-semibold" :class="topTradesNetPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                             {{ formatCurrency(topTradesNetPnl) }}
                           </span>
                         </div>
@@ -1575,7 +1575,7 @@
                 type="button"
                 class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-colors"
                 :class="newsRailUserVisible
-                  ? 'text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30'
+                  ? 'text-primary-700 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30'
                   : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
                 :title="newsRailUserVisible ? 'Hide news rail' : 'Show news rail'"
                 @click="toggleSectionVisibility('news-rail')"
@@ -1626,12 +1626,12 @@
         ></div>
         <div class="modal-panel w-full max-w-5xl">
           <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 id="dashboard-filters-modal-title" class="heading-card">Filter dashboard</h3>
+            <h3 id="dashboard-filters-modal-title" class="modal-title">Filter dashboard</h3>
             <div class="flex items-center gap-2">
               <button
                 type="button"
                 @click="showFiltersModal = false"
-                class="rounded-md p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                class="btn-icon p-1"
                 aria-label="Close filters"
               >
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

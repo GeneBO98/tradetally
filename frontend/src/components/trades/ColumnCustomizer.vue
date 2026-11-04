@@ -4,7 +4,7 @@
     <button
       ref="buttonRef"
       @click="toggleMenu"
-      class="inline-flex items-center justify-center p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+      class="btn-icon"
       title="Customize columns"
     >
       <AdjustmentsHorizontalIcon class="h-4 w-4" />
@@ -20,7 +20,7 @@
         leave-from-class="transform opacity-100 scale-100"
         leave-to-class="transform opacity-0 scale-95"
       >
-        <div
+        <div role="dialog" aria-modal="true"
           v-if="showMenu"
           ref="menuRef"
           :style="dropdownStyle"
@@ -29,10 +29,10 @@
           <!-- Header (Fixed) -->
           <div class="p-4 flex-shrink-0 border-b border-gray-200 dark:border-gray-700">
             <div class="flex items-center justify-between">
-              <h3 class="text-sm font-medium text-gray-900 dark:text-white">Customize Columns</h3>
+              <h3 class="heading-sub">Customize Columns</h3>
               <button
                 @click="resetToDefault"
-                class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                class="text-xs text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
               >
                 Reset to default
               </button>
@@ -66,7 +66,7 @@
                   v-model="column.visible"
                   @change="updateColumns"
                   :disabled="isRequiredColumn(column.key)"
-                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded disabled:opacity-50"
+                  class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded disabled:opacity-50"
                 />
                 
                 <!-- Column Name -->
@@ -84,20 +84,20 @@
             <div class="flex items-center justify-between text-xs mb-4">
               <button
                 @click="selectAll"
-                class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
               >
                 Select all
               </button>
               <button
                 @click="deselectAll"
-                class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
               >
                 Deselect all
               </button>
               <button
                 @click="resetWidths"
                 title="Clear the widths you dragged on the column edges"
-                class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
               >
                 Reset widths
               </button>

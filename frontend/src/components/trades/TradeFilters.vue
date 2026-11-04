@@ -14,7 +14,7 @@
           <input
             type="checkbox"
             v-model="filters.symbolExact"
-            class="h-3.5 w-3.5 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+            class="h-3.5 w-3.5 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
           />
           <span class="ml-1.5 text-xs text-gray-500 dark:text-gray-400">Exact match</span>
         </label>
@@ -92,7 +92,7 @@
                   type="checkbox"
                   :checked="!filters.strategies || filters.strategies.length === 0"
                   @change="toggleAllStrategies"
-                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                 />
                 <span class="ml-3 text-sm text-gray-900 dark:text-white">All Strategies</span>
               </label>
@@ -104,7 +104,7 @@
                     type="checkbox"
                     :value="strategy.value"
                     v-model="filters.strategies"
-                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                    class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                   />
                   <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ strategy.label }}</span>
                 </label>
@@ -114,7 +114,7 @@
               <button
                 @click.stop="openStrategyManager"
                 type="button"
-                class="flex items-center w-full px-3 py-2 text-sm text-primary-600 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                class="btn-ghost btn-sm w-full"
               >
                 Manage strategies
               </button>
@@ -144,7 +144,7 @@
                   type="checkbox"
                   :checked="!filters.setups || filters.setups.length === 0"
                   @change="toggleAllSetups"
-                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                 />
                 <span class="ml-3 text-sm text-gray-900 dark:text-white">All Setups</span>
               </label>
@@ -156,7 +156,7 @@
                     type="checkbox"
                     :value="setup"
                     v-model="filters.setups"
-                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                    class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                   />
                   <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ setup }}</span>
                 </label>
@@ -166,7 +166,7 @@
               <button
                 @click.stop="openSetupManager"
                 type="button"
-                class="flex items-center w-full px-3 py-2 text-sm text-primary-600 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                class="btn-ghost btn-sm w-full"
               >
                 Manage setups
               </button>
@@ -274,7 +274,7 @@
                   type="checkbox"
                   :checked="!filters.instrumentTypes || filters.instrumentTypes.length === 0"
                   @change="toggleAllInstrumentTypes"
-                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                 />
                 <span class="ml-3 text-sm text-gray-900 dark:text-white">All Types</span>
               </label>
@@ -286,7 +286,7 @@
                     type="checkbox"
                     :value="type.value"
                     v-model="filters.instrumentTypes"
-                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                    class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                   />
                   <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ type.label }}</span>
                 </label>
@@ -315,7 +315,7 @@
         Advanced Filters
         <span
           v-if="showProLock"
-          class="ml-2 px-1.5 py-0.5 text-xs font-semibold rounded bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+          class="badge-primary ml-2"
         >Pro</span>
         <span v-else-if="activeAdvancedCount > 0" class="ml-2 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-xs px-2 py-0.5 rounded-full">
           {{ activeAdvancedCount }}
@@ -346,7 +346,7 @@
                   type="number"
                   step="0.01"
                   min="0"
-                  class="input text-sm flex-1"
+                  class="input input-sm flex-1"
                   placeholder="Min"
                   @keydown.enter="applyFilters"
                 />
@@ -356,7 +356,7 @@
                   type="number"
                   step="0.01"
                   min="0"
-                  class="input text-sm flex-1"
+                  class="input input-sm flex-1"
                   placeholder="Max"
                   @keydown.enter="applyFilters"
                 />
@@ -371,7 +371,7 @@
                   v-model.number="filters.minQuantity"
                   type="number"
                   min="0"
-                  class="input text-sm flex-1"
+                  class="input input-sm flex-1"
                   placeholder="Min"
                   @keydown.enter="applyFilters"
                 />
@@ -380,7 +380,7 @@
                   v-model.number="filters.maxQuantity"
                   type="number"
                   min="0"
-                  class="input text-sm flex-1"
+                  class="input input-sm flex-1"
                   placeholder="Max"
                   @keydown.enter="applyFilters"
                 />
@@ -395,7 +395,7 @@
                   v-model.number="filters.minPnl"
                   type="number"
                   step="0.01"
-                  class="input text-sm flex-1"
+                  class="input input-sm flex-1"
                   placeholder="Min"
                   @keydown.enter="applyFilters"
                 />
@@ -404,7 +404,7 @@
                   v-model.number="filters.maxPnl"
                   type="number"
                   step="0.01"
-                  class="input text-sm flex-1"
+                  class="input input-sm flex-1"
                   placeholder="Max"
                   @keydown.enter="applyFilters"
                 />
@@ -454,7 +454,7 @@
                   :key="session.value"
                   class="cursor-pointer rounded-md px-2 py-2 text-center text-xs font-medium transition-colors"
                   :class="filters.market_sessions.includes(session.value)
-                    ? 'bg-primary-600 text-white shadow-sm'
+                    ? 'bg-primary-700 text-white shadow-sm'
                     : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'"
                 >
                   <input
@@ -493,7 +493,7 @@
                         type="checkbox"
                         :checked="!filters.daysOfWeek || filters.daysOfWeek.length === 0"
                         @change="toggleAllDaysOfWeek"
-                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                       />
                       <span class="ml-3 text-sm text-gray-900 dark:text-white">All Days</span>
                     </label>
@@ -505,7 +505,7 @@
                           type="checkbox"
                           :value="day.value"
                           v-model="filters.daysOfWeek"
-                          class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                          class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                         />
                         <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ day.label }}</span>
                       </label>
@@ -539,7 +539,7 @@
                         type="checkbox"
                         :checked="!filters.optionTypes || filters.optionTypes.length === 0"
                         @change="toggleAllOptionTypes"
-                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                       />
                       <span class="ml-3 text-sm text-gray-900 dark:text-white">All Option Types</span>
                     </label>
@@ -551,7 +551,7 @@
                           type="checkbox"
                           :value="type.value"
                           v-model="filters.optionTypes"
-                          class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                          class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                         />
                         <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ type.label }}</span>
                       </label>
@@ -593,7 +593,7 @@
                       type="checkbox"
                       :checked="!filters.sectors || filters.sectors.length === 0"
                       @change="toggleAllSectors"
-                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                      class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                     />
                     <span class="ml-3 text-sm text-gray-900 dark:text-white">All Sectors</span>
                   </label>
@@ -605,7 +605,7 @@
                         type="checkbox"
                         :value="sector"
                         v-model="filters.sectors"
-                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                       />
                       <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ sector }}</span>
                     </label>
@@ -668,7 +668,7 @@
                       type="checkbox"
                       :checked="!filters.brokers || filters.brokers.length === 0"
                       @change="toggleAllBrokers"
-                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                      class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                     />
                     <span class="ml-3 text-sm text-gray-900 dark:text-white">All Brokers</span>
                   </label>
@@ -680,7 +680,7 @@
                         type="checkbox"
                         :value="broker"
                         v-model="filters.brokers"
-                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                       />
                       <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ broker }}</span>
                     </label>
@@ -742,7 +742,7 @@
                       type="checkbox"
                       :checked="!filters.qualityGrades || filters.qualityGrades.length === 0"
                       @change="toggleAllQualityGrades"
-                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                      class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                     />
                     <span class="ml-3 text-sm text-gray-900 dark:text-white">All Grades</span>
                   </label>
@@ -754,7 +754,7 @@
                         type="checkbox"
                         :value="grade.value"
                         v-model="filters.qualityGrades"
-                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                       />
                       <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ grade.label }}</span>
                     </label>

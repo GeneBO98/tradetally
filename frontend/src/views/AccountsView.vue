@@ -122,7 +122,7 @@
                   <input
                     type="checkbox"
                     v-model="form.isPrimary"
-                    class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                   />
                   <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Set as primary account</span>
                 </label>
@@ -133,7 +133,7 @@
                   <input
                     type="checkbox"
                     v-model="form.includeInReports"
-                    class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                   />
                   <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Include in reports</span>
                 </label>
@@ -195,16 +195,16 @@
               <div class="flex-1">
                 <div class="flex items-center gap-2">
                   <span class="font-medium text-gray-900 dark:text-white">{{ account.accountName }}</span>
-                  <span v-if="account.isPrimary" class="badge bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300">
+                  <span v-if="account.isPrimary" class="badge-primary">
                     Primary
                   </span>
-                  <span v-if="account.broker" class="badge bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  <span v-if="account.broker" class="badge-neutral">
                     {{ formatBroker(account.broker) }}
                   </span>
-                  <span v-if="account.feeProfileName" class="badge bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300">
+                  <span v-if="account.feeProfileName" class="badge-primary">
                     Fees: {{ account.feeProfileName }}
                   </span>
-                  <span v-if="!account.includeInReports" class="badge bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  <span v-if="!account.includeInReports" class="badge-neutral">
                     Excluded from reports
                   </span>
                 </div>
@@ -227,7 +227,7 @@
                 </button>
                 <button
                   @click="confirmArchive(account)"
-                  class="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md hover:border-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+                  class="btn-secondary btn-sm"
                   title="Archive account"
                 >
                   Archive
@@ -247,7 +247,7 @@
 
           <div v-if="archivedAccounts.length > 0" class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
             <div class="flex items-center justify-between mb-3">
-              <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Archived accounts</h4>
+              <h4 class="heading-sub">Archived accounts</h4>
               <span class="text-xs text-gray-500 dark:text-gray-400">Excluded from active selectors</span>
             </div>
             <div class="space-y-3">
@@ -259,7 +259,7 @@
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
                     <span class="font-medium text-gray-900 dark:text-white">{{ account.accountName }}</span>
-                    <span class="badge bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">Archived</span>
+                    <span class="badge-neutral">Archived</span>
                     <span
                       class="badge"
                       :class="account.includeInReports ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'"
@@ -277,13 +277,13 @@
                   <button
                     v-if="account.accountIdentifier"
                     @click="viewAccountHistory(account)"
-                    class="px-3 py-1.5 text-sm text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-700 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/20"
+                    class="btn-ghost btn-sm"
                   >
                     View history
                   </button>
                   <button
                     @click="confirmArchive(account)"
-                    class="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md hover:border-primary-500 hover:text-primary-600 dark:hover:text-primary-400"
+                    class="btn-secondary btn-sm"
                   >
                     Restore
                   </button>
@@ -318,13 +318,13 @@
             >
               <div>
                 <span class="font-medium text-gray-900 dark:text-white">{{ redactAccountId(item.accountIdentifier) }}</span>
-                <span v-if="item.broker" class="ml-2 badge bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                <span v-if="item.broker" class="badge-neutral ml-2">
                   {{ formatBroker(item.broker) }}
                 </span>
               </div>
               <button
                 @click="createFromUnlinked(item)"
-                class="btn-secondary text-sm"
+                class="btn-secondary"
               >
                 Add Account
               </button>
@@ -341,7 +341,7 @@
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
         <div class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
           <div class="px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-            <h3 id="archive-modal-title" class="heading-card">
+            <h3 id="archive-modal-title" class="modal-title">
               {{ accountToArchive?.isArchived ? 'Restore account' : 'Archive account' }}
             </h3>
             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -388,7 +388,7 @@
                 </svg>
               </div>
               <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                <h3 class="heading-card" id="modal-title">
+                <h3 class="modal-title" id="modal-title">
                   Delete Account
                 </h3>
                 <div class="mt-2">
@@ -399,7 +399,7 @@
                     <input
                       v-model="deleteTrades"
                       type="checkbox"
-                      class="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      class="mt-0.5 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                       :disabled="deleting"
                     />
                     <span>Also permanently delete all trades associated with this account.</span>
@@ -416,7 +416,7 @@
               type="button"
               @click="deleteAccount"
               :disabled="deleting"
-              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+              class="btn-danger w-full justify-center sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
             >
               {{ deleting ? 'Deleting...' : (deleteTrades ? 'Delete Account and Trades' : 'Delete Account') }}
             </button>

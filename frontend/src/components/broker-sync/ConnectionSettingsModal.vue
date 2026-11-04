@@ -8,7 +8,7 @@
             ></div>
 
             <!-- Modal -->
-            <div
+            <div role="dialog" aria-modal="true"
                 class="modal-panel w-full max-w-lg max-h-[calc(100vh-2rem)] flex flex-col"
             >
                 <!-- Header -->
@@ -16,7 +16,7 @@
                     class="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700"
                 >
                     <h3
-                        class="text-lg font-semibold text-gray-900 dark:text-white"
+                        class="modal-title"
                     >
                         Connection Settings
                     </h3>
@@ -59,7 +59,7 @@
                         </div>
                         <div>
                             <h4
-                                class="font-medium text-gray-900 dark:text-white"
+                                class="heading-card"
                             >
                                 {{ brokerStyles.name }}
                             </h4>
@@ -177,7 +177,7 @@
                                 :class="[
                                     'px-3 py-1 text-sm rounded-full border transition-colors',
                                     activePreset === preset.id
-                                        ? 'bg-primary-600 border-primary-600 text-white'
+                                        ? 'bg-primary-700 border-primary-600 text-white'
                                         : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600',
                                 ]"
                             >
@@ -208,7 +208,7 @@
                     >
                         <div class="flex items-start justify-between gap-4">
                             <div>
-                                <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+                                <h4 class="heading-sub">
                                     Accounts included in sync
                                 </h4>
                                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -217,7 +217,7 @@
                             </div>
                             <button
                                 type="button"
-                                class="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 disabled:opacity-50"
+                                class="text-sm font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 disabled:opacity-50"
                                 :disabled="accountsLoading"
                                 @click="emit('refresh-accounts')"
                             >
@@ -249,7 +249,7 @@
                                 <div class="flex items-center gap-3 min-w-0">
                                     <input
                                         type="checkbox"
-                                        class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                        class="h-4 w-4 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                                         :checked="!isAccountExcluded(account.account_identifier)"
                                         @change="setAccountIncluded(account.account_identifier, $event.target.checked)"
                                     />
@@ -261,7 +261,7 @@
                                     class="text-xs font-medium"
                                     :class="isAccountExcluded(account.account_identifier)
                                         ? 'text-gray-500 dark:text-gray-400'
-                                        : 'text-primary-600 dark:text-primary-400'"
+                                        : 'text-primary-700 dark:text-primary-400'"
                                 >
                                     {{ isAccountExcluded(account.account_identifier) ? 'Excluded' : 'Included' }}
                                 </span>
@@ -282,7 +282,7 @@
                         class="pt-4 border-t border-gray-200 dark:border-gray-700"
                     >
                         <h4
-                            class="text-sm font-medium text-gray-900 dark:text-white mb-3"
+                            class="heading-sub mb-3"
                         >
                             Connection Status
                         </h4>
@@ -293,7 +293,7 @@
                                 </dt>
                                 <dd>
                                     <span
-                                        class="px-2 py-0.5 rounded-full text-xs"
+                                        class="badge"
                                         :class="statusClass"
                                     >
                                         {{ connection.connectionStatus }}
@@ -442,7 +442,7 @@ const brokerStyles = computed(() => {
                 name: "Charles Schwab",
                 abbrev: "CS",
                 bgClass: "bg-primary-100 dark:bg-primary-900/30",
-                textClass: "text-primary-600 dark:text-primary-400",
+                textClass: "text-primary-700 dark:text-primary-400",
             };
         case "tradovate":
             return {
@@ -451,13 +451,13 @@ const brokerStyles = computed(() => {
                     : "Tradovate",
                 abbrev: "TV",
                 bgClass: "bg-primary-100 dark:bg-primary-900/30",
-                textClass: "text-primary-600 dark:text-primary-400",
+                textClass: "text-primary-700 dark:text-primary-400",
             };
         case "oanda":
             return {
                 name: props.connection.brokerEnvironment === "practice" ? "OANDA Practice" : "OANDA Live",
                 abbrev: "OA", bgClass: "bg-primary-100 dark:bg-primary-900/30",
-                textClass: "text-primary-600 dark:text-primary-400",
+                textClass: "text-primary-700 dark:text-primary-400",
             };
         case "trading212":
             return {
@@ -466,7 +466,7 @@ const brokerStyles = computed(() => {
                     : "Trading 212 Live",
                 abbrev: "T2",
                 bgClass: "bg-primary-100 dark:bg-primary-900/30",
-                textClass: "text-primary-600 dark:text-primary-400",
+                textClass: "text-primary-700 dark:text-primary-400",
             };
         default:
             return {

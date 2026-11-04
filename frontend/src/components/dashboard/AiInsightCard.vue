@@ -17,14 +17,14 @@
                    deterministic data. -->
               <span
                 v-if="current?.ai_enhanced"
-                class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
+                class="badge uppercase tracking-wider bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
                 title="Refined with your configured AI provider"
               >
                 <MdiIcon :icon="mdiAutoFix" :size="10" />
                 AI
               </span>
             </div>
-            <div class="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            <div class="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">
               {{ sourceLabel }}
             </div>
           </div>
@@ -35,18 +35,18 @@
           <template v-if="!loading && !errorState && insights.length > 1">
             <button
               type="button"
-              class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              class="btn-icon p-1"
               title="Previous insight"
               @click="prev"
             >
               <MdiIcon :icon="mdiChevronLeft" :size="18" />
             </button>
-            <span class="text-[10px] text-mono-num text-gray-500 dark:text-gray-400 tabular-nums">
+            <span class="text-xs text-mono-num text-gray-500 dark:text-gray-400 tabular-nums">
               {{ index + 1 }} / {{ insights.length }}
             </span>
             <button
               type="button"
-              class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              class="btn-icon p-1"
               title="Next insight"
               @click="next"
             >
@@ -74,7 +74,7 @@
 
       <!-- Error / unavailable state -->
       <div v-else-if="errorState" class="mt-3">
-        <h4 class="text-base font-semibold text-gray-900 dark:text-white">{{ errorHeadline }}</h4>
+        <h4 class="heading-card">{{ errorHeadline }}</h4>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ errorBody }}</p>
       </div>
 
@@ -92,7 +92,7 @@
             :href="current.action_url"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center gap-1 text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+            class="inline-flex items-center gap-1 text-sm font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 transition-colors"
           >
             {{ current.action_label }}
             <MdiIcon :icon="mdiOpenInNew" :size="14" />
@@ -100,7 +100,7 @@
           <router-link
             v-else-if="current.action_url && current.action_label"
             :to="current.action_url"
-            class="inline-flex items-center gap-1 text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+            class="inline-flex items-center gap-1 text-sm font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 transition-colors"
           >
             {{ current.action_label }}
             <MdiIcon :icon="mdiArrowRight" :size="14" />
@@ -125,7 +125,7 @@
 
       <!-- Empty state -->
       <div v-else class="mt-3">
-        <h4 class="text-base font-semibold text-gray-900 dark:text-white">No insight yet</h4>
+        <h4 class="heading-card">No insight yet</h4>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
           Trade a bit more and we'll surface a useful observation here.
         </p>
@@ -212,11 +212,11 @@ const iconPath = computed(() => {
 })
 const iconTintClass = computed(() => {
   const c = current.value
-  if (!c) return 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
+  if (!c) return 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
   if (c.type === 'news') {
-    if (c.tone === 'positive') return 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+    if (c.tone === 'positive') return 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400'
     if (c.tone === 'negative') return 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-    return 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
+    return 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
   }
   switch (c.type) {
     case 'earnings':
@@ -229,7 +229,7 @@ const iconTintClass = computed(() => {
     case 'discipline':
       return 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
     default:
-      return 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
+      return 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
   }
 })
 const kindLabel = computed(() => {

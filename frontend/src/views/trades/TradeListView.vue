@@ -55,7 +55,7 @@
                 <div class="text-xs text-gray-500 dark:text-gray-400">Gross</div>
                 <div class="text-lg font-semibold tabular-nums" :class="[
                 tradesStore.totalGrossPnL >= 0
-                  ? 'text-green-600 dark:text-green-400'
+                  ? 'text-green-700 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
@@ -63,7 +63,7 @@
                 <div class="text-xs text-gray-500 dark:text-gray-400">Net</div>
                 <div class="text-sm font-medium tabular-nums" :class="[
                 tradesStore.totalNetPnL >= 0
-                  ? 'text-green-600 dark:text-green-400'
+                  ? 'text-green-700 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
@@ -83,7 +83,7 @@
             <!-- Fullwidth Toggle (Mobile) -->
             <button
               @click="toggleFullWidth"
-              class="inline-flex items-center p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+              class="btn-icon p-2"
               :title="isFullWidth ? 'Exit fullwidth mode' : 'Enter fullwidth mode'"
             >
               <svg v-if="!isFullWidth" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -114,7 +114,7 @@
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Gross</div>
                 <div class="text-lg font-semibold tabular-nums" :class="[
                   tradesStore.totalGrossPnL >= 0
-                    ? 'text-green-600 dark:text-green-400'
+                    ? 'text-green-700 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
@@ -124,7 +124,7 @@
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Net</div>
                 <div class="text-lg font-semibold tabular-nums" :class="[
                   tradesStore.totalNetPnL >= 0
-                    ? 'text-green-600 dark:text-green-400'
+                    ? 'text-green-700 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
@@ -153,7 +153,7 @@
             <!-- Fullwidth Toggle -->
             <button
               @click="toggleFullWidth"
-              class="inline-flex items-center p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+              class="btn-icon p-2"
               :title="isFullWidth ? 'Exit fullwidth mode' : 'Enter fullwidth mode'"
             >
               <svg v-if="!isFullWidth" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -182,19 +182,19 @@
     >
       <div
         v-if="showFiltersModal"
-        class="modal-overlay flex items-start justify-center overflow-y-auto p-4 sm:p-6"
+        class="modal-overlay flex items-center justify-center overflow-y-auto p-4 sm:p-6"
         @click.self="showFiltersModal = false"
         @keydown.esc="showFiltersModal = false"
       >
-        <div class="modal-panel my-8 w-full max-w-4xl">
+        <div role="dialog" aria-modal="true" class="modal-panel my-8 w-full max-w-4xl">
           <div class="flex items-center justify-between border-b border-gray-200 px-5 py-3 dark:border-gray-700">
-            <h3 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
+            <h3 class="modal-title flex items-center gap-2">
               <FunnelIcon class="h-5 w-5 text-primary-500" />
               Filters
             </h3>
             <button
               @click="showFiltersModal = false"
-              class="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              class="btn-icon p-1"
               aria-label="Close filters"
             >
               <XMarkIcon class="h-5 w-5" />
@@ -215,7 +215,7 @@
       <!-- A failed fetch must not masquerade as an empty journal -->
       <div v-else-if="tradesStore.error && tradesStore.trades.length === 0" class="text-center py-12">
         <ExclamationTriangleIcon class="mx-auto h-12 w-12 text-warning" />
-        <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">Couldn't load your trades</h3>
+        <h3 class="heading-sub mt-2">Couldn't load your trades</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
           {{ tradesStore.error }}
         </p>
@@ -228,7 +228,7 @@
 
       <div v-else-if="tradesStore.trades.length === 0 && !tradesStore.loading" class="text-center py-12">
         <DocumentTextIcon class="mx-auto h-12 w-12 text-gray-400" />
-        <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No trades</h3>
+        <h3 class="heading-sub mt-2">No trades</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
           Import from your broker or add a trade manually to get started.
         </p>
@@ -287,7 +287,7 @@
               </button>
               <button
                 @click="confirmBulkDelete"
-                class="px-3 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                class="btn-danger"
               >
                 Delete selected
               </button>
@@ -314,7 +314,7 @@
               :value="trade.id"
               v-model="selectedTrades"
               @click.stop
-              class="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+              class="mt-1 h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
             />
             <div
               class="flex-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 rounded"
@@ -330,7 +330,7 @@
                 <div class="text-lg font-semibold text-gray-900 dark:text-white">
                   {{ trade.symbol }}
                 </div>
-                <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                <span class="badge"
                   :class="[
                     trade.side === 'long' 
                       ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
@@ -348,7 +348,7 @@
                   <span>{{ trade.news_event_count ?? trade.news_events?.length ?? 0 }}</span>
                 </span>
               </div>
-            <span class="px-2 py-1 text-xs font-semibold rounded-full"
+            <span class="badge"
               :class="[
                 !isTradeOpen(trade)
                   ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
@@ -380,7 +380,7 @@
             <div>
               <div class="text-gray-500 dark:text-gray-400">Net P&L</div>
               <div v-if="!isTradeOpen(trade)" class="font-medium" :class="[
-                trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]">
                 {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                 <span v-if="trade.pnl_percent" class="text-xs ml-1">
@@ -392,7 +392,7 @@
             <div>
               <div class="text-gray-500 dark:text-gray-400">Gross P&L</div>
               <div v-if="!isTradeOpen(trade)" class="font-medium" :class="[
-                getTradeGrossPnl(trade) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                getTradeGrossPnl(trade) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]">
                 {{ formatTradeSignedCurrency(getTradeGrossPnl(trade), trade) }}
               </div>
@@ -401,7 +401,7 @@
             <div v-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined">
               <div class="text-gray-500 dark:text-gray-400">Unrealized</div>
               <div class="font-medium" :class="[
-                trade.unrealizedPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                trade.unrealizedPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]">
                 {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                 <span v-if="trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="text-xs ml-1">
@@ -430,13 +430,13 @@
           <div v-if="trade.qualityGrade" class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
             <div class="flex items-center justify-between">
               <div class="text-xs text-gray-500 dark:text-gray-400">Quality</div>
-              <span class="px-2 py-1 inline-flex text-xs font-semibold rounded"
+              <span class="badge"
                 :class="{
-                  'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': trade.qualityGrade === 'A',
-                  'bg-teal-100 text-teal-800 dark:bg-teal-900/20 dark:text-teal-400': trade.qualityGrade === 'B',
-                  'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': trade.qualityGrade === 'C',
-                  'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': trade.qualityGrade === 'D',
-                  'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': trade.qualityGrade === 'F'
+                  'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.qualityGrade === 'A',
+                  'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B',
+                  'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C',
+                  'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D',
+                  'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F'
                 }">
                 {{ trade.qualityGrade }}
               </span>
@@ -491,7 +491,7 @@
                   type="checkbox"
                   :checked="isAllSelected"
                   @change="toggleSelectAll"
-                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
                 />
               </th>
               <!-- Column Customizer immediately after checkbox -->
@@ -539,7 +539,7 @@
                   type="checkbox"
                   :value="trade.id"
                   v-model="selectedTrades"
-                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
                 />
               </td>
               <!-- Empty cell to align with column customizer -->
@@ -626,7 +626,7 @@
                 <td v-else-if="column.visible && column.key === 'side'" 
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                  <span class="badge"
                     :class="[
                       trade.side === 'long' 
                         ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
@@ -656,7 +656,7 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="!isTradeOpen(trade) && trade.pnl_percent" class="relative min-h-14">
                     <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-sm font-medium" :class="[
-                      trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
                       {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                     </div>
@@ -665,7 +665,7 @@
                     </div>
                   </div>
                   <div v-else-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
-                    trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                   </div>
@@ -677,7 +677,7 @@
                     :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
-                    getTradeGrossPnl(trade) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    getTradeGrossPnl(trade) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ formatTradeSignedCurrency(getTradeGrossPnl(trade), trade) }}
                   </div>
@@ -690,7 +690,7 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined && trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="relative min-h-14">
                     <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-sm font-medium" :class="[
-                      trade.unrealizedPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                      trade.unrealizedPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
                       {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                     </div>
@@ -700,7 +700,7 @@
                   </div>
                   <div v-else-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined">
                     <div class="text-sm font-medium" :class="[
-                      trade.unrealizedPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                      trade.unrealizedPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
                       {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                     </div>
@@ -728,13 +728,13 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer text-center']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span v-if="trade.qualityGrade"
-                    class="px-2 py-1 inline-block text-xs font-semibold rounded"
+                    class="badge"
                     :class="{
-                      'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': trade.qualityGrade === 'A',
-                      'bg-teal-100 text-teal-800 dark:bg-teal-900/20 dark:text-teal-400': trade.qualityGrade === 'B',
-                      'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': trade.qualityGrade === 'C',
-                      'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': trade.qualityGrade === 'D',
-                      'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': trade.qualityGrade === 'F'
+                      'bg-primary-700 text-white dark:bg-primary-600 dark:text-white': trade.qualityGrade === 'A',
+                      'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B',
+                      'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C',
+                      'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D',
+                      'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F'
                     }">
                     {{ trade.qualityGrade }}
                   </span>
@@ -754,7 +754,7 @@
                 <td v-else-if="column.visible && column.key === 'status'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                  <span class="badge"
                     :class="[
                       !isTradeOpen(trade)
                         ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
@@ -800,7 +800,7 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span v-if="trade.strategy" class="text-gray-900 dark:text-white">{{ trade.strategy }}</span>
                   <span v-else-if="trade.group_detected_strategy"
-                    class="text-primary-600 dark:text-primary-400"
+                    class="text-primary-700 dark:text-primary-400"
                     :title="`Auto-detected from ${trade.group_leg_count}-leg position group`">
                     {{ formatGroupStrategy(trade.group_detected_strategy) }}
                   </span>
@@ -830,7 +830,7 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="flex flex-wrap gap-1">
                     <span v-for="tag in (trade.tags || [])" :key="tag" 
-                          class="badge bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                          class="badge-neutral">
                       {{ tag }}
                     </span>
                     <span v-if="!trade.tags || trade.tags.length === 0" class="text-sm text-gray-500 dark:text-gray-400">-</span>
@@ -855,7 +855,7 @@
                     :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm font-medium" :class="[
-                    (trade.pnl_percent || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    (trade.pnl_percent || 0) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ trade.pnl_percent != null ? `${trade.pnl_percent > 0 ? '+' : ''}${formatNumber(trade.pnl_percent)}%` : '-' }}
                   </div>
@@ -882,7 +882,7 @@
                     :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="trade.rValue != null && trade.rValue !== undefined" class="text-sm font-medium" :class="[
-                    trade.rValue >= 2 ? 'text-green-600 dark:text-green-400' :
+                    trade.rValue >= 2 ? 'text-green-700 dark:text-green-400' :
                     trade.rValue >= 0 ? 'text-yellow-600 dark:text-yellow-400' :
                     'text-red-600 dark:text-red-400'
                   ]">
@@ -901,7 +901,7 @@
                 <td v-else-if="column.visible && column.key === 'mfe'"
                     :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <span v-if="trade.mfe != null" class="text-sm text-mono-num text-green-600 dark:text-green-400">{{ formatExcursionValue(trade, trade.mfe) }}</span>
+                  <span v-if="trade.mfe != null" class="text-sm text-mono-num text-green-700 dark:text-green-400">{{ formatExcursionValue(trade, trade.mfe) }}</span>
                   <span v-else class="text-sm text-gray-400">—</span>
                 </td>
 
@@ -923,7 +923,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span v-if="trade.option_type"
-                        class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full uppercase"
+                        class="badge uppercase"
                         :class="[
                           trade.option_type === 'call'
                             ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
@@ -979,7 +979,7 @@
                       :key="url"
                       type="button"
                       :aria-label="`View image ${index + 1} for ${trade.symbol}`"
-                      class="rounded text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 hover:underline focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      class="rounded text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 hover:underline focus:outline-none focus:ring-2 focus:ring-primary-500"
                       @click.stop="selected_image = { id: url, file_url: url, file_name: `${trade.symbol} — Image ${index + 1}` }"
                     >Image {{ index + 1 }}</button>
                   </div>
@@ -995,7 +995,7 @@
                         :href="url"
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
+                        class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
                         @click.stop
                       >{{ isYouTubeLink(url) ? 'Video' : 'Chart' }} {{ index + 1 }}</a><span v-if="index < trade.chart_urls.length - 1">, </span>
                     </template>
@@ -1061,7 +1061,7 @@
                   @click="goToPage(page)"
                   :class="[
                     page === tradesStore.pagination.page
-                      ? 'z-10 bg-primary-50 dark:bg-primary-900/20 border-primary-500 text-primary-600 dark:text-primary-400'
+                      ? 'z-10 bg-primary-50 dark:bg-primary-900/20 border-primary-500 text-primary-700 dark:text-primary-400'
                       : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700',
                     'relative inline-flex items-center px-4 py-2 border text-sm font-medium'
                   ]"
@@ -1097,10 +1097,10 @@
     />
 
     <!-- Delete Confirmation Dialog -->
-    <div v-if="showDeleteConfirm" class="modal-overlay overflow-y-auto">
-      <div class="modal-panel top-20 mx-auto p-5 w-96">
+    <div v-if="showDeleteConfirm" class="modal-overlay flex items-center justify-center overflow-y-auto p-4">
+      <div role="dialog" aria-modal="true" class="modal-panel p-6 w-full max-w-md">
         <div class="mt-3 text-center">
-          <h3 class="heading-card">Delete Trades</h3>
+          <h3 class="modal-title">Delete Trades</h3>
           <div class="mt-2 px-7 py-3">
             <p class="text-sm text-gray-500 dark:text-gray-400">
               Are you sure you want to delete {{ selectedTrades.length }} trade{{ selectedTrades.length === 1 ? '' : 's' }}?
@@ -1116,7 +1116,7 @@
             </button>
             <button
               @click="executeBulkDelete"
-              class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+              class="btn-danger"
             >
               Delete
             </button>
@@ -1126,10 +1126,10 @@
     </div>
 
     <!-- Bulk Tag Modal -->
-    <div v-if="showBulkTagModal" class="modal-overlay overflow-y-auto" @click.self="showBulkTagModal = false">
-      <div class="modal-panel top-20 mx-auto p-5 w-full max-w-md">
+    <div v-if="showBulkTagModal" class="modal-overlay flex items-center justify-center overflow-y-auto p-4" @click.self="showBulkTagModal = false">
+      <div role="dialog" aria-modal="true" class="modal-panel p-6 w-full max-w-md">
         <div class="flex justify-between items-center mb-4">
-          <h3 class="heading-card">Add Tags to {{ selectedTrades.length }} Trade{{ selectedTrades.length === 1 ? '' : 's' }}</h3>
+          <h3 class="modal-title">Add Tags to {{ selectedTrades.length }} Trade{{ selectedTrades.length === 1 ? '' : 's' }}</h3>
           <button
             @click="showBulkTagModal = false"
             class="text-gray-400 hover:text-gray-500"
@@ -1571,7 +1571,8 @@ const tableLayoutStyle = computed(() => {
     return { tableLayout: 'fixed', minWidth: '100%' }
   } else {
     // For many columns, allow horizontal scroll
-    return { tableLayout: 'fixed', minWidth: '1800px' }
+    // Let the table size to its columns; the wrapper scrolls when it must.
+    return { tableLayout: 'auto', minWidth: '100%' }
   }
 })
 
@@ -1580,19 +1581,11 @@ const tableLayoutStyle = computed(() => {
 // line up on the decimal like a broker blotter.
 const numericColumnKeys = new Set(['entry', 'exit', 'pnl', 'grossPnl', 'unrealizedPnl', 'quantity', 'commission', 'fees', 'roi', 'stopLoss', 'takeProfit', 'rValue', 'mae', 'mfe', 'strikePrice', 'contractSize'])
 
-const getCellPadding = computed(() => {
-  const count = visibleColumnCount.value
-  if (count <= 6) return 'px-1.5 py-4'
-  if (count <= 10) return 'px-1 py-3'
-  return 'px-0.5 py-2'
-})
+// One density regardless of how many columns are shown, so toggling a column
+// never changes row height.
+const getCellPadding = computed(() => 'px-2 py-3')
 
-const getHeaderPadding = computed(() => {
-  const count = visibleColumnCount.value
-  if (count <= 6) return 'px-1.5 py-3'
-  if (count <= 10) return 'px-1 py-2'
-  return 'px-0.5 py-2'
-})
+const getHeaderPadding = computed(() => 'px-2 py-2')
 
 // Special padding for checkbox column to minimize space
 const getCheckboxPadding = computed(() => {

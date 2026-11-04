@@ -38,7 +38,7 @@
                             type="checkbox"
                             :checked="!modelValue || modelValue.length === 0"
                             @change="toggleAllTags"
-                            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                            class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                         />
                         <span class="ml-3 text-sm text-gray-900 dark:text-white"
                             >All Tags</span
@@ -62,7 +62,7 @@
                                     modelValue && modelValue.includes(tag.name)
                                 "
                                 @change="toggleTag(tag.name)"
-                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                                class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                             />
                             <span class="ml-3 flex items-center gap-2">
                                 <span
@@ -91,7 +91,7 @@
                     <button
                         @click="openTagManager"
                         type="button"
-                        class="flex items-center w-full px-3 py-2 text-sm text-primary-600 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                        class="btn-ghost btn-sm w-full"
                     >
                         <svg
                             class="w-4 h-4 mr-2"
@@ -115,15 +115,15 @@
         <!-- Tag Manager Modal -->
         <div
             v-if="showTagManager"
-            class="modal-overlay overflow-y-auto"
+            class="modal-overlay flex items-center justify-center overflow-y-auto p-4"
             @click.self="showTagManager = false"
         >
-            <div
-                class="modal-panel top-20 mx-auto p-5 w-full max-w-md"
+            <div role="dialog" aria-modal="true"
+                class="modal-panel p-6 w-full max-w-md"
             >
                 <div class="flex justify-between items-center mb-4">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white"
+                        class="modal-title"
                     >
                         Manage Tags
                     </h3>
@@ -155,7 +155,7 @@
                             v-model="newTagName"
                             type="text"
                             placeholder="New tag name"
-                            class="flex-1 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                            class="input flex-1"
                             maxlength="50"
                             @keydown.enter="createTag"
                         />
@@ -216,7 +216,7 @@
                         <div class="flex flex-col flex-shrink-0 ml-1">
                             <button
                                 type="button"
-                                class="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30"
+                                class="btn-icon p-0.5 disabled:opacity-30"
                                 :disabled="index === 0"
                                 title="Move up"
                                 @click="moveTag(tag.name, 'up')"
@@ -227,7 +227,7 @@
                             </button>
                             <button
                                 type="button"
-                                class="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30"
+                                class="btn-icon p-0.5 disabled:opacity-30"
                                 :disabled="index === orderedTags.length - 1"
                                 title="Move down"
                                 @click="moveTag(tag.name, 'down')"
@@ -240,8 +240,8 @@
                         <button
                             type="button"
                             @click="toggleTagHidden(tag)"
-                            class="ml-2 flex-shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                            :class="tag.hidden ? 'text-gray-400 dark:text-gray-500' : 'text-primary-600 dark:text-primary-400'"
+                            class="btn-icon p-1 ml-2"
+                            :class="tag.hidden ? 'text-gray-400 dark:text-gray-500' : 'text-primary-700 dark:text-primary-400'"
                             :title="tag.hidden ? 'Show in dropdowns' : 'Hide from dropdowns'"
                         >
                             <svg v-if="!tag.hidden" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

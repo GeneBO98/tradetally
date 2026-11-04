@@ -9,7 +9,7 @@
         </div>
 
         <!-- Loading state -->
-        <div v-if="loading" class="flex justify-center items-center h-64">
+        <div v-if="initialLoading" class="flex justify-center items-center h-64">
             <div
                 class="spinner spinner-lg"
             ></div>
@@ -20,7 +20,7 @@
             <div class="card">
                 <div class="px-4 py-5 sm:p-6">
                     <h3
-                        class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4"
+                        class="heading-card leading-6 mb-4"
                     >
                         Backup Settings
                     </h3>
@@ -194,7 +194,7 @@
                     <div class="flex items-center justify-between">
                         <div class="flex-1">
                             <h3
-                                class="text-lg leading-6 font-medium text-gray-900 dark:text-white"
+                                class="heading-card leading-6"
                             >
                                 Manual Backup
                             </h3>
@@ -245,7 +245,7 @@
                 <div class="px-4 py-5 sm:p-6">
                     <div class="flex items-center justify-between mb-4">
                         <h3
-                            class="text-lg leading-6 font-medium text-gray-900 dark:text-white"
+                            class="heading-card leading-6"
                         >
                             Backup History
                         </h3>
@@ -271,7 +271,7 @@
                             />
                         </svg>
                         <h3
-                            class="mt-2 text-sm font-medium text-gray-900 dark:text-white"
+                            class="heading-sub mt-2"
                         >
                             No backups
                         </h3>
@@ -289,32 +289,32 @@
                             <thead class="table-head">
                                 <tr>
                                     <th
-                                        class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-3 py-3 text-left table-th"
                                     >
                                         Filename
                                     </th>
                                     <th
-                                        class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-3 py-3 text-left table-th"
                                     >
                                         Type
                                     </th>
                                     <th
-                                        class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-3 py-3 text-left table-th"
                                     >
                                         Size
                                     </th>
                                     <th
-                                        class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-3 py-3 text-left table-th"
                                     >
                                         Status
                                     </th>
                                     <th
-                                        class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-3 py-3 text-left table-th"
                                     >
                                         Created
                                     </th>
                                     <th
-                                        class="px-3 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        class="px-3 py-3 text-right table-th"
                                     >
                                         Actions
                                     </th>
@@ -381,7 +381,7 @@
                                                 )
                                             "
                                             :disabled="downloading[backup.id]"
-                                            class="text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300 disabled:opacity-50"
+                                            class="text-primary-700 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300 disabled:opacity-50"
                                         >
                                             {{
                                                 downloading[backup.id]
@@ -431,7 +431,7 @@
                         </div>
                         <div class="ml-3 flex-1">
                             <h3
-                                class="text-lg leading-6 font-medium text-gray-900 dark:text-white"
+                                class="heading-card leading-6"
                             >
                                 Restore from Backup
                             </h3>
@@ -495,7 +495,7 @@
                     <div class="flex items-center justify-between">
                         <div class="flex-1">
                             <h3
-                                class="text-lg leading-6 font-medium text-gray-900 dark:text-white"
+                                class="heading-card leading-6"
                             >
                                 Cleanup Old Backups
                             </h3>
@@ -581,7 +581,7 @@
                     </div>
                     <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
                         <h3
-                            class="text-lg leading-6 font-medium text-gray-900 dark:text-white"
+                            class="modal-title"
                             id="modal-title"
                         >
                             Confirm Backup Restore
@@ -602,7 +602,7 @@
                                         id="clear-existing"
                                         v-model="clearExisting"
                                         type="checkbox"
-                                        class="focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded"
+                                        class="focus:ring-primary-500 h-4 w-4 text-primary-700 border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded"
                                     />
                                 </div>
                                 <div class="ml-3 text-sm">
@@ -630,7 +630,7 @@
                                         id="overwrite-users"
                                         v-model="overwriteUsers"
                                         type="checkbox"
-                                        class="focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded"
+                                        class="focus:ring-primary-500 h-4 w-4 text-primary-700 border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded"
                                     />
                                 </div>
                                 <div class="ml-3 text-sm">
@@ -674,7 +674,7 @@
                                     </svg>
                                     <div class="ml-3">
                                         <h3
-                                            class="text-sm font-medium"
+                                            class="heading-sub"
                                             :class="
                                                 clearExisting
                                                     ? 'text-red-800 dark:text-red-300'
@@ -756,7 +756,7 @@
                         @click="executeRestore"
                         :disabled="restoring"
                         type="button"
-                        class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="btn-danger w-full justify-center sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <svg
                             v-if="restoring"
@@ -806,6 +806,7 @@ const { formatDateTime: formatDateTimeTz } = useUserTimezone();
 const { showDangerConfirmation } = useNotification();
 
 const loading = ref(true);
+const initialLoading = ref(true);
 const creatingBackup = ref(false);
 const savingSettings = ref(false);
 const cleaningUp = ref(false);
@@ -868,6 +869,7 @@ async function loadData() {
             error.response?.data?.error || "Failed to load backup data";
     } finally {
         loading.value = false;
+        initialLoading.value = false;
     }
 }
 

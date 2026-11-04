@@ -15,7 +15,7 @@
           </div>
 
           <div class="mt-3 text-center sm:mt-5">
-            <h3 class="heading-card" id="modal-title">
+            <h3 class="modal-title" id="modal-title">
               {{ title }}
             </h3>
           </div>
@@ -23,11 +23,11 @@
           <!-- Summary Stats -->
           <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
-              <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{ tradesImported }}</p>
+              <p class="text-2xl font-bold text-green-700 dark:text-green-400">{{ tradesImported }}</p>
               <p class="text-xs text-green-700 dark:text-green-300">Imported</p>
             </div>
             <div v-if="duplicatesSkipped > 0" class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-3 text-center">
-              <p class="text-2xl font-bold text-primary-600 dark:text-primary-400">{{ duplicatesSkipped }}</p>
+              <p class="text-2xl font-bold text-primary-700 dark:text-primary-400">{{ duplicatesSkipped }}</p>
               <p class="text-xs text-primary-700 dark:text-primary-300">Duplicates</p>
             </div>
             <div v-else class="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
@@ -214,19 +214,19 @@
         </div>
 
         <div v-if="showDemoDataCta && tradesImported === 0" class="mt-4">
-          <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
+          <div class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-4">
             <div class="flex items-start">
-              <InformationCircleIcon class="h-5 w-5 text-emerald-600 dark:text-emerald-400 mr-2 flex-shrink-0 mt-0.5" />
+              <InformationCircleIcon class="h-5 w-5 text-primary-700 dark:text-primary-400 mr-2 flex-shrink-0 mt-0.5" />
               <div class="flex-1">
-                <p class="text-sm font-medium text-emerald-800 dark:text-emerald-200">
+                <p class="text-sm font-medium text-primary-800 dark:text-primary-200">
                   Explore with demo data instead
                 </p>
-                <p class="mt-1 text-sm text-emerald-700 dark:text-emerald-300">
+                <p class="mt-1 text-sm text-primary-700 dark:text-primary-300">
                   If this CSV is blocking you, load sample trades and explore the dashboard and analytics flow right now.
                 </p>
                 <button
                   type="button"
-                  class="mt-3 inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-white bg-emerald-600 border border-transparent rounded-md hover:bg-emerald-700 disabled:opacity-60"
+                  class="btn-primary btn-sm mt-3"
                   :disabled="demoDataLoading"
                   @click="$emit('load-demo-data')"
                 >
@@ -241,7 +241,7 @@
         <div v-if="showNeedHelp" class="mt-4">
           <div class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-4">
             <div class="flex items-start">
-              <InformationCircleIcon class="h-5 w-5 text-primary-600 dark:text-primary-400 mr-2 flex-shrink-0 mt-0.5" />
+              <InformationCircleIcon class="h-5 w-5 text-primary-700 dark:text-primary-400 mr-2 flex-shrink-0 mt-0.5" />
               <div class="flex-1">
                 <p class="text-sm font-medium text-primary-800 dark:text-primary-200">
                   Need Help?
@@ -493,7 +493,7 @@ const iconBgClass = computed(() => {
 
 const iconClass = computed(() => {
   switch (importStatus.value) {
-    case 'success': return 'text-green-600 dark:text-green-400'
+    case 'success': return 'text-green-700 dark:text-green-400'
     case 'warning': return 'text-yellow-600 dark:text-yellow-400'
     default: return 'text-red-600 dark:text-red-400'
   }

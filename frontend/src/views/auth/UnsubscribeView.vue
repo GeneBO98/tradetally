@@ -21,7 +21,7 @@
         <!-- Success State (unsubscribed) -->
         <div v-else-if="unsubscribed" class="text-center">
           <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/20">
-            <CheckIcon class="h-6 w-6 text-green-600 dark:text-green-400" />
+            <CheckIcon class="h-6 w-6 text-green-700 dark:text-green-400" />
           </div>
           <h3 class="heading-card mt-4">Successfully Unsubscribed</h3>
           <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
@@ -37,7 +37,7 @@
         <!-- Already Unsubscribed State -->
         <div v-else-if="alreadyUnsubscribed" class="text-center">
           <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-primary-100 dark:bg-primary-900/20">
-            <InformationCircleIcon class="h-6 w-6 text-primary-600 dark:text-primary-400" />
+            <InformationCircleIcon class="h-6 w-6 text-primary-700 dark:text-primary-400" />
           </div>
           <h3 class="heading-card mt-4">Already Unsubscribed</h3>
           <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">

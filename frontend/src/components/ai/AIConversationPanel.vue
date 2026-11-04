@@ -4,7 +4,7 @@
     <div class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-3">
         <div class="p-2 rounded-lg bg-primary-100 dark:bg-primary-900/30">
-          <SparklesIcon class="h-5 w-5 text-primary-600 dark:text-primary-400" />
+          <SparklesIcon class="h-5 w-5 text-primary-700 dark:text-primary-400" />
         </div>
         <div>
           <h3 class="heading-card">{{ title }}</h3>
@@ -28,7 +28,7 @@
         <button
           v-if="aiStore.hasActiveSession"
           @click="handleNewSession"
-          class="btn-secondary text-sm"
+          class="btn-secondary"
           :disabled="aiStore.generating"
         >
           New Analysis
@@ -50,7 +50,7 @@
     <div v-if="!aiStore.hasActiveSession && !aiStore.loading" class="text-center py-8">
       <div class="max-w-md mx-auto">
         <SparklesIcon class="h-12 w-12 mx-auto text-gray-400 dark:text-gray-500 mb-4" />
-        <h4 class="text-lg font-medium text-gray-900 dark:text-white mb-2">{{ emptyTitle }}</h4>
+        <h4 class="heading-card mb-2">{{ emptyTitle }}</h4>
         <p class="text-gray-600 dark:text-gray-400 mb-4 text-sm">
           {{ emptyDescription }}
         </p>
@@ -87,7 +87,7 @@
 
     <!-- Loading State -->
     <div v-else-if="aiStore.loading && !aiStore.hasActiveSession" class="text-center py-12">
-      <div class="animate-spin h-8 w-8 mx-auto mb-4 border-4 border-primary-600 border-t-transparent rounded-full"></div>
+      <div class="spinner spinner-md mx-auto mb-4"></div>
       <p class="text-gray-600 dark:text-gray-400">{{ loadingText }}</p>
       <p class="text-gray-500 dark:text-gray-500 text-xs mt-2">This may take a moment</p>
     </div>
@@ -102,7 +102,7 @@
         <template v-for="(message, index) in aiStore.messages" :key="index">
           <!-- User Message -->
           <div v-if="message.role === 'user'" class="flex justify-end">
-            <div class="max-w-[85%] bg-primary-600 text-white rounded-lg px-4 py-2">
+            <div class="max-w-[85%] bg-primary-700 text-white rounded-lg px-4 py-2">
               <p class="text-sm whitespace-pre-wrap">{{ message.content }}</p>
             </div>
           </div>
@@ -174,7 +174,7 @@
         <button
           @click="handleNewSession"
           :disabled="!aiStore.canStartSession"
-          class="btn-primary text-sm inline-flex items-center gap-2"
+          class="btn-primary inline-flex items-center gap-2"
         >
           <SparklesIcon class="h-4 w-4" />
           Start New Analysis

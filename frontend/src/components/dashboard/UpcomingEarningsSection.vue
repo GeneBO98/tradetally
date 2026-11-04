@@ -44,7 +44,7 @@
         </div>
         <button
           @click="fetchEarnings"
-          class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+          class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
         >
           Try again
         </button>

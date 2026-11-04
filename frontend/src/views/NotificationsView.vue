@@ -74,7 +74,7 @@
                 type="checkbox"
                 :checked="selectedNotifications.includes(notification.id)"
                 @change="toggleNotificationSelection(notification.id)"
-                class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                class="h-4 w-4 text-primary-700 border-gray-300 rounded focus:ring-primary-500"
               />
             </div>
             <!-- Icon -->
@@ -130,7 +130,7 @@
               <div class="flex items-start justify-between">
                 <div class="flex-1">
                   <div class="flex items-center space-x-2 mb-1">
-                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    <h3 class="heading-sub">
                       {{ notification.symbol || 'Notification' }}
                     </h3>
                     <span class="badge" :class="getTypeBadgeClass(notification.type)">
@@ -188,7 +188,7 @@
             <button
               @click="loadPage(pagination.page - 1)"
               :disabled="pagination.page <= 1 || loading"
-              class="btn-secondary text-sm"
+              class="btn-secondary"
             >
               Previous
             </button>
@@ -449,7 +449,7 @@ const getIconColorClass = (type) => {
     case 'price_alert':
       return 'text-yellow-600 dark:text-yellow-400'
     case 'trade_comment':
-      return 'text-primary-600 dark:text-primary-400'
+      return 'text-primary-700 dark:text-primary-400'
     case 'achievement_earned':
       return 'text-amber-600 dark:text-amber-400'
     case 'level_up':
@@ -458,7 +458,7 @@ const getIconColorClass = (type) => {
       return 'text-rose-600 dark:text-rose-400'
     case 'portfolio_alert':
     case 'web_mention_alert':
-      return 'text-primary-600 dark:text-primary-300'
+      return 'text-primary-700 dark:text-primary-300'
     case 'broker_reauth_expiring':
     case 'broker_reauth_required':
       return 'text-amber-600 dark:text-amber-400'

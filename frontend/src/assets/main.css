@@ -36,8 +36,9 @@
     min-height: 44px; /* Ensures proper touch target size on mobile */
   }
   
+  /* primary-700 keeps white label text above 4.5:1 (primary-600 is 3.3:1). */
   .btn-primary {
-    @apply btn text-white bg-primary-600 hover:bg-primary-700 focus:ring-primary-500;
+    @apply btn text-white bg-primary-700 hover:bg-primary-800 focus:ring-primary-500;
   }
   
   .btn-secondary {
@@ -45,7 +46,7 @@
   }
   
   .btn-danger {
-    @apply btn text-white bg-danger hover:bg-red-700 focus:ring-red-500;
+    @apply btn text-white bg-red-600 hover:bg-red-700 focus:ring-red-500;
   }
   
   .btn-yellow {
@@ -59,6 +60,11 @@
     min-height: 32px;
   }
 
+  /* Icon-only button: square hit area, no min-height, neutral hover tint. */
+  .btn-icon {
+    @apply inline-flex items-center justify-center rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200;
+  }
+
   /* Borderless, low-emphasis button (toolbar icons, tertiary actions). */
   .btn-ghost {
     @apply btn text-gray-600 bg-transparent hover:bg-gray-100 focus:ring-primary-500 dark:text-gray-300 dark:hover:bg-gray-700;
@@ -69,6 +75,19 @@
     font-size: 16px; /* Prevents iOS zoom on input focus */
   }
   
+  /* Compact field for inline editors, table cells and dense calculators.
+     Pair with `.input`: `input input-sm`. Phones keep 16px to avoid iOS
+     focus zoom. */
+  .input-sm {
+    @apply px-2 py-1 rounded;
+    min-height: 32px;
+  }
+  @media (min-width: 640px) {
+    .input-sm {
+      font-size: 0.875rem;
+    }
+  }
+
   select.input {
     @apply pr-10 bg-no-repeat bg-right;
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
@@ -348,6 +367,11 @@
   .heading-card {
     @apply text-base font-semibold text-gray-900 dark:text-white;
     @apply sm:text-lg;
+  }
+
+  /* Sub-heading inside a card or dialog (group labels, list section titles). */
+  .heading-sub {
+    @apply text-sm font-semibold text-gray-900 dark:text-white;
   }
 
   .text-data-primary {

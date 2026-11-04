@@ -8,12 +8,12 @@
       ></div>
 
       <!-- Modal -->
-      <div class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+      <div role="dialog" aria-modal="true" class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
         <!-- Header -->
         <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6">
           <div class="flex items-center justify-between">
             <div>
-              <h3 class="heading-card">
+              <h3 class="modal-title">
                 Unmapped CUSIPs
               </h3>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -60,7 +60,7 @@
                 <button
                   @click="autoRemapAll"
                   :disabled="remapping"
-                  class="ml-3 flex-shrink-0 text-sm bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="btn-primary ml-3 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span v-if="remapping" class="flex items-center">
                     <div class="spinner h-3 w-3 spinner-light mr-1"></div>
@@ -135,7 +135,7 @@
                             v-model="quickMapping.verified"
                             type="checkbox"
                             id="quick-verified"
-                            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                            class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
                           />
                           <label for="quick-verified" class="ml-2 block text-xs text-gray-700 dark:text-gray-300">
                             Mark as verified
@@ -168,7 +168,7 @@
                   <div v-if="mappingCusip !== cusip.cusip" class="ml-4">
                     <button
                       @click="startQuickMapping(cusip)"
-                      class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 font-medium"
+                      class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 font-medium"
                     >
                       Map Ticker
                     </button>

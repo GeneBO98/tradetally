@@ -3,7 +3,7 @@
     <div class="card">
         <div class="card-body">
             <h3
-                class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                class="heading-card mb-6"
             >
                 Admin AI Provider Settings
             </h3>
@@ -159,7 +159,7 @@
                     >
                         <div>
                             <h4
-                                class="text-base font-medium text-gray-900 dark:text-white"
+                                class="heading-card"
                             >
                                 Follow-up Question Checker
                             </h4>
@@ -182,7 +182,7 @@
                                     form.classifierEnabled
                                 "
                                 type="checkbox"
-                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
                             />
                             Enabled
                         </label>

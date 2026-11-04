@@ -3,9 +3,9 @@
     <div class="flex min-h-full items-center justify-center p-4">
       <div class="modal-backdrop" @click="emit('close')"></div>
 
-      <div class="modal-panel w-full max-w-lg">
+      <div role="dialog" aria-modal="true" class="modal-panel w-full max-w-lg">
         <div class="flex items-center justify-between border-b border-gray-200 p-6 dark:border-gray-700">
-          <h3 class="heading-card">Connect Trading 212</h3>
+          <h3 class="modal-title">Connect Trading 212</h3>
           <button
             type="button"
             class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
@@ -31,7 +31,7 @@
               href="https://docs.trading212.com/api"
               target="_blank"
               rel="noopener noreferrer"
-              class="mt-3 inline-block text-xs font-medium text-primary-600 underline dark:text-primary-400"
+              class="mt-3 inline-block text-xs font-medium text-primary-700 underline dark:text-primary-400"
             >
               View Trading 212 API documentation
             </a>
@@ -131,7 +131,7 @@
                   :class="[
                     'rounded-full border px-3 py-1 text-sm transition-colors',
                     activePreset === preset.id
-                      ? 'border-primary-600 bg-primary-600 text-white'
+                      ? 'border-primary-600 bg-primary-700 text-white'
                       : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
                   ]"
                   @click="applySyncRangePreset(preset.id)"

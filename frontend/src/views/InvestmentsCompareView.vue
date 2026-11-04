@@ -5,7 +5,7 @@
       <div class="flex items-center gap-3">
         <button
           @click="goBack"
-          class="text-sm text-primary-600 hover:text-primary-800"
+          class="text-sm text-primary-700 hover:text-primary-800"
         >
           ← Back to Investments
         </button>
@@ -34,7 +34,7 @@
       class="rounded-lg border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 p-4 text-sm text-yellow-800 dark:text-yellow-200"
     >
       Select at least two accounts from the Account Comparison panel to compare.
-      <button @click="goBack" class="ml-2 underline text-primary-600 hover:text-primary-800">
+      <button @click="goBack" class="ml-2 underline text-primary-700 hover:text-primary-800">
         Back to Investments
       </button>
     </div>
@@ -52,28 +52,28 @@
     <div v-else class="space-y-4">
       <section class="card overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-          <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Comparison</h2>
+          <h2 class="heading-sub">Comparison</h2>
         </div>
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
             <thead class="table-head">
               <tr>
-                <th class="px-4 py-2 text-left text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Metric</th>
+                <th class="px-4 py-2 text-left table-th">Metric</th>
                 <th
                   v-for="account in selectedAccountValues"
                   :key="account"
-                  class="px-4 py-2 text-right text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                  class="px-4 py-2 text-right table-th"
                 >
                   <div class="text-gray-900 dark:text-white normal-case font-medium">
                     {{ accountLabels[account] || account }}
                   </div>
-                  <div v-if="leaderAccount === account" class="text-[10px] text-primary-600 dark:text-primary-400 normal-case font-normal">
+                  <div v-if="leaderAccount === account" class="text-xs text-primary-700 dark:text-primary-400 normal-case font-normal">
                     leader
                   </div>
                 </th>
                 <th
                   v-if="isPairCompare"
-                  class="px-4 py-2 text-right text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                  class="px-4 py-2 text-right table-th"
                 >
                   Difference
                 </th>
@@ -96,7 +96,7 @@
                   <span
                     v-if="!isPairCompare && leaderAccount !== account && metric.formatDelta(account) !== ''"
                     :class="metric.deltaClass(account)"
-                    class="block text-[10px]"
+                    class="block text-xs"
                   >
                     {{ metric.formatDelta(account) }}
                   </span>
@@ -129,12 +129,12 @@
           <!-- Account header -->
           <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             <div class="flex items-center justify-between gap-2">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+              <h2 class="heading-sub">
                 {{ accountLabels[account] || account }}
               </h2>
               <span
                 v-if="leaderAccount === account"
-                class="text-[10px] font-medium text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-800 rounded-full px-2 py-0.5 whitespace-nowrap"
+                class="badge text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-800"
               >
                 Leader
               </span>
@@ -174,11 +174,11 @@
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs">
                   <thead class="table-head">
                     <tr>
-                      <th class="px-2 py-1.5 text-left text-[10px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Symbol</th>
-                      <th class="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Value</th>
-                      <th class="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actual</th>
-                      <th class="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Target</th>
-                      <th class="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Drift</th>
+                      <th class="px-2 py-1.5 text-left table-th">Symbol</th>
+                      <th class="px-2 py-1.5 text-right table-th">Value</th>
+                      <th class="px-2 py-1.5 text-right table-th">Actual</th>
+                      <th class="px-2 py-1.5 text-right table-th">Target</th>
+                      <th class="px-2 py-1.5 text-right table-th">Drift</th>
                     </tr>
                   </thead>
                   <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -311,7 +311,7 @@ function deltaColorClass(delta) {
     if (!delta) return ''
     const improved = delta.lowerIsBetter ? delta.delta < 0 : delta.delta > 0
     if (delta.delta === 0) return 'text-gray-500 dark:text-gray-400'
-    return improved ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+    return improved ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
 }
 
 function formatDeltaPercent(delta) {
@@ -415,7 +415,7 @@ const comparisonMetricRows = computed(() => [
         valueClass: (account) => {
             const value = metricValue(account, 'totalReturnPercent')
             if (value === null) return 'text-gray-500 dark:text-gray-400'
-            return value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+            return value >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
         },
         formatDelta: (account) => {
             const delta = metricDelta(account, 'totalReturnPercent')

@@ -1,9 +1,9 @@
 <template>
   <div class="modal-overlay flex items-center justify-center">
-    <div class="modal-panel max-w-md w-full mx-4 max-h-[calc(100vh-2rem)] flex flex-col">
+    <div role="dialog" aria-modal="true" class="modal-panel max-w-md w-full mx-4 max-h-[calc(100vh-2rem)] flex flex-col">
       <!-- Header -->
       <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-        <h3 class="heading-card">Add Shares</h3>
+        <h3 class="modal-title">Add Shares</h3>
         <p class="text-sm text-gray-500 dark:text-gray-400">Record a new purchase lot</p>
       </div>
 

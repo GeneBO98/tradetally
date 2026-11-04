@@ -63,7 +63,7 @@
           <div
             v-if="scenario.delta !== null && Math.abs(scenario.delta) > 0.005"
             class="text-xs tabular-nums"
-            :class="scenario.delta > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+            :class="scenario.delta > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
           >
             {{ formatCurrency(Math.abs(scenario.delta)) }} {{ scenario.delta > 0 ? 'better' : 'worse' }} than your exit
           </div>
@@ -85,7 +85,7 @@ const props = defineProps({
 const { formatCurrency } = useCurrencyFormatter()
 
 function pnlClass(value) {
-  if (value > 0) return 'text-green-600 dark:text-green-400'
+  if (value > 0) return 'text-green-700 dark:text-green-400'
   if (value < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-900 dark:text-white'
 }

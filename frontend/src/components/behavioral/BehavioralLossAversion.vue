@@ -160,7 +160,7 @@
                             class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-6"
                         >
                             <h4
-                                class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3"
+                                class="heading-sub mb-3"
                             >
                                 Financial Impact
                             </h4>
@@ -217,7 +217,7 @@
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <h4
-                                    class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                                    class="heading-sub mb-1"
                                 >
                                     Planned Risk/Reward
                                 </h4>
@@ -233,7 +233,7 @@
                             </div>
                             <div>
                                 <h4
-                                    class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                                    class="heading-sub mb-1"
                                 >
                                     Actual Risk/Reward
                                 </h4>
@@ -259,7 +259,7 @@
                         >
                             <div class="flex items-center justify-between mb-4">
                                 <h4
-                                    class="text-lg font-medium text-gray-700 dark:text-gray-300"
+                                    class="heading-card"
                                 >
                                     Trades That Could Have Been More Profitable
                                 </h4>
@@ -508,7 +508,7 @@
                                                         3,
                                                     )"
                                                     :key="`${signal.type}-${signal.signal}`"
-                                                    class="px-2 py-1 text-xs rounded"
+                                                    class="badge"
                                                     :class="{
                                                         'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400':
                                                             signal.signal.includes(

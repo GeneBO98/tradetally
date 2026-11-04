@@ -23,7 +23,7 @@
             @click="scope = 'day'"
             class="px-2.5 py-1 rounded transition-colors"
             :class="scope === 'day'
-              ? 'bg-primary-600 text-white'
+              ? 'bg-primary-700 text-white'
               : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
           >
             By day
@@ -33,7 +33,7 @@
             @click="scope = 'trade'"
             class="px-2.5 py-1 rounded transition-colors"
             :class="scope === 'trade'
-              ? 'bg-primary-600 text-white'
+              ? 'bg-primary-700 text-white'
               : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
           >
             By trade
@@ -62,7 +62,7 @@
                    count above includes BE, surface the strict count too so the
                    user can read both numbers at a glance (matches the calendar's
                    W/L/B convention). -->
-              <div v-if="showExclBeNote" class="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+              <div v-if="showExclBeNote" class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
                 {{ currentStreakExclBe }} excl. BE
               </div>
             </template>
@@ -80,7 +80,7 @@
               :title="cell.title"
             />
           </div>
-          <div class="mt-1 flex justify-between text-[10px] text-gray-400 dark:text-gray-500 text-mono-num">
+          <div class="mt-1 flex justify-between text-xs text-gray-400 dark:text-gray-500 text-mono-num">
             <span v-if="scope === 'day'">{{ stripCells[0]?.shortDate }}</span>
             <span v-else>oldest</span>
             <span v-if="scope === 'day'">{{ stripCells[stripCells.length - 1]?.shortDate }}</span>
@@ -92,7 +92,7 @@
         <div class="mt-4 grid grid-cols-2 gap-3 text-xs">
           <div class="rounded-md border border-gray-200 dark:border-gray-700 px-3 py-2">
             <div class="text-label">Best streak</div>
-            <div class="text-mono-num text-lg font-semibold text-green-600 dark:text-green-400">
+            <div class="text-mono-num text-lg font-semibold text-green-700 dark:text-green-400">
               {{ bestWinStreak }}W
             </div>
           </div>
@@ -345,13 +345,13 @@ const streakLabel = computed(() => {
 })
 
 const streakClass = computed(() => {
-  if (currentStreak.value > 0) return 'text-green-600 dark:text-green-400'
+  if (currentStreak.value > 0) return 'text-green-700 dark:text-green-400'
   if (currentStreak.value < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-400 dark:text-gray-500'
 })
 
 const todayPnlClass = computed(() => {
-  if (todayPnl.value > 0) return 'text-green-600 dark:text-green-400'
+  if (todayPnl.value > 0) return 'text-green-700 dark:text-green-400'
   if (todayPnl.value < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-700 dark:text-gray-300'
 })

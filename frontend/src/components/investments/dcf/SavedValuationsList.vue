@@ -1,6 +1,6 @@
 <template>
   <div v-if="valuations.length > 0" class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-6">
-    <h3 class="text-md font-medium text-gray-700 dark:text-gray-300 mb-3">Saved Valuations</h3>
+    <h3 class="heading-card mb-3">Saved Valuations</h3>
 
     <div class="space-y-3">
       <div
@@ -34,7 +34,7 @@
             </span>
             <span
               v-if="loadedId === valuation.id"
-              class="text-xs font-medium text-primary-600 dark:text-primary-400 uppercase tracking-wide"
+              class="text-xs font-medium text-primary-700 dark:text-primary-400 uppercase tracking-wide"
             >
               Loaded
             </span>
@@ -46,7 +46,7 @@
             <span class="text-yellow-600 dark:text-yellow-400">
               Base: {{ formatCurrency(valuation.fair_value_medium) }}
             </span>
-            <span class="text-green-600 dark:text-green-400">
+            <span class="text-green-700 dark:text-green-400">
               Bull: {{ formatCurrency(valuation.fair_value_high) }}
             </span>
           </div>
@@ -57,7 +57,7 @@
         <div class="flex items-center gap-2 ml-4">
           <button
             @click.stop="confirmDelete(valuation)"
-            class="px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+            class="btn-ghost btn-sm"
           >
             Delete
           </button>

@@ -32,7 +32,7 @@
             <button
               type="button"
               @click="$refs.fileInput.click()"
-              class="text-primary-600 hover:text-primary-500 font-medium"
+              class="text-primary-700 hover:text-primary-500 font-medium"
             >
               Choose files
             </button>
@@ -52,7 +52,7 @@
 
     <!-- Selected/Pending files preview -->
     <div v-if="pendingFiles.length > 0" class="space-y-2">
-      <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+      <h4 class="heading-sub">
         {{ diaryEntryId ? 'Selected Files' : 'Pending Images' }}
       </h4>
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -97,7 +97,7 @@
 
     <!-- Existing images -->
     <div v-if="existingImages.length > 0" class="space-y-2">
-      <h4 class="text-sm font-medium text-gray-900 dark:text-white">Uploaded Images</h4>
+      <h4 class="heading-sub">Uploaded Images</h4>
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         <div
           v-for="image in existingImages"
@@ -153,7 +153,7 @@
 
     <!-- Upload results -->
     <div v-if="uploadResults.length > 0" class="space-y-2">
-      <h4 class="text-sm font-medium text-gray-900 dark:text-white">Upload Results</h4>
+      <h4 class="heading-sub">Upload Results</h4>
       <div class="space-y-1">
         <div
           v-for="result in uploadResults"

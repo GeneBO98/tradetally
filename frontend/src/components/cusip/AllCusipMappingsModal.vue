@@ -10,7 +10,7 @@
             ></div>
 
             <!-- Modal -->
-            <div
+            <div role="dialog" aria-modal="true"
                 class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-6xl sm:w-full"
             >
                 <!-- Header -->
@@ -18,7 +18,7 @@
                     <div class="flex items-center justify-between">
                         <div>
                             <h3
-                                class="text-lg leading-6 font-medium text-gray-900 dark:text-white"
+                                class="modal-title"
                             >
                                 All CUSIP Mappings
                             </h3>
@@ -80,7 +80,7 @@
                         <button
                             @click="loadMappings(1)"
                             :disabled="loading"
-                            class="btn-secondary text-sm"
+                            class="btn-secondary"
                         >
                             <ArrowPathIcon
                                 class="h-4 w-4 mr-2"
@@ -115,7 +115,7 @@
                             class="h-16 w-16 text-gray-400 mx-auto mb-4"
                         />
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-2"
+                            class="heading-card mb-2"
                         >
                             No mappings found
                         </h3>
@@ -137,32 +137,32 @@
                                 <thead class="table-head">
                                     <tr>
                                         <th
-                                            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                            class="px-4 py-3 text-left table-th"
                                         >
                                             CUSIP
                                         </th>
                                         <th
-                                            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                            class="px-4 py-3 text-left table-th"
                                         >
                                             Ticker
                                         </th>
                                         <th
-                                            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                            class="px-4 py-3 text-left table-th"
                                         >
                                             Company
                                         </th>
                                         <th
-                                            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                            class="px-4 py-3 text-left table-th"
                                         >
                                             Source
                                         </th>
                                         <th
-                                            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                            class="px-4 py-3 text-left table-th"
                                         >
                                             Trades
                                         </th>
                                         <th
-                                            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                            class="px-4 py-3 text-left table-th"
                                         >
                                             Actions
                                         </th>
@@ -189,7 +189,7 @@
                                                 class="flex items-center"
                                             >
                                                 <span
-                                                    class="text-sm font-semibold text-primary-600 dark:text-primary-400"
+                                                    class="text-sm font-semibold text-primary-700 dark:text-primary-400"
                                                 >
                                                     {{ mapping.ticker }}
                                                 </span>
@@ -217,7 +217,7 @@
                                                             mapping,
                                                         )
                                                     "
-                                                    class="ml-2 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                                                    class="ml-2 text-xs text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
                                                 >
                                                     Map Now
                                                 </button>
@@ -294,7 +294,7 @@
                                                             mapping.cusip,
                                                         )
                                                     "
-                                                    class="text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
+                                                    class="text-green-700 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
                                                     title="Verify mapping"
                                                 >
                                                     <CheckIcon
@@ -306,7 +306,7 @@
                                                     @click="
                                                         editMapping(mapping)
                                                     "
-                                                    class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                                                    class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
                                                     title="Edit mapping"
                                                 >
                                                     <PencilIcon
@@ -367,7 +367,7 @@
                                 <button
                                     @click="loadPage(pagination.page - 1)"
                                     :disabled="pagination.page <= 1 || loading"
-                                    class="btn-secondary text-sm"
+                                    class="btn-secondary"
                                 >
                                     Previous
                                 </button>

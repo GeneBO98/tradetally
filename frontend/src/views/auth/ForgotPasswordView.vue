@@ -19,7 +19,7 @@
           If an account with that email exists, we've sent you a password reset link.
         </p>
         <div class="mt-4">
-          <router-link to="/login" class="text-sm text-primary-600 hover:text-primary-500 font-medium">
+          <router-link to="/login" class="text-sm text-primary-700 hover:text-primary-500 font-medium">
             Back to sign in
           </router-link>
         </div>
@@ -56,7 +56,7 @@
         </div>
 
         <div class="text-center">
-          <router-link to="/login" class="text-sm text-primary-600 hover:text-primary-500">
+          <router-link to="/login" class="text-sm text-primary-700 hover:text-primary-500">
             Back to sign in
           </router-link>
         </div>

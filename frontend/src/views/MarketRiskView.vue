@@ -49,7 +49,7 @@
           <div class="flex items-center justify-between gap-2">
             <h2 class="text-sm font-medium text-gray-600 dark:text-gray-400">{{ indicator.name }}</h2>
             <span
-              class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium uppercase whitespace-nowrap"
+              class="badge uppercase"
               :class="badgeClasses(indicator.status)"
             >
               {{ indicator.status_label }}
@@ -76,7 +76,7 @@
           <div class="card-dense px-5 py-4">
             <div class="flex items-center gap-2">
               <span class="h-2.5 w-2.5 rounded-full bg-red-500"></span>
-              <h3 class="font-semibold text-gray-900 dark:text-white">Red</h3>
+              <h3 class="heading-card">Red</h3>
             </div>
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
               The measure is at a historically extreme level. Extremes can persist for years, but forward returns
@@ -86,7 +86,7 @@
           <div class="card-dense px-5 py-4">
             <div class="flex items-center gap-2">
               <span class="h-2.5 w-2.5 rounded-full bg-amber-500"></span>
-              <h3 class="font-semibold text-gray-900 dark:text-white">Amber</h3>
+              <h3 class="heading-card">Amber</h3>
             </div>
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
               The measure is elevated or in a historically risky window, such as the two years after a yield-curve
@@ -96,7 +96,7 @@
           <div class="card-dense px-5 py-4">
             <div class="flex items-center gap-2">
               <span class="h-2.5 w-2.5 rounded-full bg-green-500"></span>
-              <h3 class="font-semibold text-gray-900 dark:text-white">Green</h3>
+              <h3 class="heading-card">Green</h3>
             </div>
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
               The measure is within its normal historical range and is not flagging valuation or stress risk on its own.
@@ -111,7 +111,7 @@
         <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div v-for="item in explainers" :key="item.title" class="card">
             <div class="card-body">
-              <h3 class="font-semibold text-gray-900 dark:text-white">{{ item.title }}</h3>
+              <h3 class="heading-card">{{ item.title }}</h3>
               <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ item.body }}</p>
               <p class="mt-2 text-xs text-gray-500 dark:text-gray-500">Source: {{ item.source }}</p>
             </div>
@@ -125,7 +125,7 @@
         <div class="mt-4 space-y-4">
           <div v-for="faq in faqs" :key="faq.q" class="card">
             <div class="card-body">
-              <h3 class="font-semibold text-gray-900 dark:text-white">{{ faq.q }}</h3>
+              <h3 class="heading-card">{{ faq.q }}</h3>
               <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ faq.a }}</p>
             </div>
           </div>

@@ -43,7 +43,7 @@
       </div>
 
       <!-- Empty state -->
-      <div v-if="filteredTestimonials.length === 0" class="card p-8 text-center">
+      <div v-if="filteredTestimonials.length === 0" class="card card-body text-center">
         <p class="text-gray-500 dark:text-gray-400">No testimonials {{ filterStatus !== 'all' ? 'matching filter' : 'yet' }}.</p>
       </div>
 
@@ -52,7 +52,7 @@
         <div
           v-for="t in filteredTestimonials"
           :key="t.id"
-          class="card p-5"
+          class="card card-body"
         >
           <div class="flex items-start justify-between gap-4">
             <div class="flex-1 min-w-0">
@@ -98,7 +98,7 @@
                 v-if="!t.approved"
                 @click="approve(t)"
                 :disabled="t._loading"
-                class="btn-primary text-xs px-3 py-1.5"
+                class="btn-primary btn-sm"
               >
                 Approve
               </button>
@@ -106,14 +106,14 @@
                 v-if="t.approved"
                 @click="reject(t)"
                 :disabled="t._loading"
-                class="btn-secondary text-xs px-3 py-1.5"
+                class="btn-secondary btn-sm"
               >
                 Reject
               </button>
               <button
                 @click="remove(t)"
                 :disabled="t._loading"
-                class="text-xs px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                class="btn-ghost btn-sm"
               >
                 Delete
               </button>

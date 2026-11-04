@@ -23,7 +23,7 @@
                     :class="[
                         'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm',
                         activeTab === tab.id
-                            ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                            ? 'border-primary-500 text-primary-700 dark:text-primary-400'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
                     ]"
                 >
@@ -124,7 +124,7 @@
             <div v-if="activeTab === 'profile'" class="card">
                 <div class="card-body">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                        class="heading-card mb-6"
                     >
                         Profile Information
                     </h3>
@@ -241,7 +241,7 @@
             <div v-if="activeTab === 'security'" class="card">
                 <div class="card-body">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                        class="heading-card mb-6"
                     >
                         Two-Factor Authentication
                     </h3>
@@ -257,7 +257,7 @@
                         >
                             <div class="flex items-center">
                                 <svg
-                                    class="w-5 h-5 text-green-600 dark:text-green-400 mr-3"
+                                    class="w-5 h-5 text-green-700 dark:text-green-400 mr-3"
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
@@ -417,7 +417,7 @@
             <div v-if="activeTab === 'profile' && billingStatus.billing_available" class="card">
                 <div class="card-body">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                        class="heading-card mb-6"
                     >
                         Subscription
                     </h3>
@@ -440,7 +440,7 @@
                         <div class="flex items-center justify-between">
                             <div>
                                 <h4
-                                    class="text-sm font-medium text-gray-900 dark:text-white"
+                                    class="heading-sub"
                                 >
                                     Current Plan
                                 </h4>
@@ -538,13 +538,13 @@
                                     </p>
                                 </div>
                                 <span
-                                    class="px-3 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-800 dark:text-primary-100"
+                                    class="badge bg-primary-100 text-primary-800 dark:bg-primary-800 dark:text-primary-100"
                                 >
                                     TRIAL
                                 </span>
                             </div>
                             <div
-                                class="mt-3 text-xs text-primary-600 dark:text-primary-400"
+                                class="mt-3 text-xs text-primary-700 dark:text-primary-400"
                             >
                                 Trial expires:
                                 {{ formatDate(subscription.trial.expires_at) }}
@@ -557,7 +557,7 @@
                             class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4"
                         >
                             <h4
-                                class="text-sm font-medium text-gray-900 dark:text-white"
+                                class="heading-sub"
                             >
                                 {{
                                     subscription.tier === "pro"
@@ -610,7 +610,7 @@
             <div v-if="activeTab === 'security'" class="card">
                 <div class="card-body">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                        class="heading-card mb-6"
                     >
                         API Keys
                     </h3>
@@ -640,13 +640,13 @@
                                 <div class="flex-1">
                                     <div class="flex items-center space-x-3">
                                         <h4
-                                            class="text-sm font-medium text-gray-900 dark:text-white"
+                                            class="heading-sub"
                                         >
                                             {{ apiKey.name }}
                                         </h4>
                                         <span
                                             v-if="!apiKey.isActive"
-                                            class="badge bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                                            class="badge-danger"
                                         >
                                             Inactive
                                         </span>
@@ -656,7 +656,7 @@
                                                 new Date(apiKey.expiresAt) <
                                                     new Date()
                                             "
-                                            class="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+                                            class="badge-warning"
                                         >
                                             Expired
                                         </span>
@@ -700,7 +700,7 @@
                                     <button
                                         @click="toggleApiKey(apiKey)"
                                         :disabled="apiKeysLoading"
-                                        class="btn-secondary text-xs py-1 px-2"
+                                        class="btn-secondary btn-sm"
                                     >
                                         {{
                                             apiKey.isActive
@@ -711,7 +711,7 @@
                                     <button
                                         @click="deleteApiKey(apiKey)"
                                         :disabled="apiKeysLoading"
-                                        class="btn-danger text-xs py-1 px-2"
+                                        class="btn-danger btn-sm"
                                     >
                                         Delete
                                     </button>
@@ -751,7 +751,7 @@
             <div v-if="activeTab === 'trading'" class="card">
                 <div class="card-body">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                        class="heading-card mb-6"
                     >
                         Trading Profile
                     </h3>
@@ -873,7 +873,7 @@
                                             :class="[
                                                 'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
                                                 tradingProfileForm.tradingStrategies.includes(strategy)
-                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800'
                                                     : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
                                             ]"
                                         >
@@ -896,7 +896,7 @@
                                             :class="[
                                                 'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
                                                 tradingProfileForm.tradingStyles.includes(style)
-                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800'
                                                     : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
                                             ]"
                                         >
@@ -919,7 +919,7 @@
                                             :class="[
                                                 'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
                                                 tradingProfileForm.primaryMarkets.includes(market)
-                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800'
                                                     : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
                                             ]"
                                         >
@@ -942,7 +942,7 @@
                                             :class="[
                                                 'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
                                                 tradingProfileForm.tradingGoals.includes(goal)
-                                                    ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                    ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800'
                                                     : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
                                             ]"
                                         >
@@ -973,7 +973,7 @@
                                         :class="[
                                             'inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
                                             tradingProfileForm.preferredSectors.includes(sector)
-                                                ? 'bg-primary-600 border-primary-600 text-white hover:bg-primary-700'
+                                                ? 'bg-primary-700 border-primary-600 text-white hover:bg-primary-800'
                                                 : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
                                         ]"
                                     >
@@ -1134,14 +1134,14 @@
         <!-- 2FA Setup Modal -->
         <div
             v-if="show2FASetup"
-            class="modal-overlay overflow-y-auto"
+            class="modal-overlay flex items-center justify-center overflow-y-auto p-4"
         >
-            <div
-                class="modal-panel top-20 mx-auto p-5 w-full max-w-md"
+            <div role="dialog" aria-modal="true"
+                class="modal-panel p-6 w-full max-w-md"
             >
                 <div class="mt-3">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                        class="modal-title mb-4"
                     >
                         Set Up Two-Factor Authentication
                     </h3>
@@ -1150,7 +1150,7 @@
                         <!-- Step 1: Scan QR Code -->
                         <div>
                             <h4
-                                class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3"
+                                class="heading-sub mb-3"
                             >
                                 Step 1: Scan QR Code
                             </h4>
@@ -1183,7 +1183,7 @@
                         <!-- Step 2: Enter Verification Code -->
                         <div>
                             <h4
-                                class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3"
+                                class="heading-sub mb-3"
                             >
                                 Step 2: Enter Verification Code
                             </h4>
@@ -1205,7 +1205,7 @@
                         <!-- Backup Codes -->
                         <div>
                             <h4
-                                class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3"
+                                class="heading-sub mb-3"
                             >
                                 Backup Codes
                             </h4>
@@ -1259,14 +1259,14 @@
         <!-- Disable 2FA Modal -->
         <div
             v-if="showDisable2FAModal"
-            class="modal-overlay overflow-y-auto"
+            class="modal-overlay flex items-center justify-center overflow-y-auto p-4"
         >
-            <div
-                class="modal-panel top-20 mx-auto p-5 w-full max-w-md"
+            <div role="dialog" aria-modal="true"
+                class="modal-panel p-6 w-full max-w-md"
             >
                 <div class="mt-3">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                        class="modal-title mb-4"
                     >
                         Disable Two-Factor Authentication
                     </h3>
@@ -1356,7 +1356,7 @@
                                     !disable2FAForm.password ||
                                     !disable2FAForm.token
                                 "
-                                class="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span v-if="twoFactorLoading"
                                     >Disabling...</span
@@ -1372,14 +1372,14 @@
         <!-- Create API Key Modal -->
         <div
             v-if="showCreateApiKeyModal"
-            class="modal-overlay overflow-y-auto"
+            class="modal-overlay flex items-center justify-center overflow-y-auto p-4"
         >
-            <div
-                class="modal-panel top-20 mx-auto p-5 w-96"
+            <div role="dialog" aria-modal="true"
+                class="modal-panel p-6 w-full max-w-md"
             >
                 <div class="mt-3">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                        class="modal-title mb-4"
                     >
                         Create API Key
                     </h3>
@@ -1408,7 +1408,7 @@
                                         v-model="createApiKeyForm.permissions"
                                         type="checkbox"
                                         value="read"
-                                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
                                     />
                                     <label
                                         for="permRead"
@@ -1423,7 +1423,7 @@
                                         v-model="createApiKeyForm.permissions"
                                         type="checkbox"
                                         value="write"
-                                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
                                     />
                                     <label
                                         for="permWrite"
@@ -1441,7 +1441,7 @@
                                         v-model="createApiKeyForm.permissions"
                                         type="checkbox"
                                         value="admin"
-                                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
                                     />
                                     <label
                                         for="permAdmin"
@@ -1500,14 +1500,14 @@
         <!-- API Key Created Modal -->
         <div
             v-if="showApiKeyCreatedModal"
-            class="modal-overlay overflow-y-auto"
+            class="modal-overlay flex items-center justify-center overflow-y-auto p-4"
         >
-            <div
-                class="modal-panel top-20 mx-auto p-5 w-96"
+            <div role="dialog" aria-modal="true"
+                class="modal-panel p-6 w-full max-w-md"
             >
                 <div class="mt-3">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                        class="modal-title mb-4"
                     >
                         API Key Created
                     </h3>
@@ -1531,11 +1531,11 @@
                                 <input
                                     :value="createdApiKey.key"
                                     readonly
-                                    class="input font-mono text-xs flex-1"
+                                    class="input input-sm font-mono flex-1"
                                 />
                                 <button
                                     @click="copyApiKey"
-                                    class="ml-2 btn-secondary text-xs px-3"
+                                    class="ml-2 btn-secondary btn-sm"
                                 >
                                     Copy
                                 </button>
@@ -1572,10 +1572,10 @@
         <!-- Delete Account Modal -->
         <div
             v-if="showDeleteAccountModal"
-            class="modal-overlay overflow-y-auto"
+            class="modal-overlay flex items-center justify-center overflow-y-auto p-4"
         >
-            <div
-                class="modal-panel top-20 mx-auto p-5 w-full max-w-md"
+            <div role="dialog" aria-modal="true"
+                class="modal-panel p-6 w-full max-w-md"
             >
                 <div class="mt-3">
                     <div
@@ -1597,7 +1597,7 @@
                     </div>
 
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white text-center mb-2"
+                        class="modal-title text-center mb-2"
                     >
                         Delete Your Account
                     </h3>
@@ -1657,7 +1657,7 @@
                                     deleteAccountLoading ||
                                     !deleteAccountForm.password
                                 "
-                                class="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span v-if="deleteAccountLoading"
                                     >Deleting...</span

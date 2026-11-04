@@ -3,7 +3,7 @@
     <div class="card">
         <div class="card-body">
             <h3
-                class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                class="heading-card mb-4"
             >
                 Broker Commission & Fee Settings
             </h3>
@@ -34,13 +34,13 @@
                             >
                             <span
                                 v-if="setting.instrument"
-                                class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
+                                class="badge-primary"
                             >
                                 {{ setting.instrument }}
                             </span>
                             <span
                                 v-else
-                                class="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                class="badge-neutral"
                             >
                                 All Instruments
                             </span>
@@ -116,7 +116,7 @@
                     <div class="flex items-center space-x-2 ml-4">
                         <button
                             @click="$emit('edit', setting)"
-                            class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                            class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
                             title="Edit"
                             aria-label="Edit broker fee"
                         >
@@ -162,7 +162,7 @@
                 class="border-t border-gray-200 dark:border-gray-700 pt-6"
             >
                 <h4
-                    class="text-sm font-medium text-gray-900 dark:text-white mb-4"
+                    class="heading-sub mb-4"
                 >
                     {{
                         editing

@@ -27,7 +27,7 @@
         </div>
         <button
           type="button"
-          class="inline-flex items-center gap-1.5 text-xs font-medium text-primary-600 hover:text-primary-700 disabled:opacity-50 dark:text-primary-400 dark:hover:text-primary-300"
+          class="inline-flex items-center gap-1.5 text-xs font-medium text-primary-700 hover:text-primary-800 disabled:opacity-50 dark:text-primary-400 dark:hover:text-primary-300"
           :disabled="!accountId || store.reviewLoading"
           @click="refresh"
         >
@@ -58,7 +58,7 @@
             type="button"
             class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors"
             :class="activeTab === tab.id
-              ? 'bg-primary-600 text-white shadow-sm'
+              ? 'bg-primary-700 text-white shadow-sm'
               : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700/50'"
             @click="activeTab = tab.id"
           >
@@ -75,7 +75,7 @@
           <input
             v-model="searchQuery"
             type="search"
-            class="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-8 pr-8 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+            class="input input-sm w-full pl-8 pr-8"
             placeholder="Search transactions"
             aria-label="Search transactions"
           />
@@ -132,7 +132,7 @@
         <div class="flex items-center gap-1.5">
           <button
             type="button"
-            class="inline-flex items-center gap-1 rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+            class="btn-primary btn-sm gap-1 disabled:opacity-50"
             :disabled="bulkBusy"
             @click="requestSelectedAction('approve')"
           >
@@ -140,7 +140,7 @@
           </button>
           <button
             type="button"
-            class="inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            class="btn-danger btn-sm gap-1 disabled:opacity-50"
             :disabled="bulkBusy"
             @click="requestSelectedAction('reject')"
           >
@@ -148,7 +148,7 @@
           </button>
           <button
             type="button"
-            class="inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium text-primary-700 hover:bg-primary-100 dark:text-primary-300 dark:hover:bg-primary-900/40"
+            class="btn-ghost btn-sm"
             :disabled="bulkBusy"
             @click="clearSelection"
           >
@@ -175,7 +175,7 @@
           <input
             v-if="canAct(item)"
             type="checkbox"
-            class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
             :checked="selectedIds.has(item.id)"
             :aria-label="`Select ${item.description}`"
             @click.stop="toggleRowSelection(item, (currentPage - 1) * PAGE_SIZE + pageIndex, $event)"
@@ -196,7 +196,7 @@
               </div>
               <span
                 v-if="statusLabel(item)"
-                class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                class="badge uppercase tracking-wide"
                 :class="statusClass(item)"
               >
                 {{ statusLabel(item) }}
@@ -224,7 +224,7 @@
           <div v-if="canAct(item)" class="flex shrink-0 items-center gap-0.5">
             <button
               type="button"
-              class="inline-flex h-7 w-7 items-center justify-center rounded-md text-green-600 transition-colors hover:bg-green-100 disabled:opacity-40 dark:text-green-400 dark:hover:bg-green-900/30"
+              class="inline-flex h-7 w-7 items-center justify-center rounded-md text-green-700 transition-colors hover:bg-green-100 disabled:opacity-40 dark:text-green-400 dark:hover:bg-green-900/30"
               :disabled="actingId === item.id"
               :title="`Approve as ${transactionTypes[item.id] || 'deposit'}`"
               @click.stop="requestAction(item, 'approve')"
@@ -269,7 +269,7 @@
           <button
             v-else-if="canRevert(item)"
             type="button"
-            class="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-red-700 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+            class="btn-secondary btn-sm gap-1 disabled:opacity-40"
             :disabled="actingId === item.id"
             title="Revert decision and return to pending"
             @click.stop="requestAction(item, 'revert')"
@@ -298,7 +298,7 @@
                 type="button"
                 class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
                 :class="transactionTypes[item.id] === 'deposit'
-                  ? 'bg-green-600 text-white shadow-sm'
+                  ? 'bg-primary-700 text-white shadow-sm'
                   : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
                 @click="transactionTypes[item.id] = 'deposit'"
               >
@@ -311,7 +311,7 @@
                 type="button"
                 class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
                 :class="transactionTypes[item.id] === 'withdrawal'
-                  ? 'bg-red-600 text-white shadow-sm'
+                  ? 'bg-primary-700 text-white shadow-sm'
                   : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
                 @click="transactionTypes[item.id] = 'withdrawal'"
               >
@@ -326,18 +326,18 @@
             <input
               v-model="descriptions[item.id]"
               type="text"
-              class="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+              class="input input-sm w-full"
               placeholder="Override description (optional)"
               style="min-height: 0; font-size: 14px;"
             />
           </div>
 
           <!-- Hint about original suggestion -->
-          <div v-if="item.directionGuess && item.directionGuess !== 'ambiguous'" class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+          <div v-if="item.directionGuess && item.directionGuess !== 'ambiguous'" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
             Plaid suggested <span class="font-medium capitalize">{{ item.directionGuess }}</span>
             <span v-if="item.confidence">· <span class="tabular-nums">{{ item.confidence }}%</span> confidence</span>
           </div>
-          <div v-else class="mt-2 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+          <div v-else class="mt-2 text-xs font-medium text-amber-600 dark:text-amber-400">
             Direction ambiguous — please choose deposit or withdrawal.
           </div>
         </div>
@@ -355,7 +355,7 @@
       <div class="flex items-center gap-1.5">
         <button
           type="button"
-          class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          class="btn-secondary btn-sm gap-1 disabled:opacity-40"
           :disabled="currentPage <= 1"
           @click="goToPage(currentPage - 1)"
         >
@@ -366,7 +366,7 @@
         </span>
         <button
           type="button"
-          class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          class="btn-secondary btn-sm gap-1 disabled:opacity-40"
           :disabled="currentPage >= totalPages"
           @click="goToPage(currentPage + 1)"
         >
@@ -383,9 +383,9 @@
       class="modal-overlay flex items-center justify-center px-4"
       @click.self="closeConfirm"
     >
-      <div class="modal-panel w-full max-w-md overflow-hidden">
+      <div role="dialog" aria-modal="true" class="modal-panel w-full max-w-md overflow-hidden">
         <div class="border-b border-gray-200 px-5 py-4 dark:border-gray-700">
-          <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+          <h3 class="heading-card">
             {{ actionTitle }}
           </h3>
           <div class="mt-1 flex items-baseline gap-2">
@@ -409,7 +409,7 @@
               type="radio"
               value="single"
               v-model="confirmState.scope"
-              class="mt-0.5 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+              class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
             />
             <div class="flex-1">
               <div class="text-sm font-medium text-gray-900 dark:text-white">
@@ -432,7 +432,7 @@
               type="radio"
               value="matching"
               v-model="confirmState.scope"
-              class="mt-0.5 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+              class="mt-0.5 h-4 w-4 border-gray-300 text-primary-700 focus:ring-primary-500"
             />
             <div class="flex-1">
               <div class="text-sm font-medium text-gray-900 dark:text-white">
@@ -715,7 +715,7 @@ function amountColor(item) {
   const resolved = item.importedTransactionType || item.directionGuess
   if (item.reviewStatus === 'rejected') return 'text-gray-400 dark:text-gray-500 line-through'
   if (resolved === 'withdrawal') return 'text-red-600 dark:text-red-400'
-  if (resolved === 'deposit') return 'text-green-600 dark:text-green-400'
+  if (resolved === 'deposit') return 'text-green-700 dark:text-green-400'
   return 'text-gray-900 dark:text-white'
 }
 

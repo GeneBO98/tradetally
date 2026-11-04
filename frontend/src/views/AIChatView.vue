@@ -91,7 +91,7 @@
           <router-link
             v-if="currentType === 'single_trade' && aiStore.currentSession.trade_summary?.trade_id"
             :to="`/trades/${aiStore.currentSession.trade_summary.trade_id}`"
-            class="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+            class="text-sm font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400"
           >
             View trade
           </router-link>
@@ -113,7 +113,7 @@
                 v-for="suggestion in suggestions"
                 :key="suggestion"
                 @click="sendMessage(suggestion)"
-                class="rounded-lg border border-gray-200 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:border-primary-300 hover:bg-primary-50 dark:border-gray-700 dark:text-gray-300 dark:hover:border-primary-700 dark:hover:bg-primary-900/20"
+                class="btn-secondary"
                 :disabled="aiStore.generating || !aiStore.canStartChat"
               >
                 {{ suggestion }}
@@ -127,7 +127,7 @@
             </p>
             <template v-for="(message, index) in aiStore.messages" :key="message.id || index">
               <div v-if="message.role === 'user'" class="flex justify-end">
-                <div class="max-w-[85%] rounded-lg bg-primary-600 px-4 py-2 text-white">
+                <div class="max-w-[85%] rounded-lg bg-primary-700 px-4 py-2 text-white">
                   <p class="whitespace-pre-wrap text-sm">{{ message.content }}</p>
                 </div>
               </div>
@@ -167,7 +167,7 @@
             <div class="flex items-center gap-2">
               <button
                 type="button"
-                class="btn-primary px-3 py-1.5 text-sm"
+                class="btn-primary btn-sm"
                 :disabled="aiStore.savingMemoryNote"
                 @click="saveMemoryNote"
               >

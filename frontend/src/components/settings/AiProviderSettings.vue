@@ -3,7 +3,7 @@
     <div class="card">
         <div class="card-body">
             <h3
-                class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                class="heading-card mb-6"
             >
                 AI Provider Settings
             </h3>
@@ -14,14 +14,14 @@
                 recommendations and CUSIP lookups.
                 <span
                     v-if="canConfigureHostCli"
-                    class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
+                    class="block mt-2 text-primary-700 dark:text-primary-400 font-medium"
                 >
                     Note: As an admin or owner, you can also configure
                     default settings for all users below.
                 </span>
                 <span
                     v-else
-                    class="block mt-2 text-primary-600 dark:text-primary-400 font-medium"
+                    class="block mt-2 text-primary-700 dark:text-primary-400 font-medium"
                 >
                     Note: If you leave these settings empty,
                     admin-configured defaults will be used.

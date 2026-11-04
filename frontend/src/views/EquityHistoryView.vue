@@ -28,7 +28,7 @@
                     <div class="flex items-center justify-between mb-4">
                         <button
                             @click="previousMonth"
-                            class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            class="btn-icon p-2"
                         >
                             <svg
                                 class="w-5 h-5 text-gray-600 dark:text-gray-400"
@@ -46,14 +46,14 @@
                         </button>
 
                         <h2
-                            class="text-lg font-semibold text-gray-900 dark:text-white"
+                            class="heading-card"
                         >
                             {{ currentMonthYear }}
                         </h2>
 
                         <button
                             @click="nextMonth"
-                            class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            class="btn-icon p-2"
                         >
                             <svg
                                 class="w-5 h-5 text-gray-600 dark:text-gray-400"
@@ -104,7 +104,7 @@
                             <!-- Equity Amount Display -->
                             <div v-if="day.equity" class="mt-1">
                                 <div
-                                    class="text-xs font-medium text-green-600 dark:text-green-400"
+                                    class="text-xs font-medium text-green-700 dark:text-green-400"
                                 >
                                     {{ formatCurrency(day.equity) }}
                                 </div>
@@ -189,12 +189,12 @@
             v-if="showEquityModal"
             class="modal-overlay flex items-center justify-center p-4"
         >
-            <div
+            <div role="dialog" aria-modal="true"
                 class="modal-panel max-w-md w-full"
             >
                 <div class="p-6">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                        class="modal-title mb-4"
                     >
                         Edit Equity for {{ selectedDateFormatted }}
                     </h3>
@@ -443,7 +443,7 @@ function updateMonthlyStats() {
         const percentage = ((change / monthStartEquity.value) * 100).toFixed(2);
         monthlyChange.value = `${formatCurrency(change)} (${percentage}%)`;
         monthlyChangeClass.value =
-            change >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400";
+            change >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400";
     } else {
         monthlyChange.value = "N/A";
         monthlyChangeClass.value = "text-gray-900 dark:text-white";

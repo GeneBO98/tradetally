@@ -1,6 +1,6 @@
 <template>
     <div
-        class="card p-6"
+        class="card card-body"
     >
         <div class="flex items-center justify-between mb-4">
             <h2 class="heading-card">
@@ -71,11 +71,11 @@
             v-if="showAddModal"
             class="modal-overlay flex items-center justify-center p-4"
         >
-            <div
+            <div role="dialog" aria-modal="true"
                 class="modal-panel max-w-2xl w-full p-6"
             >
                 <h3
-                    class="text-lg font-semibold text-gray-900 dark:text-white mb-4"
+                    class="modal-title mb-4"
                 >
                     {{ editingNote ? "Edit Note" : "Add Note" }}
                 </h3>

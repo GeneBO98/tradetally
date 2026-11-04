@@ -1,13 +1,13 @@
 <template>
     <div
-        class="max-w-md mx-auto card p-6"
+        class="max-w-md mx-auto card card-body"
     >
         <div class="text-center mb-6">
             <div
                 class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-primary-100 dark:bg-primary-900"
             >
                 <svg
-                    class="h-6 w-6 text-primary-600 dark:text-primary-400"
+                    class="h-6 w-6 text-primary-700 dark:text-primary-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

@@ -2,7 +2,7 @@
   <footer class="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
       <div class="flex flex-col items-center justify-center gap-4">
-        <div class="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
+        <div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
           <a
             href="https://tradetally.io/docs"
             target="_blank"

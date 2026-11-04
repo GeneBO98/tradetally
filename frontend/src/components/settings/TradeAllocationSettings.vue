@@ -21,7 +21,7 @@
     <div v-if="expanded" class="border-t border-gray-200 px-6 py-6 dark:border-gray-700">
       <div class="flex items-start justify-between gap-6">
         <div class="max-w-2xl">
-          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Trade allocations</h4>
+          <h4 class="heading-sub">Trade allocations</h4>
           <p class="mt-1.5 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
             Divide a trade proportionally across private accounting groups. This does not alter
             brokerage records, legal ownership, tax lots, or your existing tags.
@@ -50,7 +50,7 @@
       <div v-if="enabled" class="mt-6 border-t border-gray-200 pt-6 dark:border-gray-700">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Allocation groups</h4>
+            <h4 class="heading-sub">Allocation groups</h4>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Create at least two groups before allocating a trade.
             </p>
@@ -99,7 +99,7 @@
             <button type="button" class="btn-secondary" @click="saveGroup(group)">Save</button>
             <button
               type="button"
-              class="rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+              class="btn-ghost btn-sm"
               @click="archiveGroup(group)"
             >
               Archive

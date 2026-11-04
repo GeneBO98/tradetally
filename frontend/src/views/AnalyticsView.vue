@@ -25,7 +25,7 @@
               Filters
               <span
                 v-if="activeFilterCount > 0"
-                class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary-600 px-1.5 text-xs font-semibold text-white"
+                class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary-700 px-1.5 text-xs font-semibold text-white"
               >{{ activeFilterCount }}</span>
             </span>
             <ChevronDownIcon
@@ -106,7 +106,7 @@
               class="px-3 py-2 text-sm font-medium border rounded-md transition-colors"
               :class="showAIPanel
                 ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700'
-                : 'text-white bg-primary-600 border-transparent hover:bg-primary-700'"
+                : 'text-white bg-primary-700 border-transparent hover:bg-primary-800'"
             >
               <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -114,7 +114,7 @@
               <span>{{ showAIPanel ? 'Hide AI Assistant' : 'AI Assistant' }}</span>
               <span
                 v-if="showProLock"
-                class="ml-2 px-1.5 py-0.5 text-xs font-semibold rounded bg-white/20"
+                class="badge ml-2 bg-white/20"
               >Pro</span>
             </button>
           </div>
@@ -126,7 +126,7 @@
         <AIConversationPanel />
         <p class="px-4 pb-4 text-xs text-gray-500 dark:text-gray-400">
           Want to ask about something else, like a stock you hold?
-          <router-link to="/ai-chat" class="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400">Open AI Chat</router-link>
+          <router-link to="/ai-chat" class="font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400">Open AI Chat</router-link>
         </p>
       </div>
       <ProUpgradePrompt
@@ -139,7 +139,7 @@
       <div v-if="isCustomizing" class="card bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
         <div class="card-body">
           <div class="flex items-center gap-3">
-            <svg class="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-5 h-5 text-primary-700 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
@@ -264,7 +264,7 @@
               <h3 class="heading-card">Sector Performance</h3>
               <div v-if="sectorStats.uncategorizedSymbols > 0 || showCompletionMessage" class="mt-2">
                 <div class="flex items-center justify-between text-xs mb-1" 
-                     :class="showCompletionMessage ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
+                     :class="showCompletionMessage ? 'text-green-700 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
                   <span>
                     <MdiIcon v-if="showCompletionMessage" :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
                     {{ showCompletionMessage ? 'All symbols processed!' : 'Processing symbols in background...' }}
@@ -321,13 +321,13 @@
             >
               <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center">
-                  <h4 class="font-medium text-gray-900 dark:text-white text-sm truncate pr-2">{{ sector.industry }}</h4>
+                  <h4 class="heading-sub truncate pr-2">{{ sector.industry }}</h4>
                   <svg class="w-3 h-3 text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                   </svg>
                 </div>
                 <span 
-                  class="text-xs font-semibold px-2 py-1 rounded whitespace-nowrap"
+                  class="badge"
                   :class="sector.total_pnl >= 0 ? 'text-green-700 bg-green-100 dark:text-green-400 dark:bg-green-900/30' : 'text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30'"
                 >
                   {{ formatCurrency(sector.total_pnl) }}
@@ -350,20 +350,20 @@
                   <span 
                     v-for="symbol in sector.symbols.slice(0, 6)" 
                     :key="symbol.symbol"
-                    class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                    class="badge-neutral"
                     :title="`${symbol.trades} trades, ${formatCurrency(symbol.pnl)} P&L`"
                   >
                     <StockLogo
                       :symbol="symbol.symbol"
                       size-class="w-5 h-5"
                       rounded-class="rounded-sm"
-                      fallback-text-class="text-[9px] font-semibold"
+                      fallback-text-class="text-xs font-semibold"
                       class="mr-1"
                     />
                     {{ symbol.symbol }}
                     <span 
                       class="ml-1 text-xs"
-                      :class="symbol.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                      :class="symbol.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                     >
                       {{ formatCurrency(symbol.pnl, { compact: true, minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
                     </span>
@@ -557,11 +557,11 @@
       <div class="relative">
         <!-- Pro Tier Overlay for Free Users -->
         <div v-if="isFreeTier" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-lg">
-          <div class="modal-panel text-center p-8 max-w-md">
-            <svg class="mx-auto h-12 w-12 text-primary-600 dark:text-primary-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div role="dialog" aria-modal="true" class="modal-panel text-center p-6 max-w-md">
+            <svg class="mx-auto h-12 w-12 text-primary-700 dark:text-primary-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
-            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Pro Feature</h3>
+            <h3 class="modal-title mb-2">Pro Feature</h3>
             <p class="text-gray-600 dark:text-gray-400 mb-6">
               Unlock news sentiment correlation analytics to see how news affects your trading performance with Pro.
             </p>
@@ -640,12 +640,12 @@
 
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
 
-        <div
+        <div role="dialog" aria-modal="true"
           class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6"
           @click.stop
         >
           <div class="flex items-center justify-between mb-6">
-            <h3 class="heading-card">
+            <h3 class="modal-title">
               Chart Visibility & Size
             </h3>
             <button
@@ -661,7 +661,7 @@
           <div class="space-y-6">
             <!-- Stats Section -->
             <div>
-              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Statistics</h4>
+              <h4 class="heading-sub mb-3">Statistics</h4>
               <div class="space-y-2">
                 <div v-for="chart in chartDefinitions.filter(c => c.category === 'stats')" :key="chart.id" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                   <div class="flex items-center gap-3">
@@ -670,7 +670,7 @@
                         type="checkbox"
                         :checked="chartLayout.find(c => c.id === chart.id)?.visible"
                         @change="toggleChartVisibility(chart.id)"
-                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                       />
                       <span class="ml-2 text-sm text-gray-900 dark:text-white">{{ chart.title }}</span>
                     </label>
@@ -681,7 +681,7 @@
 
             <!-- Charts Section -->
             <div>
-              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Charts</h4>
+              <h4 class="heading-sub mb-3">Charts</h4>
               <div class="space-y-2">
                 <div v-for="chart in chartDefinitions.filter(c => c.category === 'charts')" :key="chart.id" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                   <div class="flex items-center gap-3">
@@ -690,7 +690,7 @@
                         type="checkbox"
                         :checked="chartLayout.find(c => c.id === chart.id)?.visible"
                         @change="toggleChartVisibility(chart.id)"
-                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                       />
                       <span class="ml-2 text-sm text-gray-900 dark:text-white">{{ chart.title }}</span>
                     </label>
@@ -708,7 +708,7 @@
 
             <!-- Tables Section -->
             <div>
-              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Performance Tables</h4>
+              <h4 class="heading-sub mb-3">Performance Tables</h4>
               <div class="space-y-2">
                 <div v-for="chart in chartDefinitions.filter(c => c.category === 'tables')" :key="chart.id" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                   <div class="flex items-center gap-3">
@@ -717,7 +717,7 @@
                         type="checkbox"
                         :checked="chartLayout.find(c => c.id === chart.id)?.visible"
                         @change="toggleChartVisibility(chart.id)"
-                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                       />
                       <span class="ml-2 text-sm text-gray-900 dark:text-white">{{ chart.title }}</span>
                     </label>
@@ -1453,7 +1453,8 @@ function createPerformanceByPriceChart() {
               if (context.tick.value === 0) {
                 return '#9ca3af'
               }
-              return 'rgba(0,0,0,0.1)'
+              // Theme-aware default (set in lib/chartSetup.js)
+              return Chart.defaults.borderColor
             }
           }
         },
@@ -1537,7 +1538,8 @@ function createPerformanceByVolumeChart() {
               if (context.tick.value === 0) {
                 return '#9ca3af'
               }
-              return 'rgba(0,0,0,0.1)'
+              // Theme-aware default (set in lib/chartSetup.js)
+              return Chart.defaults.borderColor
             }
           }
         },
@@ -1621,7 +1623,8 @@ function createPerformanceByPositionSizeChart() {
               if (context.tick.value === 0) {
                 return '#9ca3af'
               }
-              return 'rgba(0,0,0,0.1)'
+              // Theme-aware default (set in lib/chartSetup.js)
+              return Chart.defaults.borderColor
             }
           }
         },
@@ -1714,7 +1717,8 @@ function createDayOfWeekChart() {
               if (context.tick.value === 0) {
                 return '#9ca3af'
               }
-              return 'rgba(0,0,0,0.1)'
+              // Theme-aware default (set in lib/chartSetup.js)
+              return Chart.defaults.borderColor
             }
           }
         },
@@ -1806,7 +1810,8 @@ function createPerformanceByHoldTimeChart() {
               if (context.tick.value === 0) {
                 return '#9ca3af'
               }
-              return 'rgba(0,0,0,0.1)'
+              // Theme-aware default (set in lib/chartSetup.js)
+              return Chart.defaults.borderColor
             }
           }
         },

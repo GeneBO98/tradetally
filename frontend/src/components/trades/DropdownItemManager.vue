@@ -1,12 +1,12 @@
 <template>
   <div
     v-if="show"
-    class="modal-overlay overflow-y-auto"
+    class="modal-overlay flex items-center justify-center overflow-y-auto p-4"
     @click.self="close"
   >
-    <div class="modal-panel top-20 mx-auto p-5 w-full max-w-md">
+    <div role="dialog" aria-modal="true" class="modal-panel p-6 w-full max-w-md">
       <div class="flex justify-between items-center mb-2">
-        <h3 class="heading-card">{{ title }}</h3>
+        <h3 class="modal-title">{{ title }}</h3>
         <button type="button" @click="close" class="text-gray-400 hover:text-gray-500">
           <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -37,7 +37,7 @@
           <div v-if="reorderable" class="flex flex-col flex-shrink-0 ml-1">
             <button
               type="button"
-              class="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30"
+              class="btn-icon p-0.5 disabled:opacity-30"
               :disabled="index === 0"
               title="Move up"
               @click="$emit('move', { name: item.name, direction: 'up' })"
@@ -48,7 +48,7 @@
             </button>
             <button
               type="button"
-              class="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30"
+              class="btn-icon p-0.5 disabled:opacity-30"
               :disabled="index === items.length - 1"
               title="Move down"
               @click="$emit('move', { name: item.name, direction: 'down' })"
@@ -61,8 +61,8 @@
           <button
             @click="$emit('toggle', item.name)"
             type="button"
-            class="ml-2 flex-shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-            :class="isHidden(item.name) ? 'text-gray-400 dark:text-gray-500' : 'text-primary-600 dark:text-primary-400'"
+            class="btn-icon p-1 ml-2"
+            :class="isHidden(item.name) ? 'text-gray-400 dark:text-gray-500' : 'text-primary-700 dark:text-primary-400'"
             :title="isHidden(item.name) ? 'Show in dropdowns' : 'Hide from dropdowns'"
           >
             <!-- Eye (visible) -->

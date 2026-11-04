@@ -71,7 +71,7 @@
                 <p class="text-sm text-red-700 dark:text-red-300">
                     {{ loadError }}
                 </p>
-                <button @click="loadWebhooks" class="mt-2 btn-secondary text-sm">
+                <button @click="loadWebhooks" class="mt-2 btn-secondary">
                     Retry
                 </button>
             </div>
@@ -81,7 +81,7 @@
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
                         No webhook destinations configured yet.
                     </p>
-                    <button @click="openCreateModal" class="btn-primary text-sm">
+                    <button @click="openCreateModal" class="btn-primary">
                         Add Webhook
                     </button>
                 </div>
@@ -94,7 +94,7 @@
                             class="py-2 flex items-center gap-3"
                         >
                             <span
-                                class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium flex-shrink-0"
+                                class="badge flex-shrink-0"
                                 :class="providerBadgeClass(webhook.providerType)"
                             >
                                 {{ providerLabel(webhook.providerType) }}
@@ -118,21 +118,21 @@
                                 <button
                                     @click="testWebhook(webhook)"
                                     :disabled="testingWebhookId === webhook.id"
-                                    class="p-1.5 rounded-md text-gray-500 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                                    class="btn-icon disabled:opacity-50"
                                     :title="testingWebhookId === webhook.id ? 'Testing...' : 'Send test delivery'"
                                 >
                                     <MdiIcon :icon="mdiSend" :size="16" />
                                 </button>
                                 <button
                                     @click="editWebhook(webhook)"
-                                    class="p-1.5 rounded-md text-gray-500 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                    class="btn-icon"
                                     title="Edit"
                                 >
                                     <MdiIcon :icon="mdiPencilOutline" :size="16" />
                                 </button>
                                 <button
                                     @click="deleteWebhook(webhook)"
-                                    class="p-1.5 rounded-md text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                    class="btn-icon"
                                     title="Delete"
                                 >
                                     <MdiIcon :icon="mdiTrashCanOutline" :size="16" />
@@ -141,7 +141,7 @@
                         </li>
                     </ul>
                     <div class="mt-3 flex justify-end">
-                        <button @click="openCreateModal" class="btn-secondary text-sm">
+                        <button @click="openCreateModal" class="btn-secondary">
                             Add Webhook
                         </button>
                     </div>
@@ -157,10 +157,10 @@
             @click.self="closeModal"
         >
             <div
-                class="modal-panel top-20 mx-4 sm:mx-auto p-5 w-full max-w-2xl"
+                class="modal-panel top-20 mx-4 sm:mx-auto p-6 w-full max-w-2xl"
             >
                 <div class="mt-3">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">
+                    <h3 class="modal-title mb-4">
                         {{ editingWebhook ? "Edit Webhook Destination" : "Add Webhook Destination" }}
                     </h3>
 
@@ -206,7 +206,7 @@
                             />
                             <p
                                 v-if="urlDetectedProvider"
-                                class="mt-2 text-xs text-primary-600 dark:text-primary-400"
+                                class="mt-2 text-xs text-primary-700 dark:text-primary-400"
                             >
                                 Detected a {{ providerLabel(urlDetectedProvider) }} webhook URL — Destination Type set to {{ providerLabel(urlDetectedProvider) }} automatically.
                             </p>
@@ -215,14 +215,14 @@
                         <div v-if="form.providerType === 'custom'" class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
                             <div class="flex items-center justify-between mb-3">
                                 <div>
-                                    <h4 class="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                    <h4 class="heading-sub">
                                         Custom Headers
                                     </h4>
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         Optional headers for your custom endpoint. TradeTally still signs the request body.
                                     </p>
                                 </div>
-                                <button type="button" @click="addHeaderRow" class="btn-secondary text-sm">
+                                <button type="button" @click="addHeaderRow" class="btn-secondary">
                                     Add Header
                                 </button>
                             </div>
@@ -279,7 +279,7 @@
                             <input
                                 v-model="form.isActive"
                                 type="checkbox"
-                                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                             />
                             <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
                                 Destination is active

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useCurrencyFormatter } from './useCurrencyFormatter'
-import { useTradePriceFormatter } from './useTradePriceFormatter'
+import { useTradePriceFormatter, tradePriceFractionDigits } from './useTradePriceFormatter'
 import { withNativeTradePrices } from '@/utils/nativeTradePrices'
 import contracts from '../../../tests/fixtures/trading-calculation-contracts.json'
 
@@ -24,7 +24,7 @@ describe('native trade price formatting (issue 418)', () => {
     const before = JSON.stringify(trade)
     for (const field of ['entry_price', 'exit_price']) {
       expect(formatTradePrice(trade, field)).toBe(formatCurrency(expected[`native_${field}`], {
-        currency: expected.price_currency, maximumFractionDigits: 6
+        currency: expected.price_currency, maximumFractionDigits: tradePriceFractionDigits(trade, expected[`native_${field}`])
       }))
     }
     const chart_trade = withNativeTradePrices(trade)
@@ -36,9 +36,17 @@ describe('native trade price formatting (issue 418)', () => {
 
   it('preserves forex precision and a zero exit', () => {
     const { formatTradePrice } = useTradePriceFormatter()
-    const trade = { price_currency: 'USD', native_prices: { entry_price: 1.123457, exit_price: 0 } }
+    const trade = { instrument_type: 'forex', price_currency: 'USD', native_prices: { entry_price: 1.123457, exit_price: 0 } }
     expect(formatTradePrice(trade, 'entry_price')).toBe('$1.123457')
     expect(formatTradePrice(trade, 'exit_price')).toBe('$0.00')
+  })
+
+  it('rounds non-forex prices to cents, or four places under a dollar', () => {
+    const { formatTradePrice } = useTradePriceFormatter()
+    expect(formatTradePrice({ symbol: 'AAPL', entry_price: 123.714286 }, 'entry_price')).toBe('$123.71')
+    expect(formatTradePrice({ symbol: 'GNLN', entry_price: 0.4392 }, 'entry_price')).toBe('$0.4392')
+    expect(formatTradePrice({ symbol: 'XAUUSD', entry_price: 2700.123456 }, 'entry_price')).toBe('$2,700.123456')
+    expect(tradePriceFractionDigits({ instrument_type: 'stock' }, 4.4392)).toBe(2)
   })
 
   it('supports legacy fields and reporting-currency fallback without snapshots', () => {

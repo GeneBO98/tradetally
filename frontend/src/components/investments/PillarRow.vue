@@ -12,13 +12,13 @@
           :class="[
             'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center',
             pillar.passed
-              ? 'bg-green-100 dark:bg-green-900/30'
-              : 'bg-red-100 dark:bg-red-900/30'
+              ? 'bg-primary-100 dark:bg-primary-900/30'
+              : 'bg-gray-100 dark:bg-gray-700'
           ]"
         >
           <svg
             v-if="pillar.passed"
-            class="w-6 h-6 text-green-600 dark:text-green-400"
+            class="w-6 h-6 text-primary-700 dark:text-primary-400"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -27,7 +27,7 @@
           </svg>
           <svg
             v-else
-            class="w-6 h-6 text-red-600 dark:text-red-400"
+            class="w-6 h-6 text-gray-400 dark:text-gray-500"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -40,7 +40,7 @@
         <div>
           <div class="flex items-center">
             <span class="text-xs font-medium text-gray-400 dark:text-gray-500 mr-2">Pillar {{ pillarNumber }}</span>
-            <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ pillar.name }}</h4>
+            <h4 class="heading-sub">{{ pillar.name }}</h4>
           </div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ pillar.description }}</p>
         </div>
@@ -52,7 +52,7 @@
           <p
             :class="[
               'text-lg font-bold',
-              pillar.passed ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              pillar.passed ? 'text-primary-700 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'
             ]"
           >
             {{ displayValue }}
@@ -90,7 +90,7 @@
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Annual P/E Ratios</p>
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm">
-            <thead>
+            <thead class="table-head">
               <tr class="bg-gray-100 dark:bg-gray-800">
                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Year</th>
                 <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">Price</th>
@@ -115,7 +115,7 @@
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Annual ROIC</p>
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm">
-            <thead>
+            <thead class="table-head">
               <tr class="bg-gray-100 dark:bg-gray-800">
                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Year</th>
                 <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">Op. Income</th>
@@ -350,15 +350,18 @@ function formatPrice(value) {
 
 function formatCurrency(value) {
   if (value === null || value === undefined) return 'N/A'
+  // Sign goes before the symbol (-$1.2M), matching the shared formatter.
   const sym = symbolFor(props.currency)
-  if (Math.abs(value) >= 1e12) {
-    return `${sym}${(value / 1e12).toFixed(2)}T`
-  } else if (Math.abs(value) >= 1e9) {
-    return `${sym}${(value / 1e9).toFixed(2)}B`
-  } else if (Math.abs(value) >= 1e6) {
-    return `${sym}${(value / 1e6).toFixed(2)}M`
+  const sign = value < 0 ? '-' : ''
+  const abs = Math.abs(value)
+  if (abs >= 1e12) {
+    return `${sign}${sym}${(abs / 1e12).toFixed(2)}T`
+  } else if (abs >= 1e9) {
+    return `${sign}${sym}${(abs / 1e9).toFixed(2)}B`
+  } else if (abs >= 1e6) {
+    return `${sign}${sym}${(abs / 1e6).toFixed(2)}M`
   } else {
-    return `${sym}${value.toLocaleString()}`
+    return `${sign}${sym}${abs.toLocaleString()}`
   }
 }
 

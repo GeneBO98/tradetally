@@ -37,7 +37,7 @@
                         Filters
                         <span
                             v-if="activeFilterCount > 0"
-                            class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary-600 px-1.5 text-xs font-semibold text-white"
+                            class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary-700 px-1.5 text-xs font-semibold text-white"
                         >{{ activeFilterCount }}</span>
                     </span>
                     <ChevronDownIcon
@@ -65,7 +65,7 @@
         <!-- Individual Trade Analysis Section -->
         <div class="mb-6">
             <h2
-                class="text-xl font-semibold text-gray-900 dark:text-white mb-2"
+                class="heading-section mb-2"
             >
                 Individual Trade Analysis
             </h2>
@@ -162,7 +162,7 @@
         <!-- Loading State for Analysis -->
         <div
             v-if="selectedTrade && !needsRiskLevels && analysisLoading"
-            class="card mt-6 p-8 text-center"
+            class="card mt-6 card-body text-center"
         >
             <div
                 class="spinner spinner-md mx-auto mb-4"

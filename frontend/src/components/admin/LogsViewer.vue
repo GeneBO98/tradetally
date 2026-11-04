@@ -28,7 +28,7 @@
           <input
             type="checkbox"
             v-model="autoRefresh"
-            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
           />
           <span class="text-gray-700 dark:text-gray-300">Auto-refresh (5s)</span>
         </label>
@@ -37,7 +37,7 @@
         <button
           @click="fetchLogs"
           :disabled="loading"
-          class="btn-secondary text-sm"
+          class="btn-secondary"
         >
           <span v-if="loading">Refreshing...</span>
           <span v-else>Refresh</span>

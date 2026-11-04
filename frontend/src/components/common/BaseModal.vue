@@ -24,7 +24,7 @@
                 >
                 <div
                     ref="modalRef"
-                    class="modal-panel p-5"
+                    class="modal-panel p-6"
                     :class="[sizeClass, panelClass]"
                     tabindex="-1"
                 >

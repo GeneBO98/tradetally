@@ -14,13 +14,13 @@
           </span>
           <span
             v-if="chartData.trade?.instrumentType === 'option'"
-            class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200"
+            class="badge-primary"
           >
             Underlying price
           </span>
           <span
             v-if="chartData.source"
-            class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200"
+            class="badge-primary"
             :class="{ 'cursor-help': sourceTitle }"
             :title="sourceTitle"
           >
@@ -37,7 +37,7 @@
 
       <div v-else-if="!showChart && !loading" class="rounded-lg border border-dashed border-gray-300 px-6 py-12 text-center dark:border-gray-600">
         <PresentationChartLineIcon class="mx-auto h-12 w-12 text-gray-400" />
-        <h4 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Open interactive chart</h4>
+        <h4 class="heading-card mt-4">Open interactive chart</h4>
         <p class="mx-auto mt-2 max-w-lg text-sm text-gray-600 dark:text-gray-400">
           Inspect the trade with editable trend lines, price levels, Fibonacci tools, moving averages, and execution markers.
         </p>
@@ -64,7 +64,7 @@
         <p class="font-medium text-red-700 dark:text-red-300">{{ error }}</p>
         <button
           type="button"
-          class="btn-secondary mt-4 text-sm"
+          class="btn-secondary mt-4"
           :disabled="error.includes('limit') || error.includes('not configured')"
           @click="loadChart"
         >
@@ -284,7 +284,7 @@ const sourceLabel = computed(() => {
 })
 
 function metricClass(value) {
-  return Number(value) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+  return Number(value) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
 }
 
 function formatPercent(value) {

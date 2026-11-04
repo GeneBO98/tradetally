@@ -6,7 +6,7 @@
                     >
                         <div>
                             <h3
-                                class="text-lg font-medium text-gray-900 dark:text-white"
+                                class="heading-card"
                             >
                                 Revenge Trading Detection
                             </h3>
@@ -79,7 +79,7 @@
                             class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/20"
                         >
                             <svg
-                                class="h-6 w-6 text-green-600 dark:text-green-400"
+                                class="h-6 w-6 text-green-700 dark:text-green-400"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -93,7 +93,7 @@
                             </svg>
                         </div>
                         <h3
-                            class="mt-2 text-sm font-medium text-gray-900 dark:text-white"
+                            class="heading-sub mt-2"
                         >
                             No Revenge Trading Detected
                         </h3>
@@ -126,7 +126,7 @@
                                 <div class="flex-1">
                                     <div class="flex items-center space-x-2">
                                         <span
-                                            class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
+                                            class="badge"
                                             :class="{
                                                 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400':
                                                     event.outcome_type ===
@@ -298,7 +298,7 @@
                                                 class="flex items-center space-x-2"
                                             >
                                                 <h4
-                                                    class="text-sm font-semibold text-gray-800 dark:text-gray-200 flex items-center"
+                                                    class="heading-sub flex items-center"
                                                 >
                                                     <MdiIcon
                                                         :icon="mdiLightningBolt"
@@ -425,7 +425,7 @@
                                                             Emotional Spillover
                                                         </span>
                                                         <span
-                                                            class="px-2 py-0.5 text-xs rounded"
+                                                            class="badge"
                                                             :class="{
                                                                 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400':
                                                                     pattern.severity ===
@@ -604,7 +604,7 @@
                                                         <span
                                                             class="ml-1 font-medium"
                                                             :class="{
-                                                                'text-green-600 dark:text-green-400':
+                                                                'text-green-700 dark:text-green-400':
                                                                     parseFloat(
                                                                         pattern.gross_pnl,
                                                                     ) > 0,
@@ -633,7 +633,7 @@
                                                         <span
                                                             class="ml-1 font-medium"
                                                             :class="{
-                                                                'text-green-600 dark:text-green-400':
+                                                                'text-green-700 dark:text-green-400':
                                                                     parseFloat(
                                                                         pattern.pnl,
                                                                     ) > 0,
@@ -662,7 +662,7 @@
                                                         <span
                                                             class="ml-1 font-medium"
                                                             :class="{
-                                                                'text-green-600 dark:text-green-400':
+                                                                'text-green-700 dark:text-green-400':
                                                                     parseFloat(
                                                                         pattern.return_percent,
                                                                     ) > 0,
@@ -746,7 +746,7 @@
                                                         v-if="
                                                             pattern.cross_symbol_qualifier
                                                         "
-                                                        class="mt-1 inline-flex rounded bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
+                                                        class="badge mt-1 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
                                                     >
                                                         Qualified by
                                                         {{
@@ -895,7 +895,7 @@
                                                             parseFloat(
                                                                 event.total_additional_loss,
                                                             ) > 0,
-                                                        'text-green-600 dark:text-green-400':
+                                                        'text-green-700 dark:text-green-400':
                                                             parseFloat(
                                                                 event.total_additional_loss,
                                                             ) < 0,
@@ -1117,7 +1117,7 @@
                                                 @click="$emit('go-to-page', page)"
                                                 :class="[
                                                     page === pagination.page
-                                                        ? 'relative z-10 inline-flex items-center bg-primary-600 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
+                                                        ? 'relative z-10 inline-flex items-center bg-primary-700 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
                                                         : 'relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700',
                                                 ]"
                                             >

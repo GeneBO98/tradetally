@@ -31,10 +31,10 @@
           <p class="text-sm text-red-800 dark:text-red-400">{{ message }}</p>
         </div>
         <div class="text-center space-y-2">
-          <router-link to="/forgot-password" class="block text-sm text-primary-600 hover:text-primary-500">
+          <router-link to="/forgot-password" class="block text-sm text-primary-700 hover:text-primary-500">
             Reset your password instead
           </router-link>
-          <router-link to="/login" class="block text-sm text-primary-600 hover:text-primary-500">
+          <router-link to="/login" class="block text-sm text-primary-700 hover:text-primary-500">
             Back to sign in
           </router-link>
         </div>

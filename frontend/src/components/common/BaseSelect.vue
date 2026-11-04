@@ -8,7 +8,7 @@
       class="input w-full text-left flex items-center justify-between"
       :class="[
         { 'opacity-60 cursor-not-allowed': disabled },
-        size === 'sm' ? 'min-h-[32px] px-2.5 py-1 text-sm' : ''
+        size === 'sm' ? 'input-sm' : ''
       ]"
     >
       <span class="truncate" :class="(selectedOption || hasValue) ? '' : 'text-gray-400 dark:text-gray-500'">
@@ -41,7 +41,7 @@
             v-model="search"
             type="text"
             :placeholder="`Search ${noun}...`"
-            class="input text-sm py-1.5"
+            class="input input-sm"
             @click.stop
             @keydown.enter.prevent="selectFirstMatch"
             @keydown.esc.stop="open = false"
@@ -74,7 +74,7 @@
               :class="rowClass(opt)"
             >
               <span class="truncate">{{ opt.label }}</span>
-              <svg v-if="isSelected(opt.value)" class="h-4 w-4 flex-shrink-0 ml-2 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg v-if="isSelected(opt.value)" class="h-4 w-4 flex-shrink-0 ml-2 text-primary-700 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
               </svg>
             </button>
@@ -91,7 +91,7 @@
             v-if="addLabel"
             type="button"
             @click="onAdd"
-            class="flex items-center w-full px-3 py-2 text-sm text-primary-600 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+            class="flex items-center w-full px-3 py-2 text-sm text-primary-700 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />

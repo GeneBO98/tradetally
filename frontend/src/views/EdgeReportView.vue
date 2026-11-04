@@ -21,7 +21,7 @@
     <!-- Empty state -->
     <div v-else-if="reports.length === 0" class="text-center py-16">
       <DocumentChartBarIcon class="mx-auto h-12 w-12 text-gray-400" />
-      <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No edge reports yet</h3>
+      <h3 class="heading-sub mt-2">No edge reports yet</h3>
       <p class="mt-1 mx-auto max-w-md text-sm text-gray-500 dark:text-gray-400">
         Reports are generated every Monday for the prior week when enabled in
         Settings, or you can generate one now for the most recent completed week.
@@ -46,7 +46,7 @@
           type="button"
           class="rounded-full border px-3 py-1 text-xs font-medium transition-colors"
           :class="selectedId === r.id
-            ? 'border-primary-600 bg-primary-600 text-white'
+            ? 'border-primary-600 bg-primary-700 text-white'
             : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
           @click="selectedId = r.id"
         >
@@ -107,7 +107,7 @@
         <div class="grid gap-6 lg:grid-cols-2">
           <div class="card">
             <div class="card-body">
-              <h3 class="text-sm font-semibold uppercase tracking-wider text-success">Your edge</h3>
+              <h3 class="heading-sub uppercase tracking-wider text-success">Your edge</h3>
               <template v-if="report.edge">
                 <p class="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
                   {{ edgeLabel(report.edge) }}
@@ -125,7 +125,7 @@
 
           <div class="card">
             <div class="card-body">
-              <h3 class="text-sm font-semibold uppercase tracking-wider text-danger">Your leak</h3>
+              <h3 class="heading-sub uppercase tracking-wider text-danger">Your leak</h3>
               <template v-if="report.leak">
                 <p class="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
                   {{ leakLabel(report.leak) }}

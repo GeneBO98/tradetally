@@ -43,7 +43,7 @@
                     <div class="flex items-center space-x-3">
                         <button
                             @click="showCreateModal = true"
-                            class="btn-primary text-sm"
+                            class="btn-primary"
                         >
                             <PlusIcon class="h-4 w-4 mr-2" />
                             Add Mapping
@@ -51,7 +51,7 @@
                         <button
                             @click="refreshData"
                             :disabled="loading"
-                            class="btn-secondary text-sm"
+                            class="btn-secondary"
                         >
                             <ArrowPathIcon
                                 class="h-4 w-4 mr-2"
@@ -119,7 +119,7 @@
                     <div class="flex items-end">
                         <button
                             @click="fetchMappingsForReview"
-                            class="btn-yellow text-sm w-full"
+                            class="btn-yellow w-full"
                         >
                             <ExclamationTriangleIcon class="h-4 w-4 mr-2" />
                             Review Needed
@@ -173,7 +173,7 @@
                     class="h-16 w-16 text-gray-400 mx-auto mb-4"
                 />
                 <h3
-                    class="text-lg font-medium text-gray-900 dark:text-white mb-2"
+                    class="heading-card mb-2"
                 >
                     No CUSIP mappings found
                 </h3>
@@ -201,27 +201,27 @@
                     <thead class="table-head">
                         <tr>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 CUSIP / Ticker
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Company
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Source / Status
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Usage
                             </th>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Actions
                             </th>
@@ -247,7 +247,7 @@
                                             class="h-4 w-4 text-gray-400 mx-2"
                                         />
                                         <span
-                                            class="text-sm font-semibold text-primary-600 dark:text-primary-400"
+                                            class="text-sm font-semibold text-primary-700 dark:text-primary-400"
                                         >
                                             {{ mapping.ticker }}
                                         </span>
@@ -313,7 +313,7 @@
                                 <div class="space-y-1">
                                     <div
                                         v-if="mapping.used_in_trades"
-                                        class="flex items-center text-sm text-green-600 dark:text-green-400"
+                                        class="flex items-center text-sm text-green-700 dark:text-green-400"
                                     >
                                         <CheckCircleIcon class="h-4 w-4 mr-1" />
                                         {{ mapping.trade_count }} trade{{
@@ -337,14 +337,14 @@
                                         @click="
                                             verifyMapping(mapping.cusip, true)
                                         "
-                                        class="text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
+                                        class="text-green-700 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
                                         title="Verify this mapping"
                                     >
                                         <CheckIcon class="h-4 w-4" />
                                     </button>
                                     <button
                                         @click="editMapping(mapping)"
-                                        class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                                        class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
                                         title="Edit mapping"
                                     >
                                         <PencilIcon class="h-4 w-4" />
@@ -391,7 +391,7 @@
                         <button
                             @click="loadPage(pagination.page - 1)"
                             :disabled="pagination.page <= 1 || loading"
-                            class="btn-secondary text-sm"
+                            class="btn-secondary"
                         >
                             Previous
                         </button>

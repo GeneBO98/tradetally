@@ -1,6 +1,6 @@
 <template>
   <div class="mb-6">
-    <h3 class="text-md font-medium text-gray-700 dark:text-gray-300 mb-3">Historical Performance</h3>
+    <h3 class="heading-card mb-3">Historical Performance</h3>
 
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center py-8">
@@ -10,7 +10,7 @@
     <!-- Metrics Table -->
     <div v-else-if="metrics" class="overflow-x-auto">
       <table class="min-w-full text-sm">
-        <thead>
+        <thead class="table-head">
           <tr class="bg-gray-100 dark:bg-gray-700">
             <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300">Metric</th>
             <th class="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300">1 Year</th>
@@ -118,14 +118,15 @@ function formatCurrency(value) {
   // Format large numbers with abbreviations
   const absValue = Math.abs(value)
   const sym = symbolFor(props.currency)
+  const sign = value < 0 ? '-' : ''
   if (absValue >= 1e12) {
-    return sym + (value / 1e12).toFixed(2) + 'T'
+    return sign + sym + (absValue / 1e12).toFixed(2) + 'T'
   }
   if (absValue >= 1e9) {
-    return sym + (value / 1e9).toFixed(2) + 'B'
+    return sign + sym + (absValue / 1e9).toFixed(2) + 'B'
   }
   if (absValue >= 1e6) {
-    return sym + (value / 1e6).toFixed(2) + 'M'
+    return sign + sym + (absValue / 1e6).toFixed(2) + 'M'
   }
   return formatCurrencyBase(value, { minimumFractionDigits: 0, maximumFractionDigits: 0, currency: props.currency || undefined })
 }

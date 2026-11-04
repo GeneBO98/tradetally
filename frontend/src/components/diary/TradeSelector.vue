@@ -25,7 +25,7 @@
             type="checkbox"
             :checked="isSelected(trade.id)"
             @change="toggleTrade(trade.id)"
-            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+            class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
           />
           <div class="flex-1">
             <div class="flex items-center space-x-2">
@@ -33,21 +33,21 @@
                 {{ trade.symbol }}
               </span>
               <span
-                class="px-2 py-0.5 text-xs font-semibold rounded"
+                class="badge"
                 :class="trade.side === 'buy' || trade.side === 'long'
                   ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
                   : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
               >
                 {{ (trade.side || '').toUpperCase() }}
               </span>
-              <span v-if="trade.instrument_type === 'option'" class="px-1.5 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
+              <span v-if="trade.instrument_type === 'option'" class="badge bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
                 OPT
               </span>
             </div>
             <div class="mt-1 flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400">
               <span>Qty: {{ Math.abs(trade.quantity) }}</span>
               <span v-if="trade.entry_price">Entry: {{ formatCurrency(trade.entry_price, { abs: true }) }}</span>
-              <span v-if="trade.pnl !== null && trade.pnl !== undefined" :class="trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+              <span v-if="trade.pnl !== null && trade.pnl !== undefined" :class="trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                 P/L: {{ formatCurrency(trade.pnl, { abs: true }) }}
               </span>
             </div>

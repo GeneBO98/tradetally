@@ -27,7 +27,7 @@
       <div
         v-for="client in clients"
         :key="client.id"
-        class="card p-6"
+        class="card card-body"
       >
         <div class="flex items-start justify-between">
           <div class="flex-1">
@@ -37,7 +37,7 @@
               </h3>
               <span
                 v-if="client.is_trusted"
-                class="badge bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400"
+                class="badge-success"
               >
                 Trusted
               </span>
@@ -81,7 +81,7 @@
                   <span
                     v-for="scope in client.allowed_scopes"
                     :key="scope"
-                    class="badge bg-primary-100 dark:bg-primary-900/20 text-primary-800 dark:text-primary-400"
+                    class="badge-primary"
                   >
                     {{ scope }}
                   </span>
@@ -125,8 +125,8 @@
 
     <!-- Create Client Modal -->
     <div v-if="showCreateModal" class="modal-overlay flex items-center justify-center p-4">
-      <div class="modal-panel max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-        <h3 class="heading-card mb-4">
+      <div role="dialog" aria-modal="true" class="modal-panel max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+        <h3 class="modal-title mb-4">
           Create OAuth2 Application
         </h3>
 
@@ -164,7 +164,7 @@
               v-model="redirectUrisText"
               rows="4"
               required
-              class="input font-mono text-sm"
+              class="input input-sm font-mono"
               placeholder="https://example.com/oauth/callback&#10;https://discourse.example.com/auth/oauth2_basic/callback"
             ></textarea>
             <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -242,10 +242,10 @@
 
     <!-- Client Created Modal (shows credentials) -->
     <div v-if="createdClient" class="modal-overlay flex items-center justify-center p-4">
-      <div class="modal-panel max-w-2xl w-full p-6">
+      <div role="dialog" aria-modal="true" class="modal-panel max-w-2xl w-full p-6">
         <div class="flex items-center space-x-3 mb-4">
           <CheckCircleIcon class="w-8 h-8 text-green-500" />
-          <h3 class="heading-card">
+          <h3 class="modal-title">
             Application Created Successfully
           </h3>
         </div>
@@ -312,8 +312,8 @@
 
     <!-- Delete Confirmation Modal -->
     <div v-if="clientToDelete" class="modal-overlay flex items-center justify-center p-4">
-      <div class="modal-panel max-w-md w-full p-6">
-        <h3 class="heading-card mb-4">
+      <div role="dialog" aria-modal="true" class="modal-panel max-w-md w-full p-6">
+        <h3 class="modal-title mb-4">
           Delete OAuth Application
         </h3>
         <p class="text-gray-600 dark:text-gray-400 mb-6">
@@ -323,7 +323,7 @@
           <button @click="clientToDelete = null" class="btn-secondary">
             Cancel
           </button>
-          <button @click="deleteClient" :disabled="deleting" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
+          <button @click="deleteClient" :disabled="deleting" class="btn-danger">
             {{ deleting ? 'Deleting...' : 'Delete' }}
           </button>
         </div>

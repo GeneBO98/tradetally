@@ -151,7 +151,7 @@
                                     </span>
                                     <span
                                         v-else
-                                        class="text-green-600 dark:text-green-400"
+                                        class="text-green-700 dark:text-green-400"
                                     >
                                         +${{
                                             Math.abs(
@@ -272,7 +272,7 @@
                             class="space-y-4"
                         >
                             <h4
-                                class="text-lg font-medium text-gray-700 dark:text-gray-300"
+                                class="heading-card"
                             >
                                 Recent Overconfidence Events
                             </h4>
@@ -429,7 +429,7 @@
                                         <p
                                             class="font-medium"
                                             :class="{
-                                                'text-green-600 dark:text-green-400':
+                                                'text-green-700 dark:text-green-400':
                                                     parseFloat(
                                                         event.streakPnl || 0,
                                                     ) > 0,
@@ -465,7 +465,7 @@
                                         <p
                                             class="font-medium"
                                             :class="{
-                                                'text-green-600 dark:text-green-400':
+                                                'text-green-700 dark:text-green-400':
                                                     parseFloat(
                                                         event.subsequentTradeResult ||
                                                             0,
@@ -506,7 +506,7 @@
                                         <p
                                             class="font-medium"
                                             :class="{
-                                                'text-green-600 dark:text-green-400':
+                                                'text-green-700 dark:text-green-400':
                                                     parseFloat(
                                                         event.totalImpact || 0,
                                                     ) > 0,
@@ -576,7 +576,7 @@
                                                             .outcomeTradeDetails
                                                             .pnl || 0,
                                                     ) < 0,
-                                                'text-green-600 dark:text-green-400':
+                                                'text-green-700 dark:text-green-400':
                                                     parseFloat(
                                                         event
                                                             .outcomeTradeDetails
@@ -673,7 +673,7 @@
                                                                     .outcomeTradeDetails
                                                                     .pnl || 0,
                                                             ) < 0,
-                                                        'text-green-600 dark:text-green-400':
+                                                        'text-green-700 dark:text-green-400':
                                                             parseFloat(
                                                                 event
                                                                     .outcomeTradeDetails
@@ -1089,7 +1089,7 @@
                                                     class="flex items-start"
                                                 >
                                                     <CheckIcon
-                                                        class="h-4 w-4 text-green-600 dark:text-green-400 mr-1.5 mt-0.5 shrink-0"
+                                                        class="h-4 w-4 text-green-700 dark:text-green-400 mr-1.5 mt-0.5 shrink-0"
                                                     />
                                                     <span
                                                         class="text-green-800 dark:text-green-300"
@@ -1141,7 +1141,7 @@
                                                     <p
                                                         class="font-medium capitalize"
                                                         :class="{
-                                                            'text-green-600 dark:text-green-400':
+                                                            'text-green-700 dark:text-green-400':
                                                                 event
                                                                     .outcomeAnalysis
                                                                     .stopLossAnalysis
@@ -1330,7 +1330,7 @@
                                                         class="flex items-center space-x-1"
                                                     >
                                                         <span
-                                                            class="text-xs font-medium px-1.5 py-0.5 rounded"
+                                                            class="badge"
                                                             :class="{
                                                                 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300':
                                                                     index === 0,
@@ -1428,7 +1428,7 @@
                                                                             ]
                                                                                 .position_size,
                                                                         ),
-                                                                    'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400':
+                                                                    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400':
                                                                         parseFloat(
                                                                             trade.position_size,
                                                                         ) <
@@ -1494,7 +1494,7 @@
                                                         <div
                                                             class="font-medium"
                                                             :class="{
-                                                                'text-green-600 dark:text-green-400':
+                                                                'text-green-700 dark:text-green-400':
                                                                     parseFloat(
                                                                         trade.pnl,
                                                                     ) > 0,

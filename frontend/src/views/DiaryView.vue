@@ -147,7 +147,7 @@
             v-model="filters.startDate"
             @input="selected_date_preset = 'custom'"
             @change="selected_date_preset = 'custom'; applyFilters()"
-            class="input text-sm"
+            class="input input-sm"
           />
         </div>
 
@@ -160,7 +160,7 @@
             v-model="filters.endDate"
             @input="selected_date_preset = 'custom'"
             @change="selected_date_preset = 'custom'; applyFilters()"
-            class="input text-sm"
+            class="input input-sm"
           />
         </div>
 
@@ -177,7 +177,7 @@
               @focus="showTagSuggestions = searchQuery.includes('#')"
               @blur="hideTagSuggestions"
               placeholder="Search entries or #tag..."
-              class="input text-sm pl-10"
+              class="input input-sm pl-10"
             />
             <MagnifyingGlassIcon class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
 
@@ -202,7 +202,7 @@
         <div class="flex items-end">
           <button
             @click="clearFilters"
-            class="btn-secondary text-sm"
+            class="btn-secondary"
           >
             Clear
           </button>
@@ -275,7 +275,7 @@
                 <span
                   v-if="entry.market_bias"
                   :class="marketBiasClasses(entry.market_bias)"
-                  class="px-2 py-1 text-xs font-medium rounded-full"
+                  class="badge"
                 >
                   {{ entry.market_bias.charAt(0).toUpperCase() + entry.market_bias.slice(1) }}
                 </span>
@@ -283,7 +283,7 @@
               
               <h3
                 v-if="entry.title"
-                class="text-lg font-medium text-gray-900 dark:text-white mb-2"
+                class="heading-card mb-2"
               >
                 {{ entry.title }}
               </h3>
@@ -329,7 +329,7 @@
           </div>
           
           <div v-if="entry.watchlist && entry.watchlist.length > 0" class="mb-3">
-            <span class="text-xs font-medium text-primary-600 dark:text-primary-400 mr-2">Watchlist:</span>
+            <span class="text-xs font-medium text-primary-700 dark:text-primary-400 mr-2">Watchlist:</span>
             <div class="inline-flex flex-wrap gap-1">
               <WatchlistSymbol
                 v-for="(symbol, index) in entry.watchlist.slice(0, 5)"
@@ -356,7 +356,7 @@
             <span
               v-for="tag in entry.tags.slice(0, 3)"
               :key="tag"
-              class="badge bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
+              class="badge-neutral"
             >
               #{{ tag }}
             </span>
@@ -407,7 +407,7 @@
         </div>
 
         <!-- Calendar View -->
-        <div v-else-if="currentView === 'calendar'" class="card p-6">
+        <div v-else-if="currentView === 'calendar'" class="card card-body">
         <!-- Calendar Header -->
         <div class="flex justify-between items-center mb-6">
           <h2 class="heading-section">
@@ -416,7 +416,7 @@
           <div class="flex items-center space-x-2">
             <button
               @click="changeMonth(-1)"
-              class="p-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              class="btn-icon p-2"
             >
               <ChevronLeftIcon class="w-5 h-5" />
             </button>
@@ -428,7 +428,7 @@
             </button>
             <button
               @click="changeMonth(1)"
-              class="p-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              class="btn-icon p-2"
             >
               <ChevronRightIcon class="w-5 h-5" />
             </button>
@@ -463,7 +463,7 @@
               class="text-sm font-medium mb-1"
               :class="{
                 'text-gray-400': !day.isCurrentMonth,
-                'text-primary-600 dark:text-primary-400': day.isToday,
+                'text-primary-700 dark:text-primary-400': day.isToday,
                 'text-gray-900 dark:text-white': day.isCurrentMonth && !day.isToday
               }"
             >
@@ -562,11 +562,11 @@
       class="modal-overlay flex items-center justify-center"
       @click="showDeleteModal = false"
     >
-      <div
+      <div role="dialog" aria-modal="true"
         class="modal-panel p-6 max-w-md w-full mx-4"
         @click.stop
       >
-        <h3 class="heading-card mb-4">Delete Entry</h3>
+        <h3 class="modal-title mb-4">Delete Entry</h3>
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
           Are you sure you want to delete this journal entry? This action cannot be undone.
         </p>
@@ -1077,7 +1077,4 @@ watch(currentView, (newView) => {
   margin-bottom: 0.25rem;
 }
 
-.btn-danger {
-  @apply bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
-}
 </style>

@@ -9,14 +9,14 @@
       @keydown="handle_keydown"
     >
       <div class="flex shrink-0 items-center gap-3 border-b border-white/20 bg-gray-900 px-4 py-3">
-        <h2 :id="title_id" class="min-w-0 flex-1 truncate text-sm font-medium" :title="image.file_name">
+        <h2 :id="title_id" class="heading-sub min-w-0 flex-1 truncate" :title="image.file_name">
           {{ image.file_name || 'Trade image' }}
         </h2>
         <button
           type="button"
           :disabled="!image_url || image_failed"
           :aria-pressed="actual_size"
-          class="shrink-0 rounded px-3 py-2 text-sm text-primary-300 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-400 disabled:opacity-50"
+          class="btn-ghost btn-sm disabled:opacity-50"
           @click="actual_size = !actual_size"
         >
           {{ actual_size ? 'Fit to screen' : 'Actual size' }}
@@ -24,7 +24,7 @@
         <button
           ref="close_button"
           type="button"
-          class="shrink-0 rounded px-3 py-2 text-sm text-primary-300 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-400"
+          class="btn-ghost btn-sm"
           aria-label="Close image preview"
           @click="emit('close')"
         >

@@ -17,7 +17,7 @@
                 <!-- Chart title if provided -->
                 <h4
                     v-if="chart.chartTitle || chart.chart_title"
-                    class="text-md font-medium text-gray-800 dark:text-gray-200 mb-2"
+                    class="heading-card mb-2"
                 >
                     {{ chart.chartTitle || chart.chart_title }}
                 </h4>
@@ -66,7 +66,7 @@
                                 @click.prevent="openInNewTab(chart)"
                             >
                                 <svg
-                                    class="h-16 w-16 mb-4 text-primary-600 dark:text-primary-400"
+                                    class="h-16 w-16 mb-4 text-primary-700 dark:text-primary-400"
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
@@ -97,7 +97,7 @@
                                     {{ isVideoLink(chart) ? 'Open this video on YouTube' : 'Open this chart in a new tab' }}
                                 </p>
                                 <div
-                                    class="flex items-center space-x-2 text-primary-600 dark:text-primary-400 font-medium"
+                                    class="flex items-center space-x-2 text-primary-700 dark:text-primary-400 font-medium"
                                 >
                                     <span>{{ isVideoLink(chart) ? 'Watch Video' : 'Open Chart' }}</span>
                                     <svg
@@ -139,7 +139,7 @@
                             :href="chart.chartUrl || chart.chart_url"
                             target="_blank"
                             rel="noopener noreferrer"
-                            class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 text-sm truncate"
+                            class="text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 text-sm truncate"
                         >
                             {{ chart.chartUrl || chart.chart_url }}
                         </a>
@@ -240,7 +240,7 @@
                     </p>
                     <button
                         @click="openInNewTab(selectedChart)"
-                        class="btn-primary space-x-2 py-3"
+                        class="btn-primary space-x-2"
                     >
                         <span>Open Chart</span>
                         <svg
@@ -331,7 +331,7 @@
                     >&#8203;</span
                 >
 
-                <div
+                <div role="dialog" aria-modal="true"
                     class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6"
                     @click.stop
                 >
@@ -357,7 +357,7 @@
                             class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left"
                         >
                             <h3
-                                class="text-lg leading-6 font-medium text-gray-900 dark:text-white"
+                                class="heading-card leading-6"
                             >
                                 Delete Chart
                             </h3>
@@ -375,7 +375,7 @@
                         <button
                             type="button"
                             @click="confirmDelete"
-                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
+                            class="btn-danger w-full justify-center sm:ml-3 sm:w-auto sm:text-sm"
                         >
                             Delete
                         </button>

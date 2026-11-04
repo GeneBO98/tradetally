@@ -55,10 +55,10 @@
             >
               {{ winRate.toFixed(0) }}<span class="text-lg">%</span>
             </div>
-            <div class="mt-0.5 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <div class="mt-0.5 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
               {{ winRateVerdict }}
             </div>
-            <div v-if="breakeven > 0" class="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+            <div v-if="breakeven > 0" class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
               {{ winRateExcludingBe.toFixed(0) }}% excl. BE
             </div>
           </div>
@@ -77,9 +77,9 @@
           >
             <div class="flex items-center gap-1 mb-0.5">
               <span class="w-1.5 h-1.5 rounded-full bg-green-500" />
-              <span class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">Wins</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Wins</span>
             </div>
-            <span class="text-mono-num text-base font-semibold text-green-600 dark:text-green-400">{{ winning }}</span>
+            <span class="text-mono-num text-base font-semibold text-green-700 dark:text-green-400">{{ winning }}</span>
           </button>
           <button
             type="button"
@@ -89,7 +89,7 @@
           >
             <div class="flex items-center gap-1 mb-0.5">
               <span class="w-1.5 h-1.5 rounded-full bg-red-500" />
-              <span class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">Losses</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Losses</span>
             </div>
             <span class="text-mono-num text-base font-semibold text-red-600 dark:text-red-400">{{ losing }}</span>
           </button>
@@ -100,7 +100,7 @@
           >
             <div class="flex items-center gap-1 mb-0.5">
               <span class="w-1.5 h-1.5 rounded-full bg-gray-400" />
-              <span class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">BE</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">BE</span>
             </div>
             <span class="text-mono-num text-base font-semibold text-gray-700 dark:text-gray-200">{{ breakeven }}</span>
           </button>
@@ -113,38 +113,38 @@
              by a stronger divider in the middle. -->
         <dl class="mt-4 divide-y divide-gray-200 dark:divide-gray-700">
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">Avg win</dt>
-            <dd class="text-mono-num text-sm font-medium text-green-600 dark:text-green-400">
+            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Avg win</dt>
+            <dd class="text-mono-num text-sm font-medium text-green-700 dark:text-green-400">
               {{ formatCurrency(avgWin) }}
             </dd>
           </div>
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">Avg loss</dt>
+            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Avg loss</dt>
             <dd class="text-mono-num text-sm font-medium text-red-600 dark:text-red-400">
               {{ formatCurrency(avgLoss) }}
             </dd>
           </div>
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">Risk / reward</dt>
+            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Risk / reward</dt>
             <dd class="text-mono-num text-sm font-medium text-gray-900 dark:text-white">
               <template v-if="avgLoss > 0">{{ (avgWin / avgLoss).toFixed(2) }}<span class="text-gray-400">x</span></template>
               <template v-else>—</template>
             </dd>
           </div>
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">Best win</dt>
-            <dd class="text-mono-num text-sm font-medium text-green-600 dark:text-green-400">
+            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Best win</dt>
+            <dd class="text-mono-num text-sm font-medium text-green-700 dark:text-green-400">
               {{ formatCurrency(bestTrade) }}
             </dd>
           </div>
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">Worst loss</dt>
+            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Worst loss</dt>
             <dd class="text-mono-num text-sm font-medium text-red-600 dark:text-red-400">
               {{ formatCurrency(worstTrade) }}
             </dd>
           </div>
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">Expectancy / trade</dt>
+            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Expectancy / trade</dt>
             <dd class="text-mono-num text-sm font-medium" :class="expectancyClass">
               {{ formatSignedCurrency(expectancy) }}
             </dd>
@@ -162,8 +162,8 @@
               : 'border-red-200 dark:border-red-900/50 bg-red-50/40 dark:bg-red-900/10'"
           >
             <div>
-              <div class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">Profit factor</div>
-              <div class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Gross wins / gross losses</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Profit factor</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Gross wins / gross losses</div>
             </div>
             <div class="text-mono-num text-2xl font-semibold tracking-tight" :class="profitFactorClass">
               {{ profitFactorDisplay }}
@@ -209,7 +209,7 @@ const winRateExcludingBe = computed(() => {
 })
 
 const winRateClass = computed(() => {
-  if (winRate.value >= 60) return 'text-green-600 dark:text-green-400'
+  if (winRate.value >= 60) return 'text-green-700 dark:text-green-400'
   if (winRate.value >= 45) return 'text-gray-900 dark:text-white'
   return 'text-red-600 dark:text-red-400'
 })
@@ -269,7 +269,7 @@ const expectancy = computed(() => {
 })
 
 const expectancyClass = computed(() => {
-  if (expectancy.value > 0) return 'text-green-600 dark:text-green-400'
+  if (expectancy.value > 0) return 'text-green-700 dark:text-green-400'
   if (expectancy.value < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-700 dark:text-gray-200'
 })
@@ -282,8 +282,8 @@ const profitFactorDisplay = computed(() => {
   return profitFactor.value.toFixed(2)
 })
 const profitFactorClass = computed(() => {
-  if (!Number.isFinite(profitFactor.value)) return 'text-green-600 dark:text-green-400'
-  if (profitFactor.value >= 1.5) return 'text-green-600 dark:text-green-400'
+  if (!Number.isFinite(profitFactor.value)) return 'text-green-700 dark:text-green-400'
+  if (profitFactor.value >= 1.5) return 'text-green-700 dark:text-green-400'
   if (profitFactor.value >= 1) return 'text-gray-900 dark:text-white'
   return 'text-red-600 dark:text-red-400'
 })

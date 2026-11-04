@@ -21,7 +21,7 @@
         <!-- Success State -->
         <div v-else-if="verified" class="text-center">
           <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/20">
-            <CheckIcon class="h-6 w-6 text-green-600 dark:text-green-400" />
+            <CheckIcon class="h-6 w-6 text-green-700 dark:text-green-400" />
           </div>
           <h3 class="heading-card mt-4">
             Email Verified!

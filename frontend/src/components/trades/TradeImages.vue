@@ -78,7 +78,7 @@
         
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         
-        <div
+        <div role="dialog" aria-modal="true"
           class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6"
           @click.stop
         >
@@ -89,7 +89,7 @@
               </svg>
             </div>
             <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-              <h3 class="heading-card">
+              <h3 class="modal-title">
                 Delete Image
               </h3>
               <div class="mt-2">
@@ -103,7 +103,7 @@
             <button
               type="button"
               @click="confirmDelete"
-              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
+              class="btn-danger w-full justify-center sm:ml-3 sm:w-auto sm:text-sm"
             >
               Delete
             </button>

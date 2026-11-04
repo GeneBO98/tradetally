@@ -2,7 +2,7 @@
   <div class="card-dense h-full">
     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <div class="flex items-center justify-center w-6 h-6 rounded-md bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400">
+        <div class="flex items-center justify-center w-6 h-6 rounded-md bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400">
           <MdiIcon :icon="mdiShieldAlertOutline" :size="14" />
         </div>
         <h3 class="heading-card">Risk Signals</h3>
@@ -44,7 +44,7 @@
       <!-- All clear: signals computed and zero fired. Show how many trades
            were analyzed so the user can see the check actually ran. -->
       <div v-else-if="allClear" class="text-center py-4">
-        <div class="flex items-center justify-center w-10 h-10 mx-auto rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">
+        <div class="flex items-center justify-center w-10 h-10 mx-auto rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
           <MdiIcon :icon="mdiCheckCircleOutline" :size="22" />
         </div>
         <div class="mt-2 text-sm font-medium text-gray-900 dark:text-white">All clear</div>
@@ -73,7 +73,7 @@
             <div v-if="proAlert.message" class="text-xs text-gray-600 dark:text-gray-300 mt-0.5 line-clamp-2">
               {{ proAlert.message }}
             </div>
-            <div class="text-[10px] text-gray-500 dark:text-gray-400 mt-1 text-mono-num">
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 text-mono-num">
               Pro · {{ relativeTime(proAlert.created_at) }}
             </div>
           </div>
@@ -98,7 +98,7 @@
                   {{ signal.value }}<span v-if="signal.unit" class="ml-0.5">{{ signal.unit ? '' : '' }}</span>
                 </span>
               </div>
-              <p v-if="signal.unit" class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+              <p v-if="signal.unit" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {{ signal.unit }}
               </p>
               <p class="text-xs text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
@@ -110,7 +110,7 @@
 
         <!-- Pro pattern signal counts (only when there are patterns logged) -->
         <div v-if="proPatternSignals.length > 0" class="pt-2 border-t border-gray-200 dark:border-gray-700">
-          <div class="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">Behavioral analysis · last 90 days</div>
+          <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">Behavioral analysis · last 90 days</div>
           <div class="space-y-1">
             <div
               v-for="signal in proPatternSignals"
@@ -128,7 +128,7 @@
           </div>
           <router-link
             to="/analytics"
-            class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700"
+            class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800"
           >
             View behavioral analysis
             <MdiIcon :icon="mdiArrowRight" :size="12" />
@@ -141,12 +141,12 @@
           class="mt-2 p-2.5 rounded-md bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800/40"
         >
           <div class="flex items-start gap-2">
-            <MdiIcon :icon="mdiLockOutline" :size="14" class="text-primary-600 dark:text-primary-400 mt-0.5 shrink-0" />
+            <MdiIcon :icon="mdiLockOutline" :size="14" class="text-primary-700 dark:text-primary-400 mt-0.5 shrink-0" />
             <div class="min-w-0 flex-1">
               <div class="text-xs font-medium text-gray-900 dark:text-white">Pro adds revenge-trade detection, overconfidence tracking, and real-time alerts</div>
               <router-link
                 to="/billing"
-                class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700"
+                class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800"
               >
                 Upgrade to Pro
                 <MdiIcon :icon="mdiArrowRight" :size="12" />

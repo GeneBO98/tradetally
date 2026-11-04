@@ -5,7 +5,7 @@
     </div>
 
     <div v-else-if="error" class="text-center py-12">
-      <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">{{ error }}</h3>
+      <h3 class="heading-sub mt-2">{{ error }}</h3>
       <div class="mt-6">
         <router-link to="/public" class="btn-primary">
           Back to Public Trades
@@ -58,7 +58,7 @@
 
           <div v-else-if="trades.length === 0" class="text-center py-8">
             <DocumentTextIcon class="mx-auto h-12 w-12 text-gray-400" />
-            <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No public trades</h3>
+            <h3 class="heading-sub mt-2">No public trades</h3>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
               This user hasn't shared any trades publicly yet.
             </p>
@@ -76,7 +76,7 @@
                     <h3 class="heading-card">
                       {{ trade.symbol }}
                     </h3>
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                    <span class="badge"
                       :class="[
                         trade.side === 'long' 
                           ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
@@ -84,7 +84,7 @@
                       ]">
                       {{ trade.side }}
                     </span>
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                    <span class="badge"
                       :class="[
                         trade.exit_price 
                           ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
@@ -100,7 +100,7 @@
                 
                 <div class="text-right">
                   <div class="text-lg font-semibold" :class="[
-                    trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ trade.pnl ? formatCurrency(trade.pnl) : 'Open' }}
                   </div>
@@ -136,7 +136,7 @@
                   <span
                     v-for="tag in trade.tags"
                     :key="tag"
-                    class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400"
+                    class="badge-primary"
                   >
                     {{ tag }}
                   </span>
@@ -152,7 +152,7 @@
               <div class="mt-3 flex justify-end">
                 <router-link
                   :to="`/trades/${trade.id}`"
-                  class="text-primary-600 hover:text-primary-500 text-sm font-medium"
+                  class="text-primary-700 hover:text-primary-500 text-sm font-medium"
                 >
                   View Details
                 </router-link>

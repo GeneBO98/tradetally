@@ -12,10 +12,10 @@
       ref="bannerShell"
       class="fixed bottom-0 inset-x-0 z-50 p-4 pointer-events-none"
     >
-      <div class="modal-panel max-w-4xl mx-auto p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 pointer-events-auto">
+      <div role="dialog" aria-modal="true" class="modal-panel max-w-4xl mx-auto p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 pointer-events-auto">
         <p class="text-sm text-gray-700 dark:text-gray-300 flex-1">
           We use cookies for analytics and session recordings to improve your experience.
-          <router-link to="/privacy" class="text-primary-600 dark:text-primary-400 hover:underline ml-1">
+          <router-link to="/privacy" class="text-primary-700 dark:text-primary-400 hover:underline ml-1">
             Privacy Policy
           </router-link>
         </p>

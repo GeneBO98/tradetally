@@ -48,7 +48,7 @@
 
         <!-- Loading State for Watchlists -->
         <div
-            v-else-if="isProUser && loading"
+            v-else-if="isProUser && initialLoading"
             class="flex justify-center items-center py-12"
         >
             <div
@@ -72,7 +72,7 @@
                         <h3 class="heading-card">{{ watchlist.name }}</h3>
                         <span
                             v-if="watchlist.is_default"
-                            class="badge bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
+                            class="badge-neutral"
                         >
                             Default
                         </span>
@@ -110,7 +110,7 @@
 
         <!-- Empty State -->
         <div
-            v-else-if="!authLoading && isProUser && !loading"
+            v-else-if="!authLoading && isProUser && !initialLoading"
             class="text-center py-12"
         >
             <svg
@@ -126,7 +126,7 @@
                     d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
                 ></path>
             </svg>
-            <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+            <h3 class="heading-sub mt-2">
                 No watchlists
             </h3>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -145,14 +145,14 @@
         <!-- Create/Edit Watchlist Modal -->
         <div
             v-if="showCreateWatchlistModal || editingWatchlist"
-            class="modal-overlay overflow-y-auto"
+            class="modal-overlay flex items-center justify-center overflow-y-auto p-4"
         >
-            <div
-                class="modal-panel top-20 mx-auto p-5 w-96"
+            <div role="dialog" aria-modal="true"
+                class="modal-panel p-6 w-full max-w-md"
             >
                 <div class="mt-3">
                     <h3
-                        class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                        class="modal-title mb-4"
                     >
                         {{
                             editingWatchlist
@@ -195,7 +195,7 @@
                                 <input
                                     v-model="watchlistForm.is_default"
                                     type="checkbox"
-                                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                    class="rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                                 />
                                 <span
                                     class="ml-2 text-sm text-gray-700 dark:text-gray-300"
@@ -253,6 +253,8 @@ export default {
 
         const watchlists = ref([]);
         const loading = ref(true);
+        // Full spinner only for the first load; later reloads keep the grid.
+        const initialLoading = ref(true);
         const saving = ref(false);
         const showCreateWatchlistModal = ref(false);
         const editingWatchlist = ref(null);
@@ -287,6 +289,7 @@ export default {
 
             if (!isProUser.value) {
                 loading.value = false;
+                initialLoading.value = false;
                 return;
             }
 
@@ -299,6 +302,7 @@ export default {
                 showCriticalError("Error", "Failed to load watchlists");
             } finally {
                 loading.value = false;
+                initialLoading.value = false;
             }
         };
 
@@ -394,6 +398,7 @@ export default {
         });
 
         return {
+            initialLoading,
             watchlists,
             loading,
             saving,

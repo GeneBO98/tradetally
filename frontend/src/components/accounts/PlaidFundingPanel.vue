@@ -21,7 +21,7 @@
           {{ busyTarget === 'bank' ? 'Connecting…' : 'Bank' }}
         </button>
         <button
-          class="btn-secondary gap-1.5 text-xs disabled:opacity-60 dark:text-gray-200"
+          class="btn-secondary gap-1.5 disabled:opacity-60 dark:text-gray-200 btn-sm"
           :disabled="busyTarget === 'investment'"
           @click="openPlaidLink('investment')"
         >
@@ -59,7 +59,7 @@
             @click="toggleConnection(connection.id)"
           >
             <div
-              class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[10px] font-bold uppercase"
+              class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold uppercase"
               :class="connection.targetType === 'investment'
                 ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
                 : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'"
@@ -71,23 +71,23 @@
                 <div class="truncate text-sm font-medium text-gray-900 dark:text-white">
                   {{ connection.institutionName || 'Plaid Connection' }}
                 </div>
-                <span class="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                <span class="badge bg-gray-100 uppercase tracking-wide text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                   {{ connection.targetType }}
                 </span>
                 <span
                   v-if="connection.autoSyncEnabled"
-                  class="inline-flex items-center gap-0.5 rounded bg-green-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                  class="badge-primary"
                 >
-                  <span class="h-1 w-1 rounded-full bg-green-500"></span> Auto
+                  <span class="h-1 w-1 rounded-full bg-primary-500"></span> Auto
                 </span>
                 <span
                   v-if="needsReconnect(connection)"
-                  class="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                  class="badge bg-amber-100 uppercase tracking-wide text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
                 >
                   Reconnect needed
                 </span>
               </div>
-              <div class="truncate text-[11px] text-gray-500 dark:text-gray-400">
+              <div class="truncate text-xs text-gray-500 dark:text-gray-400">
                 {{ connection.lastSyncAt ? `Last sync ${formatRelative(connection.lastSyncAt)}` : 'Never synced' }}
                 <span v-if="(connection.accounts || []).length"> · {{ (connection.accounts || []).length }} account{{ (connection.accounts || []).length === 1 ? '' : 's' }}</span>
               </div>
@@ -108,11 +108,11 @@
               v-if="needsReconnect(connection)"
               class="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20"
             >
-              <span class="text-[11px] text-amber-800 dark:text-amber-300">
+              <span class="text-xs text-amber-800 dark:text-amber-300">
                 Bank login needs attention. Reconnect to resume syncing.
               </span>
               <button
-                class="inline-flex items-center gap-1 rounded-md bg-amber-600 px-2 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
+                class="inline-flex items-center gap-1 rounded-md bg-amber-600 px-2 py-1 text-xs font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
                 :disabled="reconnectingId === connection.id"
                 @click="reconnectConnection(connection)"
               >
@@ -123,7 +123,7 @@
             <!-- Action bar -->
             <div class="flex flex-wrap items-center gap-1.5 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
               <button
-                class="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                class="btn-secondary btn-sm gap-1 disabled:opacity-60"
                 :disabled="isSyncing(connection.id)"
                 @click="triggerSync(connection.id)"
               >
@@ -133,13 +133,13 @@
                 {{ isSyncing(connection.id) ? 'Syncing…' : 'Sync now' }}
               </button>
               <button
-                class="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                class="btn-secondary btn-sm gap-1"
                 @click="toggleAutoSync(connection)"
               >
                 {{ connection.autoSyncEnabled ? 'Disable auto-sync' : 'Enable auto-sync' }}
               </button>
               <button
-                class="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                class="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                 @click="removeConnection(connection)"
               >
                 Disconnect
@@ -147,7 +147,7 @@
             </div>
 
             <!-- Sync message (if any) -->
-            <div v-if="connection.lastSyncMessage" class="border-b border-gray-200 px-3 py-1.5 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+            <div v-if="connection.lastSyncMessage" class="border-b border-gray-200 px-3 py-1.5 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
               {{ connection.lastSyncMessage }}
             </div>
 
@@ -161,16 +161,16 @@
                 <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <div class="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <span class="truncate text-sm font-medium text-gray-900 dark:text-white">
-                      {{ plaidAccount.accountName }}<span v-if="plaidAccount.mask" class="ml-1 text-[11px] font-normal tabular-nums text-gray-500 dark:text-gray-400">••{{ plaidAccount.mask }}</span>
+                      {{ plaidAccount.accountName }}<span v-if="plaidAccount.mask" class="ml-1 text-xs font-normal tabular-nums text-gray-500 dark:text-gray-400">••{{ plaidAccount.mask }}</span>
                     </span>
-                    <span class="text-[11px] text-gray-500 dark:text-gray-400">
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
                       <span class="capitalize">{{ plaidAccount.accountSubtype || plaidAccount.accountType || 'account' }}</span>
                       <span v-if="plaidAccount.currentBalance !== null" class="tabular-nums"> · {{ formatCurrency(plaidAccount.currentBalance) }}</span>
                     </span>
                   </div>
                   <span
                     v-if="plaidAccount.linkedAccountId"
-                    class="inline-flex shrink-0 items-center gap-1 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                    class="badge-primary"
                   >
                     <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
@@ -179,7 +179,7 @@
                   </span>
                   <span
                     v-else
-                    class="inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                    class="badge bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
                   >
                     Needs linking
                   </span>
@@ -208,7 +208,7 @@
                   <div class="group relative shrink-0">
                     <button
                       type="button"
-                      class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-500 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:text-gray-200"
+                      class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 text-xs font-semibold text-gray-500 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:text-gray-200"
                       :aria-label="getTrackingModeHelp(trackingModes[plaidAccount.id]).title"
                     >
                       ?
@@ -217,13 +217,13 @@
                       <div class="text-xs font-medium text-gray-900 dark:text-white">
                         {{ getTrackingModeHelp(trackingModes[plaidAccount.id]).title }}
                       </div>
-                      <p class="mt-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                      <p class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
                         {{ getTrackingModeHelp(trackingModes[plaidAccount.id]).description }}
                       </p>
                     </div>
                   </div>
                   <button
-                    class="inline-flex items-center rounded-md bg-primary-600 px-2 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-primary-700 disabled:opacity-60"
+                    class="btn-primary btn-sm text-xs disabled:opacity-60"
                     :disabled="!selectedAccountIds[plaidAccount.id] || linkingAccountId === plaidAccount.id"
                     @click="linkExistingAccount(plaidAccount)"
                   >
@@ -231,7 +231,7 @@
                   </button>
                   <button
                     v-if="!plaidAccount.linkedAccountId"
-                    class="inline-flex items-center rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                    class="btn-secondary btn-sm disabled:opacity-60"
                     :disabled="linkingAccountId === plaidAccount.id"
                     @click="createAndLinkAccount(plaidAccount)"
                   >
@@ -239,7 +239,7 @@
                   </button>
                   <button
                     v-else
-                    class="ml-auto inline-flex items-center rounded-md px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-900/20"
+                    class="ml-auto inline-flex items-center rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-900/20"
                     :disabled="linkingAccountId === plaidAccount.id"
                     @click="confirmUnlink(plaidAccount)"
                   >

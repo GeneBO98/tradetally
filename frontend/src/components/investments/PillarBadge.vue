@@ -3,15 +3,15 @@
     :class="[
       'rounded-lg p-3 text-center',
       passed
-        ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
-        : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+        ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800'
+        : 'bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700'
     ]"
   >
     <!-- Pass/Fail Icon -->
     <div class="flex justify-center mb-2">
       <svg
         v-if="passed"
-        class="w-6 h-6 text-green-600 dark:text-green-400"
+        class="w-6 h-6 text-primary-700 dark:text-primary-400"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -20,7 +20,7 @@
       </svg>
       <svg
         v-else
-        class="w-6 h-6 text-red-600 dark:text-red-400"
+        class="w-6 h-6 text-gray-400 dark:text-gray-500"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -33,7 +33,7 @@
     <p class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{{ name }}</p>
 
     <!-- Value -->
-    <p :class="['text-sm font-bold mt-1', passed ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400']">
+    <p :class="['text-sm font-bold mt-1', passed ? 'text-primary-700 dark:text-primary-400' : 'text-gray-600 dark:text-gray-400']">
       {{ value }}
     </p>
   </div>

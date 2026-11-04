@@ -17,7 +17,7 @@
     <div class="flex items-center space-x-1">
       <button
         @click="$emit('step-back')"
-        class="btn-secondary px-2.5"
+        class="btn-secondary btn-sm"
         title="Step back (Left arrow)"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -26,7 +26,7 @@
       </button>
       <button
         @click="$emit('step-forward')"
-        class="btn-secondary px-2.5"
+        class="btn-secondary btn-sm"
         title="Step forward (Right arrow)"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -42,7 +42,7 @@
         @click="$emit('set-speed', option)"
         class="px-2 py-1 text-xs rounded-md font-medium"
         :class="speed === option
-          ? 'bg-primary-600 text-white'
+          ? 'bg-primary-700 text-white'
           : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
       >
         {{ option }}x
@@ -59,10 +59,10 @@
     />
 
     <div class="flex items-center space-x-2">
-      <button @click="$emit('jump-to-entry')" class="btn-secondary text-xs px-2.5 py-1.5">
+      <button @click="$emit('jump-to-entry')" class="btn-secondary btn-sm">
         Entry
       </button>
-      <button @click="$emit('jump-to-exit')" class="btn-secondary text-xs px-2.5 py-1.5">
+      <button @click="$emit('jump-to-exit')" class="btn-secondary btn-sm">
         Exit
       </button>
     </div>

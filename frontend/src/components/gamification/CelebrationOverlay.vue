@@ -85,7 +85,7 @@
           <!-- 6+ achievements: compact 2-column grid, count is the focal point -->
           <div v-else>
             <div class="text-center">
-              <div class="pop-in font-mono text-5xl font-extrabold text-primary-600 dark:text-primary-400 leading-none">{{ currentItem.achievements.length }}</div>
+              <div class="pop-in font-mono text-5xl font-extrabold text-primary-700 dark:text-primary-400 leading-none">{{ currentItem.achievements.length }}</div>
               <div class="mt-1 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">unlocked at once</div>
             </div>
             <div class="mt-4 grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto pr-1">
@@ -132,7 +132,7 @@
                 class="level-flash pointer-events-none absolute inset-0 rounded-full"
               ></div>
             </div>
-            <div v-if="levelData && levelData.newLevel > levelData.oldLevel && displayedLevel > levelData.oldLevel" class="pop-in mt-1.5 text-center text-[11px] font-semibold uppercase tracking-wider text-primary-600 dark:text-primary-400">
+            <div v-if="levelData && levelData.newLevel > levelData.oldLevel && displayedLevel > levelData.oldLevel" class="pop-in mt-1.5 text-center text-[11px] font-semibold uppercase tracking-wider text-primary-700 dark:text-primary-400">
               {{ levelData.newLevel - levelData.oldLevel === 1 ? 'Level up!' : `${levelData.newLevel - levelData.oldLevel}× level up!` }}
             </div>
           </div>
@@ -194,7 +194,7 @@
             <div class="rise-in mt-2 text-sm text-gray-500 dark:text-gray-400" style="animation-delay: 1050ms">
               Level {{ currentItem.payload.oldLevel }}
               <span class="mx-1.5 text-gray-300 dark:text-gray-600">→</span>
-              <span class="font-bold text-primary-600 dark:text-primary-400">Level {{ currentItem.payload.newLevel }}</span>
+              <span class="font-bold text-primary-700 dark:text-primary-400">Level {{ currentItem.payload.newLevel }}</span>
             </div>
           </div>
           <button

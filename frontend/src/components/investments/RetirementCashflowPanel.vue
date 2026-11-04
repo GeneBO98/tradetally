@@ -117,7 +117,7 @@
           </span>
         </summary>
         <div class="card mt-2 overflow-hidden">
-          <p v-if="transactions.length > 0" class="border-b border-gray-100 px-3 py-2 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+          <p v-if="transactions.length > 0" class="border-b border-gray-100 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
             Changing a category applies to every transaction with the same description.
           </p>
           <p v-if="loading && transactions.length === 0" class="px-3 py-3 text-xs text-gray-500 dark:text-gray-400">
@@ -146,12 +146,12 @@
                 </span>
               </div>
               <div class="mt-1 flex items-center justify-between gap-3">
-                <p class="min-w-0 truncate text-[11px] text-gray-500 dark:text-gray-400" :title="`${group.date_range} · ${group.account_name}`">
+                <p class="min-w-0 truncate text-xs text-gray-500 dark:text-gray-400" :title="`${group.date_range} · ${group.account_name}`">
                   <template v-if="group.count > 1">{{ group.count }} × · </template>{{ group.date_range }} · {{ group.account_name }}<span v-if="group.source"> · {{ sourceLabel(group.source) }}</span>
                 </p>
                 <select
                   :data-testid="`category-${group.firstId}`"
-                  class="input w-40 shrink-0 py-1 text-xs"
+                  class="input input-sm w-40 shrink-0"
                   :value="group.category || ''"
                   @change="$emit('categorize', { id: group.firstId, category: $event.target.value })"
                 >

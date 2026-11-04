@@ -22,7 +22,7 @@
         <!-- Error State -->
         <div
             v-else-if="error"
-            class="bg-red-50 border border-red-200 rounded-lg p-4"
+            class="callout-danger"
         >
             <div class="flex">
                 <div class="text-red-500 mr-3">
@@ -64,7 +64,7 @@
                     class="card p-4"
                 >
                     <h4
-                        class="text-sm font-medium text-gray-900 dark:text-white mb-3"
+                        class="heading-sub mb-3"
                     >
                         Price Movement
                     </h4>
@@ -112,7 +112,7 @@
                     class="card p-4"
                 >
                     <h4
-                        class="text-sm font-medium text-gray-900 dark:text-white mb-3"
+                        class="heading-sub mb-3"
                     >
                         Behavioral Analysis
                     </h4>
@@ -143,7 +143,7 @@
                                 :class="
                                     analysis.was_chasing_momentum
                                         ? 'text-red-600 dark:text-red-400'
-                                        : 'text-green-600 dark:text-green-400'
+                                        : 'text-green-700 dark:text-green-400'
                                 "
                             >
                                 {{
@@ -160,7 +160,7 @@
                                 :class="
                                     analysis.was_fighting_trend
                                         ? 'text-red-600 dark:text-red-400'
-                                        : 'text-green-600 dark:text-green-400'
+                                        : 'text-green-700 dark:text-green-400'
                                 "
                             >
                                 {{ analysis.was_fighting_trend ? "Yes" : "No" }}
@@ -280,7 +280,7 @@ export default {
         // Methods
         const getTrendColor = (trend) => {
             const colors = {
-                up: "text-green-600 dark:text-green-400",
+                up: "text-green-700 dark:text-green-400",
                 down: "text-red-600 dark:text-red-400",
                 sideways: "text-gray-600",
             };
@@ -298,7 +298,7 @@ export default {
         };
 
         const getScoreColor = (score) => {
-            if (score >= 0.7) return "text-green-600 dark:text-green-400";
+            if (score >= 0.7) return "text-green-700 dark:text-green-400";
             if (score >= 0.4) return "text-yellow-600";
             return "text-red-600 dark:text-red-400";
         };

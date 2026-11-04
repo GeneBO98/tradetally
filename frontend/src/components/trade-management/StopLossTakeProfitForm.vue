@@ -29,7 +29,7 @@
           <div
             :class="[
               'text-lg font-medium capitalize',
-              trade.side === 'long' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              trade.side === 'long' ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
             ]"
           >
             {{ trade.side }}
@@ -40,7 +40,7 @@
           <div
             :class="[
               'text-lg font-medium',
-              parseFloat(trade.pnl) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              parseFloat(trade.pnl) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
             ]"
           >
             {{ formatCurrency(trade.pnl) }}

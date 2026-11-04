@@ -4,7 +4,7 @@
       <h3 class="heading-card">Market Risk</h3>
       <router-link
         to="/market-risk"
-        class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+        class="text-xs text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300"
       >
         Full breakdown
       </router-link>
@@ -51,7 +51,7 @@
               @click="active_indicator = indicator.key"
             >
               <span class="truncate">{{ indicator.name }}</span>
-              <InformationCircleIcon class="h-3.5 w-3.5 shrink-0 text-primary-600 dark:text-primary-400" aria-hidden="true" />
+              <InformationCircleIcon class="h-3.5 w-3.5 shrink-0 text-primary-700 dark:text-primary-400" aria-hidden="true" />
             </button>
             <div class="mt-0.5 flex items-baseline gap-1">
               <span class="text-lg font-semibold text-mono-num text-gray-900 dark:text-white">
@@ -60,12 +60,12 @@
             </div>
             <div class="mt-1 flex items-center gap-1.5 min-w-0">
               <span
-                class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium uppercase whitespace-nowrap"
+                class="badge uppercase"
                 :class="badgeClasses(indicator.status)"
               >
                 {{ indicator.status_label }}
               </span>
-              <span class="text-[11px] text-gray-500 dark:text-gray-400 truncate">{{ indicator.detail }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ indicator.detail }}</span>
             </div>
             <div
               v-if="active_indicator === indicator.key"
@@ -80,7 +80,7 @@
           </div>
         </div>
 
-        <div class="mt-2 text-[11px] text-gray-400 dark:text-gray-500">
+        <div class="mt-2 text-xs text-gray-400 dark:text-gray-500">
           Macro context, not a trade signal. Updated {{ asOfLabel }}.
         </div>
       </template>

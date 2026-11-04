@@ -1,9 +1,9 @@
 <template>
-  <div class="card p-6">
+  <div class="card card-body">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
+        <h3 class="heading-card flex items-center">
           <SparklesIcon class="w-5 h-5 mr-2 text-purple-600" />
           AI Journal Analysis
         </h3>
@@ -24,7 +24,7 @@
     <!-- Date Range Selection Form -->
     <div v-if="showAnalysisForm && !analyzing" class="mb-6">
       <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-        <h4 class="font-medium text-gray-900 dark:text-white mb-4">Select Analysis Period</h4>
+        <h4 class="heading-card mb-4">Select Analysis Period</h4>
         
         <!-- Quick Date Presets -->
         <div class="mb-4">
@@ -108,7 +108,7 @@
       <!-- Analysis Header -->
       <div class="flex items-center justify-between">
         <div>
-          <h4 class="text-lg font-medium text-gray-900 dark:text-white">
+          <h4 class="heading-card">
             Analysis Results
           </h4>
           <p class="text-sm text-gray-600 dark:text-gray-400">
@@ -118,7 +118,7 @@
         </div>
         <button
           @click="startNewAnalysis"
-          class="btn-secondary text-sm"
+          class="btn-secondary"
         >
           New Analysis
         </button>

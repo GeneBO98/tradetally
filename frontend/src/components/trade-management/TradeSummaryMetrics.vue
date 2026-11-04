@@ -1,10 +1,10 @@
 <template>
-  <div class="card">
+  <div class="card text-mono-num">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h3 class="heading-card">Trade Summary</h3>
       <router-link
         :to="{ name: 'trade-detail', params: { id: trade.id } }"
-        class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 border border-primary-300 dark:border-primary-600 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+        class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 border border-primary-300 dark:border-primary-600 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
       >
         <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -46,7 +46,7 @@
                 v-model="editStopLoss"
                 type="number"
                 step="0.01"
-                class="w-full pl-6 pr-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                class="input input-sm w-full pl-6 pr-2"
                 @keyup.enter="saveStopLoss"
                 @keyup.escape="cancelEditingStopLoss"
               />
@@ -90,7 +90,7 @@
                     v-model="editTakeProfit"
                     type="number"
                     step="0.01"
-                    class="w-full pl-6 pr-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                    class="input input-sm w-full pl-6 pr-2"
                     placeholder="Price"
                     @keyup.enter="saveTakeProfit"
                     @keyup.escape="cancelEditingTakeProfit"
@@ -101,7 +101,7 @@
                   type="number"
                   step="1"
                   min="1"
-                  class="w-14 px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                  class="input input-sm w-14"
                   placeholder="Qty"
                   title="Number of shares"
                   @keyup.enter="saveTakeProfit"
@@ -122,7 +122,7 @@
             </div>
             <div v-else>
               <div v-if="trade.take_profit">
-                <div class="text-lg font-semibold text-primary-600 dark:text-primary-400">
+                <div class="text-lg font-semibold text-primary-700 dark:text-primary-400">
                   {{ formatCurrency(trade.take_profit) }}
                   <span v-if="tp1R" class="text-sm font-medium ml-1">({{ tp1R }}R)</span>
                 </div>
@@ -142,7 +142,7 @@
             <div class="flex items-center gap-1 mb-1">
               <span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">TP{{ index + 1 }}</span>
               <!-- Show calculated R for this target (moved to header line) -->
-              <span v-if="target.price && calculateTargetR(target.price)" class="text-xs text-primary-600 dark:text-primary-400 font-medium">
+              <span v-if="target.price && calculateTargetR(target.price)" class="text-xs text-primary-700 dark:text-primary-400 font-medium">
                 ({{ calculateTargetR(target.price) }}R)
               </span>
               <span v-if="target.status === 'hit'" :class="`${getTargetStatusClass('hit')} ml-2`">
@@ -165,7 +165,7 @@
                   v-model.number="target.price"
                   type="number"
                   step="0.01"
-                  class="w-full pl-5 pr-2 py-0.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                  class="input input-sm w-full pl-5 pr-2"
                   placeholder="Price"
                   @focus="isEditingTargets = true"
                   @blur="handleTargetBlur"
@@ -177,7 +177,7 @@
                 type="number"
                 step="1"
                 min="1"
-                class="w-14 px-1 py-0.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                class="input input-sm w-14"
                 placeholder="Qty"
                 title="Number of shares"
                 @focus="isEditingTargets = true"
@@ -190,7 +190,7 @@
           <!-- Add Target Button -->
           <button
             @click="addTakeProfitTarget"
-            class="text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 flex items-center gap-1"
+            class="text-xs text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 flex items-center gap-1"
           >
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -233,7 +233,7 @@
         <!-- Target P&L -->
         <div v-if="potentialPL !== null">
           <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Target P&L</div>
-          <div class="text-lg font-semibold text-primary-600 dark:text-primary-400">
+          <div class="text-lg font-semibold text-primary-700 dark:text-primary-400">
             {{ formatCurrency(potentialPL) }}
           </div>
           <div class="text-xs text-gray-500 dark:text-gray-400">
@@ -269,7 +269,7 @@
         </div>
         <div>
           <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Side</div>
-          <div class="text-lg font-semibold capitalize" :class="trade.side === 'long' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+          <div class="text-lg font-semibold capitalize" :class="trade.side === 'long' ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
             {{ trade.side }}
           </div>
         </div>
@@ -393,7 +393,7 @@ const getManagementRBgClass = computed(() => {
 
 const getManagementRTextClass = computed(() => {
   const r = props.analysis?.management_r
-  if (r > 0) return 'text-green-600 dark:text-green-400'
+  if (r > 0) return 'text-green-700 dark:text-green-400'
   if (r < 0) return 'text-amber-600 dark:text-amber-400'
   return 'text-gray-600 dark:text-gray-400'
 })
@@ -634,7 +634,7 @@ const takeProfitInput = ref(null)
 const pnlClass = computed(() => {
   const pnl = parseFloat(props.trade.pnl)
   return pnl >= 0
-    ? 'text-green-600 dark:text-green-400'
+    ? 'text-green-700 dark:text-green-400'
     : 'text-red-600 dark:text-red-400'
 })
 

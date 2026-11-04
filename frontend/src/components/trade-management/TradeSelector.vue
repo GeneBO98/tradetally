@@ -99,7 +99,7 @@
             <div
               :class="[
                 'font-medium',
-                parseFloat(trade.pnl) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                parseFloat(trade.pnl) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]"
             >
               {{ formatCurrency(trade.pnl) }}
@@ -109,7 +109,7 @@
                 'text-sm',
                 trade.pnl_percent == null
                   ? 'text-gray-400 dark:text-gray-500'
-                  : parseFloat(trade.pnl_percent) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  : parseFloat(trade.pnl_percent) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]"
             >
               {{ formatPercent(trade.pnl_percent) }}
@@ -120,21 +120,21 @@
           <div class="flex items-center space-x-2">
             <span
               v-if="!trade.can_analyze"
-              class="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+              class="badge-warning"
               title="Stop loss required for analysis"
             >
               Needs SL
             </span>
             <span
               v-else-if="trade.needs_take_profit"
-              class="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
+              class="badge-neutral"
               title="Take profit not set"
             >
               No TP
             </span>
             <span
               v-else
-              class="badge bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+              class="badge-success"
             >
               Ready
             </span>
@@ -143,7 +143,7 @@
             <svg
               :class="[
                 'w-5 h-5 transition-transform',
-                selectedTradeId === trade.id ? 'text-primary-600 rotate-90' : 'text-gray-400'
+                selectedTradeId === trade.id ? 'text-primary-700 rotate-90' : 'text-gray-400'
               ]"
               fill="none"
               stroke="currentColor"
@@ -161,7 +161,7 @@
       <button
         @click="$emit('load-more')"
         :disabled="loading"
-        class="w-full py-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 disabled:opacity-50"
+        class="w-full py-2 text-sm text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 disabled:opacity-50"
       >
         {{ loading ? 'Loading...' : `Load more (${pagination.total - trades.length} remaining)` }}
       </button>

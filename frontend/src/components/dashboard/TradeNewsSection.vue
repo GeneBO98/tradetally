@@ -39,7 +39,7 @@
         </div>
         <button
           @click="fetchNews"
-          class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+          class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
         >
           Try again
         </button>
@@ -52,8 +52,8 @@
       <div v-else class="space-y-4">
         <div v-for="(newsGroup, symbol) in groupedNews" :key="symbol">
           <div class="mb-2">
-            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center">
-              <span class="badge bg-gray-100 dark:bg-gray-700 mr-2">{{ symbol }}</span>
+            <h4 class="heading-sub flex items-center">
+              <span class="badge-neutral mr-2">{{ symbol }}</span>
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ newsGroup.length }} article{{ newsGroup.length !== 1 ? 's' : '' }}</span>
             </h4>
           </div>
@@ -91,7 +91,7 @@
           <button
             v-if="newsGroup.length > 3"
             @click="toggleExpanded(symbol)"
-            class="mt-2 text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 font-medium"
+            class="mt-2 text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 font-medium"
           >
             {{ expandedSymbols[symbol] ? 'Show less' : `Show ${newsGroup.length - 3} more` }}
           </button>

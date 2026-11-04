@@ -42,7 +42,7 @@
         <div v-if="!isEditing" class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 p-4 rounded-lg">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center">
-              <DocumentTextIcon class="w-5 h-5 text-primary-600 dark:text-primary-400 mr-2" />
+              <DocumentTextIcon class="w-5 h-5 text-primary-700 dark:text-primary-400 mr-2" />
               <h3 class="text-sm font-medium text-primary-900 dark:text-primary-200">Use a Template</h3>
               <span
                 v-if="selectedTemplateName"
@@ -54,7 +54,7 @@
             <button
               type="button"
               @click="toggleTemplates"
-              class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+              class="text-sm text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300"
             >
               {{ showTemplates ? 'Hide' : 'Show' }}
             </button>
@@ -73,7 +73,7 @@
                 :key="template.id"
                 type="button"
                 @click="applyTemplate(template)"
-                class="text-left p-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-primary-500 dark:hover:border-primary-500 transition-colors"
+                class="btn-secondary"
               >
                 <div class="flex items-start justify-between">
                   <div class="flex-1 min-w-0">
@@ -86,7 +86,7 @@
                   </div>
                   <span
                     v-if="template.is_default"
-                    class="ml-2 flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                    class="badge-success ml-2 flex-shrink-0"
                   >
                     Default
                   </span>
@@ -97,7 +97,7 @@
         </div>
 
         <!-- Basic Information -->
-        <div class="card p-6">
+        <div class="card card-body">
           <h2 class="heading-card mb-4">Basic Information</h2>
           
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -158,10 +158,10 @@
                   type="radio"
                   v-model="form.marketBias"
                   value="bullish"
-                  class="form-radio text-green-600 dark:text-green-400"
+                  class="form-radio text-green-700 dark:text-green-400"
                 />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                  <ArrowTrendingUpIcon class="w-4 h-4 inline mr-1 text-green-600 dark:text-green-400" />
+                  <ArrowTrendingUpIcon class="w-4 h-4 inline mr-1 text-green-700 dark:text-green-400" />
                   Bullish
                 </span>
               </label>
@@ -203,7 +203,7 @@
         </div>
 
         <!-- Content -->
-        <div class="card p-6">
+        <div class="card card-body">
           <h2 class="heading-card mb-4">Content</h2>
           
           <!-- Main Content -->
@@ -349,7 +349,7 @@
         </div>
 
         <!-- Trading Information -->
-        <div class="card p-6">
+        <div class="card card-body">
           <h2 class="heading-card mb-4">Trading Information</h2>
           
           <!-- Watchlist -->
@@ -382,7 +382,7 @@
                 <button
                   type="button"
                   @click="removeWatchlistSymbol(index)"
-                  class="ml-2 text-primary-600 hover:text-primary-900 dark:text-primary-300 dark:hover:text-primary-100"
+                  class="ml-2 text-primary-700 hover:text-primary-900 dark:text-primary-300 dark:hover:text-primary-100"
                 >
                   <XMarkIcon class="w-3 h-3" />
                 </button>
@@ -404,7 +404,7 @@
               <button
                 type="button"
                 @click="showLinkedTradesSection = !showLinkedTradesSection"
-                class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 whitespace-nowrap"
+                class="text-sm text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 whitespace-nowrap"
               >
                 {{ showLinkedTradesSection ? 'Hide' : (form.linkedTrades.length > 0 ? 'Manage' : 'Add trades') }}
               </button>
@@ -461,7 +461,7 @@
         </div>
 
         <!-- Post-Market Reflection -->
-        <div class="card p-6">
+        <div class="card card-body">
           <h2 class="heading-card mb-4">
             Post-Market Reflection
             <span class="text-sm font-normal text-gray-500 dark:text-gray-400">(Optional)</span>
@@ -478,7 +478,7 @@
                   type="radio"
                   v-model="form.followedPlan"
                   :value="true"
-                  class="form-radio text-green-600 dark:text-green-400"
+                  class="form-radio text-green-700 dark:text-green-400"
                 />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Yes</span>
               </label>
@@ -520,7 +520,7 @@
         </div>
 
         <!-- Attachments -->
-        <div class="card p-6">
+        <div class="card card-body">
           <div class="flex items-start justify-between gap-4 mb-3">
             <div>
               <h2 class="heading-card">Attachments</h2>
@@ -531,7 +531,7 @@
             <button
               type="button"
               @click="showAttachmentsSection = !showAttachmentsSection"
-              class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 whitespace-nowrap"
+              class="text-sm text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 whitespace-nowrap"
             >
               {{ showAttachmentsSection ? 'Hide' : ((entryAttachments.length > 0 || hasPendingImages) ? 'Manage' : 'Add images') }}
             </button>

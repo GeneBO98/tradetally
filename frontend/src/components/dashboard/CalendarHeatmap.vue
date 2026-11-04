@@ -35,7 +35,7 @@
           <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ month.label }}</span>
           <span
             class="text-xs text-mono-num font-medium"
-            :class="month.totalPnl > 0 ? 'text-green-600 dark:text-green-400'
+            :class="month.totalPnl > 0 ? 'text-green-700 dark:text-green-400'
                   : month.totalPnl < 0 ? 'text-red-600 dark:text-red-400'
                   : 'text-gray-500 dark:text-gray-400'"
           >
@@ -47,7 +47,7 @@
           <div
             v-for="dow in ['S', 'M', 'T', 'W', 'T', 'F', 'S']"
             :key="`dow-${dow}-${month.year}-${month.month}`"
-            class="text-[10px] text-center text-gray-400 dark:text-gray-500"
+            class="text-xs text-center text-gray-400 dark:text-gray-500"
           >
             {{ dow }}
           </div>

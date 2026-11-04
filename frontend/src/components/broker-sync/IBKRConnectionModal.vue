@@ -5,10 +5,10 @@
       <div class="modal-backdrop" @click="emit('close')"></div>
 
       <!-- Modal -->
-      <div class="modal-panel w-full max-w-lg">
+      <div role="dialog" aria-modal="true" class="modal-panel w-full max-w-lg">
         <!-- Header -->
         <div class="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h3 class="heading-card">
+          <h3 class="modal-title">
             {{ props.reconnecting ? 'Reconnect Interactive Brokers' : 'Connect Interactive Brokers' }}
           </h3>
           <button
@@ -38,10 +38,10 @@
               <li>Set <strong>Should Expire After</strong> to <strong>1 Year</strong> — IBKR tokens expire after 6 hours by default, which breaks sync the same day</li>
               <li>Generate or copy your <strong>Current Token</strong></li>
             </ol>
-            <p class="mt-3 text-xs text-primary-600 dark:text-primary-400">
+            <p class="mt-3 text-xs text-primary-700 dark:text-primary-400">
               Note: IBKR updates Activity Flex data once daily after close of business, so new trades appear on the next sync after the following business day. For advisor or linked accounts, the token is only available from the master account.
             </p>
-            <p class="mt-2 text-xs text-primary-600 dark:text-primary-400">
+            <p class="mt-2 text-xs text-primary-700 dark:text-primary-400">
               <a href="https://www.interactivebrokers.com/campus/ibkr-api-page/flex-web-service/" target="_blank" class="underline">View IBKR's official Flex Web Service documentation</a>
             </p>
           </div>
@@ -151,7 +151,7 @@
                   :class="[
                     'px-3 py-1 text-sm rounded-full border transition-colors',
                     activePreset === preset.id
-                      ? 'bg-primary-600 border-primary-600 text-white'
+                      ? 'bg-primary-700 border-primary-600 text-white'
                       : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'
                   ]"
                 >

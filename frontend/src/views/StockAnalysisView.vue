@@ -4,7 +4,7 @@
         <div class="flex items-center mb-8">
             <button
                 @click="goBack"
-                class="mr-4 p-2 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                class="btn-icon p-2 mr-4"
             >
                 <svg
                     class="w-5 h-5"
@@ -81,7 +81,7 @@
         <div v-else-if="analysis">
             <!-- Summary Card -->
             <div
-                class="card p-6 mb-6"
+                class="card card-body mb-6"
             >
                 <div class="flex items-center justify-between mb-4">
                     <div>
@@ -147,7 +147,7 @@
                     class="px-6 py-4 border-b border-gray-200 dark:border-gray-700"
                 >
                     <h2
-                        class="text-lg font-medium text-gray-900 dark:text-white"
+                        class="heading-card"
                     >
                         8 Pillars Analysis
                     </h2>

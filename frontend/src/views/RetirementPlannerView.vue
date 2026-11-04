@@ -6,7 +6,7 @@
           <h1 class="heading-page">Retirement Planner</h1>
           <span
             v-if="retirementStore.hasSavedPlan"
-            class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300"
+            class="badge-primary"
           >
             Saved plan
           </span>
@@ -68,7 +68,7 @@
         class="mb-6 rounded-lg border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
       >
         <div class="flex items-start gap-3">
-          <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400" />
+          <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-700 dark:text-primary-400" />
           <div>
             <p class="text-sm font-semibold text-primary-900 dark:text-primary-200">
               These are starting assumptions, not your plan yet.
@@ -86,7 +86,7 @@
         class="mb-6 rounded-lg border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
       >
         <div class="flex items-start gap-3">
-          <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400" />
+          <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-700 dark:text-primary-400" />
           <div>
             <p class="text-sm font-semibold text-primary-900 dark:text-primary-200">
               Account-only preview: {{ selectedAccountLabel }}
@@ -106,9 +106,9 @@
       >
         <div class="flex items-center justify-between gap-4">
           <div class="flex min-w-0 items-center gap-3">
-            <BuildingLibraryIcon class="h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400" />
+            <BuildingLibraryIcon class="h-5 w-5 shrink-0 text-primary-700 dark:text-primary-400" />
             <div class="min-w-0">
-              <h2 class="truncate text-sm font-semibold text-gray-950 dark:text-white">
+              <h2 class="heading-sub truncate">
                 Accounts included in the projection
               </h2>
               <p class="truncate text-xs text-gray-500 dark:text-gray-400">
@@ -134,7 +134,7 @@
           v-show="accountPickerOpen"
           id="retirement-account-picker"
           data-testid="account-picker"
-          class="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-600 dark:bg-gray-800 sm:left-auto sm:w-[30rem]"
+          class="popover absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden sm:left-auto sm:w-[30rem]"
         >
           <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
             <div>
@@ -160,7 +160,7 @@
               <input
                 :data-testid="`retirement-account-${account.account_identifier}`"
                 type="checkbox"
-                class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900"
+                class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-700 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900"
                 :checked="isAccountIncluded(account.account_identifier)"
                 :disabled="isFiltered || (isAccountIncluded(account.account_identifier) && includedAccountIds.length === 1)"
                 @change="toggleAccount(account.account_identifier)"
@@ -191,11 +191,11 @@
 
       <div class="grid gap-6 xl:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.6fr)]">
         <form class="space-y-5" @submit.prevent>
-          <section class="card p-5">
+          <section class="card card-body">
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="1" :icon="CalendarDaysIcon" />
               <div>
-                <h2 class="font-semibold text-gray-950 dark:text-white">When</h2>
+                <h2 class="heading-card">When</h2>
                 <p class="text-xs text-gray-500 dark:text-gray-400">Your age today and the age you want to stop working.</p>
               </div>
             </div>
@@ -222,11 +222,11 @@
             </p>
           </section>
 
-          <section class="card p-5">
+          <section class="card card-body">
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="2" :icon="BanknotesIcon" />
               <div>
-                <h2 class="font-semibold text-gray-950 dark:text-white">What you have</h2>
+                <h2 class="heading-card">What you have</h2>
                 <p class="text-xs text-gray-500 dark:text-gray-400">Your starting balance, tracked and untracked.</p>
               </div>
             </div>
@@ -293,7 +293,7 @@
                     <label class="flex cursor-pointer items-center gap-2 text-xs text-gray-700 dark:text-gray-200">
                       <input
                         type="checkbox"
-                        class="h-3.5 w-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900"
+                        class="h-3.5 w-3.5 rounded border-gray-300 text-primary-700 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900"
                         :checked="account.include_in_retirement_savings"
                         :disabled="savingsAccountBusy === account.id"
                         @change="toggleSavingsAccount(account, $event.target.checked)"
@@ -359,11 +359,11 @@
             </div>
           </section>
 
-          <section class="card p-5">
+          <section class="card card-body">
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="3" :icon="ArrowTrendingUpIcon" />
               <div>
-                <h2 class="font-semibold text-gray-950 dark:text-white">What you add</h2>
+                <h2 class="heading-card">What you add</h2>
                 <p class="text-xs text-gray-500 dark:text-gray-400">The lever you control most directly.</p>
               </div>
             </div>
@@ -408,11 +408,11 @@
             </div>
           </section>
 
-          <section class="card p-5">
+          <section class="card card-body">
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="4" :icon="HomeIcon" />
               <div>
-                <h2 class="font-semibold text-gray-950 dark:text-white">What you want</h2>
+                <h2 class="heading-card">What you want</h2>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   Your retirement spending sets the portfolio goal.
                 </p>
@@ -485,7 +485,7 @@
                 class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40"
               >
                 <div class="flex items-start gap-3">
-                  <CalculatorIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400" />
+                  <CalculatorIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-700 dark:text-primary-400" />
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-semibold text-gray-900 dark:text-white">How the portfolio goal is calculated</p>
                     <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
@@ -559,11 +559,11 @@
             </div>
           </section>
 
-          <section class="card p-5">
+          <section class="card card-body">
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="5" :icon="BuildingLibraryIcon" />
               <div>
-                <h2 class="font-semibold text-gray-950 dark:text-white">Other retirement income</h2>
+                <h2 class="heading-card">Other retirement income</h2>
                 <p class="text-xs text-gray-500 dark:text-gray-400">Social Security, pension, rental, or other yearly income. Leave at zero if none.</p>
               </div>
             </div>
@@ -600,12 +600,12 @@
 
           <section
             ref="assumptionsSection"
-            class="card p-5"
+            class="card card-body"
           >
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="6" :icon="AdjustmentsHorizontalIcon" />
               <div>
-                <h2 class="font-semibold text-gray-950 dark:text-white">Assumptions</h2>
+                <h2 class="heading-card">Assumptions</h2>
                 <p class="text-xs text-gray-500 dark:text-gray-400">Starting estimates, not recommendations.</p>
               </div>
             </div>
@@ -639,7 +639,7 @@
             {{ formError }}
           </p>
 
-          <div class="sticky bottom-4 z-10 rounded-2xl border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/95">
+          <div class="sticky bottom-4 z-10 rounded-lg border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/95">
             <p
               data-testid="projection-sync-status"
               class="mb-2 flex items-center gap-2 px-1 text-xs"
@@ -667,7 +667,7 @@
           <section
             ref="statusSection"
             data-testid="plan-status"
-            class="card p-5 sm:p-6"
+            class="card card-body sm:p-6"
           >
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div class="min-w-0 max-w-2xl">
@@ -765,10 +765,10 @@
             </dl>
           </section>
 
-          <section class="card p-5 sm:p-6">
+          <section class="card card-body sm:p-6">
             <div class="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h2 class="text-lg font-semibold text-gray-950 dark:text-white">Projection paths</h2>
+                <h2 class="heading-card">Projection paths</h2>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   Custom assumptions and every historical period with sufficient coverage.
                 </p>
@@ -810,7 +810,7 @@
                 @keydown.esc.stop="scenarioHelpOpen = false"
               >
                 <span class="text-lg font-semibold text-gray-950 dark:text-white">Compare scenarios</span>
-                <InformationCircleIcon class="h-5 w-5 text-primary-600 dark:text-primary-400" />
+                <InformationCircleIcon class="h-5 w-5 text-primary-700 dark:text-primary-400" />
               </button>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 <template v-if="hasMultipleScenarios">
@@ -826,11 +826,11 @@
                 id="scenario-help-card"
                 data-testid="scenario-help-card"
                 role="tooltip"
-                class="absolute left-5 right-5 top-full z-30 mt-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-xl dark:border-gray-600 dark:bg-gray-800 sm:left-6 sm:right-6 sm:p-6"
+                class="popover absolute left-5 right-5 top-full z-30 mt-3 p-5 sm:left-6 sm:right-6 sm:p-6"
                 @mouseenter="scenarioHelpOpen = true"
               >
                 <div class="flex items-start gap-3">
-                  <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400" />
+                  <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-700 dark:text-primary-400" />
                   <div>
                     <p class="text-base font-semibold text-gray-950 dark:text-white">How the scenarios are built</p>
                     <p class="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">
@@ -890,13 +890,13 @@
 
             <div v-if="hasMultipleScenarios" class="overflow-x-auto rounded-b-2xl">
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-900/40">
+                <thead class="table-head">
                   <tr>
-                    <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Scenario</th>
-                    <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Return</th>
-                    <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Inflation</th>
-                    <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Projected balance at retirement</th>
-                    <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
+                    <th class="px-5 py-3 text-left table-th">Scenario</th>
+                    <th class="px-5 py-3 text-right table-th">Return</th>
+                    <th class="px-5 py-3 text-right table-th">Inflation</th>
+                    <th class="px-5 py-3 text-right table-th">Projected balance at retirement</th>
+                    <th class="px-5 py-3 text-right table-th">Status</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -951,7 +951,7 @@
               <div class="flex items-start gap-3">
                 <ChartBarIcon class="mt-0.5 h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
                 <div class="min-w-0 flex-1">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Historical scenario quality</h3>
+                  <h3 class="heading-sub">Historical scenario quality</h3>
                   <p
                     v-if="retirementStore.historicalInflation?.unavailable && retirementStore.historicalScenarios.length > 0"
                     class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
@@ -1309,7 +1309,7 @@ const StepBadge = defineComponent({
     }, [
       h(props.icon, { class: 'h-5 w-5' }),
       h('span', {
-        class: 'absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-bold leading-none text-white',
+        class: 'absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-700 px-1 text-xs font-bold leading-none text-white',
         'aria-label': `Step ${props.step}`
       }, String(props.step))
     ])

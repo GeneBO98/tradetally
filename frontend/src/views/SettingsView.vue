@@ -34,7 +34,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                            class="heading-card mb-6"
                         >
                             Analytics Preferences
                         </h3>
@@ -69,7 +69,7 @@
                                     affected by outliers and may provide a more
                                     representative view of typical performance.
                                 </p>
-                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                <p class="mt-1 text-sm text-primary-700 dark:text-primary-400 font-medium">
                                     Note: Changes take effect immediately
                                     and will update labels throughout the
                                     application.
@@ -308,7 +308,7 @@
                                             />
                                             <button
                                                 type="button"
-                                                class="btn-secondary px-3"
+                                                class="btn-secondary"
                                                 @click="removeBreakevenToleranceRow(idx)"
                                             >
                                                 Remove
@@ -342,7 +342,7 @@
                             </div>
 
                             <div v-if="['admin', 'owner'].includes(authStore.user?.role)" class="py-6">
-                                <h4 class="font-medium text-gray-900 dark:text-white">Manual exchange rates</h4>
+                                <h4 class="heading-card">Manual exchange rates</h4>
                                 <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
                                     Set how much one USD buys. These server-wide rates override provider rates for trade calculations, imports, charts, and analytics. Remove a rate to use the provider again.
                                 </p>
@@ -362,7 +362,7 @@
                                 <ul v-else class="mt-4 divide-y divide-gray-200 dark:divide-gray-700">
                                     <li v-for="rate in manualFxRates" :key="rate.quote_code" class="flex items-center justify-between gap-4 py-2 text-sm">
                                         <span>1 USD = {{ Number(rate.per_usd) }} {{ rate.quote_code }}</span>
-                                        <button type="button" class="text-primary-600 hover:text-primary-700 dark:text-primary-400" :disabled="manualFxSaving" @click="removeManualFxRate(rate.quote_code)">Remove</button>
+                                        <button type="button" class="text-primary-700 hover:text-primary-800 dark:text-primary-400" :disabled="manualFxSaving" @click="removeManualFxRate(rate.quote_code)">Remove</button>
                                     </li>
                                 </ul>
                             </div>
@@ -498,7 +498,7 @@
                                     price. For short positions, it will be above
                                     entry price.
                                 </p>
-                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                <p class="mt-1 text-sm text-primary-700 dark:text-primary-400 font-medium">
                                     Example: 2% stop loss on a $100 long
                                     entry = $98 stop loss price
                                 </p>
@@ -549,7 +549,7 @@
                                     quantity); for a short, stop = entry +
                                     (dollars / quantity).
                                 </p>
-                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                <p class="mt-1 text-sm text-primary-700 dark:text-primary-400 font-medium">
                                     Example: $100 stop loss on 50 shares =
                                     $2 per share risk, so a $100 long entry
                                     becomes $98 stop loss
@@ -641,7 +641,7 @@
                                     entry price. For short positions, it will be
                                     below entry price.
                                 </p>
-                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                <p class="mt-1 text-sm text-primary-700 dark:text-primary-400 font-medium">
                                     Example: 6% take profit on a $100 long
                                     entry = $106 take profit price
                                 </p>
@@ -672,7 +672,7 @@
                                 <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
                                     Calculates the target from the trade's stop loss. A valid stop loss is required; manually selected stops take precedence over the default stop.
                                 </p>
-                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                <p class="mt-1 text-sm text-primary-700 dark:text-primary-400 font-medium">
                                     Example: $250 risk at 2R = a $500 gross profit target
                                 </p>
                             </div>
@@ -701,7 +701,7 @@
                                 <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
                                     Sets a fixed gross profit target for the entire position. Quantity and stock, option, or futures multipliers are used to calculate the target price.
                                 </p>
-                                <p class="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                <p class="mt-1 text-sm text-primary-700 dark:text-primary-400 font-medium">
                                     Example: $500 on 50 shares = a $10 move from entry
                                 </p>
                             </div>
@@ -732,7 +732,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                            class="heading-card mb-6"
                         >
                             Privacy Settings
                         </h3>
@@ -823,7 +823,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                            class="heading-card mb-6"
                         >
                             Broker Sync
                         </h3>
@@ -838,7 +838,7 @@
 
                         <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                             <h4
-                                class="text-sm font-medium text-gray-900 dark:text-white mb-2"
+                                class="heading-sub mb-2"
                             >
                                 Automated Trade Syncing
                             </h4>
@@ -878,7 +878,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                            class="heading-card mb-6"
                         >
                             API Documentation
                         </h3>
@@ -891,7 +891,7 @@
 
                         <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                             <h4
-                                class="text-sm font-medium text-gray-900 dark:text-white mb-2"
+                                class="heading-sub mb-2"
                             >
                                 Interactive API Explorer
                             </h4>
@@ -925,7 +925,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                            class="heading-card mb-6"
                         >
                             About TradeTally
                         </h3>
@@ -978,7 +978,7 @@
                                         class="text-sm font-mono"
                                         :class="
                                             versionStore.updateAvailable
-                                                ? 'text-primary-600 dark:text-primary-400'
+                                                ? 'text-primary-700 dark:text-primary-400'
                                                 : 'text-gray-900 dark:text-white'
                                         "
                                     >
@@ -989,7 +989,7 @@
                                     </span>
                                     <span
                                         v-if="versionStore.updateAvailable"
-                                        class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400"
+                                        class="badge-primary"
                                     >
                                         New
                                     </span>
@@ -1006,7 +1006,7 @@
                                 >
                                     <div class="flex items-start">
                                         <ArrowPathIcon
-                                            class="h-5 w-5 text-primary-600 dark:text-primary-400 mt-0.5"
+                                            class="h-5 w-5 text-primary-700 dark:text-primary-400 mt-0.5"
                                         />
                                         <div class="ml-3 flex-1">
                                             <p
@@ -1111,7 +1111,7 @@
                 <div class="card mb-8">
                     <div class="card-body">
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                            class="heading-card mb-4"
                         >
                             Trading Accounts
                         </h3>
@@ -1151,7 +1151,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                            class="heading-card mb-4"
                         >
                             Quality Grading Weights
                         </h3>
@@ -1182,7 +1182,7 @@
                                 class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
                                 :class="
                                     qualityProfile === p.key
-                                        ? 'border-primary-600 text-primary-600 dark:text-primary-400'
+                                        ? 'border-primary-600 text-primary-700 dark:text-primary-400'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                                 "
                             >
@@ -1353,7 +1353,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                            class="heading-card mb-6"
                         >
                             Trade Import Settings
                         </h3>
@@ -1377,7 +1377,7 @@
                                             tradeImportForm.enableTradeGrouping
                                         "
                                         type="checkbox"
-                                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                        class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
                                     />
                                 </div>
                                 <div class="ml-3">
@@ -1459,7 +1459,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-4"
+                            class="heading-card mb-4"
                         >
                             Trade Enrichment
                         </h3>

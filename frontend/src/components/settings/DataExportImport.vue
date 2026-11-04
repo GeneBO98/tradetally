@@ -3,7 +3,7 @@
     <div class="card">
         <div class="card-body">
             <h3
-                class="text-lg font-medium text-gray-900 dark:text-white mb-6"
+                class="heading-card mb-6"
             >
                 Data Export & Import
             </h3>
@@ -20,7 +20,7 @@
                 <div class="flex items-start space-x-4">
                     <div class="flex-1">
                         <h4
-                            class="text-sm font-medium text-gray-900 dark:text-white mb-3"
+                            class="heading-sub mb-3"
                         >
                             Export Your Data
                         </h4>
@@ -72,7 +72,7 @@
                 >
                     <div class="flex-1">
                         <h4
-                            class="text-sm font-medium text-gray-900 dark:text-white mb-3"
+                            class="heading-sub mb-3"
                         >
                             Export Trades to CSV
                         </h4>
@@ -125,7 +125,7 @@
                 >
                     <div class="flex-1">
                         <h4
-                            class="text-sm font-medium text-gray-900 dark:text-white mb-3"
+                            class="heading-sub mb-3"
                         >
                             Import Data
                         </h4>

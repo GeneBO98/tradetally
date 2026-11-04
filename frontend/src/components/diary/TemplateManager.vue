@@ -4,7 +4,7 @@
       <h3 class="heading-card">Journal Templates</h3>
       <button
         @click="showCreateModal = true"
-        class="btn-primary text-sm"
+        class="btn-primary"
       >
         <PlusIcon class="w-4 h-4 mr-1" />
         New Template
@@ -28,24 +28,24 @@
       <div
         v-for="template in templates"
         :key="template.id"
-        class="card p-6 hover:shadow-md transition-shadow duration-200"
+        class="card card-body hover:shadow-md transition-shadow duration-200"
       >
         <div class="flex flex-col space-y-4">
           <!-- Header -->
           <div class="flex items-start justify-between">
             <div class="flex-1 min-w-0">
               <div class="flex items-center flex-wrap gap-2">
-                <h4 class="text-lg font-semibold text-gray-900 dark:text-white">
+                <h4 class="heading-card">
                   {{ template.name }}
                 </h4>
                 <span
                   v-if="template.is_default"
-                  class="badge bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                  class="badge-success"
                 >
                   Default
                 </span>
                 <span
-                  class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400"
+                  class="badge-primary"
                 >
                   {{ template.entry_type === 'diary' ? 'Diary' : 'Playbook' }}
                 </span>
@@ -125,12 +125,12 @@
       class="modal-overlay flex items-center justify-center p-4"
       @click="closeModal"
     >
-      <div
+      <div role="dialog" aria-modal="true"
         class="modal-panel max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         @click.stop
       >
         <div class="p-6">
-          <h3 class="heading-card mb-4">
+          <h3 class="modal-title mb-4">
             {{ editingTemplate ? 'Edit Template' : 'Create New Template' }}
           </h3>
 
@@ -182,7 +182,7 @@
                       v-model="templateForm.isDefault"
                       type="checkbox"
                       id="isDefault"
-                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
                     />
                     <label for="isDefault" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
                       Set as default template for new entries
@@ -190,7 +190,7 @@
                   </div>
 
                   <div class="border-t pt-4 mt-4">
-                    <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Template Content</h4>
+                    <h4 class="heading-sub mb-3">Template Content</h4>
 
                     <!-- Title -->
                     <div class="mb-3">
@@ -321,12 +321,12 @@
       class="modal-overlay flex items-center justify-center p-4"
       @click="showDeleteModal = false"
     >
-      <div
+      <div role="dialog" aria-modal="true"
         class="modal-panel max-w-md w-full"
         @click.stop
       >
         <div class="p-6">
-          <h3 class="heading-card mb-4">
+          <h3 class="modal-title mb-4">
             Delete Template
           </h3>
                 <div class="mt-2">
@@ -515,7 +515,4 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.btn-danger {
-  @apply px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200;
-}
 </style>

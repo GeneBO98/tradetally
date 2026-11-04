@@ -39,7 +39,7 @@
               <span v-if="healthSummary.heartRateTrend > 0" class="text-red-600 dark:text-red-400">
                 ↑ {{ Math.abs(healthSummary.heartRateTrend).toFixed(1) }}%
               </span>
-              <span v-else-if="healthSummary.heartRateTrend < 0" class="text-green-600 dark:text-green-400">
+              <span v-else-if="healthSummary.heartRateTrend < 0" class="text-green-700 dark:text-green-400">
                 ↓ {{ Math.abs(healthSummary.heartRateTrend).toFixed(1) }}%
               </span>
               <span v-else class="text-gray-500">No change</span>
@@ -65,7 +65,7 @@
           </div>
           <div class="mt-3">
             <div class="flex items-center text-xs">
-              <span v-if="healthSummary.sleepScoreTrend > 0" class="text-green-600 dark:text-green-400">
+              <span v-if="healthSummary.sleepScoreTrend > 0" class="text-green-700 dark:text-green-400">
                 ↑ {{ Math.abs(healthSummary.sleepScoreTrend).toFixed(1) }}%
               </span>
               <span v-else-if="healthSummary.sleepScoreTrend < 0" class="text-red-600 dark:text-red-400">
@@ -94,7 +94,7 @@
           </div>
           <div class="mt-3">
             <div class="flex items-center text-xs">
-              <span v-if="healthSummary.sleepHoursTrend > 0" class="text-green-600 dark:text-green-400">
+              <span v-if="healthSummary.sleepHoursTrend > 0" class="text-green-700 dark:text-green-400">
                 ↑ {{ Math.abs(healthSummary.sleepHoursTrend).toFixed(1) }}%
               </span>
               <span v-else-if="healthSummary.sleepHoursTrend < 0" class="text-red-600 dark:text-red-400">
@@ -126,7 +126,7 @@
               <span v-if="healthSummary.stressLevelTrend > 0" class="text-red-600 dark:text-red-400">
                 ↑ {{ Math.abs(healthSummary.stressLevelTrend).toFixed(1) }}%
               </span>
-              <span v-else-if="healthSummary.stressLevelTrend < 0" class="text-green-600 dark:text-green-400">
+              <span v-else-if="healthSummary.stressLevelTrend < 0" class="text-green-700 dark:text-green-400">
                 ↓ {{ Math.abs(healthSummary.stressLevelTrend).toFixed(1) }}%
               </span>
               <span v-else class="text-gray-500">No change</span>
@@ -149,7 +149,7 @@
         
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead class="bg-gray-50 dark:bg-gray-800">
+            <thead class="table-head">
               <tr>
                 <th class="px-6 py-3 text-left table-th">
                   Condition
@@ -191,7 +191,7 @@
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex items-center">
                     <span class="text-sm font-medium" 
-                          :class="condition.winRate >= 50 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                          :class="condition.winRate >= 50 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                       {{ condition.winRate.toFixed(1) }}%
                     </span>
                     <div class="ml-2 w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
@@ -202,12 +202,12 @@
                   </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-mono-num"
-                    :class="condition.avgPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                  ${{ Math.abs(condition.avgPnL).toFixed(2) }}
+                    :class="condition.avgPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                  {{ formatSignedCurrency(condition.avgPnL) }}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-mono-num font-semibold"
-                    :class="condition.totalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                  ${{ Math.abs(condition.totalPnL).toFixed(2) }}
+                    :class="condition.totalPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                  {{ formatSignedCurrency(condition.totalPnL) }}
                 </td>
               </tr>
             </tbody>
@@ -225,7 +225,7 @@
           </h3>
           <button @click="refreshInsights" 
                   :disabled="loadingInsights"
-                  class="btn-secondary text-sm">
+                  class="btn-secondary">
             <svg v-if="loadingInsights" class="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -254,13 +254,13 @@
                 </svg>
               </div>
               <div class="ml-3 flex-1">
-                <h4 class="text-sm font-medium">{{ insight.title }}</h4>
+                <h4 class="heading-sub">{{ insight.title }}</h4>
                 <p class="mt-1 text-sm">{{ insight.description }}</p>
                 <div class="mt-2 flex items-center justify-between">
                   <span class="text-xs opacity-75">
                     Confidence: {{ (insight.confidence * 100).toFixed(0) }}%
                   </span>
-                  <span v-if="insight.isActionable" class="badge bg-primary-100 dark:bg-primary-900/20 text-primary-800 dark:text-primary-400">
+                  <span v-if="insight.isActionable" class="badge-primary">
                     Actionable
                   </span>
                 </div>
@@ -278,11 +278,13 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
 import HealthCorrelationChart from '@/components/health/HealthCorrelationChart.vue'
 
 const authStore = useAuthStore()
 const { selectedAccount } = useGlobalAccountFilter()
+const { formatSignedCurrency } = useCurrencyFormatter()
 const { showSuccessModal, showCriticalError } = useNotification()
 
 const healthSummary = ref({

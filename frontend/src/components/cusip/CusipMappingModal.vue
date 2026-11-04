@@ -8,13 +8,13 @@
       ></div>
 
       <!-- Modal -->
-      <div class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+      <div role="dialog" aria-modal="true" class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
         <form @submit.prevent="saveMapping">
           <!-- Header -->
           <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
             <div class="sm:flex sm:items-start">
               <div class="w-full">
-                <h3 class="heading-card">
+                <h3 class="modal-title">
                   {{ isEditing ? 'Edit CUSIP Mapping' : 'Add CUSIP Mapping' }}
                 </h3>
                 <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -80,7 +80,7 @@
                       v-model="form.verified"
                       type="checkbox"
                       id="verified"
-                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
                     />
                     <label for="verified" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
                       Mark as verified (confirmed to be correct)

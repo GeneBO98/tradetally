@@ -15,7 +15,7 @@
             @click="setRange(option.days)"
             class="px-2.5 py-1 text-xs font-medium rounded-md transition-colors"
             :class="selectedDays === option.days
-              ? 'bg-primary-600 text-white'
+              ? 'bg-primary-700 text-white'
               : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
           >
             {{ option.label }}
@@ -23,7 +23,7 @@
         </div>
       </div>
 
-      <p v-if="loading && !initialLoading" class="text-xs text-primary-600 mb-2" role="status">Updating...</p>
+      <p v-if="loading && !initialLoading" class="text-xs text-primary-700 mb-2" role="status">Updating...</p>
       <div v-if="initialLoading" class="flex justify-center py-10">
         <div class="spinner spinner-md"></div>
       </div>

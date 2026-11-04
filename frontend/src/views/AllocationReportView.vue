@@ -2,7 +2,7 @@
   <div class="content-wrapper py-8">
     <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div>
-        <router-link to="/metrics" class="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400">Back to analytics</router-link>
+        <router-link to="/metrics" class="text-sm font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400">Back to analytics</router-link>
         <h1 class="heading-page mt-2">Allocation report</h1>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
           Proportional results for your private allocation groups. Normal analytics and tags are unchanged.
@@ -54,7 +54,7 @@
           <article class="card">
             <div class="card-body">
               <div class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Allocated P&amp;L</div>
-              <div class="mt-2 text-2xl font-semibold" :class="totalPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(totalPnl) }}</div>
+              <div class="mt-2 text-2xl font-semibold" :class="totalPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(totalPnl) }}</div>
             </div>
           </article>
           <article class="card">
@@ -87,7 +87,7 @@
             </div>
             <div class="overflow-x-auto">
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead>
+                <thead class="table-head">
                   <tr class="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     <th class="px-3 py-3">Group</th>
                     <th class="px-3 py-3 text-right">Trades</th>
@@ -102,13 +102,13 @@
                       <div class="flex items-center gap-2">
                         <span class="h-3 w-3 rounded-full" :style="{ backgroundColor: group.color }"></span>
                         <span class="font-medium text-gray-900 dark:text-white">{{ group.name }}</span>
-                        <span v-if="group.archived_at" class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">Archived</span>
+                        <span v-if="group.archived_at" class="badge-neutral">Archived</span>
                       </div>
                     </td>
                     <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ group.trade_count }}</td>
                     <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ winRate(group) }}</td>
                     <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ formatCurrency(Number(group.allocated_commission) + Number(group.allocated_fees)) }}</td>
-                    <td class="px-3 py-4 text-right text-sm font-semibold" :class="Number(group.allocated_pnl) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(Number(group.allocated_pnl)) }}</td>
+                    <td class="px-3 py-4 text-right text-sm font-semibold" :class="Number(group.allocated_pnl) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(Number(group.allocated_pnl)) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -122,7 +122,7 @@
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">A compact reconciliation view of allocated P&amp;L by month.</p>
             <div class="mt-5 overflow-x-auto">
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead>
+                <thead class="table-head">
                   <tr class="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     <th class="px-3 py-3">Month</th>
                     <th v-for="group in visibleGroups" :key="group.id" class="px-3 py-3 text-right">{{ group.name }}</th>
@@ -133,7 +133,7 @@
                   <tr v-for="row in monthlyRows" :key="row.month">
                     <td class="whitespace-nowrap px-3 py-4 text-sm font-medium text-gray-900 dark:text-white">{{ formatMonth(row.month) }}</td>
                     <td v-for="group in visibleGroups" :key="group.id" class="whitespace-nowrap px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ formatCurrency(row.values[group.id] || 0) }}</td>
-                    <td class="whitespace-nowrap px-3 py-4 text-right text-sm font-semibold" :class="row.total >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(row.total) }}</td>
+                    <td class="whitespace-nowrap px-3 py-4 text-right text-sm font-semibold" :class="row.total >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(row.total) }}</td>
                   </tr>
                 </tbody>
               </table>

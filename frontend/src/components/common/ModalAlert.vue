@@ -9,8 +9,8 @@
                 class="flex min-h-full items-center justify-center p-4"
                 @click="handleOverlayClick"
             >
-            <div
-                class="modal-panel w-full max-w-md p-5"
+            <div role="dialog" aria-modal="true"
+                class="modal-panel w-full max-w-md p-6"
             >
                 <div class="mt-3">
                     <!-- Icon -->
@@ -43,7 +43,7 @@
                     <!-- Content -->
                     <div class="text-center">
                         <h3
-                            class="text-lg font-medium text-gray-900 dark:text-white mb-2"
+                            class="modal-title mb-2"
                         >
                             {{ modalAlert.title }}
                         </h3>
@@ -60,7 +60,7 @@
                                 v-model="modalAlert.checkboxChecked"
                                 type="checkbox"
                                 :disabled="modalAlert.isSubmitting"
-                                class="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                class="mt-0.5 rounded border-gray-300 text-primary-700 focus:ring-primary-500"
                             />
                             <span>{{ modalAlert.checkboxLabel }}</span>
                         </label>
@@ -140,9 +140,9 @@ const iconClass = computed(() => {
         case "warning":
             return "text-yellow-600 dark:text-yellow-400";
         case "confirm":
-            return "text-primary-600 dark:text-primary-400";
+            return "text-primary-700 dark:text-primary-400";
         case "success":
-            return "text-green-600 dark:text-green-400";
+            return "text-green-700 dark:text-green-400";
         default:
             return "text-gray-600 dark:text-gray-400";
     }

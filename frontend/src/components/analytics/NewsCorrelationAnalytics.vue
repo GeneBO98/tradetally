@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">News Sentiment Analytics</h2>
+        <h2 class="heading-section">News Sentiment Analytics</h2>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
           Analyze your trading patterns in correlation with news sentiment
         </p>
@@ -11,7 +11,7 @@
       <button
         @click="refreshAnalytics"
         :disabled="loading"
-        class="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+        class="btn-secondary btn-sm disabled:opacity-50"
       >
         <MdiIcon :icon="refreshIcon" :size="16" :class="{ 'animate-spin': loading }" class="mr-2" />
         Refresh
@@ -98,13 +98,13 @@
                   </div>
                   <div>
                     <div class="text-gray-500 dark:text-gray-400">Avg P&L</div>
-                    <div class="font-medium" :class="data.avg_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                    <div class="font-medium" :class="data.avg_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                       {{ formatCurrency(data.avg_pnl) }}
                     </div>
                   </div>
                   <div>
                     <div class="text-gray-500 dark:text-gray-400">Total P&L</div>
-                    <div class="font-medium" :class="data.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                    <div class="font-medium" :class="data.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                       {{ formatCurrency(data.total_pnl) }}
                     </div>
                   </div>
@@ -183,7 +183,7 @@
           <h3 class="heading-card mb-4">Top Performing Combinations</h3>
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead>
+              <thead class="table-head">
                 <tr>
                   <th class="px-4 py-3 text-left table-th">
                     Symbol
@@ -220,7 +220,7 @@
                   </td>
                   <td class="px-4 py-4 whitespace-nowrap">
                     <span 
-                      class="px-2 py-1 text-xs font-semibold rounded-full"
+                      class="badge"
                       :class="{
                         'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': performer.news_sentiment === 'positive',
                         'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': performer.news_sentiment === 'negative',
@@ -232,7 +232,7 @@
                   </td>
                   <td class="px-4 py-4 whitespace-nowrap">
                     <span 
-                      class="px-2 py-1 text-xs font-semibold rounded-full"
+                      class="badge"
                       :class="performer.side === 'long' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
                     >
                       {{ performer.side }}
@@ -244,7 +244,7 @@
                   <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {{ performer.win_rate }}%
                   </td>
-                  <td class="px-4 py-4 whitespace-nowrap text-sm font-medium" :class="performer.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                  <td class="px-4 py-4 whitespace-nowrap text-sm font-medium" :class="performer.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                     {{ formatCurrency(performer.total_pnl) }}
                   </td>
                   <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
@@ -296,12 +296,12 @@
 
     <!-- Performer Details Modal -->
     <div v-if="selectedPerformer" class="modal-overlay flex items-center justify-center" @click="closePerformerDetails">
-      <div class="modal-panel max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto" @click.stop>
+      <div role="dialog" aria-modal="true" class="modal-panel max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto" @click.stop>
         <div class="p-6">
           <!-- Modal Header -->
           <div class="flex items-center justify-between mb-6">
             <div>
-              <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+              <h3 class="modal-title">
                 {{ selectedPerformer.symbol }} - News & Trade Details
               </h3>
               <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
@@ -328,7 +328,7 @@
             </div>
             <div>
               <div class="text-sm text-gray-500 dark:text-gray-400">Total P&L</div>
-              <div class="text-lg font-semibold" :class="selectedPerformer.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+              <div class="text-lg font-semibold" :class="selectedPerformer.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                 {{ formatCurrency(selectedPerformer.total_pnl) }}
               </div>
             </div>
@@ -350,7 +350,7 @@
 
           <!-- Trades and News Details -->
           <div v-else-if="performerDetails" class="space-y-4">
-            <h4 class="text-lg font-medium text-gray-900 dark:text-white">Individual Trades</h4>
+            <h4 class="heading-card">Individual Trades</h4>
             <div class="space-y-3">
               <div
                 v-for="trade in performerDetails"
@@ -363,7 +363,7 @@
                     <span class="font-medium text-gray-900 dark:text-white">
                       {{ formatDate(trade.trade_date) }}
                     </span>
-                    <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                    <span class="badge"
                       :class="trade.pnl >= 0 ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'">
                       {{ formatCurrency(trade.pnl) }}
                     </span>

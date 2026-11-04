@@ -8,7 +8,7 @@
           <h3 class="heading-card">Stats</h3>
           <span
             v-if="overview.position_grouping"
-            class="text-xs font-normal text-primary-600 dark:text-primary-400"
+            class="text-xs font-normal text-primary-700 dark:text-primary-400"
           >whole trade</span>
         </div>
 
@@ -33,11 +33,11 @@
 
           <!-- Pro Tier Overlay for Free Users -->
           <div v-if="isLocked && showProLock" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-lg">
-            <div class="modal-panel text-center p-8 max-w-md">
-              <svg class="mx-auto h-12 w-12 text-primary-600 dark:text-primary-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div role="dialog" aria-modal="true" class="modal-panel text-center p-6 max-w-md">
+              <svg class="mx-auto h-12 w-12 text-primary-700 dark:text-primary-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
-              <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Pro Feature</h3>
+              <h3 class="modal-title mb-2">Pro Feature</h3>
               <p class="text-gray-600 dark:text-gray-400 mb-6">
                 Unlock advanced trading metrics including SQN, Kelly Criterion, K-Ratio, MAE/MFE, and more with Pro.
               </p>
@@ -116,7 +116,7 @@
                   {{ symbol.total_trades }}
                 </span>
                 <div class="text-sm font-medium text-right whitespace-nowrap tabular-nums" :class="[
-                  symbol.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  symbol.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                 ]">
                   {{ formatCurrency(symbol.total_pnl) }}
                 </div>
@@ -126,7 +126,7 @@
                   </div>
                   <div
                     v-if="(Number(symbol.breakeven_trades) || 0) > 0"
-                    class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight"
+                    class="text-xs text-gray-400 dark:text-gray-500 leading-tight"
                     :title="`Excludes ${symbol.breakeven_trades} breakeven trade${Number(symbol.breakeven_trades) === 1 ? '' : 's'}`"
                   >
                     {{ winRateExclBERounded(symbol) }}% BE
@@ -167,7 +167,7 @@ const { isProUser, showProLock } = useProAccess()
 const isLocked = computed(() => props.isFreeTier || !isProUser.value)
 const LOCKED_PLACEHOLDER = '--'
 
-const POSITIVE_CLASS = 'text-green-600 dark:text-green-400'
+const POSITIVE_CLASS = 'text-green-700 dark:text-green-400'
 const NEGATIVE_CLASS = 'text-red-600 dark:text-red-400'
 const NEUTRAL_CLASS = 'text-gray-900 dark:text-white'
 

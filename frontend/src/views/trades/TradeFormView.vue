@@ -194,7 +194,7 @@
               <button
                 type="button"
                 @click="addTakeProfitTarget"
-                class="inline-flex items-center text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                class="inline-flex items-center text-xs text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
               >
                 <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -266,7 +266,7 @@
               <div class="text-right">
                 <p class="text-2xl font-bold"
                    :class="computedPnlPreview.value >= 0
-                     ? 'text-green-600 dark:text-green-400'
+                     ? 'text-green-700 dark:text-green-400'
                      : 'text-red-600 dark:text-red-400'">
                   {{ computedPnlPreview.value >= 0 ? '+' : '' }}${{ computedPnlPreview.value.toFixed(2) }}
                 </p>
@@ -281,7 +281,7 @@
               class="border border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-800"
             >
               <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <h3 class="heading-sub">
                   Execution {{ index + 1 }}
                 </h3>
                 <button
@@ -496,7 +496,7 @@
                     <button
                       type="button"
                       @click="addExecutionTakeProfitTarget(index)"
-                      class="inline-flex items-center text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                      class="inline-flex items-center text-xs text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
                     >
                       <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -812,7 +812,7 @@
         <!-- Options-specific fields -->
         <div v-if="form.instrumentType === 'option'" class="grid grid-cols-1 gap-6 sm:grid-cols-2 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
           <div class="sm:col-span-2 flex items-center justify-between">
-            <h3 class="text-md font-medium text-gray-900 dark:text-white">Option Details</h3>
+            <h3 class="heading-card">Option Details</h3>
             <div class="flex items-center gap-2">
               <div class="w-44">
                 <BaseSelect
@@ -828,7 +828,7 @@
               <button
                 type="button"
                 @click="showSaveOptionsTemplateModal = true"
-                class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
               >
                 Save
               </button>
@@ -905,7 +905,7 @@
         <!-- Futures-specific fields -->
         <div v-if="form.instrumentType === 'future'" class="grid grid-cols-1 gap-6 sm:grid-cols-2 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
           <div class="sm:col-span-2 flex items-center justify-between">
-            <h3 class="text-md font-medium text-gray-900 dark:text-white">Futures Details</h3>
+            <h3 class="heading-card">Futures Details</h3>
             <div class="flex items-center gap-2">
               <div class="w-44">
                 <BaseSelect
@@ -921,7 +921,7 @@
               <button
                 type="button"
                 @click="showSaveFuturesTemplateModal = true"
-                class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                class="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
               >
                 Save
               </button>
@@ -1230,7 +1230,7 @@
             id="isPublic"
             v-model="form.isPublic"
             type="checkbox"
-            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+            class="h-4 w-4 text-primary-700 focus:ring-primary-500 border-gray-300 rounded"
           />
           <label for="isPublic" class="ml-2 block text-sm text-gray-900 dark:text-white">
             Make this trade public
@@ -1252,7 +1252,7 @@
           class="text-sm text-gray-600 dark:text-gray-400"
         >
           This trade will be saved without an account. It will appear under All Accounts and Unsorted, but not in an individual account's trades or P&amp;L.
-          <button type="button" class="text-primary-600 hover:text-primary-700 dark:text-primary-400 underline" @click="showAccountField">
+          <button type="button" class="text-primary-700 hover:text-primary-800 dark:text-primary-400 underline" @click="showAccountField">
             Select an account
           </button>
         </p>
@@ -1285,12 +1285,12 @@
         <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
           <div class="sm:flex sm:items-start">
             <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-primary-100 dark:bg-primary-900/20 sm:mx-0 sm:h-10 sm:w-10">
-              <svg class="h-6 w-6 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg class="h-6 w-6 text-primary-700 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
             </div>
             <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-              <h3 class="heading-card" id="modal-title">
+              <h3 class="modal-title" id="modal-title">
                 Enable Public Profile?
               </h3>
               <div class="mt-2">
@@ -1330,7 +1330,7 @@
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
           <div>
-            <h3 class="heading-card" id="modal-title">
+            <h3 class="modal-title" id="modal-title">
               Save Futures Template
             </h3>
             <div class="mt-4">
@@ -1376,7 +1376,7 @@
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
           <div>
-            <h3 class="heading-card" id="modal-title">
+            <h3 class="modal-title" id="modal-title">
               Save Options Template
             </h3>
             <div class="mt-4">
@@ -1422,7 +1422,7 @@
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
           <div>
-            <h3 class="heading-card mb-4">
+            <h3 class="modal-title mb-4">
               Manage Futures Templates
             </h3>
             <div class="space-y-2 max-h-64 overflow-y-auto">
@@ -1471,7 +1471,7 @@
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
           <div>
-            <h3 class="heading-card mb-4">
+            <h3 class="modal-title mb-4">
               Manage Options Templates
             </h3>
             <div class="space-y-2 max-h-64 overflow-y-auto">

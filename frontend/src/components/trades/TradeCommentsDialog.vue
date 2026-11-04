@@ -9,14 +9,14 @@
 
             <!-- Modal -->
             <div class="flex min-h-full items-center justify-center p-4">
-                <div
+                <div role="dialog" aria-modal="true"
                     class="modal-panel w-full max-w-2xl transform overflow-hidden p-6 text-left transition-all"
                     @click.stop
                 >
                     <!-- Title -->
                     <div class="flex items-center justify-between mb-4">
                         <h3
-                            class="text-lg font-medium leading-6 text-gray-900 dark:text-white flex items-center gap-2"
+                            class="modal-title flex items-center gap-2"
                         >
                             <ChatBubbleLeftIcon class="h-5 w-5" />
                             Comments
@@ -142,7 +142,7 @@
                                         <textarea
                                             v-model="editCommentText"
                                             rows="3"
-                                            class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-600 dark:text-white shadow-sm focus:border-primary-500 focus:ring-primary-500 px-3 py-2"
+                                            class="input w-full"
                                             :disabled="submitting"
                                             @keydown="handleEditKeydown"
                                         ></textarea>
@@ -193,7 +193,7 @@
                                     id="comment"
                                     v-model="newComment"
                                     rows="3"
-                                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-primary-500 focus:ring-primary-500 px-3 py-2"
+                                    class="input w-full"
                                     placeholder="Add a comment..."
                                     required
                                     @keydown="handleCommentKeydown"

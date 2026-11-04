@@ -3,11 +3,11 @@
     <!-- Estimate Inputs Grid - Combined Historical + My Assumptions -->
     <div class="overflow-x-auto mb-6">
       <table class="min-w-full text-sm">
-        <thead>
+        <thead class="table-head">
           <tr class="bg-gray-100 dark:bg-gray-700">
             <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300"></th>
             <th colspan="3" class="px-4 py-2 text-center font-medium text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">Historical</th>
-            <th colspan="3" class="px-4 py-2 text-center font-medium text-primary-600 dark:text-primary-400 border-b border-gray-200 dark:border-gray-600">My Assumptions</th>
+            <th colspan="3" class="px-4 py-2 text-center font-medium text-primary-700 dark:text-primary-400 border-b border-gray-200 dark:border-gray-600">My Assumptions</th>
           </tr>
           <tr class="bg-gray-50 dark:bg-gray-700/50">
             <th class="px-4 py-2 text-left font-medium text-gray-700 dark:text-gray-300"></th>
@@ -16,7 +16,7 @@
             <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400">10 Years</th>
             <th class="px-4 py-2 text-center text-xs font-medium text-red-600 dark:text-red-400">Bear</th>
             <th class="px-4 py-2 text-center text-xs font-medium text-yellow-600 dark:text-yellow-400">Base</th>
-            <th class="px-4 py-2 text-center text-xs font-medium text-green-600 dark:text-green-400">Bull</th>
+            <th class="px-4 py-2 text-center text-xs font-medium text-green-700 dark:text-green-400">Bull</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -36,19 +36,19 @@
             <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.revenue_growth_10yr) }}</td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.revenue_growth_low" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.revenue_growth_low" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.revenue_growth_medium" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.revenue_growth_medium" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.revenue_growth_high" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.revenue_growth_high" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
@@ -61,19 +61,19 @@
             <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.profit_margin_10yr) }}</td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.profit_margin_low" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.profit_margin_low" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.profit_margin_medium" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.profit_margin_medium" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.profit_margin_high" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.profit_margin_high" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
@@ -94,19 +94,19 @@
             <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.fcf_margin_10yr) }}</td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.fcf_margin_low" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.fcf_margin_low" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.fcf_margin_medium" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.fcf_margin_medium" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.fcf_margin_high" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.fcf_margin_high" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
@@ -119,19 +119,19 @@
             <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pe_10yr) }}</td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.pe_low" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.pe_low" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.pe_medium" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.pe_medium" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.pe_high" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.pe_high" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
               </div>
             </td>
@@ -144,19 +144,19 @@
             <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pfcf_10yr) }}</td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.pfcf_low" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.pfcf_low" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.pfcf_medium" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.pfcf_medium" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.pfcf_high" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
+                <input type="number" v-model.number="inputs.pfcf_high" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
               </div>
             </td>
@@ -167,19 +167,19 @@
             <td class="px-4 py-3 text-center text-gray-400" colspan="3">-</td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.desired_return_low" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="1" />
+                <input type="number" v-model.number="inputs.desired_return_low" class="input input-sm w-16 text-center" step="1" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.desired_return_medium" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="1" />
+                <input type="number" v-model.number="inputs.desired_return_medium" class="input input-sm w-16 text-center" step="1" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
-                <input type="number" v-model.number="inputs.desired_return_high" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="1" />
+                <input type="number" v-model.number="inputs.desired_return_high" class="input input-sm w-16 text-center" step="1" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
@@ -194,7 +194,7 @@
             <td class="px-4 py-3 text-center font-medium text-yellow-600 dark:text-yellow-400">
               {{ formatPercent(results?.current_price_return_medium) }}
             </td>
-            <td class="px-4 py-3 text-center font-medium text-green-600 dark:text-green-400">
+            <td class="px-4 py-3 text-center font-medium text-green-700 dark:text-green-400">
               {{ formatPercent(results?.current_price_return_high) }}
             </td>
           </tr>
@@ -303,7 +303,7 @@
           type="text"
           v-model="notes"
           placeholder="Optional notes..."
-          class="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm"
+          class="input w-full"
         />
       </div>
     </div>

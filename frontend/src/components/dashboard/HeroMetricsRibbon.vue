@@ -29,14 +29,14 @@
                 <button
                   type="button"
                   class="px-2 py-0.5 transition-colors"
-                  :class="!rMode ? 'bg-primary-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+                  :class="!rMode ? 'bg-primary-700 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
                   :aria-pressed="!rMode"
                   @click="emit('update:rMode', false)"
                 >$</button>
                 <button
                   type="button"
                   class="px-2 py-0.5 transition-colors"
-                  :class="rMode ? 'bg-primary-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+                  :class="rMode ? 'bg-primary-700 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
                   :aria-pressed="rMode"
                   @click="emit('update:rMode', true)"
                 >R</button>
@@ -328,13 +328,13 @@ const streakTooltip = computed(() => {
 })
 
 const streakClass = computed(() => {
-  if (currentStreak.value > 0) return 'text-green-600 dark:text-green-400'
+  if (currentStreak.value > 0) return 'text-green-700 dark:text-green-400'
   if (currentStreak.value < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-400 dark:text-gray-500'
 })
 
 const pnlValueClass = computed(() => {
-  if (heroSign.value > 0) return 'text-green-600 dark:text-green-400 hero-glow-positive'
+  if (heroSign.value > 0) return 'text-green-700 dark:text-green-400 hero-glow-positive'
   if (heroSign.value < 0) return 'text-red-600 dark:text-red-400 hero-glow-negative'
   return 'text-gray-500 dark:text-gray-400'
 })
@@ -357,15 +357,15 @@ const pnlSizeClass = computed(() => {
 const winRateClass = computed(() => {
   if (totalTrades.value === 0) return 'text-gray-400 dark:text-gray-500'
   const wr = parseFloat(winRate.value)
-  if (wr >= 60) return 'text-green-600 dark:text-green-400'
+  if (wr >= 60) return 'text-green-700 dark:text-green-400'
   if (wr >= 45) return 'text-gray-900 dark:text-gray-100'
   return 'text-red-600 dark:text-red-400'
 })
 
 const profitFactorClass = computed(() => {
   if (totalTrades.value === 0) return 'text-gray-400 dark:text-gray-500'
-  if (!Number.isFinite(profitFactor.value)) return 'text-green-600 dark:text-green-400'
-  if (profitFactor.value >= 1.5) return 'text-green-600 dark:text-green-400'
+  if (!Number.isFinite(profitFactor.value)) return 'text-green-700 dark:text-green-400'
+  if (profitFactor.value >= 1.5) return 'text-green-700 dark:text-green-400'
   if (profitFactor.value >= 1) return 'text-gray-900 dark:text-gray-100'
   return 'text-red-600 dark:text-red-400'
 })
@@ -374,7 +374,7 @@ const todayR = computed(() => streakStats.value.todayR)
 
 const todayPnlClass = computed(() => {
   const v = props.rMode ? todayR.value : todayPnl.value
-  if (v > 0) return 'text-green-600 dark:text-green-400'
+  if (v > 0) return 'text-green-700 dark:text-green-400'
   if (v < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-700 dark:text-gray-300'
 })

@@ -8,7 +8,7 @@
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div
+      <div role="dialog" aria-modal="true"
         v-if="notification"
         class="modal-panel fixed bottom-4 right-4 z-[70] max-w-sm w-full pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden"
       >
@@ -34,7 +34,7 @@
                   :class="[
                     'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
                     action.style === 'primary'
-                      ? 'bg-primary-600 text-white hover:bg-primary-700'
+                      ? 'bg-primary-700 text-white hover:bg-primary-800'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
                   ]"
                 >

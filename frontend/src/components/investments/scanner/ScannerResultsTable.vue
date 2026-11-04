@@ -37,23 +37,23 @@
       <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
         <thead class="table-head">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+            <th class="px-4 py-3 text-left table-th">
               Symbol
             </th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hidden sm:table-cell">
+            <th class="px-4 py-3 text-left hidden sm:table-cell table-th">
               Company
             </th>
-            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+            <th class="px-4 py-3 text-right table-th">
               Price
             </th>
-            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+            <th class="px-4 py-3 text-center table-th">
               Pass
             </th>
             <!-- Pillar columns -->
             <th
               v-for="pillar in 8"
               :key="pillar"
-              class="px-2 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hidden lg:table-cell"
+              class="px-2 py-3 text-center hidden lg:table-cell table-th"
               :title="pillarNames[pillar]"
             >
               {{ pillar }}
@@ -74,7 +74,7 @@
                   :logo-url="stock.logo"
                   size-class="w-8 h-8"
                 />
-                <span class="text-sm font-medium text-primary-600 dark:text-primary-400">
+                <span class="text-sm font-medium text-primary-700 dark:text-primary-400">
                   {{ stock.symbol }}
                 </span>
               </div>
@@ -109,7 +109,7 @@
                 v-if="stock.pillars[pillar]?.pass"
                 class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30"
               >
-                <svg class="w-3 h-3 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                <svg class="w-3 h-3 text-green-700 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
                 </svg>
               </span>
@@ -136,7 +136,7 @@
         <button
           @click="goToPage(pagination.page - 1)"
           :disabled="pagination.page <= 1"
-          class="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
+          class="btn-secondary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Previous
         </button>
@@ -179,7 +179,7 @@
       </p>
       <button
         @click="clearFilters"
-        class="mt-3 text-primary-600 dark:text-primary-400 hover:underline text-sm"
+        class="mt-3 text-primary-700 dark:text-primary-400 hover:underline text-sm"
       >
         Clear all filters
       </button>
