@@ -10,7 +10,7 @@
 
     <!-- Loading State -->
     <div v-if="loading && !hasAccounts" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Main Content -->
@@ -61,7 +61,7 @@
         <!-- Cashflow Summary Cards -->
         <div v-if="cashflow" class="grid gap-4 grid-cols-1 sm:grid-cols-3">
           <!-- YTD Deposits / Withdrawals -->
-          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col gap-4">
+          <div class="card p-5 flex flex-col gap-4">
             <div>
               <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">YTD Deposits</div>
               <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-600 dark:text-green-400">
@@ -76,7 +76,7 @@
             </div>
           </div>
           <!-- Total Inflow / Outflow -->
-          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col gap-4">
+          <div class="card p-5 flex flex-col gap-4">
             <div>
               <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Inflow</div>
               <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-600 dark:text-green-400">
@@ -91,7 +91,7 @@
             </div>
           </div>
           <!-- Current Balance -->
-          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col justify-center">
+          <div class="card p-5 flex flex-col justify-center">
             <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Current Balance</div>
             <div class="mt-1 text-2xl font-bold tabular-nums tracking-tight whitespace-nowrap" :class="balanceClass">
               {{ formatCurrency(cashflow.summary.currentBalance) }}
@@ -126,11 +126,11 @@
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead>
                   <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
-                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Inflow</th>
-                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Outflow</th>
-                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Net</th>
-                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Balance</th>
+                    <th class="px-4 py-3 text-left table-th">Date</th>
+                    <th class="px-4 py-3 text-right table-th">Inflow</th>
+                    <th class="px-4 py-3 text-right table-th">Outflow</th>
+                    <th class="px-4 py-3 text-right table-th">Net</th>
+                    <th class="px-4 py-3 text-right table-th">Balance</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">

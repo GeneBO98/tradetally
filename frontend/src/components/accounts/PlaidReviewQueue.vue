@@ -111,7 +111,7 @@
 
     <!-- Loading state -->
     <div v-else-if="store.reviewLoading && visibleItems.length === 0" class="px-5 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-      <div class="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-primary-600 border-t-transparent"></div>
+      <div class="spinner spinner-sm mx-auto"></div>
       <p class="mt-2">Loading Plaid activity…</p>
     </div>
 
@@ -380,10 +380,10 @@
   <Teleport to="body">
     <div
       v-if="confirmState.open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      class="modal-overlay flex items-center justify-center px-4"
       @click.self="closeConfirm"
     >
-      <div class="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-xl dark:bg-gray-800">
+      <div class="modal-panel w-full max-w-md overflow-hidden">
         <div class="border-b border-gray-200 px-5 py-4 dark:border-gray-700">
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">
             {{ actionTitle }}
@@ -451,7 +451,7 @@
         <div class="flex items-center justify-end gap-2 border-t border-gray-200 bg-gray-50 px-5 py-3 dark:border-gray-700 dark:bg-gray-900/40">
           <button
             type="button"
-            class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            class="btn-secondary btn-sm dark:text-gray-200"
             :disabled="bulkBusy"
             @click="closeConfirm"
           >

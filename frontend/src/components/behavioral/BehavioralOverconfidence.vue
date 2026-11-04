@@ -197,22 +197,22 @@
                         <!-- Win Streak Analysis -->
                         <div
                             v-if="overconfidenceData.analysis.winStreakAnalysis"
-                            class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-6"
+                            class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4 mb-6"
                         >
                             <h4
-                                class="text-lg font-medium text-blue-800 dark:text-blue-300 mb-3"
+                                class="text-lg font-medium text-primary-800 dark:text-primary-300 mb-3"
                             >
                                 Win Streak Patterns
                             </h4>
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                     <p
-                                        class="text-sm text-blue-700 dark:text-blue-300"
+                                        class="text-sm text-primary-700 dark:text-primary-300"
                                     >
                                         Longest Win Streak
                                     </p>
                                     <p
-                                        class="text-xl font-bold text-blue-900 dark:text-blue-100"
+                                        class="text-xl font-bold text-primary-900 dark:text-primary-100"
                                     >
                                         {{
                                             overconfidenceData.analysis
@@ -224,12 +224,12 @@
                                 </div>
                                 <div>
                                     <p
-                                        class="text-sm text-blue-700 dark:text-blue-300"
+                                        class="text-sm text-primary-700 dark:text-primary-300"
                                     >
                                         Avg Streak Length
                                     </p>
                                     <p
-                                        class="text-xl font-bold text-blue-900 dark:text-blue-100"
+                                        class="text-xl font-bold text-primary-900 dark:text-primary-100"
                                     >
                                         {{
                                             overconfidenceData.analysis.winStreakAnalysis.avgStreakLength?.toFixed(
@@ -241,12 +241,12 @@
                                 </div>
                                 <div>
                                     <p
-                                        class="text-sm text-blue-700 dark:text-blue-300"
+                                        class="text-sm text-primary-700 dark:text-primary-300"
                                     >
                                         Position Size Growth
                                     </p>
                                     <p
-                                        class="text-xl font-bold text-blue-900 dark:text-blue-100"
+                                        class="text-xl font-bold text-primary-900 dark:text-primary-100"
                                     >
                                         {{
                                             overconfidenceData.analysis.winStreakAnalysis.avgPositionGrowth?.toFixed(
@@ -283,7 +283,7 @@
                                     5,
                                 )"
                                 :key="event.id"
-                                class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+                                class="card p-4"
                             >
                                 <div
                                     class="flex justify-between items-start mb-3"
@@ -295,7 +295,7 @@
                                             <MdiIcon
                                                 :icon="mdiFire"
                                                 :size="18"
-                                                class="mr-1.5 text-red-600"
+                                                class="mr-1.5 text-red-600 dark:text-red-400"
                                             />
                                             {{ event.winStreakLength }}
                                             Consecutive Wins → Overconfidence
@@ -319,7 +319,7 @@
                                     </div>
                                     <div class="text-right">
                                         <span
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                            class="badge"
                                             :class="{
                                                 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300':
                                                     event.severity === 'high',
@@ -570,13 +570,13 @@
                                             :size="20"
                                             class="mr-2"
                                             :class="{
-                                                'text-red-600':
+                                                'text-red-600 dark:text-red-400':
                                                     parseFloat(
                                                         event
                                                             .outcomeTradeDetails
                                                             .pnl || 0,
                                                     ) < 0,
-                                                'text-green-600':
+                                                'text-green-600 dark:text-green-400':
                                                     parseFloat(
                                                         event
                                                             .outcomeTradeDetails
@@ -1053,7 +1053,7 @@
                                                     class="flex items-start"
                                                 >
                                                     <span
-                                                        class="text-red-600 mr-1.5"
+                                                        class="text-red-600 dark:text-red-400 mr-1.5"
                                                         >•</span
                                                     >
                                                     <span
@@ -1089,7 +1089,7 @@
                                                     class="flex items-start"
                                                 >
                                                     <CheckIcon
-                                                        class="h-4 w-4 text-green-600 mr-1.5 mt-0.5 shrink-0"
+                                                        class="h-4 w-4 text-green-600 dark:text-green-400 mr-1.5 mt-0.5 shrink-0"
                                                     />
                                                     <span
                                                         class="text-green-800 dark:text-green-300"
@@ -1141,13 +1141,13 @@
                                                     <p
                                                         class="font-medium capitalize"
                                                         :class="{
-                                                            'text-green-600':
+                                                            'text-green-600 dark:text-green-400':
                                                                 event
                                                                     .outcomeAnalysis
                                                                     .stopLossAnalysis
                                                                     .adherenceRating ===
                                                                 'good',
-                                                            'text-red-600':
+                                                            'text-red-600 dark:text-red-400':
                                                                 event
                                                                     .outcomeAnalysis
                                                                     .stopLossAnalysis
@@ -1209,7 +1209,7 @@
                                             :key="rec"
                                             class="flex items-start"
                                         >
-                                            <span class="text-blue-500 mr-1"
+                                            <span class="text-primary-500 mr-1"
                                                 >•</span
                                             >
                                             {{ rec }}
@@ -1523,7 +1523,7 @@
                                                         </div>
                                                     </div>
                                                     <div
-                                                        class="text-blue-500 hover:text-blue-600"
+                                                        class="text-primary-500 hover:text-primary-600"
                                                     >
                                                         <svg
                                                             class="w-4 h-4"

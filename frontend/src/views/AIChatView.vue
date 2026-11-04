@@ -44,7 +44,7 @@
           </div>
 
           <div v-if="initialLoading" class="flex justify-center py-8">
-            <div class="h-6 w-6 animate-spin rounded-full border-b-2 border-primary-600"></div>
+            <div class="spinner spinner-sm"></div>
           </div>
 
           <p v-else-if="!aiStore.recentSessions.length" class="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
@@ -99,7 +99,7 @@
 
         <div ref="messagesContainer" class="flex-1 space-y-4 overflow-y-auto px-6 py-5 max-h-[65vh]">
           <div v-if="aiStore.loading" class="flex justify-center py-12">
-            <div class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600"></div>
+            <div class="spinner spinner-md"></div>
           </div>
 
           <!-- Empty state -->
@@ -147,7 +147,7 @@
 
           <div v-if="aiStore.generating" class="flex justify-start">
             <div class="flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-3 text-sm text-gray-600 dark:bg-gray-700 dark:text-gray-400">
-              <div class="h-4 w-4 animate-spin rounded-full border-2 border-primary-600 border-t-transparent"></div>
+              <div class="spinner spinner-xs"></div>
               Reviewing your journal...
             </div>
           </div>

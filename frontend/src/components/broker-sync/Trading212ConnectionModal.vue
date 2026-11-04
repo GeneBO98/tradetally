@@ -1,11 +1,11 @@
 <template>
   <div class="fixed inset-0 z-50 overflow-y-auto">
     <div class="flex min-h-full items-center justify-center p-4">
-      <div class="fixed inset-0 bg-black/50 transition-opacity" @click="emit('close')"></div>
+      <div class="modal-backdrop" @click="emit('close')"></div>
 
-      <div class="relative w-full max-w-lg rounded-xl bg-white shadow-xl dark:bg-gray-800">
+      <div class="modal-panel w-full max-w-lg">
         <div class="flex items-center justify-between border-b border-gray-200 p-6 dark:border-gray-700">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Connect Trading 212</h3>
+          <h3 class="heading-card">Connect Trading 212</h3>
           <button
             type="button"
             class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
@@ -161,7 +161,7 @@
           <button type="button" class="btn-secondary" @click="emit('close')">Cancel</button>
           <button type="button" class="btn-primary" :disabled="props.loading || !isValid" @click="handleSubmit">
             <span v-if="props.loading" class="flex items-center">
-              <span class="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white"></span>
+              <span class="spinner spinner-xs spinner-light mr-2"></span>
               Connecting...
             </span>
             <span v-else>Connect</span>

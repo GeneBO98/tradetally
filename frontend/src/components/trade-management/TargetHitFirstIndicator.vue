@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-4">
+  <div class="card p-4">
     <!-- Header -->
     <div class="flex items-center justify-between mb-3">
       <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -63,7 +63,7 @@
             <input
               :checked="target.status === 'hit'"
               type="checkbox"
-              class="rounded border-gray-300 text-green-600 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-700"
+              class="rounded border-gray-300 text-green-600 dark:text-green-400 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-700"
               :disabled="saving"
               @change="toggleTarget('tp', index, $event.target.checked)"
             />
@@ -75,7 +75,7 @@
               {{ target.rValue }}R
             </span>
           </label>
-          <span v-if="target.status === 'hit'" class="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+          <span v-if="target.status === 'hit'" class="badge bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
             Hit
           </span>
         </div>
@@ -89,7 +89,7 @@
             <input
               :checked="slHit"
               type="checkbox"
-              class="rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
+              class="rounded border-gray-300 text-red-600 dark:text-red-400 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
               :disabled="saving"
               @change="toggleTarget('sl', 0, $event.target.checked)"
             />
@@ -98,7 +98,7 @@
               Stop Loss ({{ currencySymbol }}{{ formatPrice(trade.stop_loss) }})
             </span>
           </label>
-          <span v-if="slHit" class="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+          <span v-if="slHit" class="badge bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
             Hit
           </span>
         </div>
@@ -112,7 +112,7 @@
           </span>
           <!-- Saving indicator overlaid on result -->
           <div v-if="saving" class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 ml-auto">
-            <div class="animate-spin rounded-full h-3 w-3 border-2 border-primary-600 border-t-transparent"></div>
+            <div class="spinner spinner-xs"></div>
             Saving...
           </div>
         </div>
@@ -120,7 +120,7 @@
 
       <!-- Saving indicator when no result yet -->
       <div v-else-if="saving" class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-        <div class="animate-spin rounded-full h-3 w-3 border-2 border-primary-600 border-t-transparent"></div>
+        <div class="spinner spinner-xs"></div>
         Saving...
       </div>
 
@@ -140,7 +140,7 @@
     <div v-else>
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-4">
-        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-sm"></div>
         <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">Analyzing chart data...</span>
       </div>
 

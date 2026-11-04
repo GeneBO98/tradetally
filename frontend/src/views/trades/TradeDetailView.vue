@@ -14,7 +14,7 @@
     </div>
 
     <div v-if="loading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <div v-else-if="trade" class="space-y-8">
@@ -120,7 +120,7 @@
                 <span class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ allocation.allocation_group_name }}</span>
                 <span class="ml-auto text-sm text-gray-500 dark:text-gray-400">{{ formatAllocationPercent(allocation.allocation_ratio) }}</span>
               </div>
-              <div v-if="trade.pnl !== null && trade.pnl !== undefined" class="mt-2 text-sm font-semibold" :class="Number(trade.pnl) >= 0 ? 'text-green-600' : 'text-red-600'">
+              <div v-if="trade.pnl !== null && trade.pnl !== undefined" class="mt-2 text-sm font-semibold" :class="Number(trade.pnl) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                 {{ formatTradeCurrency(Number(trade.pnl) * Number(allocation.allocation_ratio)) }} P&amp;L
               </div>
             </div>
@@ -291,11 +291,11 @@
         <div class="lg:col-span-2 space-y-6">
           <div class="card">
             <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Details</h3>
+              <h3 class="heading-card mb-4">Trade Details</h3>
               <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6">
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Symbol</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ trade.symbol }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white text-mono-num">{{ trade.symbol }}</dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Side</dt>
@@ -312,13 +312,13 @@
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Currency</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ trade.price_currency || getTradeCurrency() }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white text-mono-num">{{ trade.price_currency || getTradeCurrency() }}</dd>
                 </div>
                 <!-- Options-specific fields -->
                 <div v-if="trade.instrument_type === 'option'">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Instrument Type</dt>
                   <dd class="mt-1">
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
+                    <span class="badge bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
                       Option
                     </span>
                   </dd>
@@ -338,7 +338,7 @@
                 </div>
                 <div v-if="trade.instrument_type === 'option' && trade.strike_price">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Strike Price</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradePrice(trade, 'strike_price') }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white text-mono-num">{{ formatTradePrice(trade, 'strike_price') }}</dd>
                 </div>
                 <div v-if="trade.instrument_type === 'option' && trade.expiration_date">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Expiration Date</dt>
@@ -352,13 +352,13 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     {{ trade.instrument_type === 'option' ? 'Entry Price (per share)' : 'Entry Price' }}
                   </dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradePrice(trade, 'entry_price') }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white text-mono-num">{{ formatTradePrice(trade, 'entry_price') }}</dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     {{ trade.instrument_type === 'option' ? 'Exit Price (per share)' : 'Exit Price' }}
                   </dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white text-mono-num">
                     <template v-if="trade.exit_time">{{ formatTradePrice(trade, 'exit_price') }}</template>
                     <template v-else-if="manualOptionPrice !== null">
                       {{ formatTradeCurrency(manualOptionPrice) }}
@@ -369,11 +369,11 @@
                 </div>
                 <div v-if="trade.stopLoss || trade.stop_loss">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Stop Loss</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradePrice(trade, 'stop_loss') }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white text-mono-num">{{ formatTradePrice(trade, 'stop_loss') }}</dd>
                 </div>
                 <div v-if="trade.takeProfit || trade.take_profit || (trade.take_profit_targets && trade.take_profit_targets.length > 0)">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Take Profit</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono flex flex-wrap gap-x-4 gap-y-1">
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white text-mono-num flex flex-wrap gap-x-4 gap-y-1">
                     <!-- Show single take_profit as TP1 only when NO take_profit_targets exist -->
                     <span v-if="(trade.take_profit || trade.takeProfit) && (!trade.take_profit_targets || trade.take_profit_targets.length === 0)">
                       <span class="text-xs text-gray-400 mr-1">TP1:</span>{{ formatTradePrice(trade, 'take_profit') }}
@@ -388,7 +388,7 @@
                 <div v-if="trade.rValue !== null && trade.rValue !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">R-Multiple</dt>
                   <dd class="mt-1">
-                    <span class="text-sm font-semibold font-mono"
+                    <span class="text-sm font-semibold text-mono-num"
                       :class="[
                         Number(trade.rValue) >= 2
                           ? 'text-green-600 dark:text-green-400'
@@ -405,25 +405,25 @@
                 </div>
                 <div v-if="trade.mae !== null && trade.mae !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MAE</dt>
-                  <dd class="mt-1 text-sm font-mono" :class="trade.mae !== null && trade.mae !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
+                  <dd class="mt-1 text-sm text-mono-num" :class="trade.mae !== null && trade.mae !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
                     {{ trade.mae !== null && trade.mae !== undefined ? formatExcursionValue(trade.mae) : '—' }}
                   </dd>
                 </div>
                 <div v-if="trade.mfe !== null && trade.mfe !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MFE</dt>
-                  <dd class="mt-1 text-sm font-mono" :class="trade.mfe !== null && trade.mfe !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
+                  <dd class="mt-1 text-sm text-mono-num" :class="trade.mfe !== null && trade.mfe !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
                     {{ trade.mfe !== null && trade.mfe !== undefined ? formatExcursionValue(trade.mfe) : '—' }}
                   </dd>
                 </div>
                 <div v-if="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MAE</dt>
-                  <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
+                  <dd class="mt-1 text-sm text-mono-num" :class="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
                     {{ (trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? formatExcursionValue(trade.post_exit_mae ?? trade.postExitMae) : '—' }}
                   </dd>
                 </div>
                 <div v-if="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MFE</dt>
-                  <dd class="mt-1 text-sm font-mono" :class="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
+                  <dd class="mt-1 text-sm text-mono-num" :class="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
                     {{ (trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? formatExcursionValue(trade.post_exit_mfe ?? trade.postExitMfe) : '—' }}
                   </dd>
                 </div>
@@ -479,7 +479,7 @@
                       <span class="px-3 py-1 inline-flex text-sm font-semibold rounded"
                         :class="{
                           'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': trade.qualityGrade === 'A',
-                          'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400': trade.qualityGrade === 'B',
+                          'bg-teal-100 text-teal-800 dark:bg-teal-900/20 dark:text-teal-400': trade.qualityGrade === 'B',
                           'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': trade.qualityGrade === 'C',
                           'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': trade.qualityGrade === 'D',
                           'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': trade.qualityGrade === 'F'
@@ -498,7 +498,7 @@
                       <button
                         @click="calculateQuality"
                         :disabled="calculatingQuality"
-                        class="text-xs px-3 py-1 bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50"
+                        class="btn-primary btn-sm disabled:opacity-50"
                       >
                         {{ calculatingQuality ? 'Calculating...' : 'Calculate Setup Quality' }}
                       </button>
@@ -550,7 +550,7 @@
           <!-- Setup Quality Breakdown -->
           <div v-if="trade.qualityMetrics" class="card">
             <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white" :class="trade.qualityMetrics.dataSymbol ? 'mb-1' : 'mb-4'">Setup Quality Breakdown</h3>
+              <h3 class="heading-card" :class="trade.qualityMetrics.dataSymbol ? 'mb-1' : 'mb-4'">Setup Quality Breakdown</h3>
               <p v-if="!trade.qualityGrade && trade.qualityMetrics.coverage !== undefined" class="text-xs text-yellow-700 dark:text-yellow-300 mb-3">
                 Setup quality was not graded because only {{ formatPercentValue(trade.qualityMetrics.coverage) }} of the configured metric weight had data. Minimum required coverage is {{ formatPercentValue(trade.qualityMetrics.minimumCoverage ?? 0.4) }}.
               </p>
@@ -566,7 +566,7 @@
                   :class="[
                     metric.excluded ? 'border-gray-300 dark:border-gray-600' :
                     metric.score >= 0.8 ? 'border-green-400' :
-                    metric.score >= 0.6 ? 'border-blue-400' :
+                    metric.score >= 0.6 ? 'border-teal-400' :
                     metric.score >= 0.4 ? 'border-yellow-400' :
                     'border-red-400'
                   ]">
@@ -582,7 +582,7 @@
                       <div v-else class="text-sm font-semibold"
                         :class="[
                           metric.score >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                          metric.score >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
+                          metric.score >= 0.6 ? 'text-teal-600 dark:text-teal-400' :
                           metric.score >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
                           'text-red-600 dark:text-red-400'
                         ]">
@@ -597,7 +597,7 @@
                     <div v-if="!metric.excluded" class="h-2 rounded-full transition-all"
                       :class="[
                         metric.score >= 0.8 ? 'bg-green-500' :
-                        metric.score >= 0.6 ? 'bg-blue-500' :
+                        metric.score >= 0.6 ? 'bg-teal-500' :
                         metric.score >= 0.4 ? 'bg-yellow-500' :
                         'bg-red-500'
                       ]"
@@ -622,7 +622,7 @@
                     <div v-if="trade.qualityGrade" class="text-2xl font-bold"
                       :class="{
                         'text-green-600 dark:text-green-400': trade.qualityGrade === 'A',
-                        'text-blue-600 dark:text-blue-400': trade.qualityGrade === 'B',
+                        'text-teal-600 dark:text-teal-400': trade.qualityGrade === 'B',
                         'text-yellow-600 dark:text-yellow-400': trade.qualityGrade === 'C',
                         'text-orange-600 dark:text-orange-400': trade.qualityGrade === 'D',
                         'text-red-600 dark:text-red-400': trade.qualityGrade === 'F'
@@ -648,7 +648,7 @@
             <div class="card-body">
               <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-5">
                 <div>
-                  <h3 class="text-lg font-medium text-gray-900 dark:text-white">Playbook & Manual Grading</h3>
+                  <h3 class="heading-card">Playbook & Manual Grading</h3>
                   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     Review this trade against a structured setup or self-grade it against custom criteria.
                   </p>
@@ -658,7 +658,7 @@
                 </router-link>
               </div>
 
-              <div class="mb-5 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+              <div class="mb-5 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
                 <div class="flex flex-wrap items-center gap-3">
                   <div class="text-sm font-medium text-gray-700 dark:text-gray-300">Setup Quality</div>
                   <span
@@ -666,7 +666,7 @@
                     class="inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold"
                     :class="{
                       'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': trade.setupQuality.grade === 'A',
-                      'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400': trade.setupQuality.grade === 'B',
+                      'bg-teal-100 text-teal-800 dark:bg-teal-900/20 dark:text-teal-400': trade.setupQuality.grade === 'B',
                       'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': trade.setupQuality.grade === 'C',
                       'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': trade.setupQuality.grade === 'D',
                       'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': trade.setupQuality.grade === 'F'
@@ -693,12 +693,12 @@
                 Loading profiles...
               </div>
 
-              <div v-else-if="playbooks.length === 0" class="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-5 text-sm text-gray-500 dark:text-gray-400">
+              <div v-else-if="playbooks.length === 0" class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-5 text-sm text-gray-500 dark:text-gray-400">
                 Create a structured profile first, then return here to score this trade against it.
               </div>
 
               <div v-else class="space-y-6">
-                <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-5">
+                <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-5">
                   <div>
                     <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Playbook Assessment</h4>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -730,7 +730,7 @@
                     </div>
 
                     <div v-if="selectedAdherencePlaybook" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                      <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
                         <div class="flex items-center justify-between mb-3">
                           <div>
                             <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Checklist</h5>
@@ -775,7 +775,7 @@
                         </div>
                       </div>
 
-                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                      <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-4">
                         <div>
                           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Followed plan?</label>
                           <BaseSelect
@@ -811,7 +811,7 @@
                       </div>
                     </div>
 
-                    <div v-if="selectedAdherencePlaybook" class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                    <div v-if="selectedAdherencePlaybook" class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
                       <div class="flex items-center justify-between mb-3">
                         <div>
                           <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Hard Rule Results</h5>
@@ -854,7 +854,7 @@
                   </template>
                 </div>
 
-                <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-5">
+                <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-5">
                   <div>
                     <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Manual Grading Profile</h4>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -886,7 +886,7 @@
                     </div>
 
                     <div v-if="selectedManualGradingProfile" class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                      <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
                         <div class="flex items-center justify-between mb-3">
                           <div>
                             <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Grading Criteria</h5>
@@ -946,7 +946,7 @@
                         </div>
                       </div>
 
-                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                      <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-4">
                         <div>
                           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Grading notes</label>
                           <textarea
@@ -970,7 +970,7 @@
                       </div>
                     </div>
 
-                    <div v-if="selectedManualGradingProfile" class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                    <div v-if="selectedManualGradingProfile" class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
                       <div class="flex items-center justify-between mb-3">
                         <div>
                           <h5 class="text-sm font-semibold text-gray-900 dark:text-white">Profile Rule Results</h5>
@@ -1020,7 +1020,7 @@
           <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
             <div class="card-body">
               <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                <h3 class="heading-card">
                   Executions ({{ processedExecutions.length }})
                 </h3>
                 <div v-if="processedExecutions.length >= 2 && trade.exit_price && trade.exit_time" class="flex items-center space-x-2">
@@ -1029,7 +1029,7 @@
                     <button
                       @click="splitSelectedTrades"
                       :disabled="splittingTrade || selectedExecutions.size === 0 || selectedExecutions.size === entryExecutionIndices.length"
-                      class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                      class="btn-primary btn-sm disabled:opacity-50"
                     >
                       <svg v-if="splittingTrade" class="animate-spin -ml-0.5 mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -1039,7 +1039,7 @@
                     </button>
                     <button
                       @click="splitMode = false; selectedExecutions = new Set()"
-                      class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none"
+                      class="btn-secondary btn-sm"
                     >
                       Cancel
                     </button>
@@ -1047,7 +1047,7 @@
                   <button
                     v-else
                     @click="splitMode = true"
-                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    class="btn-secondary btn-sm"
                   >
                     Select to Split
                   </button>
@@ -1060,34 +1060,34 @@
                   <thead class="bg-gray-50 dark:bg-gray-800">
                     <tr>
                       <th v-if="splitMode" class="px-3 py-3 w-10"></th>
-                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left table-th">
                         Action
                       </th>
-                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left table-th">
                         Quantity
                       </th>
-                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left table-th">
                         Entry Price
                       </th>
-                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left table-th">
                         Exit Price
                       </th>
-                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left table-th">
                         Gross P&L
                       </th>
-                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left table-th">
                         Net P&L
                       </th>
-                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left table-th">
                         Commission
                       </th>
-                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left table-th">
                         Fees
                       </th>
-                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left table-th">
                         Entry Time
                       </th>
-                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left table-th">
                         Exit Time
                       </th>
                     </tr>
@@ -1106,7 +1106,7 @@
                         <span v-else class="block h-4 w-4"></span>
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap">
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                        <span class="badge"
                               :class="[
                                 (execution.action || execution.side || '').toLowerCase() === 'buy' || (execution.action || execution.side || '').toLowerCase() === 'long'
                                   ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
@@ -1117,16 +1117,16 @@
                           {{ ((execution.action || execution.side) || 'N/A').toUpperCase() }}
                         </span>
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
+                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num text-gray-900 dark:text-white">
                         {{ formatQuantity(execution.quantity) }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
+                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num text-gray-900 dark:text-white">
                         {{ execution.entryPrice !== null && execution.entryPrice !== undefined ? formatTradePrice(execution, 'entry_price') : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
+                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num text-gray-900 dark:text-white">
                         {{ execution.exitPrice !== null && execution.exitPrice !== undefined ? formatTradePrice(execution, 'exit_price') : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
+                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num"
                           :class="[
                             execution.grossPnl > 0
                               ? 'text-green-600 dark:text-green-400'
@@ -1136,7 +1136,7 @@
                           ]">
                         {{ execution.grossPnl !== undefined && execution.grossPnl !== null ? formatTradeCurrency(execution.grossPnl) : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
+                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num"
                           :class="[
                             execution.netPnl > 0
                               ? 'text-green-600 dark:text-green-400'
@@ -1146,7 +1146,7 @@
                           ]">
                         {{ execution.netPnl !== undefined && execution.netPnl !== null ? formatTradeCurrency(execution.netPnl) : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
+                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num"
                           :class="[
                             execution.commission < 0
                               ? 'text-green-600 dark:text-green-400'
@@ -1156,7 +1156,7 @@
                           ]">
                         {{ execution.commission ? formatTradeSignedCurrency(-execution.commission) : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-600 dark:text-gray-400">
+                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num text-gray-600 dark:text-gray-400">
                         {{ execution.fees ? formatTradeCurrency(execution.fees) : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
@@ -1183,7 +1183,7 @@
                         @change="toggleExecution(index)"
                         class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                       />
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                    <span class="badge"
                           :class="[
                             (execution.action || execution.side || '').toLowerCase() === 'buy' || (execution.action || execution.side || '').toLowerCase() === 'long'
                               ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
@@ -1202,19 +1202,19 @@
                   <div class="grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Quantity</div>
-                      <div class="font-mono text-gray-900 dark:text-white">
+                      <div class="text-mono-num text-gray-900 dark:text-white">
                         {{ formatNumber(execution.quantity, 0) }}
                       </div>
                     </div>
                     <div v-if="execution.entryPrice !== null && execution.entryPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Entry Price</div>
-                      <div class="font-mono text-gray-900 dark:text-white">
+                      <div class="text-mono-num text-gray-900 dark:text-white">
                         {{ formatTradePrice(execution, 'entry_price') }}
                       </div>
                     </div>
                     <div v-if="execution.exitPrice !== null && execution.exitPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Exit Price</div>
-                      <div class="font-mono text-gray-900 dark:text-white">
+                      <div class="text-mono-num text-gray-900 dark:text-white">
                         {{ formatTradePrice(execution, 'exit_price') }}
                       </div>
                     </div>
@@ -1226,7 +1226,7 @@
                     </div>
                     <div v-if="execution.grossPnl !== undefined && execution.grossPnl !== null">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Gross P&L</div>
-                      <div class="font-mono"
+                      <div class="text-mono-num"
                            :class="[
                              execution.grossPnl > 0
                                ? 'text-green-600 dark:text-green-400'
@@ -1239,7 +1239,7 @@
                     </div>
                     <div v-if="execution.netPnl !== undefined && execution.netPnl !== null">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Net P&L</div>
-                      <div class="font-mono"
+                      <div class="text-mono-num"
                            :class="[
                              execution.netPnl > 0
                                ? 'text-green-600 dark:text-green-400'
@@ -1254,7 +1254,7 @@
                       <div class="text-gray-500 dark:text-gray-400 text-xs">
                         {{ execution.commission < 0 ? 'Commission (Rebate)' : 'Commission' }}
                       </div>
-                      <div class="font-mono" :class="[
+                      <div class="text-mono-num" :class="[
                         execution.commission < 0
                           ? 'text-green-600 dark:text-green-400'
                           : execution.commission > 0
@@ -1266,7 +1266,7 @@
                     </div>
                     <div v-if="execution.fees">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Fees</div>
-                      <div class="font-mono text-gray-600 dark:text-gray-400">
+                      <div class="text-mono-num text-gray-600 dark:text-gray-400">
                         {{ formatTradeCurrency(execution.fees) }}
                       </div>
                     </div>
@@ -1283,25 +1283,25 @@
                   </div>
                   <div>
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Total Volume</div>
-                    <div class="font-semibold font-mono text-gray-900 dark:text-white">
+                    <div class="font-semibold text-mono-num text-gray-900 dark:text-white">
                       {{ formatTradeCurrency(executionSummary.totalVolume) }}
                     </div>
                   </div>
                   <div>
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Total Commission</div>
-                    <div class="font-semibold font-mono text-gray-900 dark:text-white">
+                    <div class="font-semibold text-mono-num text-gray-900 dark:text-white">
                       {{ formatTradeCurrency(executionSummary.totalCommission) }}
                     </div>
                   </div>
                   <div>
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Total Fees</div>
-                    <div class="font-semibold font-mono text-gray-900 dark:text-white">
+                    <div class="font-semibold text-mono-num text-gray-900 dark:text-white">
                       {{ formatTradeCurrency(executionSummary.totalFees) }}
                     </div>
                   </div>
                   <div>
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Shares Held</div>
-                    <div class="font-semibold font-mono text-gray-900 dark:text-white">
+                    <div class="font-semibold text-mono-num text-gray-900 dark:text-white">
                       {{ formatNumber(executionSummary.finalPosition, 0) }}
                     </div>
                   </div>
@@ -1313,7 +1313,7 @@
           <!-- Tags -->
           <div v-if="trade.tags && trade.tags.length > 0" class="card">
             <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Tags</h3>
+              <h3 class="heading-card mb-4">Tags</h3>
               <div class="flex flex-wrap gap-2">
                 <span
                   v-for="tag in trade.tags"
@@ -1336,7 +1336,7 @@
                 @click="toggleChartSection"
                 class="w-full flex items-center justify-between text-left"
               >
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Chart Visualization</h3>
+                <h3 class="heading-card">Chart Visualization</h3>
                 <svg
                   class="h-5 w-5 text-gray-500 dark:text-gray-400 transition-transform duration-200"
                   :class="{ 'rotate-180': !chartSectionCollapsed }"
@@ -1356,7 +1356,7 @@
           <!-- Notes -->
           <div v-if="trade.notes" class="card">
             <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Notes</h3>
+              <h3 class="heading-card mb-4">Notes</h3>
               <p class="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ trade.notes }}</p>
             </div>
           </div>
@@ -1385,7 +1385,7 @@
                 @click="toggleCommentsSection"
                 class="w-full flex items-center justify-between text-left"
               >
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                <h3 class="heading-card">
                   Comments ({{ comments.length }})
                 </h3>
                 <svg
@@ -1401,7 +1401,7 @@
 
               <div v-show="!commentsSectionCollapsed" class="mt-4">
                 <div v-if="loadingComments" class="flex justify-center py-8">
-                  <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                  <div class="spinner spinner-md"></div>
                 </div>
 
                 <div v-else>
@@ -1481,7 +1481,7 @@
                             <button
                               @click="saveEditComment(comment.id)"
                               :disabled="submittingComment || !editCommentText.trim()"
-                              class="text-xs bg-primary-600 text-white px-3 py-1 rounded hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                              class="btn-primary btn-sm disabled:opacity-50"
                             >
                               Save
                             </button>
@@ -1534,7 +1534,7 @@
         <div class="space-y-6">
           <div class="card">
             <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance</h3>
+              <h3 class="heading-card mb-4">Performance</h3>
               <dl class="space-y-4">
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
@@ -1542,7 +1542,7 @@
                     <span v-if="!trade.exit_time && openUnrealizedPnL !== null" class="text-xs font-normal text-gray-400">(unrealized)</span>
                   </dt>
                   <dd class="mt-1 text-2xl font-semibold" :class="[
-                    (trade.exit_time ? displayPnl : openUnrealizedPnL) >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.exit_time ? displayPnl : openUnrealizedPnL) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     <template v-if="trade.exit_time">{{ formatTradeCurrency(displayPnl) }}</template>
                     <template v-else-if="openUnrealizedPnL !== null">{{ formatTradeCurrency(openUnrealizedPnL) }}</template>
@@ -1552,7 +1552,7 @@
                 <div v-if="trade.pnl_percent || openUnrealizedPnLPercent !== null">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">P&L %</dt>
                   <dd class="mt-1 text-lg font-semibold" :class="[
-                    (trade.exit_time ? trade.pnl_percent : openUnrealizedPnLPercent) >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.exit_time ? trade.pnl_percent : openUnrealizedPnLPercent) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     <template v-if="trade.exit_time">{{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%</template>
                     <template v-else>{{ openUnrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(openUnrealizedPnLPercent) }}%</template>
@@ -1577,7 +1577,7 @@
           <!-- Timeline -->
           <div class="card">
             <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Timeline</h3>
+              <h3 class="heading-card mb-4">Timeline</h3>
               <dl class="space-y-3">
                 <div v-if="trade.entry_time">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">

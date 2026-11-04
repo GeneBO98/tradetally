@@ -3,10 +3,10 @@
     <header class="mb-8 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
       <div class="max-w-3xl">
         <div class="mb-2 flex flex-wrap items-center gap-2">
-          <h1 class="text-3xl font-bold text-gray-950 dark:text-white">Retirement Planner</h1>
+          <h1 class="heading-page">Retirement Planner</h1>
           <span
             v-if="retirementStore.hasSavedPlan"
-            class="rounded-full bg-primary-100 px-2.5 py-1 text-xs font-semibold text-primary-800 dark:bg-primary-900/30 dark:text-primary-300"
+            class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300"
           >
             Saved plan
           </span>
@@ -31,7 +31,7 @@
 
     <div v-if="initialLoading" class="flex justify-center py-16">
       <div class="text-center">
-        <div class="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-lg mx-auto"></div>
         <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">Preparing your retirement plan...</p>
       </div>
     </div>
@@ -41,14 +41,14 @@
         v-if="retirementStore.calculating || retirementStore.loading"
         class="absolute right-0 top-0 z-10 flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 shadow-sm backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90"
       >
-        <div class="h-4 w-4 animate-spin rounded-full border-2 border-primary-600 border-t-transparent"></div>
+        <div class="spinner spinner-xs"></div>
         <span class="text-xs text-gray-600 dark:text-gray-300">Updating...</span>
       </div>
 
       <div
         v-if="retirementStore.error"
         role="alert"
-        class="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200"
+        class="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200"
       >
         <div class="flex items-start gap-3">
           <ExclamationTriangleIcon class="mt-0.5 h-5 w-5 shrink-0" />
@@ -65,7 +65,7 @@
       <div
         v-if="!retirementStore.hasSavedPlan"
         data-testid="starter-banner"
-        class="mb-6 rounded-xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
+        class="mb-6 rounded-lg border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
       >
         <div class="flex items-start gap-3">
           <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400" />
@@ -83,7 +83,7 @@
 
       <div
         v-if="isFiltered"
-        class="mb-6 rounded-xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
+        class="mb-6 rounded-lg border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
       >
         <div class="flex items-start gap-3">
           <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400" />
@@ -102,7 +102,7 @@
       <section
         v-if="availableAccounts.length > 0"
         ref="accountPickerContainer"
-        class="relative mb-6 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+        class="card relative mb-6 px-4 py-3"
       >
         <div class="flex items-center justify-between gap-4">
           <div class="flex min-w-0 items-center gap-3">
@@ -134,7 +134,7 @@
           v-show="accountPickerOpen"
           id="retirement-account-picker"
           data-testid="account-picker"
-          class="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-600 dark:bg-gray-800 sm:left-auto sm:w-[30rem]"
+          class="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-600 dark:bg-gray-800 sm:left-auto sm:w-[30rem]"
         >
           <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
             <div>
@@ -191,7 +191,7 @@
 
       <div class="grid gap-6 xl:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.6fr)]">
         <form class="space-y-5" @submit.prevent>
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <section class="card p-5">
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="1" :icon="CalendarDaysIcon" />
               <div>
@@ -222,7 +222,7 @@
             </p>
           </section>
 
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <section class="card p-5">
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="2" :icon="BanknotesIcon" />
               <div>
@@ -234,7 +234,7 @@
             <div class="space-y-4">
               <div
                 data-testid="tracked-portfolio"
-                class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40"
+                class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40"
               >
                 <div class="flex items-start justify-between gap-4">
                   <div class="min-w-0">
@@ -277,7 +277,7 @@
               <div
                 v-if="linkedSavingsAccounts.length > 0"
                 data-testid="linked-savings"
-                class="rounded-xl border border-gray-200 p-4 dark:border-gray-700"
+                class="rounded-lg border border-gray-200 p-4 dark:border-gray-700"
               >
                 <div class="flex items-start justify-between gap-4">
                   <div>
@@ -325,7 +325,7 @@
               <div
                 v-if="affordability?.available && affordability.debt?.count > 0"
                 data-testid="linked-debts"
-                class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-900/20"
+                class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-900/20"
               >
                 <div class="flex items-center justify-between gap-3">
                   <p class="font-semibold text-amber-900 dark:text-amber-200">
@@ -359,7 +359,7 @@
             </div>
           </section>
 
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <section class="card p-5">
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="3" :icon="ArrowTrendingUpIcon" />
               <div>
@@ -408,7 +408,7 @@
             </div>
           </section>
 
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <section class="card p-5">
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="4" :icon="HomeIcon" />
               <div>
@@ -440,7 +440,7 @@
                 </span>
                 <button
                   type="button"
-                  class="rounded-lg border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  class="card px-2.5 py-1 font-semibold text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
                   @click="applySuggestion({ field: 'desired_annual_retirement_spending', value: affordability.suggestions.desired_annual_retirement_spending })"
                 >
                   Use {{ affordability.suggestions.retirement_spending_ratio_percent }}% of spending without debt
@@ -448,14 +448,14 @@
                 </button>
                 <button
                   type="button"
-                  class="rounded-lg border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  class="card px-2.5 py-1 font-semibold text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
                   @click="applySuggestion({ field: 'current_annual_cost_of_living', value: affordability.suggestions.current_annual_cost_of_living })"
                 >
                   Set cost of living
                 </button>
               </div>
 
-              <details class="group rounded-xl border border-gray-200 dark:border-gray-700" :open="advancedGoalOpen">
+              <details class="group rounded-lg border border-gray-200 dark:border-gray-700" :open="advancedGoalOpen">
                 <summary
                   class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 marker:content-none hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/40"
                   @click.prevent="advancedGoalOpen = !advancedGoalOpen"
@@ -482,7 +482,7 @@
 
               <div
                 v-if="projection?.goal"
-                class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40"
+                class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40"
               >
                 <div class="flex items-start gap-3">
                   <CalculatorIcon class="mt-0.5 h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400" />
@@ -559,7 +559,7 @@
             </div>
           </section>
 
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <section class="card p-5">
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="5" :icon="BuildingLibraryIcon" />
               <div>
@@ -600,7 +600,7 @@
 
           <section
             ref="assumptionsSection"
-            class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+            class="card p-5"
           >
             <div class="mb-5 flex items-center gap-3">
               <StepBadge :step="6" :icon="AdjustmentsHorizontalIcon" />
@@ -667,7 +667,7 @@
           <section
             ref="statusSection"
             data-testid="plan-status"
-            class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6"
+            class="card p-5 sm:p-6"
           >
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div class="min-w-0 max-w-2xl">
@@ -765,7 +765,7 @@
             </dl>
           </section>
 
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6">
+          <section class="card p-5 sm:p-6">
             <div class="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 class="text-lg font-semibold text-gray-950 dark:text-white">Projection paths</h2>
@@ -793,7 +793,7 @@
 
           <section
             data-testid="scenario-comparison"
-            class="relative rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+            class="card relative"
             @mouseleave="scenarioHelpOpen = false"
           >
             <div class="relative border-b border-gray-200 px-5 py-4 dark:border-gray-700 sm:px-6">
@@ -842,7 +842,7 @@
                 </div>
 
                 <div class="mt-4 grid gap-3 lg:grid-cols-2">
-                  <article class="rounded-xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20">
+                  <article class="rounded-lg border border-primary-200 bg-primary-50 p-4 dark:border-primary-800 dark:bg-primary-900/20">
                     <p class="text-xs font-semibold uppercase tracking-wider text-primary-700 dark:text-primary-300">
                       Custom assumption
                     </p>
@@ -856,7 +856,7 @@
                     </p>
                   </article>
 
-                  <article class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+                  <article class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
                     <p class="text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300">
                       Historical assumptions
                     </p>
@@ -871,7 +871,7 @@
                   </article>
                 </div>
 
-                <div class="mt-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                <div class="mt-3 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
                   <p class="text-sm font-semibold text-gray-900 dark:text-white">Shared by every scenario</p>
                   <ul class="mt-2 grid gap-x-6 gap-y-1 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
                     <li>{{ formatCurrency(projection?.baseline?.starting_balance || 0, { compact: true }) }} starting balance</li>

@@ -3,7 +3,7 @@
     <div v-if="runtimeError" class="min-h-screen bg-white dark:bg-gray-950">
       <div class="content-wrapper py-16">
         <div class="max-w-lg">
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Something went wrong</h1>
+          <h1 class="heading-page">Something went wrong</h1>
           <p class="mt-3 text-sm text-gray-600 dark:text-gray-400">
             The app hit an unexpected error and stopped rendering this view.
           </p>
@@ -75,12 +75,12 @@
     <CelebrationOverlay v-if="!isImportRoute" :queue="celebrationQueue" />
 
     <!-- Passkey registration prompt (shown after login if user has no passkeys) -->
-    <div v-if="showPasskeyPrompt" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 text-center">
+    <div v-if="showPasskeyPrompt" class="modal-overlay flex items-center justify-center">
+      <div class="modal-panel max-w-md w-full mx-4 p-6 text-center">
         <svg class="w-12 h-12 mx-auto mb-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
         </svg>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Add a passkey?</h3>
+        <h3 class="heading-card mb-2">Add a passkey?</h3>
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
           Sign in faster next time using your device's biometrics, security key, or PIN. No password needed.
         </p>
@@ -88,7 +88,7 @@
           <button
             @click="registerPasskey"
             :disabled="passkeyRegistering"
-            class="px-6 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            class="btn-primary disabled:opacity-50"
           >
             <span v-if="passkeyRegistering">Setting up...</span>
             <span v-else>Add passkey</span>
@@ -104,10 +104,10 @@
     </div>
 
     <!-- Contact Support Modal -->
-    <div v-if="showSupportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showSupportModal = false">
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full mx-4 p-6">
+    <div v-if="showSupportModal" class="modal-overlay flex items-center justify-center" @click.self="showSupportModal = false">
+      <div class="modal-panel max-w-lg w-full mx-4 p-6">
         <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Contact Support</h3>
+          <h3 class="heading-card">Contact Support</h3>
           <button @click="showSupportModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -133,7 +133,7 @@
                 type="text"
                 required
                 placeholder="Brief description of your issue"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500"
+                class="input"
               />
             </div>
             <div>
@@ -143,14 +143,14 @@
                 required
                 rows="5"
                 placeholder="Describe your issue or question in detail..."
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500"
+                class="input"
               ></textarea>
             </div>
           </div>
           <div class="flex justify-end space-x-3 mt-6">
             <button type="button" @click="showSupportModal = false" class="btn btn-outline">Cancel</button>
             <button type="submit" :disabled="supportSending" class="btn btn-primary">
-              <span v-if="supportSending" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
+              <span v-if="supportSending" class="spinner spinner-xs spinner-current inline-block mr-2"></span>
               {{ supportSending ? 'Sending...' : 'Send Message' }}
             </button>
           </div>

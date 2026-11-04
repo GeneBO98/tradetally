@@ -25,7 +25,7 @@
 
       <p v-if="loading && !initialLoading" class="text-xs text-primary-600 mb-2" role="status">Updating...</p>
       <div v-if="initialLoading" class="flex justify-center py-10">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-md"></div>
       </div>
 
       <div v-else-if="filledSeries.length < 2" class="text-center py-8">

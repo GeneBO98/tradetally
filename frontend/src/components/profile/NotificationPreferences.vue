@@ -3,7 +3,7 @@
     <div class="card-body">
       <div class="flex items-center justify-between mb-6">
         <div>
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Notification Preferences</h3>
+          <h3 class="heading-card">Notification Preferences</h3>
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Choose what types of notifications you want to receive
           </p>
@@ -13,7 +13,7 @@
 
       <!-- Loading State -->
       <div v-if="loading" class="flex justify-center py-8">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-md"></div>
       </div>
 
       <!-- Error State -->

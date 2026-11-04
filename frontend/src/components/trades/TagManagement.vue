@@ -27,7 +27,7 @@
 
             <div
                 v-if="showTagDropdown"
-                class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none"
+                class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none"
             >
                 <!-- "All Tags" option -->
                 <div class="p-1">
@@ -115,11 +115,11 @@
         <!-- Tag Manager Modal -->
         <div
             v-if="showTagManager"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
             @click.self="showTagManager = false"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800"
+                class="modal-panel top-20 mx-auto p-5 w-full max-w-md"
             >
                 <div class="flex justify-between items-center mb-4">
                     <h3
@@ -169,7 +169,7 @@
                             type="button"
                             @click="createTag"
                             :disabled="!newTagName.trim() || creatingTag"
-                            class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Add
                         </button>
@@ -255,7 +255,7 @@
                         <button
                             type="button"
                             @click="deleteTag(tag.id)"
-                            class="text-red-600 hover:text-red-700 text-sm ml-2 flex-shrink-0"
+                            class="text-red-600 dark:text-red-400 hover:text-red-700 text-sm ml-2 flex-shrink-0"
                             title="Delete tag"
                         >
                             <svg
@@ -328,7 +328,7 @@ const showTagDropdown = ref(false);
 const showTagManager = ref(false);
 const availableTags = ref([]);
 const newTagName = ref("");
-const newTagColor = ref("#3B82F6");
+const newTagColor = ref("#F0812A");
 const creatingTag = ref(false);
 
 // Close dropdown when clicking outside
@@ -375,7 +375,7 @@ async function createTag() {
 
         availableTags.value.push(response.data.tag);
         newTagName.value = "";
-        newTagColor.value = "#3B82F6";
+        newTagColor.value = "#F0812A";
     } catch (error) {
         console.error("[ERROR] Failed to create tag:", error);
         alert(error.response?.data?.message || "Failed to create tag");

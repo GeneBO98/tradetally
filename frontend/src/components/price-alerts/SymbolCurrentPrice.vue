@@ -10,7 +10,7 @@
         Current price for {{ normalizedSymbol }}
       </p>
       <div v-if="loading" class="mt-1 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-        <span class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" aria-hidden="true"></span>
+        <span class="spinner h-3.5 w-3.5" aria-hidden="true"></span>
         <span>Loading quote...</span>
       </div>
       <p v-else-if="currentPrice !== null" class="mt-0.5 text-base font-semibold text-gray-900 dark:text-gray-100">

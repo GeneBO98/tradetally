@@ -11,7 +11,7 @@
       <div class="flex items-center gap-2">
         <button
           @click="openFiltersModal"
-          class="relative inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          class="btn-secondary relative gap-2"
           :aria-label="hasActiveFilters ? 'Filters (active)' : 'Filters'"
         >
           <FunnelIcon class="h-4 w-4" />
@@ -43,7 +43,7 @@
 
     <!-- Total P/L Summary for Filtered Results (moved to top) -->
     <div v-if="tradesStore.trades.length > 0" class="mb-6">
-      <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
+      <div class="card p-4">
         <!-- Mobile Layout: Stack vertically -->
         <div class="block sm:hidden space-y-4">
           <div class="flex items-start justify-between">
@@ -182,11 +182,11 @@
     >
       <div
         v-if="showFiltersModal"
-        class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm sm:p-6"
+        class="modal-overlay flex items-start justify-center overflow-y-auto p-4 sm:p-6"
         @click.self="showFiltersModal = false"
         @keydown.esc="showFiltersModal = false"
       >
-        <div class="my-8 w-full max-w-4xl rounded-lg bg-white shadow-2xl dark:bg-gray-800">
+        <div class="modal-panel my-8 w-full max-w-4xl">
           <div class="flex items-center justify-between border-b border-gray-200 px-5 py-3 dark:border-gray-700">
             <h3 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
               <FunnelIcon class="h-5 w-5 text-primary-500" />
@@ -209,7 +209,7 @@
 
     <div class="mt-2">
       <div v-if="tradesStore.initialLoading" class="flex justify-center py-12">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-lg"></div>
       </div>
 
       <!-- A failed fetch must not masquerade as an empty journal -->
@@ -262,26 +262,26 @@
               </button>
               <button
                 @click="showBulkTagModal = true"
-                class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                class="btn-primary"
               >
                 Add tags
               </button>
               <button
                 @click="showBulkEditModal = true"
-                class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                class="btn-primary"
               >
                 Edit selected
               </button>
-              <button @click="showBulkStopsModal = true" class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
+              <button @click="showBulkStopsModal = true" class="btn-primary">
                 Set stops / R
               </button>
-              <button @click="showBulkChartsModal = true" class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
+              <button @click="showBulkChartsModal = true" class="btn-primary">
                 Add chart link
               </button>
               <button
                 v-if="allocationEnabled && allocationGroups.length >= 2"
                 @click="showBulkAllocationModal = true"
-                class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                class="btn-primary"
               >
                 Allocate
               </button>
@@ -307,7 +307,7 @@
         <!-- Mobile view (cards) -->
         <div class="block md:hidden space-y-4">
         <div v-for="trade in tradesStore.trades" :key="trade.id" 
-             class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 hover:shadow-md transition-shadow">
+             class="card p-4 hover:shadow-md transition-shadow">
           <div class="flex items-start space-x-3 mb-3">
             <input
               type="checkbox"
@@ -433,7 +433,7 @@
               <span class="px-2 py-1 inline-flex text-xs font-semibold rounded"
                 :class="{
                   'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': trade.qualityGrade === 'A',
-                  'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400': trade.qualityGrade === 'B',
+                  'bg-teal-100 text-teal-800 dark:bg-teal-900/20 dark:text-teal-400': trade.qualityGrade === 'B',
                   'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': trade.qualityGrade === 'C',
                   'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': trade.qualityGrade === 'D',
                   'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': trade.qualityGrade === 'F'
@@ -483,7 +483,7 @@
             <col v-for="column in visibleDataColumns" :key="`col-${column.key}`" :style="columnWidthStyle(column.key)" />
             <col v-if="hasCustomColumnWidths" />
           </colgroup>
-          <thead class="bg-gray-50 dark:bg-gray-800">
+          <thead class="table-head">
             <tr ref="headerRow">
               <!-- Checkbox Column -->
               <th v-if="isCheckboxColumnVisible" :class="[getCheckboxPadding, 'text-left']">
@@ -506,7 +506,7 @@
               <th v-for="column in visibleDataColumns"
                   :key="column.key"
                   :data-column-key="column.key"
-                  :class="[column.key === 'symbol' ? 'pl-0 pr-2 py-3' : getHeaderPadding, 'group relative text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider', { 'text-center': column.key === 'comments' || column.key === 'quality' }]">
+                  :class="[column.key === 'symbol' ? 'pl-0 pr-2 py-3' : getHeaderPadding, 'group relative table-th', numericColumnKeys.has(column.key) ? 'text-right pr-4' : (column.key === 'comments' || column.key === 'quality') ? 'text-center' : 'text-left']">
                 <span class="block truncate">{{ column.label }}</span>
                 <span
                   class="absolute inset-y-0 right-0 z-10 flex w-2 cursor-col-resize touch-none items-stretch justify-end focus:outline-none"
@@ -638,25 +638,25 @@
                 
                 <!-- Entry Column -->
                 <td v-else-if="column.visible && column.key === 'entry'" 
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ formatTradePrice(trade, 'entry_price') }}
                 </td>
 
                 <!-- Exit Column -->
                 <td v-else-if="column.visible && column.key === 'exit'" 
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.exit_price !== null && trade.exit_price !== undefined ? formatTradePrice(trade, 'exit_price') : '-' }}
                 </td>
 
                 <!-- Net P&L Column -->
                 <td v-else-if="column.visible && column.key === 'pnl'" 
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="!isTradeOpen(trade) && trade.pnl_percent" class="relative min-h-14">
                     <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-sm font-medium" :class="[
-                      trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                      trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
                       {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                     </div>
@@ -665,7 +665,7 @@
                     </div>
                   </div>
                   <div v-else-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
-                    trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                   </div>
@@ -674,10 +674,10 @@
 
                 <!-- Gross P&L Column -->
                 <td v-else-if="column.visible && column.key === 'grossPnl'"
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
-                    getTradeGrossPnl(trade) >= 0 ? 'text-green-600' : 'text-red-600'
+                    getTradeGrossPnl(trade) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ formatTradeSignedCurrency(getTradeGrossPnl(trade), trade) }}
                   </div>
@@ -686,7 +686,7 @@
 
                 <!-- Unrealized P&L Column -->
                 <td v-else-if="column.visible && column.key === 'unrealizedPnl'"
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined && trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="relative min-h-14">
                     <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-sm font-medium" :class="[
@@ -731,7 +731,7 @@
                     class="px-2 py-1 inline-block text-xs font-semibold rounded"
                     :class="{
                       'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': trade.qualityGrade === 'A',
-                      'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400': trade.qualityGrade === 'B',
+                      'bg-teal-100 text-teal-800 dark:bg-teal-900/20 dark:text-teal-400': trade.qualityGrade === 'B',
                       'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': trade.qualityGrade === 'C',
                       'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': trade.qualityGrade === 'D',
                       'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': trade.qualityGrade === 'F'
@@ -778,19 +778,19 @@
                 
                 <!-- Additional Columns -->
                 <td v-else-if="column.visible && column.key === 'quantity'"
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ formatQuantity(trade.quantity) || '-' }}
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'commission'" 
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.commission ? formatTradeCurrency(trade.commission, trade) : '-' }}
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'fees'" 
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.fees ? formatTradeCurrency(trade.fees, trade) : '-' }}
                 </td>
@@ -830,7 +830,7 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="flex flex-wrap gap-1">
                     <span v-for="tag in (trade.tags || [])" :key="tag" 
-                          class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded">
+                          class="badge bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                       {{ tag }}
                     </span>
                     <span v-if="!trade.tags || trade.tags.length === 0" class="text-sm text-gray-500 dark:text-gray-400">-</span>
@@ -852,10 +852,10 @@
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'roi'"
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm font-medium" :class="[
-                    (trade.pnl_percent || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.pnl_percent || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ trade.pnl_percent != null ? `${trade.pnl_percent > 0 ? '+' : ''}${formatNumber(trade.pnl_percent)}%` : '-' }}
                   </div>
@@ -863,23 +863,23 @@
 
                 <!-- Risk Management Fields -->
                 <td v-else-if="column.visible && column.key === 'stopLoss'"
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div class="text-sm text-gray-900 dark:text-white font-mono">
+                  <div class="text-sm text-gray-900 dark:text-white text-mono-num">
                     {{ (trade.stop_loss || trade.stopLoss) ? formatTradePrice(trade, 'stop_loss') : '-' }}
                   </div>
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'takeProfit'"
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div class="text-sm text-gray-900 dark:text-white font-mono">
+                  <div class="text-sm text-gray-900 dark:text-white text-mono-num">
                     {{ (trade.take_profit || trade.takeProfit) ? formatTradePrice(trade, 'take_profit') : '-' }}
                   </div>
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'rValue'"
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="trade.rValue != null && trade.rValue !== undefined" class="text-sm font-medium" :class="[
                     trade.rValue >= 2 ? 'text-green-600 dark:text-green-400' :
@@ -892,16 +892,16 @@
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'mae'"
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <span v-if="trade.mae != null" class="text-sm font-mono text-red-600 dark:text-red-400">{{ formatExcursionValue(trade, trade.mae) }}</span>
+                  <span v-if="trade.mae != null" class="text-sm text-mono-num text-red-600 dark:text-red-400">{{ formatExcursionValue(trade, trade.mae) }}</span>
                   <span v-else class="text-sm text-gray-400">—</span>
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'mfe'"
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <span v-if="trade.mfe != null" class="text-sm font-mono text-green-600 dark:text-green-400">{{ formatExcursionValue(trade, trade.mfe) }}</span>
+                  <span v-if="trade.mfe != null" class="text-sm text-mono-num text-green-600 dark:text-green-400">{{ formatExcursionValue(trade, trade.mfe) }}</span>
                   <span v-else class="text-sm text-gray-400">—</span>
                 </td>
 
@@ -935,7 +935,7 @@
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'strikePrice'"
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.strike_price ? formatTradePrice(trade, 'strike_price') : '-' }}
                 </td>
@@ -947,7 +947,7 @@
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'contractSize'"
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.contract_size || '-' }}
                 </td>
@@ -1018,14 +1018,14 @@
             <button 
               @click="prevPage"
               :disabled="tradesStore.pagination.page === 1"
-              class="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="btn-secondary relative disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Previous
             </button>
             <button 
               @click="nextPage"
               :disabled="tradesStore.pagination.page === tradesStore.pagination.totalPages"
-              class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="btn-secondary ml-3 relative disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
             </button>
@@ -1097,8 +1097,8 @@
     />
 
     <!-- Delete Confirmation Dialog -->
-    <div v-if="showDeleteConfirm" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+    <div v-if="showDeleteConfirm" class="modal-overlay overflow-y-auto">
+      <div class="modal-panel top-20 mx-auto p-5 w-96">
         <div class="mt-3 text-center">
           <h3 class="heading-card">Delete Trades</h3>
           <div class="mt-2 px-7 py-3">
@@ -1126,8 +1126,8 @@
     </div>
 
     <!-- Bulk Tag Modal -->
-    <div v-if="showBulkTagModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" @click.self="showBulkTagModal = false">
-      <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800">
+    <div v-if="showBulkTagModal" class="modal-overlay overflow-y-auto" @click.self="showBulkTagModal = false">
+      <div class="modal-panel top-20 mx-auto p-5 w-full max-w-md">
         <div class="flex justify-between items-center mb-4">
           <h3 class="heading-card">Add Tags to {{ selectedTrades.length }} Trade{{ selectedTrades.length === 1 ? '' : 's' }}</h3>
           <button
@@ -1157,7 +1157,7 @@
           <button
             @click="executeBulkAddTags"
             :disabled="bulkTagsToAdd.length === 0"
-            class="px-4 py-2 bg-primary-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Add Tags
           </button>
@@ -1576,6 +1576,10 @@ const tableLayoutStyle = computed(() => {
 })
 
 // Dynamic cell padding based on visible columns
+// Numeric columns are right-aligned (header and cells) so prices and P&L
+// line up on the decimal like a broker blotter.
+const numericColumnKeys = new Set(['entry', 'exit', 'pnl', 'grossPnl', 'unrealizedPnl', 'quantity', 'commission', 'fees', 'roi', 'stopLoss', 'takeProfit', 'rValue', 'mae', 'mfe', 'strikePrice', 'contractSize'])
+
 const getCellPadding = computed(() => {
   const count = visibleColumnCount.value
   if (count <= 6) return 'px-1.5 py-4'

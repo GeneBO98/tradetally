@@ -22,31 +22,31 @@
     </div>
 
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <template v-else-if="income">
       <!-- Summary cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+        <div class="card p-5">
           <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Dividends</div>
           <div class="mt-1 text-2xl font-bold tabular-nums text-green-600 dark:text-green-400">
             {{ formatCurrency(income.summary.totalDividends) }}
           </div>
         </div>
-        <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+        <div class="card p-5">
           <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Interest</div>
           <div class="mt-1 text-2xl font-bold tabular-nums text-green-600 dark:text-green-400">
             {{ formatCurrency(income.summary.totalInterest) }}
           </div>
         </div>
-        <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+        <div class="card p-5">
           <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Fees & Taxes</div>
           <div class="mt-1 text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">
             {{ formatCurrency(income.summary.totalFees) }}
           </div>
         </div>
-        <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+        <div class="card p-5">
           <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Dividends (Trailing 12M)</div>
           <div class="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">
             {{ formatCurrency(income.summary.trailing12mDividends) }}
@@ -57,7 +57,7 @@
       <!-- Empty state -->
       <div
         v-if="income.byMonth.length === 0"
-        class="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm"
+        class="card text-center py-12"
       >
         <h3 class="text-sm font-medium text-gray-900 dark:text-white">No income activity yet</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -69,7 +69,7 @@
 
       <template v-else>
         <!-- Monthly chart -->
-        <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6">
+        <div class="card p-6 mb-6">
           <h3 class="heading-card mb-4">Monthly Income</h3>
           <div class="h-72">
             <canvas ref="chartCanvas"></canvas>
@@ -77,13 +77,13 @@
         </div>
 
         <!-- By symbol table -->
-        <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+        <div class="card overflow-hidden">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 class="heading-card">Income by Symbol</h3>
           </div>
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead class="bg-gray-50 dark:bg-gray-700">
+              <thead class="table-head">
                 <tr>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Symbol</th>
                   <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Dividends</th>

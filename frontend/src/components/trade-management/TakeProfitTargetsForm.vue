@@ -54,19 +54,19 @@
           <!-- Status Badge -->
           <span
             v-if="target.status === 'hit'"
-            class="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+            class="badge bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
           >
             Hit
           </span>
           <span
             v-else-if="target.status === 'cancelled'"
-            class="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
+            class="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
           >
             Cancelled
           </span>
           <span
             v-else
-            class="px-2 py-0.5 text-xs font-medium rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400"
+            class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400"
           >
             Pending
           </span>

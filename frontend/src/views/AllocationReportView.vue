@@ -12,12 +12,12 @@
     </div>
 
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="h-12 w-12 animate-spin rounded-full border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <div v-else-if="!enabled" class="card">
       <div class="card-body py-12 text-center">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Trade allocations are not enabled</h2>
+        <h2 class="heading-card">Trade allocations are not enabled</h2>
         <p class="mx-auto mt-2 max-w-lg text-sm text-gray-500 dark:text-gray-400">
           This optional accounting tool can be enabled from the collapsed Optional accounting tools section in Trading settings.
         </p>
@@ -27,13 +27,13 @@
 
     <div v-else class="relative space-y-8">
       <div v-if="loading" class="absolute right-0 top-0 z-10 flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 shadow-sm backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90">
-        <div class="h-4 w-4 animate-spin rounded-full border-2 border-primary-600 border-t-transparent"></div>
+        <div class="spinner spinner-xs"></div>
         <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
       </div>
 
       <div v-if="groups.length === 0" class="card">
         <div class="card-body py-12 text-center">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">No allocation groups yet</h2>
+          <h2 class="heading-card">No allocation groups yet</h2>
           <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Create at least two groups before allocating trades.</p>
           <router-link to="/settings" class="btn-primary mt-5 inline-flex">Create groups</router-link>
         </div>
@@ -54,7 +54,7 @@
           <article class="card">
             <div class="card-body">
               <div class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Allocated P&amp;L</div>
-              <div class="mt-2 text-2xl font-semibold" :class="totalPnl >= 0 ? 'text-green-600' : 'text-red-600'">{{ formatCurrency(totalPnl) }}</div>
+              <div class="mt-2 text-2xl font-semibold" :class="totalPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(totalPnl) }}</div>
             </div>
           </article>
           <article class="card">
@@ -108,7 +108,7 @@
                     <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ group.trade_count }}</td>
                     <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ winRate(group) }}</td>
                     <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ formatCurrency(Number(group.allocated_commission) + Number(group.allocated_fees)) }}</td>
-                    <td class="px-3 py-4 text-right text-sm font-semibold" :class="Number(group.allocated_pnl) >= 0 ? 'text-green-600' : 'text-red-600'">{{ formatCurrency(Number(group.allocated_pnl)) }}</td>
+                    <td class="px-3 py-4 text-right text-sm font-semibold" :class="Number(group.allocated_pnl) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(Number(group.allocated_pnl)) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -133,7 +133,7 @@
                   <tr v-for="row in monthlyRows" :key="row.month">
                     <td class="whitespace-nowrap px-3 py-4 text-sm font-medium text-gray-900 dark:text-white">{{ formatMonth(row.month) }}</td>
                     <td v-for="group in visibleGroups" :key="group.id" class="whitespace-nowrap px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ formatCurrency(row.values[group.id] || 0) }}</td>
-                    <td class="whitespace-nowrap px-3 py-4 text-right text-sm font-semibold" :class="row.total >= 0 ? 'text-green-600' : 'text-red-600'">{{ formatCurrency(row.total) }}</td>
+                    <td class="whitespace-nowrap px-3 py-4 text-right text-sm font-semibold" :class="row.total >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(row.total) }}</td>
                   </tr>
                 </tbody>
               </table>

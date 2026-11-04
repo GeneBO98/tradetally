@@ -1,6 +1,6 @@
 <template>
     <div v-if="charts && charts.length > 0" class="space-y-4">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+        <h3 class="heading-card">
             Chart Links
         </h3>
 
@@ -57,12 +57,12 @@
                                 "
                                 class="w-full aspect-video flex items-center justify-center bg-gray-100 dark:bg-gray-700"
                             >
-                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                                <div class="spinner spinner-md"></div>
                             </div>
                             <!-- If image fails, show nice preview card -->
                             <div
                                 v-else
-                                class="w-full p-12 flex flex-col items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-800 dark:to-gray-700 rounded-lg border-2 border-primary-200 dark:border-gray-600 hover:border-primary-400 dark:hover:border-gray-500 transition-colors cursor-pointer"
+                                class="w-full p-12 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900/40 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-400 dark:hover:border-primary-500 transition-colors cursor-pointer"
                                 @click.prevent="openInNewTab(chart)"
                             >
                                 <svg
@@ -190,7 +190,7 @@
         <!-- Chart modal -->
         <div
             v-if="selectedChart"
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 p-4"
+            class="modal-overlay flex items-center justify-center p-4"
             @click="closeChart"
         >
             <div class="relative max-w-6xl w-full" @click.stop>
@@ -240,7 +240,7 @@
                     </p>
                     <button
                         @click="openInNewTab(selectedChart)"
-                        class="inline-flex items-center space-x-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors"
+                        class="btn-primary space-x-2 py-3"
                     >
                         <span>Open Chart</span>
                         <svg
@@ -322,7 +322,7 @@
                 class="flex min-h-screen items-end justify-center px-4 pt-4 pb-20 text-center sm:block sm:p-0"
             >
                 <div
-                    class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+                    class="modal-backdrop"
                 ></div>
 
                 <span
@@ -332,7 +332,7 @@
                 >
 
                 <div
-                    class="relative inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6"
+                    class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6"
                     @click.stop
                 >
                     <div class="sm:flex sm:items-start">
@@ -382,7 +382,7 @@
                         <button
                             type="button"
                             @click="cancelDelete"
-                            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:text-gray-500 dark:hover:text-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:w-auto sm:text-sm"
+                            class="btn-secondary mt-3 w-full sm:mt-0 sm:w-auto"
                         >
                             Cancel
                         </button>

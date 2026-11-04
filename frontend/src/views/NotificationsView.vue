@@ -1,6 +1,6 @@
 <template>
   <div class="content-wrapper py-8">
-    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+    <div class="card">
       <!-- Header -->
       <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
         <div class="flex items-center justify-between">
@@ -45,14 +45,14 @@
 
       <!-- Loading State -->
       <div v-if="loading && notifications.length === 0" class="p-8 text-center">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+        <div class="spinner spinner-md mx-auto"></div>
         <p class="text-gray-500 dark:text-gray-400 mt-4">Loading notifications...</p>
       </div>
 
       <!-- Empty State -->
       <div v-else-if="notifications.length === 0" class="p-12 text-center">
         <BellSlashIcon class="h-16 w-16 text-gray-400 mx-auto mb-4" />
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+        <h3 class="heading-card mb-2">
           No notifications yet
         </h3>
         <p class="text-gray-500 dark:text-gray-400">
@@ -133,7 +133,7 @@
                     <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
                       {{ notification.symbol || 'Notification' }}
                     </h3>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium" :class="getTypeBadgeClass(notification.type)">
+                    <span class="badge" :class="getTypeBadgeClass(notification.type)">
                       {{ getTypeLabel(notification.type) }}
                     </span>
                   </div>
@@ -403,7 +403,7 @@ const getTypeBadgeClass = (type) => {
     case 'price_alert':
       return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
     case 'trade_comment':
-      return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+      return 'bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200'
     case 'achievement_earned':
       return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
     case 'level_up':
@@ -426,7 +426,7 @@ const getIconBgClass = (type) => {
     case 'price_alert':
       return 'bg-yellow-50 dark:bg-yellow-900/20'
     case 'trade_comment':
-      return 'bg-blue-50 dark:bg-blue-900/20'
+      return 'bg-primary-50 dark:bg-primary-900/20'
     case 'achievement_earned':
       return 'bg-amber-50 dark:bg-amber-900/20'
     case 'level_up':
@@ -449,7 +449,7 @@ const getIconColorClass = (type) => {
     case 'price_alert':
       return 'text-yellow-600 dark:text-yellow-400'
     case 'trade_comment':
-      return 'text-blue-600 dark:text-blue-400'
+      return 'text-primary-600 dark:text-primary-400'
     case 'achievement_earned':
       return 'text-amber-600 dark:text-amber-400'
     case 'level_up':

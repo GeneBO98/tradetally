@@ -1,7 +1,7 @@
 <template>
     <div class="tick-data-chart">
         <div class="mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+            <h3 class="heading-card mb-2">
                 Price Action Analysis
             </h3>
             <p class="text-sm text-gray-600 dark:text-gray-400">
@@ -12,7 +12,7 @@
         <!-- Loading State -->
         <div v-if="loading" class="flex items-center justify-center h-64">
             <div
-                class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                class="spinner spinner-md"
             ></div>
             <span class="ml-2 text-gray-600 dark:text-gray-400"
                 >Loading tick data...</span
@@ -44,7 +44,7 @@
                     <h4 class="text-sm font-medium text-red-800">
                         Unable to load tick data
                     </h4>
-                    <p class="text-sm text-red-700 mt-1">{{ error }}</p>
+                    <p class="text-sm text-red-700 dark:text-red-400 mt-1">{{ error }}</p>
                 </div>
             </div>
         </div>
@@ -53,7 +53,7 @@
         <div v-else-if="chartData" class="space-y-6">
             <!-- Chart -->
             <div
-                class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
+                class="card p-4"
             >
                 <div ref="chartContainer" class="w-full h-64"></div>
             </div>
@@ -61,7 +61,7 @@
             <!-- Analysis Summary -->
             <div v-if="analysis" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div
-                    class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
+                    class="card p-4"
                 >
                     <h4
                         class="text-sm font-medium text-gray-900 dark:text-white mb-3"
@@ -109,7 +109,7 @@
                 </div>
 
                 <div
-                    class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
+                    class="card p-4"
                 >
                     <h4
                         class="text-sm font-medium text-gray-900 dark:text-white mb-3"
@@ -142,8 +142,8 @@
                                 class="font-medium"
                                 :class="
                                     analysis.was_chasing_momentum
-                                        ? 'text-red-600'
-                                        : 'text-green-600'
+                                        ? 'text-red-600 dark:text-red-400'
+                                        : 'text-green-600 dark:text-green-400'
                                 "
                             >
                                 {{
@@ -159,8 +159,8 @@
                                 class="font-medium"
                                 :class="
                                     analysis.was_fighting_trend
-                                        ? 'text-red-600'
-                                        : 'text-green-600'
+                                        ? 'text-red-600 dark:text-red-400'
+                                        : 'text-green-600 dark:text-green-400'
                                 "
                             >
                                 {{ analysis.was_fighting_trend ? "Yes" : "No" }}
@@ -173,10 +173,10 @@
             <!-- Insights -->
             <div
                 v-if="insights.length > 0"
-                class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4"
+                class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4"
             >
                 <h4
-                    class="text-sm font-medium text-blue-900 dark:text-blue-200 mb-2"
+                    class="text-sm font-medium text-primary-900 dark:text-primary-200 mb-2"
                 >
                     Key Insights
                 </h4>
@@ -184,7 +184,7 @@
                     <li
                         v-for="insight in insights"
                         :key="insight"
-                        class="text-sm text-blue-800 dark:text-blue-300"
+                        class="text-sm text-primary-800 dark:text-primary-300"
                     >
                         • {{ insight }}
                     </li>
@@ -280,8 +280,8 @@ export default {
         // Methods
         const getTrendColor = (trend) => {
             const colors = {
-                up: "text-green-600",
-                down: "text-red-600",
+                up: "text-green-600 dark:text-green-400",
+                down: "text-red-600 dark:text-red-400",
                 sideways: "text-gray-600",
             };
             return colors[trend] || "text-gray-600";
@@ -298,9 +298,9 @@ export default {
         };
 
         const getScoreColor = (score) => {
-            if (score >= 0.7) return "text-green-600";
+            if (score >= 0.7) return "text-green-600 dark:text-green-400";
             if (score >= 0.4) return "text-yellow-600";
-            return "text-red-600";
+            return "text-red-600 dark:text-red-400";
         };
 
         const createChart = () => {
@@ -366,7 +366,7 @@ export default {
             }
 
             // Draw price line
-            ctx.strokeStyle = "#3b82f6";
+            ctx.strokeStyle = "#F0812A";
             ctx.lineWidth = 2;
             ctx.beginPath();
 

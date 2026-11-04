@@ -15,7 +15,7 @@
             :href="secEdgar10KUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700"
+            class="btn-primary"
           >
             View 10-K Filings
             <svg class="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

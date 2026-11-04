@@ -1,5 +1,5 @@
 <template>
-  <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+  <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
     <div v-if="!affordability || affordability.available === false" data-testid="cashflow-empty">
       <p class="text-sm font-semibold text-gray-900 dark:text-white">See what you can actually afford</p>
       <p class="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
@@ -85,7 +85,7 @@
           v-if="suggestions.monthly_contribution_current_saving > 0"
           type="button"
           data-testid="use-current-saving"
-          class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          class="card px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
           @click="$emit('apply', { field: 'monthly_contribution', value: suggestions.monthly_contribution_current_saving })"
         >
           Use what you already save ({{ money(suggestions.monthly_contribution_current_saving) }})
@@ -116,7 +116,7 @@
             Review the largest transactions
           </span>
         </summary>
-        <div class="mt-2 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+        <div class="card mt-2 overflow-hidden">
           <p v-if="transactions.length > 0" class="border-b border-gray-100 px-3 py-2 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
             Changing a category applies to every transaction with the same description.
           </p>

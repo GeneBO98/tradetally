@@ -1,13 +1,13 @@
 <template>
   <div>
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <div v-else class="relative space-y-10">
       <div v-if="loading" class="absolute top-0 right-0 z-10">
         <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
-          <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+          <div class="spinner spinner-xs"></div>
           <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
         </div>
       </div>
@@ -16,7 +16,7 @@
         <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
           <div>
             <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ group.eyebrow }}</div>
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ group.title }}</h2>
+            <h2 class="heading-card">{{ group.title }}</h2>
           </div>
           <div v-if="group.challenges.length" class="text-sm text-gray-500 dark:text-gray-400">
             {{ timeLeftLabel(group.challenges[0].end_date) }}
@@ -112,7 +112,7 @@
       <section v-if="history.length">
         <div class="mb-4">
           <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">History</div>
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Past challenges</h2>
+          <h2 class="heading-card">Past challenges</h2>
         </div>
         <div class="card overflow-hidden">
           <ul class="divide-y divide-gray-200 dark:divide-gray-700">

@@ -233,7 +233,7 @@
         class="btn-primary"
       >
         <span v-if="calculating" class="flex items-center">
-          <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+          <div class="spinner spinner-xs spinner-light mr-2"></div>
           Calculating...
         </span>
         <span v-else>Calculate Fair Value</span>

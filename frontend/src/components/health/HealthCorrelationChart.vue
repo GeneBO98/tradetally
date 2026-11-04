@@ -2,7 +2,7 @@
   <div class="card">
     <div class="card-body">
       <div class="flex items-center justify-between mb-6">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+        <h3 class="heading-card">
           Health-Trading Correlations
         </h3>
         <div class="flex items-center space-x-2">
@@ -41,7 +41,7 @@
 
       <p v-if="loading && !initialLoading" class="text-xs text-primary-600 mb-2" role="status">Updating...</p>
       <div v-if="initialLoading" class="flex justify-center py-12">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-lg"></div>
       </div>
 
       <div v-else-if="correlationData.length === 0" class="text-center py-12">
@@ -73,7 +73,7 @@
           
           <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400">Average P&L Impact</div>
-            <div class="text-xl font-semibold" :class="statistics.avgImpact >= 0 ? 'text-green-600' : 'text-red-600'">
+            <div class="text-xl font-semibold" :class="statistics.avgImpact >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
               ${{ Math.abs(statistics.avgImpact).toFixed(2) }}
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -83,7 +83,7 @@
 
           <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400">Win Rate Impact</div>
-            <div class="text-xl font-semibold" :class="statistics.winRateImpact >= 0 ? 'text-green-600' : 'text-red-600'">
+            <div class="text-xl font-semibold" :class="statistics.winRateImpact >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
               {{ statistics.winRateImpact > 0 ? '+' : '' }}{{ statistics.winRateImpact.toFixed(1) }}%
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -542,7 +542,7 @@ function getMetricCondition(metric) {
 
 function getCorrelationClass(correlation) {
   const abs = Math.abs(correlation)
-  if (abs > 0.7) return correlation > 0 ? 'text-green-600' : 'text-red-600'
+  if (abs > 0.7) return correlation > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
   if (abs > 0.4) return correlation > 0 ? 'text-green-500' : 'text-orange-500'
   return 'text-gray-600'
 }
@@ -559,7 +559,7 @@ function getInsightClass(type) {
   const classes = {
     positive: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300',
     warning: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300',
-    info: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300'
+    info: 'bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 text-primary-800 dark:text-primary-300'
   }
   return classes[type] || classes.info
 }

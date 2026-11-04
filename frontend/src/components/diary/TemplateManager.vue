@@ -1,7 +1,7 @@
 <template>
   <div class="template-manager">
     <div class="flex items-center justify-between mb-4">
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white">Journal Templates</h3>
+      <h3 class="heading-card">Journal Templates</h3>
       <button
         @click="showCreateModal = true"
         class="btn-primary text-sm"
@@ -13,7 +13,7 @@
 
     <!-- Templates List -->
     <div v-if="loading && !hasTemplates" class="text-center py-8">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+      <div class="spinner spinner-md mx-auto"></div>
       <p class="text-gray-500 dark:text-gray-400 mt-2">Loading templates...</p>
     </div>
 
@@ -28,7 +28,7 @@
       <div
         v-for="template in templates"
         :key="template.id"
-        class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow duration-200"
+        class="card p-6 hover:shadow-md transition-shadow duration-200"
       >
         <div class="flex flex-col space-y-4">
           <!-- Header -->
@@ -40,12 +40,12 @@
                 </h4>
                 <span
                   v-if="template.is_default"
-                  class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                  class="badge bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
                 >
                   Default
                 </span>
                 <span
-                  class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400"
+                  class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400"
                 >
                   {{ template.entry_type === 'diary' ? 'Diary' : 'Playbook' }}
                 </span>
@@ -122,15 +122,15 @@
     <!-- Create/Edit Template Modal -->
     <div
       v-if="showCreateModal || showEditModal"
-      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      class="modal-overlay flex items-center justify-center p-4"
       @click="closeModal"
     >
       <div
-        class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        class="modal-panel max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         @click.stop
       >
         <div class="p-6">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+          <h3 class="heading-card mb-4">
             {{ editingTemplate ? 'Edit Template' : 'Create New Template' }}
           </h3>
 
@@ -318,15 +318,15 @@
     <!-- Delete Confirmation Modal -->
     <div
       v-if="showDeleteModal"
-      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      class="modal-overlay flex items-center justify-center p-4"
       @click="showDeleteModal = false"
     >
       <div
-        class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full"
+        class="modal-panel max-w-md w-full"
         @click.stop
       >
         <div class="p-6">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+          <h3 class="heading-card mb-4">
             Delete Template
           </h3>
                 <div class="mt-2">

@@ -18,7 +18,7 @@
         >
           <svg
             v-if="pillar.passed"
-            class="w-6 h-6 text-green-600"
+            class="w-6 h-6 text-green-600 dark:text-green-400"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -27,7 +27,7 @@
           </svg>
           <svg
             v-else
-            class="w-6 h-6 text-red-600"
+            class="w-6 h-6 text-red-600 dark:text-red-400"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -52,7 +52,7 @@
           <p
             :class="[
               'text-lg font-bold',
-              pillar.passed ? 'text-green-600' : 'text-red-600'
+              pillar.passed ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
             ]"
           >
             {{ displayValue }}
@@ -138,14 +138,14 @@
       <!-- Regular Data Grid (excluding arrays) -->
       <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
         <template v-for="(fieldValue, fieldKey) in formattedData" :key="fieldKey">
-          <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+          <div class="card p-3 dark:border-gray-600">
             <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ formatLabel(fieldKey) }}</p>
             <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ fieldValue }}</p>
           </div>
         </template>
 
         <!-- Threshold Card if applicable -->
-        <div v-if="pillar.threshold" class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+        <div v-if="pillar.threshold" class="card p-3 dark:border-gray-600">
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Threshold</p>
           <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ formatThreshold }}</p>
         </div>

@@ -28,14 +28,14 @@
     >
       <div
         v-if="isOpen"
-        class="absolute w-96 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50"
+        class="absolute w-96 dropdown-menu rounded-lg z-50"
         :class="placementClasses"
         @click.stop
       >
         <!-- Header -->
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <div class="flex items-center justify-between">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+            <h3 class="heading-card">
               Notifications
             </h3>
             <button
@@ -45,7 +45,7 @@
               class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span v-if="markingAsRead" class="flex items-center">
-                <div class="animate-spin rounded-full h-3 w-3 border-b border-current mr-1"></div>
+                <div class="spinner h-3 w-3 spinner-current mr-1"></div>
                 Marking...
               </span>
               <span v-else>Mark all read</span>
@@ -56,7 +56,7 @@
         <!-- Notifications List -->
         <div class="max-h-96 overflow-y-auto">
           <div v-if="loading" class="p-4 text-center">
-            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600 mx-auto"></div>
+            <div class="spinner spinner-sm mx-auto"></div>
             <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Loading notifications...</p>
           </div>
 

@@ -25,7 +25,7 @@
                                 class="mt-2 flex items-center"
                             >
                                 <span
-                                    class="text-xs bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 px-2 py-1 rounded-full"
+                                    class="badge bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
                                 >
                                     Your leaderboard name: {{ anonymousName }}
                                 </span>
@@ -146,7 +146,7 @@
                     class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8"
                 >
                     <div
-                        class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg"
+                        class="card overflow-hidden"
                     >
                         <div class="p-5">
                             <div class="flex items-center">
@@ -176,7 +176,7 @@
                     </div>
 
                     <div
-                        class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg"
+                        class="card overflow-hidden"
                     >
                         <div class="p-5">
                             <div class="flex items-center">
@@ -184,7 +184,7 @@
                                     <MdiIcon
                                         :icon="mdiChartLine"
                                         :size="24"
-                                        class="text-blue-500"
+                                        class="text-primary-500"
                                     />
                                 </div>
                                 <div class="ml-5 w-0 flex-1">
@@ -206,7 +206,7 @@
                     </div>
 
                     <div
-                        class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg"
+                        class="card overflow-hidden"
                     >
                         <div class="p-5">
                             <div class="flex items-center">
@@ -239,7 +239,7 @@
                     </div>
 
                     <div
-                        class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg"
+                        class="card overflow-hidden"
                     >
                         <div class="p-5">
                             <div class="flex items-center">
@@ -313,7 +313,7 @@
                 </div>
 
                 <!-- Recent Achievements -->
-                <div class="bg-white dark:bg-gray-800 shadow rounded-lg mb-8">
+                <div class="card mb-8">
                     <div
                         class="px-6 py-4 border-b border-gray-200 dark:border-gray-700"
                     >
@@ -396,7 +396,7 @@
                             >
                                 <div
                                     v-if="checkingAchievements"
-                                    class="inline-block animate-spin rounded-full h-3 w-3 border-b border-current mr-2"
+                                    class="inline-block spinner h-3 w-3 spinner-current mr-2"
                                 ></div>
                                 {{
                                     checkingAchievements
@@ -413,7 +413,7 @@
             <div v-if="activeTab === 'achievements'">
                 <div v-if="achievementsLoading" class="text-center py-12">
                     <div
-                        class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                        class="spinner spinner-md inline-block"
                     ></div>
                     <p class="mt-2 text-gray-600 dark:text-gray-400">
                         Loading achievements...
@@ -426,7 +426,7 @@
                         :key="achievement.id"
                         :data-achievement-id="achievement.id"
                         :class="[
-                            'bg-white dark:bg-gray-800 rounded-lg shadow-sm border-2 transition-all duration-200 hover:shadow-md',
+                            'card border-2 transition-all duration-200 hover:shadow-md',
                             achievement.is_earned
                                 ? 'border-primary-200 dark:border-primary-700 bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/20 dark:to-gray-800'
                                 : 'border-gray-200 dark:border-gray-700',
@@ -438,7 +438,7 @@
                             <div class="flex justify-end mb-2">
                                 <span
                                     v-if="achievement.is_earned"
-                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                    class="badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                                 >
                                     <MdiIcon
                                         :icon="mdiCheckCircle"
@@ -448,7 +448,7 @@
                                 </span>
                                 <span
                                     v-else
-                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
+                                    class="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
                                 >
                                     <MdiIcon :icon="mdiLock" :size="14" />
                                     Locked
@@ -547,7 +547,7 @@
                     </p>
                     <button
                         @click="loadAchievements"
-                        class="mt-4 bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700 transition-colors"
+                        class="btn-primary mt-4"
                     >
                         Reload Achievements
                     </button>
@@ -558,7 +558,7 @@
             <div v-if="activeTab === 'leaderboards'">
                 <!-- My Rankings Section -->
                 <div class="mb-8">
-                    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+                    <div class="card">
                         <div
                             class="px-6 py-4 border-b border-gray-200 dark:border-gray-700"
                         >
@@ -612,7 +612,7 @@
                         >
                             <div v-if="loadingFilters" class="text-center py-4">
                                 <div
-                                    class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"
+                                    class="spinner spinner-xs inline-block"
                                 ></div>
                                 <span
                                     class="ml-2 text-sm text-gray-600 dark:text-gray-400"
@@ -689,7 +689,7 @@
                                 class="text-center py-8"
                             >
                                 <div
-                                    class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"
+                                    class="spinner spinner-sm inline-block"
                                 ></div>
                                 <p
                                     class="mt-2 text-gray-600 dark:text-gray-400"
@@ -751,7 +751,7 @@
                                                     userRankings[0]
                                                         ?.total_filtered_users
                                                 "
-                                                class="ml-2 px-2 py-1 bg-primary-100 dark:bg-primary-800 rounded-full text-xs"
+                                                class="badge ml-2 bg-primary-100 dark:bg-primary-800"
                                             >
                                                 {{
                                                     userRankings[0]
@@ -836,7 +836,7 @@
                         <div
                             v-for="leaderboard in leaderboards"
                             :key="leaderboard.key"
-                            class="bg-white dark:bg-gray-800 shadow rounded-lg"
+                            class="card"
                         >
                             <div
                                 class="px-6 py-4 border-b border-gray-200 dark:border-gray-700"
@@ -984,13 +984,13 @@
                     </h2>
                 </div>
 
-                <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+                <div class="card">
                     <div
                         v-if="fullLeaderboardLoading"
                         class="text-center py-12"
                     >
                         <div
-                            class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                            class="spinner spinner-md inline-block"
                         ></div>
                         <p class="mt-2 text-gray-600 dark:text-gray-400">
                             Loading full rankings...

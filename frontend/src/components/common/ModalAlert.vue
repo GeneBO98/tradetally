@@ -3,14 +3,14 @@
         <!-- Modal Overlay -->
         <div
             v-if="modalAlert"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
         >
             <div
                 class="flex min-h-full items-center justify-center p-4"
                 @click="handleOverlayClick"
             >
             <div
-                class="relative w-full max-w-md p-5 border shadow-lg rounded-md bg-white dark:bg-gray-800"
+                class="modal-panel w-full max-w-md p-5"
             >
                 <div class="mt-3">
                     <!-- Icon -->
@@ -73,7 +73,7 @@
                             v-if="modalAlert.cancelText"
                             @click="handleCancel"
                             :disabled="modalAlert.isSubmitting"
-                            class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
+                            class="btn-secondary w-full sm:w-auto"
                         >
                             {{ modalAlert.cancelText }}
                         </button>

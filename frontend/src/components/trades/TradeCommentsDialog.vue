@@ -3,14 +3,14 @@
         <div v-if="isOpen" class="fixed inset-0 z-50 overflow-y-auto">
             <!-- Backdrop -->
             <div
-                class="fixed inset-0 bg-black bg-opacity-25 transition-opacity"
+                class="modal-backdrop"
                 @click="closeDialog"
             ></div>
 
             <!-- Modal -->
             <div class="flex min-h-full items-center justify-center p-4">
                 <div
-                    class="relative w-full max-w-2xl transform overflow-hidden rounded-2xl bg-white dark:bg-gray-800 p-6 text-left shadow-xl transition-all"
+                    class="modal-panel w-full max-w-2xl transform overflow-hidden p-6 text-left transition-all"
                     @click.stop
                 >
                     <!-- Title -->
@@ -45,7 +45,7 @@
                     <div class="mt-4 max-h-96 overflow-y-auto">
                         <div v-if="loading" class="text-center py-4">
                             <div
-                                class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"
+                                class="spinner spinner-md mx-auto"
                             ></div>
                         </div>
 
@@ -163,7 +163,7 @@
                                                     submitting ||
                                                     !editCommentText.trim()
                                                 "
-                                                class="text-xs bg-primary-600 text-white px-3 py-1 rounded hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                                                class="btn-primary btn-sm disabled:opacity-50"
                                             >
                                                 Save
                                             </button>
@@ -203,7 +203,7 @@
                                 <button
                                     type="submit"
                                     :disabled="submitting || !newComment.trim()"
-                                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     <span v-if="submitting">Posting...</span>
                                     <span v-else>Post Comment</span>

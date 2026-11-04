@@ -1,12 +1,12 @@
 <template>
   <div
     v-if="showStatus"
-    class="mb-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm"
+    class="card mb-6"
     role="status"
     aria-live="polite"
   >
     <div class="flex items-center gap-3 px-4 py-3">
-      <div class="animate-spin h-4 w-4 flex-shrink-0 rounded-full border-2 border-primary-600 border-t-transparent"></div>
+      <div class="spinner spinner-xs flex-shrink-0"></div>
 
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-baseline gap-x-2">

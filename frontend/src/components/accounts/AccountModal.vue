@@ -1,10 +1,10 @@
 <template>
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+  <div class="modal-overlay flex items-center justify-center p-4">
+    <div class="modal-panel max-w-md w-full max-h-[90vh] overflow-y-auto">
       <div class="p-6">
         <!-- Header -->
         <div class="flex items-center justify-between mb-6">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+          <h3 class="heading-card">
             {{ isEditing ? 'Edit Account' : 'Add Account' }}
           </h3>
           <button

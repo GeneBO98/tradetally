@@ -15,7 +15,7 @@
 
     <!-- Loading (initial only) -->
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Empty state -->
@@ -59,7 +59,7 @@
         <div class="card">
           <div class="card-body">
             <div class="flex items-baseline justify-between gap-4">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              <h2 class="heading-card">
                 Week of {{ formatTradeDate(selected.period_start, 'MMM dd') }} – {{ formatTradeDate(selected.period_end, 'MMM dd, yyyy') }}
               </h2>
               <span class="text-xs text-gray-500 dark:text-gray-400">Generated {{ formatTradeDate(selected.created_at, 'MMM dd, yyyy') }}</span>

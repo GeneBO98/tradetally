@@ -11,7 +11,7 @@
     <div
       v-if="drawerOpen"
       @click="closeDrawer"
-      class="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
+      class="fixed inset-0 z-30 bg-gray-900/50 dark:bg-gray-950/70 lg:hidden"
     ></div>
   </transition>
 
@@ -169,7 +169,7 @@
       <router-link
         to="/pricing"
         @click="closeDrawer"
-        class="upgrade-card group relative block overflow-hidden rounded-xl bg-gradient-to-br from-primary-50 to-orange-100 p-3 ring-1 ring-primary-200/80 transition-all hover:ring-primary-300 dark:from-primary-950/40 dark:to-primary-900/20 dark:ring-primary-900/40 dark:hover:ring-primary-800/60"
+        class="upgrade-card group relative block overflow-hidden rounded-xl bg-gradient-to-br from-primary-50 to-primary-100 p-3 ring-1 ring-primary-200/80 transition-all hover:ring-primary-300 dark:from-primary-950/40 dark:to-primary-900/20 dark:ring-primary-900/40 dark:hover:ring-primary-800/60"
       >
         <div class="relative">
           <div class="flex items-start justify-between gap-2">

@@ -1,11 +1,11 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+  <div class="card overflow-hidden">
     <!-- Header -->
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <div class="flex items-center">
         <img v-if="analysis.logo" :src="analysis.logo" :alt="analysis.symbol" class="w-10 h-10 rounded-lg mr-3" />
         <div>
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">{{ analysis.symbol }}</h3>
+          <h3 class="heading-card">{{ analysis.symbol }}</h3>
           <p v-if="analysis.companyName" class="text-sm text-gray-500 dark:text-gray-400">{{ analysis.companyName }}</p>
         </div>
       </div>
@@ -97,7 +97,7 @@
         </button>
         <button
           @click="$emit('add-to-holdings', analysis)"
-          class="text-sm text-green-600 hover:text-green-800"
+          class="text-sm text-green-600 dark:text-green-400 hover:text-green-800"
         >
           Add to Holdings
         </button>

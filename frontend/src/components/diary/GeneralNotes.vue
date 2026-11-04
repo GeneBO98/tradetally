@@ -1,9 +1,9 @@
 <template>
     <div
-        class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6"
+        class="card p-6"
     >
         <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+            <h2 class="heading-card">
                 Pinned Notes
             </h2>
             <button @click="showAddModal = true" class="btn-primary">
@@ -69,10 +69,10 @@
         <!-- Add/Edit Modal -->
         <div
             v-if="showAddModal"
-            class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50"
+            class="modal-overlay flex items-center justify-center p-4"
         >
             <div
-                class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full p-6"
+                class="modal-panel max-w-2xl w-full p-6"
             >
                 <h3
                     class="text-lg font-semibold text-gray-900 dark:text-white mb-4"

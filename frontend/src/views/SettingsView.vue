@@ -16,9 +16,9 @@
                     @click="activeTab = tab.id"
                     :class="[
                         activeTab === tab.id
-                            ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
-                        'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors',
+                            ? 'tab-active'
+                            : 'tab-inactive',
+                        'tab',
                     ]"
                 >
                     {{ tab.label }}
@@ -717,7 +717,7 @@
                                         class="flex items-center"
                                     >
                                         <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
+                                            class="spinner spinner-xs spinner-light mr-2"
                                         ></div>
                                         Saving...
                                     </span>
@@ -808,7 +808,7 @@
                                         class="flex items-center"
                                     >
                                         <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
+                                            class="spinner spinner-xs spinner-light mr-2"
                                         ></div>
                                         Saving...
                                     </span>
@@ -989,7 +989,7 @@
                                     </span>
                                     <span
                                         v-if="versionStore.updateAvailable"
-                                        class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400"
+                                        class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400"
                                     >
                                         New
                                     </span>
@@ -1031,7 +1031,7 @@
                                                     "
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                                                    class="btn-primary leading-4"
                                                 >
                                                     View Release Notes
                                                     <ArrowTopRightOnSquareIcon
@@ -1056,7 +1056,7 @@
                                         class="flex items-center"
                                     >
                                         <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"
+                                            class="spinner spinner-xs spinner-current mr-2"
                                         ></div>
                                         Checking...
                                     </span>
@@ -1338,7 +1338,7 @@
                                         class="flex items-center"
                                     >
                                         <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
+                                            class="spinner spinner-xs spinner-light mr-2"
                                         ></div>
                                         Saving...
                                     </span>
@@ -1435,7 +1435,7 @@
                                         class="flex items-center"
                                     >
                                         <div
-                                            class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
+                                            class="spinner spinner-xs spinner-light mr-2"
                                         ></div>
                                         Saving...
                                     </span>
@@ -1505,7 +1505,7 @@
                                     class="flex items-center"
                                 >
                                     <div
-                                        class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
+                                        class="spinner spinner-xs spinner-light mr-2"
                                     ></div>
                                     Processing...
                                 </span>
@@ -1519,7 +1519,7 @@
                             :class="
                                 enrichmentSuccess
                                     ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200'
-                                    : 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200'
+                                    : 'bg-primary-50 dark:bg-primary-900/20 text-primary-800 dark:text-primary-200'
                             "
                         >
                             <p class="text-sm">{{ enrichmentMessage }}</p>
@@ -1552,7 +1552,7 @@
                                     class="flex items-center"
                                 >
                                     <div
-                                        class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600 mr-2"
+                                        class="spinner spinner-xs mr-2"
                                     ></div>
                                     Recalculating...
                                 </span>
@@ -1566,7 +1566,7 @@
                             :class="
                                 qualityRecalculationSuccess
                                     ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200'
-                                    : 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200'
+                                    : 'bg-primary-50 dark:bg-primary-900/20 text-primary-800 dark:text-primary-200'
                             "
                         >
                             <p class="text-sm">

@@ -68,7 +68,7 @@
                         </button>
                         <div
                             v-if="openDropdown === 'strategies'"
-                            class="absolute z-20 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none"
+                            class="dropdown-menu absolute z-20 mt-1 w-full max-h-60 overflow-auto focus:outline-none"
                         >
                             <div class="p-1">
                                 <label
@@ -139,7 +139,7 @@
         <!-- Full page spinner only on initial load -->
         <div v-if="initialLoading" class="flex justify-center py-12">
             <div
-                class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"
+                class="spinner spinner-lg"
             ></div>
         </div>
 
@@ -156,7 +156,7 @@
                     class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700"
                 >
                     <div
-                        class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"
+                        class="spinner spinner-xs"
                     ></div>
                     <span class="text-xs text-gray-600 dark:text-gray-400"
                         >Updating...</span
@@ -313,7 +313,7 @@
                         <table
                             class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
                         >
-                            <thead class="bg-gray-50 dark:bg-gray-700">
+                            <thead class="table-head">
                                 <tr>
                                     <th
                                         class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
@@ -415,7 +415,7 @@
                                     >
                                         <span
                                             v-if="month.trades.wins > 0"
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                            class="badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                                         >
                                             {{ month.trades.wins }}
                                         </span>
@@ -428,7 +428,7 @@
                                     >
                                         <span
                                             v-if="month.trades.losses > 0"
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                                            class="badge bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
                                         >
                                             {{ month.trades.losses }}
                                         </span>
@@ -441,7 +441,7 @@
                                     >
                                         <span
                                             v-if="month.trades.breakeven > 0"
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                                            class="badge bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200"
                                         >
                                             {{ month.trades.breakeven }}
                                         </span>
@@ -582,7 +582,7 @@
                                     >
                                         <span
                                             v-if="month.metrics.tradingDays > 0"
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                                            class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
                                         >
                                             {{ month.metrics.tradingDays }}
                                         </span>

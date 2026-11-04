@@ -56,8 +56,8 @@ function createChart() {
         {
           label: dailyLabel,
           data: dailyData,
-          borderColor: '#3B82F6',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          borderColor: '#F0812A',
+          backgroundColor: 'rgba(240, 129, 42, 0.1)',
           tension: 0.4,
           yAxisID: 'y'
         },

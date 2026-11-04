@@ -24,7 +24,7 @@
 
         <!-- Loading (initial only) -->
         <div v-if="initialLoading" class="flex justify-center py-12">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+            <div class="spinner spinner-lg"></div>
         </div>
 
         <!-- Error -->
@@ -36,7 +36,7 @@
             <!-- Subtle refresh indicator -->
             <div v-if="loading" class="flex justify-end mb-2">
                 <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
-                    <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+                    <div class="spinner spinner-xs"></div>
                     <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
                 </div>
             </div>
@@ -142,7 +142,7 @@
                 <!-- Table -->
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead class="bg-gray-50 dark:bg-gray-700">
+                        <thead class="table-head">
                             <tr>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">User</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Role / Tier</th>
@@ -190,10 +190,10 @@
                                                 ]"
                                             />
                                         </div>
-                                        <span :class="getTierBadgeClass(getUserDisplayTier(user))" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium">
+                                        <span :class="getTierBadgeClass(getUserDisplayTier(user))" class="badge">
                                             {{ getUserDisplayTier(user) }}
                                         </span>
-                                        <span v-if="user.role === 'owner'" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400">
+                                        <span v-if="user.role === 'owner'" class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400">
                                             owner
                                         </span>
                                     </div>
@@ -202,15 +202,15 @@
                                 <!-- Status -->
                                 <td class="px-4 py-3">
                                     <div class="flex flex-wrap gap-1 max-w-[220px]">
-                                        <span :class="user.is_active ? successPillClass : dangerPillClass" class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-medium">
+                                        <span :class="user.is_active ? successPillClass : dangerPillClass" class="badge">
                                             <MdiIcon :icon="user.is_active ? mdiCheckCircle : mdiCloseCircle" :size="12" />
                                             {{ user.is_active ? "Active" : "Inactive" }}
                                         </span>
-                                        <span :class="user.is_verified ? successPillClass : warnPillClass" class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-medium">
+                                        <span :class="user.is_verified ? successPillClass : warnPillClass" class="badge">
                                             <MdiIcon :icon="user.is_verified ? mdiCheckCircle : mdiCloseCircle" :size="12" />
                                             {{ user.is_verified ? "Verified" : "Unverified" }}
                                         </span>
-                                        <span :class="user.admin_approved ? successPillClass : pendingPillClass" class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-medium">
+                                        <span :class="user.admin_approved ? successPillClass : pendingPillClass" class="badge">
                                             <MdiIcon :icon="user.admin_approved ? mdiCheckCircle : mdiCloseCircle" :size="12" />
                                             {{ user.admin_approved ? "Approved" : "Pending" }}
                                         </span>
@@ -218,7 +218,7 @@
                                             @click="toggleMarketingConsent(user)"
                                             :disabled="isUpdating"
                                             :class="user.marketing_consent ? successPillClass : mutedPillClass"
-                                            class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-medium transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                                            class="badge transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             <MdiIcon :icon="user.marketing_consent ? mdiCheckCircle : mdiCloseCircle" :size="12" />
                                             Mktg
@@ -281,7 +281,7 @@
                                         <button
                                             @click="openTierModal(user)"
                                             :disabled="isUpdating"
-                                            class="px-2 py-1 rounded text-xs font-medium text-violet-700 hover:bg-violet-50 transition disabled:opacity-50 dark:text-violet-400 dark:hover:bg-violet-900/20"
+                                            class="px-2 py-1 rounded text-xs font-medium text-primary-700 hover:bg-primary-50 transition disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
                                         >
                                             Tier
                                         </button>
@@ -313,7 +313,7 @@
                         <button
                             @click="prevPage"
                             :disabled="currentPage === 1"
-                            class="btn-secondary py-1.5 px-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            class="btn-secondary btn-sm px-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Prev
                         </button>
@@ -330,7 +330,7 @@
                         <button
                             @click="nextPage"
                             :disabled="currentPage === totalPages"
-                            class="btn-secondary py-1.5 px-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            class="btn-secondary btn-sm px-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Next
                         </button>
@@ -341,14 +341,14 @@
     </div>
 
     <!-- Delete Confirmation Modal -->
-    <div v-if="showDeleteConfirm" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 px-4">
-        <div class="w-full max-w-md rounded-lg bg-white dark:bg-gray-800 p-6 shadow-xl">
+    <div v-if="showDeleteConfirm" class="modal-overlay flex items-center justify-center px-4">
+        <div class="modal-panel w-full max-w-md p-6">
             <div class="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400">
                 <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
             </div>
-            <h3 class="mt-3 text-lg font-semibold text-gray-900 dark:text-white">Delete {{ userToDelete?.username }}?</h3>
+            <h3 class="heading-card mt-3">Delete {{ userToDelete?.username }}?</h3>
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
                 This permanently removes the user and their related data. The action cannot be undone.
             </p>
@@ -362,11 +362,11 @@
     </div>
 
     <!-- Tier Modal -->
-    <div v-if="showTierModal" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 px-4 py-8">
-        <div class="w-full max-w-2xl rounded-lg bg-white dark:bg-gray-800 p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+    <div v-if="showTierModal" class="modal-overlay flex items-center justify-center px-4 py-8">
+        <div class="modal-panel w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
             <div class="flex items-start justify-between gap-4">
                 <div>
-                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tier Controls</p>
+                    <p class="table-th">Tier Controls</p>
                     <h3 class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">Manage {{ selectedUser?.username }}</h3>
                 </div>
                 <button @click="closeTierModal" class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition">
@@ -380,9 +380,9 @@
                 <!-- Tier Info Cards -->
                 <div class="grid gap-3 md:grid-cols-3">
                     <div class="rounded-md bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 p-3">
-                        <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Current Tier</p>
+                        <p class="table-th">Current Tier</p>
                         <div class="mt-2 flex items-center gap-2">
-                            <span :class="getTierBadgeClass(tierInfo.tier)" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium">
+                            <span :class="getTierBadgeClass(tierInfo.tier)" class="badge">
                                 {{ tierInfo.tier }}
                             </span>
                             <span v-if="tierInfo.override" class="text-xs font-medium text-amber-600 dark:text-amber-400">Override active</span>
@@ -621,7 +621,7 @@ function getTierBadgeClass(tier) {
     }
 
     if (tier === "pro") {
-        return "bg-violet-100 text-violet-800 dark:bg-violet-900/20 dark:text-violet-400";
+        return "bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400";
     }
 
     return "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300";

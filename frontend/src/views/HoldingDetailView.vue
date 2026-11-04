@@ -1,9 +1,10 @@
 <template>
     <div class="content-wrapper py-8">
-        <!-- Loading State -->
-        <div v-if="loading" class="flex items-center justify-center py-16">
+        <!-- Full-page spinner only on first load (or when switching holdings);
+             later refreshes keep the content and scroll position. -->
+        <div v-if="initialLoading" class="flex items-center justify-center py-16">
             <div
-                class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"
+                class="spinner spinner-lg"
             ></div>
         </div>
 
@@ -19,7 +20,13 @@
         </div>
 
         <!-- Content -->
-        <div v-else-if="holding">
+        <div v-else-if="holding" class="relative">
+            <div v-if="loading" class="absolute top-0 right-0 z-10">
+                <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+                    <span class="spinner spinner-xs"></span>
+                    <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
+                </div>
+            </div>
             <!-- Header -->
             <div class="mb-6">
                 <button
@@ -89,7 +96,7 @@
                         </button>
                         <button
                             @click="confirmDelete"
-                            class="btn-secondary text-red-600 hover:text-red-700"
+                            class="btn-secondary text-red-600 dark:text-red-400 hover:text-red-700"
                         >
                             Delete
                         </button>
@@ -102,7 +109,7 @@
                 class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
             >
                 <!-- Shares -->
-                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
+                <div class="card p-4">
                     <p class="text-sm text-gray-500 dark:text-gray-400">
                         Shares
                     </p>
@@ -112,7 +119,7 @@
                 </div>
 
                 <!-- Current Value -->
-                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
+                <div class="card p-4">
                     <p class="text-sm text-gray-500 dark:text-gray-400">
                         Current Value
                     </p>
@@ -128,7 +135,7 @@
                 </div>
 
                 <!-- Cost Basis -->
-                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
+                <div class="card p-4">
                     <p class="text-sm text-gray-500 dark:text-gray-400">
                         Cost Basis
                     </p>
@@ -141,7 +148,7 @@
                 </div>
 
                 <!-- Unrealized P&L -->
-                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
+                <div class="card p-4">
                     <p class="text-sm text-gray-500 dark:text-gray-400">
                         Unrealized P&L
                     </p>
@@ -149,8 +156,8 @@
                         :class="[
                             'text-2xl font-bold',
                             holding.unrealizedPnL >= 0
-                                ? 'text-green-600'
-                                : 'text-red-600',
+                                ? 'text-green-600 dark:text-green-400'
+                                : 'text-red-600 dark:text-red-400',
                         ]"
                     >
                         {{ formatCurrency(holding.unrealizedPnL) }}
@@ -187,7 +194,7 @@
                         {{ tab.name }}
                         <span
                             v-if="tab.count !== undefined"
-                            class="ml-2 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full text-xs"
+                            class="badge ml-2 bg-gray-100 dark:bg-gray-700"
                         >
                             {{ tab.count }}
                         </span>
@@ -208,12 +215,12 @@
                         manual lots cover the same position.
                     </div>
                     <div
-                        class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                        class="card overflow-hidden"
                     >
                         <table
                             class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
                         >
-                            <thead class="bg-gray-50 dark:bg-gray-700">
+                            <thead class="table-head">
                                 <tr>
                                     <th
                                         class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
@@ -262,7 +269,7 @@
                                         {{ formatDate(lot.purchaseDate) }}
                                         <span
                                             v-if="lot.source === 'plaid'"
-                                            class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                            class="ml-2 badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
                                             title="Synced automatically from your linked brokerage"
                                             >Plaid</span
                                         >
@@ -299,8 +306,8 @@
                                         class="px-6 py-4 whitespace-nowrap text-sm text-right"
                                         :class="
                                             lot.gainLoss >= 0
-                                                ? 'text-green-600'
-                                                : 'text-red-600'
+                                                ? 'text-green-600 dark:text-green-400'
+                                                : 'text-red-600 dark:text-red-400'
                                         "
                                     >
                                         {{ formatCurrency(lot.gainLoss) }}
@@ -316,7 +323,7 @@
                                         <button
                                             v-if="lot.source !== 'plaid'"
                                             @click="deleteLot(lot.id)"
-                                            class="text-red-600 hover:text-red-800"
+                                            class="text-red-600 dark:text-red-400 hover:text-red-800"
                                             title="Delete lot"
                                         >
                                             <svg
@@ -352,7 +359,7 @@
                 <!-- Dividends Tab -->
                 <div v-if="activeTab === 'dividends'">
                     <div
-                        class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                        class="card overflow-hidden"
                     >
                         <!-- Summary -->
                         <div
@@ -365,7 +372,7 @@
                                     >
                                         Total Dividends Received
                                     </p>
-                                    <p class="text-xl font-bold text-green-600">
+                                    <p class="text-xl font-bold text-green-600 dark:text-green-400">
                                         {{ formatCurrency(totalDividends) }}
                                     </p>
                                 </div>
@@ -395,7 +402,7 @@
                         <table
                             class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
                         >
-                            <thead class="bg-gray-50 dark:bg-gray-700">
+                            <thead class="table-head">
                                 <tr>
                                     <th
                                         class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
@@ -437,7 +444,7 @@
                                         {{ formatDate(dividend.paymentDate) }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600 font-medium"
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600 dark:text-green-400 font-medium"
                                     >
                                         {{ formatCurrency(dividend.amount) }}
                                     </td>
@@ -483,7 +490,7 @@
                         class="flex items-center justify-center py-16"
                     >
                         <div
-                            class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                            class="spinner spinner-md"
                         ></div>
                         <span class="ml-3 text-gray-500"
                             >Loading analysis...</span
@@ -503,7 +510,7 @@
 
                     <div
                         v-else
-                        class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-8 text-center"
+                        class="card p-8 text-center"
                     >
                         <p class="text-gray-500 dark:text-gray-400 mb-4">
                             No 8 Pillars analysis available
@@ -517,7 +524,7 @@
                 <!-- Notes Tab -->
                 <div v-if="activeTab === 'notes'">
                     <div
-                        class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6"
+                        class="card p-6"
                     >
                         <h3
                             class="text-lg font-medium text-gray-900 dark:text-white mb-4"
@@ -528,7 +535,7 @@
                             v-model="notes"
                             rows="6"
                             placeholder="Add notes about your investment thesis, target prices, etc..."
-                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                            class="input"
                         ></textarea>
                         <div class="mt-4 flex justify-end">
                             <button
@@ -564,10 +571,10 @@
         <!-- Delete Confirmation -->
         <div
             v-if="showDeleteConfirm"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
+            class="modal-overlay flex items-center justify-center"
         >
             <div
-                class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6"
+                class="modal-panel max-w-md w-full mx-4 p-6"
             >
                 <h3
                     class="text-lg font-medium text-gray-900 dark:text-white mb-4"
@@ -623,6 +630,7 @@ const analysis = ref(null);
 const notes = ref("");
 
 const loading = ref(false);
+const initialLoading = ref(true);
 const error = ref(null);
 const analysisLoading = ref(false);
 const savingNotes = ref(false);
@@ -664,6 +672,10 @@ async function loadHolding() {
     const id = route.params.id;
     if (!id) return;
 
+    // Only blank the page when there is nothing for this route to show yet.
+    if (!holding.value || String(holding.value.id) !== String(id)) {
+        initialLoading.value = true;
+    }
     loading.value = true;
     error.value = null;
 
@@ -708,6 +720,7 @@ async function loadHolding() {
         error.value = err.message || "Failed to load holding";
     } finally {
         loading.value = false;
+        initialLoading.value = false;
     }
 }
 

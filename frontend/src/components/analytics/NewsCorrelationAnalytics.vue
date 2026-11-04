@@ -20,14 +20,14 @@
 
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Error State -->
     <div v-else-if="error" class="card">
       <div class="card-body text-center py-8">
         <MdiIcon :icon="alertIcon" :size="48" class="mx-auto text-red-500 mb-4" />
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Unable to Load Analytics</h3>
+        <h3 class="heading-card mb-2">Unable to Load Analytics</h3>
         <p class="text-gray-600 dark:text-gray-400 mb-4">{{ error }}</p>
         <button
           @click="fetchAnalytics"
@@ -42,7 +42,7 @@
     <div v-else-if="!enabled" class="card">
       <div class="card-body text-center py-8">
         <MdiIcon :icon="lockIcon" :size="48" class="mx-auto text-gray-400 mb-4" />
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Pro Feature</h3>
+        <h3 class="heading-card mb-2">Pro Feature</h3>
         <p class="text-gray-600 dark:text-gray-400 mb-4">
           News sentiment correlation analytics is available for Pro users and self-hosters.
         </p>
@@ -54,7 +54,7 @@
       <!-- Insights Section -->
       <div v-if="analytics.insights && analytics.insights.length > 0" class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Key insights</h3>
+          <h3 class="heading-card">Key insights</h3>
           <dl class="mt-3 divide-y divide-gray-200 dark:divide-gray-700">
             <div
               v-for="(insight, index) in analytics.insights"
@@ -73,7 +73,7 @@
         <!-- Sentiment Performance -->
         <div class="card">
           <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Sentiment</h3>
+            <h3 class="heading-card mb-4">Performance by Sentiment</h3>
             <div class="space-y-4">
               <div v-for="(data, sentiment) in analytics.overall_performance.by_sentiment" :key="sentiment" class="border rounded-lg p-4 dark:border-gray-700">
                 <div class="flex items-center justify-between mb-3">
@@ -136,7 +136,7 @@
         <!-- Direction Bias -->
         <div class="card">
           <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Direction Bias</h3>
+            <h3 class="heading-card mb-4">Direction Bias</h3>
             <div class="space-y-4">
               <div v-for="(data, sentiment) in analytics.direction_bias" :key="sentiment" class="border rounded-lg p-4 dark:border-gray-700">
                 <div class="flex items-center justify-between mb-3">
@@ -180,30 +180,30 @@
       <!-- Top Performers -->
       <div v-if="analytics.top_performers && analytics.top_performers.length > 0" class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Top Performing Combinations</h3>
+          <h3 class="heading-card mb-4">Top Performing Combinations</h3>
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead>
                 <tr>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th class="px-4 py-3 text-left table-th">
                     Symbol
                   </th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th class="px-4 py-3 text-left table-th">
                     Sentiment
                   </th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th class="px-4 py-3 text-left table-th">
                     Side
                   </th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th class="px-4 py-3 text-left table-th">
                     Trades
                   </th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th class="px-4 py-3 text-left table-th">
                     Win Rate
                   </th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th class="px-4 py-3 text-left table-th">
                     Total P&L
                   </th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th class="px-4 py-3 text-left table-th">
                     Avg Return
                   </th>
                 </tr>
@@ -260,7 +260,7 @@
       <!-- Metadata -->
       <div v-if="analytics.metadata" class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Analysis Summary</h3>
+          <h3 class="heading-card mb-4">Analysis Summary</h3>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <div class="text-gray-500 dark:text-gray-400">Trades Analyzed</div>
@@ -287,7 +287,7 @@
     <div v-else class="card">
       <div class="card-body text-center py-8">
         <MdiIcon :icon="chartIcon" :size="48" class="mx-auto text-gray-400 mb-4" />
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">No Data Available</h3>
+        <h3 class="heading-card mb-2">No Data Available</h3>
         <p class="text-gray-600 dark:text-gray-400">
           No completed trades with news data found. Trade some stocks with news to see analytics.
         </p>
@@ -295,8 +295,8 @@
     </div>
 
     <!-- Performer Details Modal -->
-    <div v-if="selectedPerformer" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click="closePerformerDetails">
-      <div class="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto" @click.stop>
+    <div v-if="selectedPerformer" class="modal-overlay flex items-center justify-center" @click="closePerformerDetails">
+      <div class="modal-panel max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto" @click.stop>
         <div class="p-6">
           <!-- Modal Header -->
           <div class="flex items-center justify-between mb-6">
@@ -340,7 +340,7 @@
 
           <!-- Loading/Error States -->
           <div v-if="performerDetailsLoading" class="flex justify-center py-8">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            <div class="spinner spinner-md"></div>
           </div>
 
           <div v-else-if="performerDetailsError" class="text-center py-8">
@@ -380,7 +380,7 @@
                     <div
                       v-for="(headline, index) in trade.news_headlines"
                       :key="index"
-                      class="text-sm text-gray-600 dark:text-gray-400 p-2 bg-gray-50 dark:bg-gray-700 rounded border-l-2 border-blue-400"
+                      class="text-sm text-gray-600 dark:text-gray-400 p-2 bg-gray-50 dark:bg-gray-700 rounded border-l-2 border-primary-400"
                     >
                       {{ headline }}
                     </div>

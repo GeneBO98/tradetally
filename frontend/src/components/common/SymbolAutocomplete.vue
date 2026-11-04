@@ -20,7 +20,7 @@
         v-if="isLoading"
         class="absolute right-3 top-1/2 -translate-y-1/2"
       >
-        <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+        <div class="spinner spinner-xs"></div>
       </div>
     </div>
 
@@ -34,7 +34,7 @@
     >
       <ul
         v-if="showDropdown"
-        class="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-auto"
+        class="dropdown-menu absolute z-50 mt-1 w-full border border-gray-200 dark:border-gray-700 max-h-60 overflow-auto"
         role="listbox"
       >
         <li

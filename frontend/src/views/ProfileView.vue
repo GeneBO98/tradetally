@@ -36,7 +36,7 @@
             <!-- Profile Picture -->
             <div v-if="activeTab === 'profile'" class="card">
                 <div class="card-body">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    <h3 class="heading-card mb-2">
                         Profile Picture
                     </h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
@@ -353,7 +353,7 @@
             <!-- Passkeys -->
             <div v-if="activeTab === 'security'" class="card">
                 <div class="card-body">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">
+                    <h3 class="heading-card mb-6">
                         Passkeys
                     </h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
@@ -362,7 +362,7 @@
 
                     <!-- Loading -->
                     <div v-if="passkeysLoading && passkeys.length === 0" class="flex justify-center py-4">
-                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                        <div class="spinner spinner-md"></div>
                     </div>
 
                     <!-- Passkey list -->
@@ -425,7 +425,7 @@
                     <!-- Loading State -->
                     <div v-if="subscriptionLoading" class="text-center py-8">
                         <div
-                            class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                            class="spinner spinner-md inline-block"
                         ></div>
                         <p class="mt-4 text-gray-600 dark:text-gray-400">
                             Loading subscription details...
@@ -521,30 +521,30 @@
                             v-if="
                                 subscription.trial && subscription.trial.active
                             "
-                            class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4"
+                            class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4"
                         >
                             <div class="flex items-center justify-between">
                                 <div>
                                     <h4
-                                        class="text-sm font-medium text-blue-900 dark:text-blue-100"
+                                        class="text-sm font-medium text-primary-900 dark:text-primary-100"
                                     >
                                         Pro Trial Active
                                     </h4>
                                     <p
-                                        class="text-sm text-blue-700 dark:text-blue-300 mt-1"
+                                        class="text-sm text-primary-700 dark:text-primary-300 mt-1"
                                     >
                                         {{ subscription.trial.days_remaining }}
                                         days remaining in your free trial
                                     </p>
                                 </div>
                                 <span
-                                    class="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100"
+                                    class="px-3 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-800 dark:text-primary-100"
                                 >
                                     TRIAL
                                 </span>
                             </div>
                             <div
-                                class="mt-3 text-xs text-blue-600 dark:text-blue-400"
+                                class="mt-3 text-xs text-primary-600 dark:text-primary-400"
                             >
                                 Trial expires:
                                 {{ formatDate(subscription.trial.expires_at) }}
@@ -646,7 +646,7 @@
                                         </h4>
                                         <span
                                             v-if="!apiKey.isActive"
-                                            class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                                            class="badge bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
                                         >
                                             Inactive
                                         </span>
@@ -656,7 +656,7 @@
                                                 new Date(apiKey.expiresAt) <
                                                     new Date()
                                             "
-                                            class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+                                            class="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
                                         >
                                             Expired
                                         </span>
@@ -1134,10 +1134,10 @@
         <!-- 2FA Setup Modal -->
         <div
             v-if="show2FASetup"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800"
+                class="modal-panel top-20 mx-auto p-5 w-full max-w-md"
             >
                 <div class="mt-3">
                     <h3
@@ -1198,7 +1198,7 @@
                                 type="text"
                                 maxlength="6"
                                 placeholder="000000"
-                                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white text-center text-lg tracking-widest"
+                                class="input text-center text-lg tracking-widest"
                             />
                         </div>
 
@@ -1236,7 +1236,7 @@
                             <button
                                 type="button"
                                 @click="cancel2FASetup"
-                                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+                                class="btn-secondary"
                             >
                                 Cancel
                             </button>
@@ -1245,7 +1245,7 @@
                                 :disabled="
                                     twoFactorLoading || !verificationCode
                                 "
-                                class="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span v-if="twoFactorLoading">Enabling...</span>
                                 <span v-else>Enable 2FA</span>
@@ -1259,10 +1259,10 @@
         <!-- Disable 2FA Modal -->
         <div
             v-if="showDisable2FAModal"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800"
+                class="modal-panel top-20 mx-auto p-5 w-full max-w-md"
             >
                 <div class="mt-3">
                     <h3
@@ -1345,7 +1345,7 @@
                             <button
                                 type="button"
                                 @click="cancelDisable2FA"
-                                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+                                class="btn-secondary"
                             >
                                 Cancel
                             </button>
@@ -1372,10 +1372,10 @@
         <!-- Create API Key Modal -->
         <div
             v-if="showCreateApiKeyModal"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800"
+                class="modal-panel top-20 mx-auto p-5 w-96"
             >
                 <div class="mt-3">
                     <h3
@@ -1500,10 +1500,10 @@
         <!-- API Key Created Modal -->
         <div
             v-if="showApiKeyCreatedModal"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800"
+                class="modal-panel top-20 mx-auto p-5 w-96"
             >
                 <div class="mt-3">
                     <h3
@@ -1572,10 +1572,10 @@
         <!-- Delete Account Modal -->
         <div
             v-if="showDeleteAccountModal"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800"
+                class="modal-panel top-20 mx-auto p-5 w-full max-w-md"
             >
                 <div class="mt-3">
                     <div
@@ -1647,7 +1647,7 @@
                             <button
                                 type="button"
                                 @click="cancelDeleteAccount"
-                                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+                                class="btn-secondary"
                             >
                                 Cancel
                             </button>
@@ -2441,7 +2441,7 @@ function getSubscriptionStatusClass(status) {
     const classes = {
         active: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
         trialing:
-            "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+            "bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200",
         past_due:
             "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
         canceled: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",

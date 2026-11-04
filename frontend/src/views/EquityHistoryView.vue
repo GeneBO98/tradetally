@@ -17,7 +17,7 @@
 
         <div v-if="loading" class="flex justify-center py-12">
             <div
-                class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"
+                class="spinner spinner-lg"
             ></div>
         </div>
 
@@ -113,7 +113,7 @@
                             <!-- Today Indicator -->
                             <div
                                 v-if="day.isToday"
-                                class="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full"
+                                class="absolute top-1 right-1 w-2 h-2 bg-primary-500 rounded-full"
                             ></div>
 
                             <!-- Has Equity Indicator -->
@@ -187,10 +187,10 @@
         <!-- Equity Edit Modal -->
         <div
             v-if="showEquityModal"
-            class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+            class="modal-overlay flex items-center justify-center p-4"
         >
             <div
-                class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full"
+                class="modal-panel max-w-md w-full"
             >
                 <div class="p-6">
                     <h3
@@ -221,7 +221,7 @@
                                     step="0.01"
                                     min="0"
                                     placeholder="Enter equity amount"
-                                    class="block w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                                    class="input pl-8 block"
                                     required
                                 />
                             </div>
@@ -237,7 +237,7 @@
                                 v-model="equityForm.notes"
                                 rows="3"
                                 placeholder="Add any notes about this equity entry"
-                                class="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                                class="input block"
                             ></textarea>
                         </div>
 
@@ -328,7 +328,7 @@ function getDayClasses(day) {
     }
 
     if (day.isToday) {
-        classes.push("ring-2 ring-blue-500");
+        classes.push("ring-2 ring-primary-500");
     }
 
     if (day.equity) {
@@ -443,7 +443,7 @@ function updateMonthlyStats() {
         const percentage = ((change / monthStartEquity.value) * 100).toFixed(2);
         monthlyChange.value = `${formatCurrency(change)} (${percentage}%)`;
         monthlyChangeClass.value =
-            change >= 0 ? "text-green-600" : "text-red-600";
+            change >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400";
     } else {
         monthlyChange.value = "N/A";
         monthlyChangeClass.value = "text-gray-900 dark:text-white";

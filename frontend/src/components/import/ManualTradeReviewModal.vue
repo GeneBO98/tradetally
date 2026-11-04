@@ -1,14 +1,14 @@
 <template>
   <div v-if="isOpen" class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="manual-review-title">
     <div class="flex min-h-screen items-end justify-center px-4 pb-20 pt-4 text-center sm:block sm:p-0">
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity dark:bg-gray-900 dark:bg-opacity-75" aria-hidden="true" @click="$emit('close')"></div>
+      <div class="modal-backdrop" aria-hidden="true" @click="$emit('close')"></div>
 
       <span class="hidden sm:inline-block sm:h-screen sm:align-middle" aria-hidden="true">&#8203;</span>
 
-      <div class="inline-block w-full max-w-4xl transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left align-bottom shadow-xl transition-all dark:bg-gray-800 sm:my-8 sm:p-6 sm:align-middle">
+      <div class="modal-panel inline-block w-full max-w-4xl transform overflow-hidden px-4 pb-4 pt-5 text-left align-bottom transition-all sm:my-8 sm:p-6 sm:align-middle">
         <div class="flex items-start justify-between gap-4">
           <div>
-            <h3 id="manual-review-title" class="text-lg font-semibold text-gray-900 dark:text-white">
+            <h3 id="manual-review-title" class="heading-card">
               Review sell-only executions
             </h3>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -41,7 +41,7 @@
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                   <p class="text-base font-semibold text-gray-900 dark:text-white">{{ item.symbol }}</p>
-                  <span class="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-800">
+                  <span class="badge bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-800">
                     Needs review
                   </span>
                 </div>
@@ -140,7 +140,7 @@
           </button>
           <button
             type="button"
-            class="inline-flex w-full justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            class="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             :disabled="loading || items.length === 0"
             @click="submit"
           >

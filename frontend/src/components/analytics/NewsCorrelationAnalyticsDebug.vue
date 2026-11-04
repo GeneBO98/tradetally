@@ -41,13 +41,13 @@
 
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Error State -->
     <div v-else-if="error" class="card">
       <div class="card-body text-center py-8">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Error</h3>
+        <h3 class="heading-card mb-2">Error</h3>
         <p class="text-red-600 dark:text-red-400">{{ error }}</p>
       </div>
     </div>
@@ -55,7 +55,7 @@
     <!-- Not Enabled State -->
     <div v-else-if="!enabled" class="card">
       <div class="card-body text-center py-8">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Not Enabled</h3>
+        <h3 class="heading-card mb-2">Not Enabled</h3>
         <p class="text-gray-600 dark:text-gray-400">
           Feature is not enabled for this user.
         </p>
@@ -65,7 +65,7 @@
     <!-- Analytics Summary -->
     <div v-else-if="analytics" class="card">
       <div class="card-body">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Analytics Summary</h3>
+        <h3 class="heading-card mb-4">Analytics Summary</h3>
         <div class="space-y-2">
           <div>Total Trades: {{ analytics.metadata?.total_trades_analyzed || 0 }}</div>
           <div>Insights: {{ analytics.insights?.length || 0 }}</div>
@@ -79,7 +79,7 @@
     <!-- No Data State -->
     <div v-else class="card">
       <div class="card-body text-center py-8">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">No Data</h3>
+        <h3 class="heading-card mb-2">No Data</h3>
         <p class="text-gray-600 dark:text-gray-400">
           No analytics data available.
         </p>

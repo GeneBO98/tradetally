@@ -35,7 +35,7 @@
             <!-- File Upload Drop Zone -->
             <div>
               <div
-                class="flex justify-center px-6 pt-8 pb-8 border-2 border-dashed rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                class="flex justify-center px-6 pt-8 pb-8 border-2 border-dashed rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
                 :class="[
                   isAnalyzingFile ? 'border-primary-400 bg-primary-50/50 dark:bg-primary-900/10 cursor-wait' :
                   dragOver ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 cursor-pointer' : 'border-gray-300 dark:border-gray-600 hover:border-primary-400 dark:hover:border-primary-500 cursor-pointer'
@@ -136,7 +136,7 @@
             </div>
 
             <!-- Contextual broker export guide: only appears once a broker is chosen -->
-            <div v-if="showBrokerGuide" class="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+            <div v-if="showBrokerGuide" class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-900/40">
               <div class="flex items-start gap-3">
                 <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-primary-50 ring-1 ring-primary-100 dark:bg-primary-900/30 dark:ring-primary-800/60">
                   <DocumentTextIcon class="h-4 w-4 text-primary-600 dark:text-primary-400" />
@@ -193,7 +193,7 @@
               </p>
             </div>
 
-            <label class="flex items-start gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
+            <label class="card flex items-start gap-3 px-4 py-3">
               <input
                 v-model="includeImportedNotes"
                 type="checkbox"
@@ -215,18 +215,18 @@
                 </p>
               </div>
 
-              <div v-if="isAnalyzingFile" class="mt-4 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-300">
+              <div v-if="isAnalyzingFile" class="mt-4 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-300">
                 Analyzing headers and estimating trade count...
               </div>
 
               <div v-else class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div class="rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700">
+                <div class="card p-3 ring-1 ring-gray-200 dark:ring-gray-700">
                   <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Estimated rows</p>
                   <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
                     {{ fileAnalysis.rowCount !== null ? fileAnalysis.rowCount.toLocaleString() : 'Unknown' }}
                   </p>
                 </div>
-                <div class="rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700">
+                <div class="card p-3 ring-1 ring-gray-200 dark:ring-gray-700">
                   <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Format check</p>
                   <p class="mt-1 text-sm font-semibold" :class="fileAnalysis.formatDetected ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'">
                     {{ fileAnalysis.formatDetected ? 'Recognized' : 'Needs review' }}
@@ -235,12 +235,12 @@
                     {{ fileAnalysis.detectedBroker ? formatBrokerName(fileAnalysis.detectedBroker) : 'We may need column mapping.' }}
                   </p>
                 </div>
-                <div class="rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700">
+                <div class="card p-3 ring-1 ring-gray-200 dark:ring-gray-700">
                   <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Import mode</p>
                   <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ selectedBrokerLabel }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ brokerRecommendation }}</p>
                 </div>
-                <div class="rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700">
+                <div class="card p-3 ring-1 ring-gray-200 dark:ring-gray-700">
                   <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Account</p>
                   <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ accountReadinessLabel }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ accountReadinessMessage }}</p>
@@ -275,7 +275,7 @@
             <!-- Import progress indicator -->
             <div v-if="loading && importStage" class="rounded-md bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 p-4">
               <div class="flex items-center space-x-3">
-                <div class="animate-spin rounded-full h-5 w-5 border-2 border-primary-600 border-t-transparent flex-shrink-0"></div>
+                <div class="spinner spinner-sm flex-shrink-0"></div>
                 <span class="text-sm font-medium text-primary-700 dark:text-primary-300">{{ importStage }}</span>
               </div>
             </div>
@@ -380,7 +380,7 @@
                 </div>
                 <button
                   @click="deleteImport(importLog.id)"
-                  class="flex-shrink-0 text-red-600 hover:text-red-500 text-sm"
+                  class="flex-shrink-0 text-red-600 dark:text-red-400 hover:text-red-500 text-sm"
                   :disabled="deleting"
                 >
                   Delete
@@ -881,8 +881,8 @@
 
 
       <!-- Logs Modal -->
-      <div v-if="showLogs" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-11/12 max-w-4xl h-3/4 flex flex-col">
+      <div v-if="showLogs" class="modal-overlay flex items-center justify-center">
+        <div class="modal-panel w-11/12 max-w-4xl h-3/4 flex flex-col">
           <!-- Header -->
           <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
             <h3 class="heading-card">Import Logs</h3>
@@ -1152,7 +1152,7 @@
         class="btn w-full justify-center bg-green-600 text-white hover:bg-green-700 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
         @click="startTrial"
       >
-        <span v-if="startingTrial" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
+        <span v-if="startingTrial" class="spinner spinner-xs spinner-current inline-block mr-2"></span>
         Start 14-Day Free Trial
       </button>
 

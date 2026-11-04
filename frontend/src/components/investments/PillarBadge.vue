@@ -11,7 +11,7 @@
     <div class="flex justify-center mb-2">
       <svg
         v-if="passed"
-        class="w-6 h-6 text-green-600"
+        class="w-6 h-6 text-green-600 dark:text-green-400"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -20,7 +20,7 @@
       </svg>
       <svg
         v-else
-        class="w-6 h-6 text-red-600"
+        class="w-6 h-6 text-red-600 dark:text-red-400"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"

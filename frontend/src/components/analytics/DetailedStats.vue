@@ -5,7 +5,7 @@
     <div class="card xl:col-span-2">
       <div class="card-body">
         <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Stats</h3>
+          <h3 class="heading-card">Stats</h3>
           <span
             v-if="overview.position_grouping"
             class="text-xs font-normal text-primary-600 dark:text-primary-400"
@@ -33,7 +33,7 @@
 
           <!-- Pro Tier Overlay for Free Users -->
           <div v-if="isLocked && showProLock" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-lg">
-            <div class="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md">
+            <div class="modal-panel text-center p-8 max-w-md">
               <svg class="mx-auto h-12 w-12 text-primary-600 dark:text-primary-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
@@ -43,7 +43,7 @@
               </p>
               <router-link
                 to="/pricing"
-                class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                class="btn-primary py-3"
               >
                 Upgrade to Pro - {{ monthlyPricePerMonthLabel }}
               </router-link>
@@ -75,7 +75,7 @@
     <!-- Top Symbols -->
     <div class="card xl:col-span-1">
       <div class="card-body">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Top Performing Symbols</h3>
+        <h3 class="heading-card mb-4">Top Performing Symbols</h3>
         <ProUpgradePrompt
           v-if="isLocked && showProLock"
           variant="compact"
@@ -90,10 +90,10 @@
                instead of spilling into the trades column. -->
           <div class="grid grid-cols-[2rem_minmax(0,1fr)_3.5rem_7rem_3rem] items-center gap-x-2 pb-2 mb-2 border-b border-gray-200 dark:border-gray-700">
             <span aria-hidden="true"></span>
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Symbol</span>
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Trades</span>
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">P&L</span>
-            <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Win %</span>
+            <span class="table-th">Symbol</span>
+            <span class="table-th text-right">Trades</span>
+            <span class="table-th text-right">P&L</span>
+            <span class="table-th text-right">Win %</span>
           </div>
 
           <!-- Data Rows -->
@@ -116,7 +116,7 @@
                   {{ symbol.total_trades }}
                 </span>
                 <div class="text-sm font-medium text-right whitespace-nowrap tabular-nums" :class="[
-                  symbol.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                  symbol.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                 ]">
                   {{ formatCurrency(symbol.total_pnl) }}
                 </div>
@@ -167,8 +167,8 @@ const { isProUser, showProLock } = useProAccess()
 const isLocked = computed(() => props.isFreeTier || !isProUser.value)
 const LOCKED_PLACEHOLDER = '--'
 
-const POSITIVE_CLASS = 'text-green-600'
-const NEGATIVE_CLASS = 'text-red-600'
+const POSITIVE_CLASS = 'text-green-600 dark:text-green-400'
+const NEGATIVE_CLASS = 'text-red-600 dark:text-red-400'
 const NEUTRAL_CLASS = 'text-gray-900 dark:text-white'
 
 function signClass(value) {

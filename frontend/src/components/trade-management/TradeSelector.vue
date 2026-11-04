@@ -1,14 +1,14 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg">
+  <div class="card">
     <!-- Header -->
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-      <h2 class="text-lg font-medium text-gray-900 dark:text-white">Select a Trade to Analyze</h2>
+      <h2 class="heading-card">Select a Trade to Analyze</h2>
       <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Use the Filters panel above to narrow this list.</p>
     </div>
 
     <!-- Loading State -->
     <div v-if="loading && trades.length === 0" class="p-8 text-center">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
+      <div class="spinner spinner-md mx-auto mb-4"></div>
       <p class="text-gray-600 dark:text-gray-400">Loading trades...</p>
     </div>
 
@@ -120,21 +120,21 @@
           <div class="flex items-center space-x-2">
             <span
               v-if="!trade.can_analyze"
-              class="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 rounded"
+              class="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
               title="Stop loss required for analysis"
             >
               Needs SL
             </span>
             <span
               v-else-if="trade.needs_take_profit"
-              class="text-xs px-2 py-1 bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 rounded"
+              class="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
               title="Take profit not set"
             >
               No TP
             </span>
             <span
               v-else
-              class="text-xs px-2 py-1 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 rounded"
+              class="badge bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
             >
               Ready
             </span>

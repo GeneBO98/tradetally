@@ -55,19 +55,19 @@
         <!-- Loading State (initial load only) -->
         <div v-if="initialLoading" class="flex justify-center items-center py-12">
             <div
-                class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                class="spinner spinner-md"
             ></div>
         </div>
 
         <!-- Watchlist Items -->
         <div
             v-else-if="watchlist?.items?.length > 0"
-            class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+            class="card overflow-hidden"
         >
             <div
                 class="px-6 py-4 border-b border-gray-200 dark:border-gray-700"
             >
-                <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+                <h2 class="heading-card">
                     Symbols ({{ watchlist.items.length }})
                 </h2>
             </div>
@@ -75,10 +75,10 @@
                 <table
                     class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
                 >
-                    <thead class="bg-gray-50 dark:bg-gray-700">
+                    <thead class="table-head">
                         <tr>
                             <th
-                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                                class="px-6 py-3 text-left table-th"
                             >
                                 Symbol
                             </th>
@@ -193,7 +193,7 @@
                                 </button>
                                 <button
                                     @click="removeSymbol(item)"
-                                    class="text-red-600 hover:text-red-900"
+                                    class="text-red-600 dark:text-red-400 hover:text-red-900"
                                 >
                                     Remove
                                 </button>
@@ -236,7 +236,7 @@
         <div v-if="watchlist?.items?.length > 0" class="mt-8 space-y-8">
             <!-- Watchlist News Section -->
             <div
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                class="card overflow-hidden"
             >
                 <div
                     class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
@@ -285,7 +285,7 @@
                     class="flex justify-center items-center py-8"
                 >
                     <div
-                        class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"
+                        class="spinner spinner-sm"
                     ></div>
                 </div>
 
@@ -309,7 +309,7 @@
                                     rounded-class="rounded-full"
                                 />
                                 <span
-                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200"
+                                    class="badge bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200"
                                 >
                                     {{ article.symbol }}
                                 </span>
@@ -373,7 +373,7 @@
 
             <!-- Upcoming Earnings Section -->
             <div
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                class="card overflow-hidden"
             >
                 <div
                     class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
@@ -382,7 +382,7 @@
                         class="text-lg font-medium text-gray-900 dark:text-white flex items-center"
                     >
                         <svg
-                            class="w-5 h-5 mr-2 text-green-600"
+                            class="w-5 h-5 mr-2 text-green-600 dark:text-green-400"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -421,7 +421,7 @@
                     class="flex justify-center items-center py-8"
                 >
                     <div
-                        class="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"
+                        class="spinner spinner-sm"
                     ></div>
                 </div>
 
@@ -442,7 +442,7 @@
                                     rounded-class="rounded-full"
                                 />
                                 <span
-                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
+                                    class="badge bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
                                 >
                                     {{ earnings.symbol }}
                                 </span>
@@ -508,7 +508,7 @@
 
             <!-- 8 Pillars Analysis Section -->
             <div
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                class="card overflow-hidden"
             >
                 <div
                     class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
@@ -531,7 +531,7 @@
                         </svg>
                         8 Pillars Analysis
                         <span
-                            class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
+                            class="ml-2 badge bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
                         >
                             Pro
                         </span>
@@ -553,7 +553,7 @@
                     class="flex justify-center items-center py-8"
                 >
                     <div
-                        class="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600"
+                        class="spinner spinner-sm"
                     ></div>
                     <span class="ml-3 text-sm text-gray-500 dark:text-gray-400"
                         >Analyzing {{ pillarsLoadingSymbol }}...</span
@@ -641,8 +641,8 @@
                                             :class="[
                                                 'w-4 h-4 rounded-full flex items-center justify-center text-xs',
                                                 getPillarPassed(analysis, n)
-                                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-600'
-                                                    : 'bg-red-100 dark:bg-red-900/30 text-red-600',
+                                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                                                    : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
                                             ]"
                                             :title="getPillarName(analysis, n)"
                                         >
@@ -686,10 +686,10 @@
                                         :class="[
                                             'text-lg font-bold',
                                             analysis.pillarsPassed >= 6
-                                                ? 'text-green-600'
+                                                ? 'text-green-600 dark:text-green-400'
                                                 : analysis.pillarsPassed >= 4
                                                   ? 'text-yellow-600'
-                                                  : 'text-red-600',
+                                                  : 'text-red-600 dark:text-red-400',
                                         ]"
                                     >
                                         {{ analysis.pillarsPassed }}/8
@@ -723,10 +723,10 @@
         <!-- Add Symbol Modal -->
         <div
             v-if="showAddSymbolModal"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                class="modal-panel top-20 mx-auto p-5 w-96"
             >
                 <div class="mt-3">
                     <h3
@@ -773,7 +773,7 @@
                             <button
                                 type="submit"
                                 :disabled="adding"
-                                class="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 disabled:opacity-50"
+                                class="btn-primary disabled:opacity-50"
                             >
                                 {{ adding ? "Adding..." : "Add Symbol" }}
                             </button>
@@ -786,10 +786,10 @@
         <!-- Edit Notes Modal -->
         <div
             v-if="editingItem"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                class="modal-panel top-20 mx-auto p-5 w-96"
             >
                 <div class="mt-3">
                     <h3
@@ -823,7 +823,7 @@
                             <button
                                 type="submit"
                                 :disabled="updating"
-                                class="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 disabled:opacity-50"
+                                class="btn-primary disabled:opacity-50"
                             >
                                 {{ updating ? "Updating..." : "Update Notes" }}
                             </button>
@@ -1144,8 +1144,8 @@ const initialLoading = ref(true);
         };
 
         const priceChangeClass = (change) => {
-            if (change > 0) return "text-green-600";
-            if (change < 0) return "text-red-600";
+            if (change > 0) return "text-green-600 dark:text-green-400";
+            if (change < 0) return "text-red-600 dark:text-red-400";
             return "text-gray-600";
         };
 

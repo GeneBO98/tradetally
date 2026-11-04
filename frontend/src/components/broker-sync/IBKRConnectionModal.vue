@@ -2,13 +2,13 @@
   <div class="fixed inset-0 z-50 overflow-y-auto">
     <div class="flex min-h-full items-center justify-center p-4">
       <!-- Backdrop -->
-      <div class="fixed inset-0 bg-black/50 transition-opacity" @click="emit('close')"></div>
+      <div class="modal-backdrop" @click="emit('close')"></div>
 
       <!-- Modal -->
-      <div class="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg">
+      <div class="modal-panel w-full max-w-lg">
         <!-- Header -->
         <div class="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+          <h3 class="heading-card">
             {{ props.reconnecting ? 'Reconnect Interactive Brokers' : 'Connect Interactive Brokers' }}
           </h3>
           <button
@@ -187,7 +187,7 @@
             class="btn-primary"
           >
             <span v-if="loading" class="flex items-center">
-              <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              <div class="spinner spinner-xs spinner-light mr-2"></div>
               Connecting...
             </span>
             <span v-else>Connect</span>

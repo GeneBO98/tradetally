@@ -1,27 +1,27 @@
 <template>
   <div v-if="stats.length > 0" class="card">
     <div class="card-body">
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Hour of Day Performance</h3>
+      <h3 class="heading-card mb-4">Hour of Day Performance</h3>
       <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead>
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <th class="px-6 py-3 text-left table-th">
                 Hour
               </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <th class="px-6 py-3 text-left table-th">
                 Trades
               </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <th class="px-6 py-3 text-left table-th">
                 Breakeven
               </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <th class="px-6 py-3 text-left table-th">
                 Win Rate
               </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <th class="px-6 py-3 text-left table-th">
                 {{ rValueMode ? 'Total R' : 'Total P&L' }}
               </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <th class="px-6 py-3 text-left table-th">
                 {{ calculationMethod }} {{ rValueMode ? 'R' : 'P&L' }}
               </th>
             </tr>
@@ -29,7 +29,7 @@
           <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
             <tr v-for="hour in stats" :key="hour.hour">
               <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 py-1 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-xs rounded-full">
+                <span class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400">
                   {{ formatHour(hour.hour) }}
                 </span>
               </td>
@@ -51,13 +51,13 @@
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
-                (rValueMode ? hour.total_r_value : hour.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
+                (rValueMode ? hour.total_r_value : hour.total_pnl) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]">
                 <span v-if="rValueMode">{{ formatNumber(hour.total_r_value) }}R</span>
                 <span v-else>{{ formatCurrency(hour.total_pnl) }}</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
-                (rValueMode ? hour.avg_r_value : hour.avg_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
+                (rValueMode ? hour.avg_r_value : hour.avg_pnl) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]">
                 <span v-if="rValueMode">{{ formatNumber(hour.avg_r_value) }}R</span>
                 <span v-else>{{ formatCurrency(hour.avg_pnl) }}</span>

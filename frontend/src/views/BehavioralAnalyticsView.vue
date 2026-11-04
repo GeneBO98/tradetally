@@ -54,7 +54,7 @@
         <!-- Initial Loading State - only shows on first load -->
         <div v-else-if="initialLoading" class="flex justify-center py-12">
             <div
-                class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"
+                class="spinner spinner-lg"
             ></div>
         </div>
 
@@ -66,7 +66,7 @@
                     class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700"
                 >
                     <div
-                        class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"
+                        class="spinner spinner-xs"
                     ></div>
                     <span class="text-xs text-gray-600 dark:text-gray-400"
                         >Updating...</span
@@ -85,7 +85,7 @@
                         <button
                             @click="analyzeHistoricalTrades"
                             :disabled="loadingHistorical"
-                            class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                            class="btn-primary w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed flex"
                         >
                             <svg
                                 class="w-4 h-4 mr-2 flex-shrink-0"
@@ -105,7 +105,7 @@
                                 class="flex items-center"
                             >
                                 <div
-                                    class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"
+                                    class="spinner spinner-xs spinner-current mr-2"
                                 ></div>
                                 Analyzing Historical Trades...
                             </span>
@@ -123,10 +123,10 @@
                         :key="tab.id"
                         @click="activeBehavioralTab = tab.id"
                         :class="[
-                            'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors',
+                            'tab',
                             activeBehavioralTab === tab.id
-                                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                                ? 'tab-active'
+                                : 'tab-inactive'
                         ]"
                     >
                         {{ tab.label }}
@@ -276,10 +276,10 @@
                         <div class="flex items-center">
                             <div class="flex-shrink-0">
                                 <div
-                                    class="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center"
+                                    class="h-8 w-8 rounded-full bg-primary-100 dark:bg-primary-900/20 flex items-center justify-center"
                                 >
                                     <svg
-                                        class="h-5 w-5 text-blue-600 dark:text-blue-400"
+                                        class="h-5 w-5 text-primary-600 dark:text-primary-400"
                                         fill="none"
                                         viewBox="0 0 24 24"
                                         stroke="currentColor"
@@ -567,7 +567,7 @@
                                     insight.severity === 'high',
                                 'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/10':
                                     insight.severity === 'medium',
-                                'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/10':
+                                'border-primary-200 bg-primary-50 dark:border-primary-800 dark:bg-primary-900/10':
                                     insight.severity === 'low',
                             }"
                         >
@@ -614,7 +614,7 @@
                                             rec.priority === 'high',
                                         'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400':
                                             rec.priority === 'medium',
-                                        'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400':
+                                        'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300':
                                             rec.priority === 'low',
                                     }"
                                 >
@@ -658,7 +658,7 @@
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div class="flex items-center space-x-3">
                             <span
-                                class="px-2 py-1 text-xs font-semibold rounded bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400"
+                                class="badge bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400"
                             >
                                 HIGH RISK
                             </span>
@@ -671,7 +671,7 @@
                         </div>
                         <div class="flex items-center space-x-3">
                             <span
-                                class="px-2 py-1 text-xs font-semibold rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
+                                class="badge bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
                             >
                                 MEDIUM RISK
                             </span>
@@ -684,7 +684,7 @@
                         </div>
                         <div class="flex items-center space-x-3">
                             <span
-                                class="px-2 py-1 text-xs font-semibold rounded bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
+                                class="badge bg-primary-100 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400"
                             >
                                 LOW RISK
                             </span>
@@ -700,11 +700,11 @@
             </div>
 
             <!-- Info Banner Explaining the Difference -->
-            <div v-if="activeBehavioralTab === 'settings'" class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-6">
+            <div v-if="activeBehavioralTab === 'settings'" class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4 mb-6">
                 <div class="flex">
                     <div class="flex-shrink-0">
                         <svg
-                            class="h-5 w-5 text-blue-400"
+                            class="h-5 w-5 text-primary-400"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -719,12 +719,12 @@
                     </div>
                     <div class="ml-3">
                         <h3
-                            class="text-sm font-medium text-blue-800 dark:text-blue-300"
+                            class="text-sm font-medium text-primary-800 dark:text-primary-300"
                         >
                             Understanding the Analytics
                         </h3>
                         <div
-                            class="mt-2 text-sm text-blue-700 dark:text-blue-200"
+                            class="mt-2 text-sm text-primary-700 dark:text-primary-200"
                         >
                             <p class="mb-2">
                                 • <strong>Loss Aversion Analysis</strong>:
@@ -843,31 +843,31 @@
 
                         <!-- Summary Stats -->
                         <div
-                            class="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-lg p-4 mb-6"
+                            class="rounded-lg border border-gray-200 bg-gray-50 p-4 mb-6 dark:border-gray-700 dark:bg-gray-900/40"
                         >
                             <div
                                 class="grid grid-cols-1 md:grid-cols-4 gap-4 text-center"
                             >
                                 <div>
                                     <p
-                                        class="text-sm text-orange-700 dark:text-orange-300"
+                                        class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
                                     >
                                         Trades Analyzed
                                     </p>
                                     <p
-                                        class="text-xl font-bold text-orange-900 dark:text-orange-100"
+                                        class="text-xl font-semibold text-gray-900 dark:text-white text-mono-num"
                                     >
                                         {{ topMissedTrades.totalAnalyzed }}
                                     </p>
                                 </div>
                                 <div>
                                     <p
-                                        class="text-sm text-orange-700 dark:text-orange-300"
+                                        class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
                                     >
                                         Trades Exited Too Early
                                     </p>
                                     <p
-                                        class="text-xl font-bold text-orange-900 dark:text-orange-100"
+                                        class="text-xl font-semibold text-gray-900 dark:text-white text-mono-num"
                                     >
                                         {{
                                             topMissedTrades.totalEligibleTrades
@@ -876,12 +876,12 @@
                                 </div>
                                 <div>
                                     <p
-                                        class="text-sm text-orange-700 dark:text-orange-300"
+                                        class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
                                     >
                                         Total Missed Profit
                                     </p>
                                     <p
-                                        class="text-xl font-bold text-orange-900 dark:text-orange-100"
+                                        class="text-xl font-semibold text-gray-900 dark:text-white text-mono-num"
                                     >
                                         ${{
                                             topMissedTrades.totalMissedProfit.toFixed(
@@ -892,12 +892,12 @@
                                 </div>
                                 <div>
                                     <p
-                                        class="text-sm text-orange-700 dark:text-orange-300"
+                                        class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
                                     >
                                         Avg Missed %
                                     </p>
                                     <p
-                                        class="text-xl font-bold text-orange-900 dark:text-orange-100"
+                                        class="text-xl font-semibold text-gray-900 dark:text-white text-mono-num"
                                     >
                                         {{
                                             topMissedTrades.avgMissedOpportunityPercent.toFixed(
@@ -961,7 +961,7 @@
                                     10,
                                 )"
                                 :key="trade.tradeId"
-                                class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 relative"
+                                class="card p-4 relative"
                                 :class="{
                                     'ring-2 ring-red-200 dark:ring-red-800':
                                         index === 0,
@@ -1219,13 +1219,13 @@
                                         trade.entryAnalysis.improvementPercent >
                                             0
                                     "
-                                    class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mb-4"
+                                    class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-3 mb-4"
                                 >
                                     <div
                                         class="flex items-start space-x-2 mb-2"
                                     >
                                         <svg
-                                            class="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0"
+                                            class="w-5 h-5 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0"
                                             fill="none"
                                             viewBox="0 0 24 24"
                                             stroke="currentColor"
@@ -1239,7 +1239,7 @@
                                         </svg>
                                         <div class="flex-1">
                                             <p
-                                                class="text-sm font-medium text-blue-800 dark:text-blue-300 mb-1"
+                                                class="text-sm font-medium text-primary-800 dark:text-primary-300 mb-1"
                                             >
                                                 Better Entry Opportunity
                                             </p>
@@ -1248,12 +1248,12 @@
                                             >
                                                 <div>
                                                     <p
-                                                        class="text-xs text-blue-700 dark:text-blue-400"
+                                                        class="text-xs text-primary-700 dark:text-primary-400"
                                                     >
                                                         Optimal Entry Price
                                                     </p>
                                                     <p
-                                                        class="font-bold text-blue-900 dark:text-blue-200"
+                                                        class="font-bold text-primary-900 dark:text-primary-200"
                                                     >
                                                         ${{
                                                             trade.entryAnalysis.bestEntryPrice.toFixed(
@@ -1262,7 +1262,7 @@
                                                         }}
                                                     </p>
                                                     <p
-                                                        class="text-xs text-blue-600 dark:text-blue-500"
+                                                        class="text-xs text-primary-600 dark:text-primary-500"
                                                     >
                                                         {{
                                                             trade.entryAnalysis
@@ -1273,12 +1273,12 @@
                                                 </div>
                                                 <div>
                                                     <p
-                                                        class="text-xs text-blue-700 dark:text-blue-400"
+                                                        class="text-xs text-primary-700 dark:text-primary-400"
                                                     >
                                                         Entry Improvement
                                                     </p>
                                                     <p
-                                                        class="font-bold text-blue-900 dark:text-blue-200"
+                                                        class="font-bold text-primary-900 dark:text-primary-200"
                                                     >
                                                         {{
                                                             trade.entryAnalysis.improvementPercent.toFixed(
@@ -1287,7 +1287,7 @@
                                                         }}%
                                                     </p>
                                                     <p
-                                                        class="text-xs text-blue-600 dark:text-blue-500"
+                                                        class="text-xs text-primary-600 dark:text-primary-500"
                                                     >
                                                         ${{
                                                             trade.entryAnalysis.improvementDollar.toFixed(
@@ -1304,12 +1304,12 @@
                                                     "
                                                 >
                                                     <p
-                                                        class="text-xs text-blue-700 dark:text-blue-400"
+                                                        class="text-xs text-primary-700 dark:text-primary-400"
                                                     >
                                                         P&L with Better Entry
                                                     </p>
                                                     <p
-                                                        class="font-bold text-blue-900 dark:text-blue-200"
+                                                        class="font-bold text-primary-900 dark:text-primary-200"
                                                     >
                                                         ${{
                                                             trade.entryAnalysis.improvedPnL.withBetterEntry.toFixed(
@@ -1329,7 +1329,7 @@
                                                 </div>
                                             </div>
                                             <p
-                                                class="text-xs text-blue-700 dark:text-blue-400 mt-2 italic"
+                                                class="text-xs text-primary-700 dark:text-primary-400 mt-2 italic"
                                             >
                                                 {{
                                                     trade.entryAnalysis
@@ -1385,11 +1385,11 @@
 
                                 <!-- Recommendation -->
                                 <div
-                                    class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3"
+                                    class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-3"
                                 >
                                     <div class="flex items-start space-x-2">
                                         <svg
-                                            class="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0"
+                                            class="w-5 h-5 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0"
                                             fill="none"
                                             viewBox="0 0 24 24"
                                             stroke="currentColor"
@@ -1403,12 +1403,12 @@
                                         </svg>
                                         <div>
                                             <p
-                                                class="text-sm font-medium text-blue-800 dark:text-blue-300 mb-1"
+                                                class="text-sm font-medium text-primary-800 dark:text-primary-300 mb-1"
                                             >
                                                 Learning Opportunity
                                             </p>
                                             <p
-                                                class="text-sm text-blue-700 dark:text-blue-400"
+                                                class="text-sm text-primary-700 dark:text-primary-400"
                                             >
                                                 {{ trade.recommendation }}
                                             </p>

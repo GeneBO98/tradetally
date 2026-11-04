@@ -34,13 +34,13 @@
                             >
                             <span
                                 v-if="setting.instrument"
-                                class="px-2 py-0.5 text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200 rounded"
+                                class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
                             >
                                 {{ setting.instrument }}
                             </span>
                             <span
                                 v-else
-                                class="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 rounded"
+                                class="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
                             >
                                 All Instruments
                             </span>
@@ -416,7 +416,7 @@
                                 class="flex items-center"
                             >
                                 <div
-                                    class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
+                                    class="spinner spinner-xs spinner-light mr-2"
                                 ></div>
                                 Saving...
                             </span>

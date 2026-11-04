@@ -25,7 +25,7 @@
 
     <!-- Loading -->
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Error -->
@@ -37,7 +37,7 @@
       <!-- Refresh indicator -->
       <div v-if="loading" class="flex justify-end mb-2">
         <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
-          <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+          <div class="spinner spinner-xs"></div>
           <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
         </div>
       </div>
@@ -66,7 +66,7 @@
                   :class="t.approved
                     ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                     : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'"
-                  class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                  class="badge"
                 >
                   {{ t.approved ? 'Approved' : 'Pending' }}
                 </span>
@@ -113,7 +113,7 @@
               <button
                 @click="remove(t)"
                 :disabled="t._loading"
-                class="text-xs px-3 py-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                class="text-xs px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
               >
                 Delete
               </button>

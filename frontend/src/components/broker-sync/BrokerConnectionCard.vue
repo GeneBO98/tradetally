@@ -48,7 +48,7 @@
 
           <div
             v-if="showMenu"
-            class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-10"
+            class="absolute right-0 mt-2 w-48 dropdown-menu rounded-lg z-10"
           >
             <button
               @click="emit('settings', connection); showMenu = false"
@@ -107,7 +107,7 @@
             class="btn-primary text-sm py-1.5 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span v-if="syncing" class="flex items-center">
-              <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              <div class="spinner spinner-xs spinner-light mr-2"></div>
               Syncing...
             </span>
             <span v-else>{{ connection.connectionStatus === 'expired' ? 'Reconnect' : 'Sync Now' }}</span>
@@ -165,8 +165,8 @@ const brokerStyles = computed(() => {
       return {
         name: 'Charles Schwab',
         abbrev: 'CS',
-        bgClass: 'bg-blue-100 dark:bg-blue-900/30',
-        textClass: 'text-blue-600 dark:text-blue-400'
+        bgClass: 'bg-primary-100 dark:bg-primary-900/30',
+        textClass: 'text-primary-600 dark:text-primary-400'
       }
     case 'tradestation':
       return {

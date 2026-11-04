@@ -85,7 +85,7 @@
               </button>
               <button
                 @click="showLayoutSettings = true"
-                class="px-3 py-2 text-sm font-medium border rounded-md transition-colors bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                class="btn-secondary"
               >
                 <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -96,7 +96,7 @@
               <button
                 v-if="isCustomizing"
                 @click="resetChartLayout"
-                class="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                class="btn-secondary"
               >
                 Reset to Default
               </button>
@@ -152,7 +152,7 @@
 
       <!-- Full page spinner only on initial load -->
       <div v-if="initialLoading" class="flex justify-center py-12">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-lg"></div>
       </div>
 
       <!-- Section Tabs -->
@@ -163,10 +163,10 @@
             :key="tab.id"
             @click="activeAnalyticsTab = tab.id"
             :class="[
-              'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors',
+              'tab',
               activeAnalyticsTab === tab.id
-                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                ? 'tab-active'
+                : 'tab-inactive'
             ]"
           >
             {{ tab.label }}
@@ -179,7 +179,7 @@
         <!-- Subtle refresh indicator -->
         <div v-if="loading && !initialLoading" class="absolute top-0 right-0 z-10">
           <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+            <div class="spinner spinner-xs"></div>
             <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
           </div>
         </div>
@@ -291,10 +291,10 @@
                 :disabled="loadingSectorRefresh"
                 class="px-3 py-1 text-xs bg-primary-100 hover:bg-primary-200 dark:bg-primary-900 dark:hover:bg-primary-800 text-primary-700 dark:text-primary-300 rounded-md transition-colors disabled:opacity-50"
               >
-                <div v-if="loadingSectorRefresh" class="animate-spin rounded-full h-3 w-3 border-b border-current"></div>
+                <div v-if="loadingSectorRefresh" class="spinner h-3 w-3 spinner-current"></div>
                 <span v-else>Refresh</span>
               </button>
-              <div v-if="loadingSectors" class="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+              <div v-if="loadingSectors" class="spinner spinner-sm"></div>
             </div>
           </div>
           
@@ -304,7 +304,7 @@
             <!-- Loading overlay -->
             <div v-if="loadingSectors" class="absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 flex items-center justify-center">
               <div class="text-center">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                <div class="spinner spinner-md mx-auto mb-4"></div>
                 <p class="text-sm text-gray-600 dark:text-gray-400">Fetching industry data...</p>
                 <p class="text-xs text-gray-500 dark:text-gray-500 mt-1">This may take a moment</p>
               </div>
@@ -403,14 +403,14 @@
               <button 
                 v-if="sectorsToShow > 10"
                 @click="collapseSectors"
-                class="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
+                class="btn-secondary btn-sm"
               >
                 Show Less
               </button>
               <button 
                 v-if="hasMoreSectors"
                 @click="loadMoreSectors"
-                class="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+                class="btn-primary btn-sm"
               >
                 Show More
               </button>
@@ -425,7 +425,7 @@
             <template v-else-if="element.id === 'drawdown-chart'">
       <div id="drawdown" class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Drawdown Analysis</h3>
+          <h3 class="heading-card mb-4">Drawdown Analysis</h3>
           <div class="h-80 relative">
             <canvas ref="drawdownChart" class="absolute inset-0 w-full h-full"></canvas>
           </div>
@@ -437,7 +437,7 @@
             <template v-else-if="element.id === 'daily-volume-chart'">
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Daily Volume Traded</h3>
+          <h3 class="heading-card mb-4">Daily Volume Traded</h3>
           <div class="h-80 relative">
             <canvas ref="dailyVolumeChart" class="absolute inset-0 w-full h-full"></canvas>
           </div>
@@ -453,7 +453,7 @@
               >
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Day of Week</h3>
+          <h3 class="heading-card mb-4">Performance by Day of Week</h3>
           <div class="h-80 relative">
             <canvas ref="dayOfWeekChart" class="absolute inset-0 w-full h-full"></canvas>
           </div>
@@ -466,7 +466,7 @@
             <template v-else-if="element.id === 'performance-by-hold-time'">
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Hold Time</h3>
+          <h3 class="heading-card mb-4">Performance by Hold Time</h3>
           <div class="h-80 relative">
             <canvas ref="performanceByHoldTimeChart" class="absolute inset-0 w-full h-full"></canvas>
           </div>
@@ -478,7 +478,7 @@
             <template v-else-if="element.id === 'trade-distribution'">
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Distribution by Price</h3>
+          <h3 class="heading-card mb-4">Trade Distribution by Price</h3>
           <div class="h-80 relative">
             <canvas ref="tradeDistributionChart" class="absolute inset-0 w-full h-full"></canvas>
           </div>
@@ -490,7 +490,7 @@
             <template v-else-if="element.id === 'performance-by-price'">
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Price</h3>
+          <h3 class="heading-card mb-4">Performance by Price</h3>
           <div class="h-80 relative">
             <canvas ref="performanceByPriceChart" class="absolute inset-0 w-full h-full"></canvas>
           </div>
@@ -502,7 +502,7 @@
             <template v-else-if="element.id === 'performance-by-volume'">
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Volume Traded</h3>
+          <h3 class="heading-card mb-4">Performance by Volume Traded</h3>
           <div class="h-80 relative">
             <canvas
               ref="performanceByVolumeChart"
@@ -529,7 +529,7 @@
             <template v-else-if="element.id === 'performance-by-position-size'">
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Position Size ({{ currencySymbol }})</h3>
+          <h3 class="heading-card mb-4">Performance by Position Size ({{ currencySymbol }})</h3>
           <div class="h-80 relative">
             <canvas
               ref="performanceByPositionSizeChart"
@@ -557,7 +557,7 @@
       <div class="relative">
         <!-- Pro Tier Overlay for Free Users -->
         <div v-if="isFreeTier" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-lg">
-          <div class="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md">
+          <div class="modal-panel text-center p-8 max-w-md">
             <svg class="mx-auto h-12 w-12 text-primary-600 dark:text-primary-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
@@ -567,7 +567,7 @@
             </p>
             <router-link
               to="/pricing"
-              class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              class="btn-primary py-3"
             >
               Upgrade to Pro - {{ monthlyPricePerMonthLabel }}
             </router-link>
@@ -636,12 +636,12 @@
     <!-- Chart Layout Settings Modal -->
     <div v-if="showLayoutSettings" class="fixed inset-0 z-50 overflow-y-auto" @click="showLayoutSettings = false">
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+        <div class="modal-backdrop"></div>
 
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
 
         <div
-          class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6"
+          class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6"
           @click.stop
         >
           <div class="flex items-center justify-between mb-6">
@@ -730,13 +730,13 @@
           <div class="mt-6 flex justify-between">
             <button
               @click="resetChartLayout"
-              class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+              class="btn-secondary"
             >
               Reset to Defaults
             </button>
             <button
               @click="showLayoutSettings = false"
-              class="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700"
+              class="btn-primary"
             >
               Done
             </button>

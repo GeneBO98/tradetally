@@ -3,13 +3,13 @@
         <div class="flex min-h-full items-center justify-center p-4">
             <!-- Backdrop -->
             <div
-                class="fixed inset-0 bg-black/50 transition-opacity"
+                class="modal-backdrop"
                 @click="emit('close')"
             ></div>
 
             <!-- Modal -->
             <div
-                class="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[calc(100vh-2rem)] flex flex-col"
+                class="modal-panel w-full max-w-lg max-h-[calc(100vh-2rem)] flex flex-col"
             >
                 <!-- Header -->
                 <div
@@ -244,7 +244,7 @@
                             <label
                                 v-for="account in schwabAccounts"
                                 :key="account.account_identifier"
-                                class="flex items-center justify-between gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer hover:border-primary-300 dark:hover:border-primary-700"
+                                class="card flex items-center justify-between gap-4 p-3 cursor-pointer hover:border-primary-300 dark:hover:border-primary-700"
                             >
                                 <div class="flex items-center gap-3 min-w-0">
                                     <input
@@ -347,7 +347,7 @@
                     >
                         <span v-if="loading" class="flex items-center">
                             <div
-                                class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
+                                class="spinner spinner-xs spinner-light mr-2"
                             ></div>
                             Saving...
                         </span>
@@ -441,8 +441,8 @@ const brokerStyles = computed(() => {
             return {
                 name: "Charles Schwab",
                 abbrev: "CS",
-                bgClass: "bg-blue-100 dark:bg-blue-900/30",
-                textClass: "text-blue-600 dark:text-blue-400",
+                bgClass: "bg-primary-100 dark:bg-primary-900/30",
+                textClass: "text-primary-600 dark:text-primary-400",
             };
         case "tradovate":
             return {
@@ -450,8 +450,8 @@ const brokerStyles = computed(() => {
                     ? "Tradovate Demo"
                     : "Tradovate",
                 abbrev: "TV",
-                bgClass: "bg-indigo-100 dark:bg-indigo-900/30",
-                textClass: "text-indigo-600 dark:text-indigo-400",
+                bgClass: "bg-primary-100 dark:bg-primary-900/30",
+                textClass: "text-primary-600 dark:text-primary-400",
             };
         case "oanda":
             return {

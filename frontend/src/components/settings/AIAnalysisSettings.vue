@@ -1,12 +1,12 @@
 <template>
   <section class="card" aria-labelledby="analysis-instructions-title" :aria-busy="loading">
     <div class="card-body">
-      <h3 id="analysis-instructions-title" class="text-lg font-medium text-gray-900 dark:text-white mb-2">Analysis instructions</h3>
+      <h3 id="analysis-instructions-title" class="heading-card mb-2">Analysis instructions</h3>
       <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
         Personalize trade reviews and performance analysis. Describe your chart colours, trading rules, or areas to focus on. These instructions apply to new analyses and their follow-up conversations.
       </p>
       <div v-if="initialLoading" class="flex justify-center py-8">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-md"></div>
       </div>
       <form v-else @submit.prevent="save">
         <label for="ai-analysis-instructions" class="label">Your instructions</label>

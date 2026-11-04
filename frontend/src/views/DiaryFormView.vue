@@ -24,7 +24,7 @@
 
     <!-- Loading State -->
     <div v-if="loading && isEditing" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Error State -->
@@ -97,8 +97,8 @@
         </div>
 
         <!-- Basic Information -->
-        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-          <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Basic Information</h2>
+        <div class="card p-6">
+          <h2 class="heading-card mb-4">Basic Information</h2>
           
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Entry Date -->
@@ -158,10 +158,10 @@
                   type="radio"
                   v-model="form.marketBias"
                   value="bullish"
-                  class="form-radio text-green-600"
+                  class="form-radio text-green-600 dark:text-green-400"
                 />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                  <ArrowTrendingUpIcon class="w-4 h-4 inline mr-1 text-green-600" />
+                  <ArrowTrendingUpIcon class="w-4 h-4 inline mr-1 text-green-600 dark:text-green-400" />
                   Bullish
                 </span>
               </label>
@@ -170,10 +170,10 @@
                   type="radio"
                   v-model="form.marketBias"
                   value="bearish"
-                  class="form-radio text-red-600"
+                  class="form-radio text-red-600 dark:text-red-400"
                 />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                  <ArrowTrendingDownIcon class="w-4 h-4 inline mr-1 text-red-600" />
+                  <ArrowTrendingDownIcon class="w-4 h-4 inline mr-1 text-red-600 dark:text-red-400" />
                   Bearish
                 </span>
               </label>
@@ -203,8 +203,8 @@
         </div>
 
         <!-- Content -->
-        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-          <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Content</h2>
+        <div class="card p-6">
+          <h2 class="heading-card mb-4">Content</h2>
           
           <!-- Main Content -->
           <div class="mb-6">
@@ -349,8 +349,8 @@
         </div>
 
         <!-- Trading Information -->
-        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-          <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trading Information</h2>
+        <div class="card p-6">
+          <h2 class="heading-card mb-4">Trading Information</h2>
           
           <!-- Watchlist -->
           <div class="mb-6">
@@ -461,8 +461,8 @@
         </div>
 
         <!-- Post-Market Reflection -->
-        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-          <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        <div class="card p-6">
+          <h2 class="heading-card mb-4">
             Post-Market Reflection
             <span class="text-sm font-normal text-gray-500 dark:text-gray-400">(Optional)</span>
           </h2>
@@ -478,7 +478,7 @@
                   type="radio"
                   v-model="form.followedPlan"
                   :value="true"
-                  class="form-radio text-green-600"
+                  class="form-radio text-green-600 dark:text-green-400"
                 />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Yes</span>
               </label>
@@ -487,7 +487,7 @@
                   type="radio"
                   v-model="form.followedPlan"
                   :value="false"
-                  class="form-radio text-red-600"
+                  class="form-radio text-red-600 dark:text-red-400"
                 />
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">No</span>
               </label>
@@ -520,10 +520,10 @@
         </div>
 
         <!-- Attachments -->
-        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+        <div class="card p-6">
           <div class="flex items-start justify-between gap-4 mb-3">
             <div>
-              <h2 class="text-lg font-medium text-gray-900 dark:text-white">Attachments</h2>
+              <h2 class="heading-card">Attachments</h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Add charts and screenshots only when you need them.
               </p>
@@ -1110,18 +1110,6 @@ watch(() => form.value.entryType, async (newEntryType, oldEntryType) => {
 <style scoped>
 .form-radio {
   @apply h-4 w-4 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500;
-}
-
-.input {
-  @apply w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white;
-}
-
-.btn-primary {
-  @apply bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
-}
-
-.btn-secondary {
-  @apply bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 px-4 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
 }
 
 .toolbar-btn {

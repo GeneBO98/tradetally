@@ -1,7 +1,7 @@
 <template>
-  <div class="mt-6 bg-white dark:bg-gray-800 shadow-sm rounded-lg">
+  <div class="card mt-6">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+      <h3 class="heading-card">
         Set Risk Levels for {{ trade.symbol }}
       </h3>
       <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -64,7 +64,7 @@
               step="0.01"
               required
               :placeholder="stopLossPlaceholder"
-              class="w-full pl-7 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+              class="input pl-7"
             />
           </div>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -117,7 +117,7 @@
               type="number"
               step="0.01"
               :placeholder="takeProfitPlaceholder"
-              class="w-full pl-7 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+              class="input pl-7"
             />
           </div>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">

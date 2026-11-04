@@ -1,7 +1,7 @@
 <template>
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
         <div class="content-wrapper py-12">
-            <div class="bg-white dark:bg-gray-800 rounded-lg shadow px-8 py-10">
+            <div class="card px-8 py-10">
                 <h1 class="heading-page mb-8">Privacy Policy</h1>
                 <p class="text-gray-700 dark:text-gray-300 mb-6">
                     This policy explains how TradeTally handles data for our free trading journal and investment tracker, including cloud-hosted and self-hosted usage.

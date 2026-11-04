@@ -24,7 +24,7 @@
           v-if="showMenu"
           ref="menuRef"
           :style="dropdownStyle"
-          class="fixed w-full max-w-sm sm:w-96 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-[9999] flex flex-col overflow-hidden"
+          class="modal-panel fixed w-full max-w-sm sm:w-96 ring-1 ring-black ring-opacity-5 z-[9999] flex flex-col overflow-hidden"
         >
           <!-- Header (Fixed) -->
           <div class="p-4 flex-shrink-0 border-b border-gray-200 dark:border-gray-700">
@@ -107,13 +107,13 @@
             <div class="flex justify-end space-x-2">
               <button
                 @click="cancel"
-                class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
+                class="btn-secondary"
               >
                 Cancel
               </button>
               <button
                 @click="apply"
-                class="px-3 py-2 text-sm text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700"
+                class="btn-primary"
               >
                 Apply
               </button>

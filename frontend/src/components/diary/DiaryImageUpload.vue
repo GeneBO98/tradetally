@@ -46,7 +46,7 @@
     </div>
 
     <!-- Pending files info for new entries -->
-    <div v-if="!diaryEntryId && pendingFiles.length > 0" class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm text-blue-800 dark:text-blue-200">
+    <div v-if="!diaryEntryId && pendingFiles.length > 0" class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-3 text-sm text-primary-800 dark:text-primary-200">
       {{ pendingFiles.length }} image{{ pendingFiles.length > 1 ? 's' : '' }} will be uploaded when you save the entry.
     </div>
 
@@ -115,7 +115,7 @@
               v-else-if="!authedImage.urlFor(image)"
               class="w-full h-full flex items-center justify-center"
             >
-              <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+              <div class="spinner spinner-sm"></div>
             </div>
             <img
               v-else
@@ -181,7 +181,7 @@
     <!-- Image Preview Modal -->
     <div
       v-if="previewImage"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
+      class="modal-overlay flex items-center justify-center"
       @click="previewImage = null"
     >
       <div class="relative max-w-4xl max-h-[90vh] p-4">
@@ -425,9 +425,5 @@ defineExpose({
 <style scoped>
 .label {
   @apply block text-sm font-medium text-gray-700 dark:text-gray-300;
-}
-
-.btn-primary {
-  @apply bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
 }
 </style>

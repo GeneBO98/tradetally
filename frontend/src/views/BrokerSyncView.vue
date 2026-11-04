@@ -61,14 +61,14 @@
 
     <!-- Loading State -->
     <div v-if="initial_loading" class="flex items-center justify-center py-12">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-md"></div>
     </div>
 
     <!-- Main Content -->
     <div v-else class="space-y-8">
       <!-- Connected Brokers -->
       <div v-if="store.hasConnections" class="space-y-4">
-        <h2 class="text-lg font-medium text-gray-900 dark:text-white">Connected Brokers</h2>
+        <h2 class="heading-card">Connected Brokers</h2>
 
         <div class="grid gap-4 md:grid-cols-2">
           <BrokerConnectionCard
@@ -89,7 +89,7 @@
       <!-- Add New Connection (Pro only) -->
       <div v-if="canCreate" class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Add Broker Connection</h3>
+          <h3 class="heading-card mb-6">Add Broker Connection</h3>
 
           <div class="grid gap-6 md:grid-cols-2">
             <!-- IBKR Card -->
@@ -124,7 +124,7 @@
             >
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
-                  <div v-if="schwabConnecting" class="animate-spin h-6 w-6 rounded-full border-2 border-primary-200 border-t-primary-600"></div>
+                  <div v-if="schwabConnecting" class="spinner spinner-sm"></div>
                   <span v-else class="text-primary-600 dark:text-primary-400 font-bold text-lg">CS</span>
                 </div>
                 <div>
@@ -172,7 +172,7 @@
             >
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center">
-                  <div v-if="brokerConnecting.tradestation" class="animate-spin h-6 w-6 rounded-full border-2 border-emerald-200 border-t-emerald-600"></div>
+                  <div v-if="brokerConnecting.tradestation" class="spinner spinner-sm"></div>
                   <span v-else class="text-emerald-600 dark:text-emerald-400 font-bold text-lg">TS</span>
                 </div>
                 <div>
@@ -195,7 +195,7 @@
             >
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
-                  <div v-if="brokerConnecting.tradovate" class="animate-spin h-6 w-6 rounded-full border-2 border-primary-200 border-t-primary-600"></div>
+                  <div v-if="brokerConnecting.tradovate" class="spinner spinner-sm"></div>
                   <span v-else class="text-primary-600 dark:text-primary-400 font-bold text-lg">TV</span>
                 </div>
                 <div>
@@ -215,7 +215,7 @@
             >
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-cyan-100 dark:bg-cyan-900/30 rounded-lg flex items-center justify-center">
-                  <div v-if="brokerConnecting.alpacaLive" class="animate-spin h-6 w-6 rounded-full border-2 border-cyan-200 border-t-cyan-600"></div>
+                  <div v-if="brokerConnecting.alpacaLive" class="spinner spinner-sm"></div>
                   <span v-else class="text-cyan-600 dark:text-cyan-400 font-bold text-lg">AL</span>
                 </div>
                 <div>
@@ -234,9 +234,9 @@
               @click="canConnectBroker('alpaca', 'paper') && handleBrokerOAuthConnect('alpaca', { environment: 'paper' })"
             >
               <div class="flex items-center space-x-4">
-                <div class="flex-shrink-0 w-12 h-12 bg-sky-100 dark:bg-sky-900/30 rounded-lg flex items-center justify-center">
-                  <div v-if="brokerConnecting.alpacaPaper" class="animate-spin h-6 w-6 rounded-full border-2 border-sky-200 border-t-sky-600"></div>
-                  <span v-else class="text-sky-600 dark:text-sky-400 font-bold text-lg">AP</span>
+                <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
+                  <div v-if="brokerConnecting.alpacaPaper" class="spinner spinner-sm"></div>
+                  <span v-else class="text-primary-600 dark:text-primary-400 font-bold text-lg">AP</span>
                 </div>
                 <div>
                   <h4 class="font-medium text-gray-900 dark:text-white">Alpaca Paper</h4>
@@ -255,7 +255,7 @@
             >
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
-                  <div v-if="brokerConnecting.webull" class="animate-spin h-6 w-6 rounded-full border-2 border-primary-200 border-t-primary-600"></div>
+                  <div v-if="brokerConnecting.webull" class="spinner spinner-sm"></div>
                   <span v-else class="text-primary-600 dark:text-primary-400 font-bold text-lg">WB</span>
                 </div>
                 <div>
@@ -286,7 +286,7 @@
 
       <div class="card" v-if="excludedTrades.length">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Trades excluded from IBKR sync</h3>
+          <h3 class="heading-card">Trades excluded from IBKR sync</h3>
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Deleted trades stay excluded from future syncs. Restore eligibility to import one again on the next sync.</p>
           <div class="mt-4 max-h-64 overflow-auto divide-y divide-gray-200 dark:divide-gray-700">
             <div v-for="entry in excludedTrades" :key="entry.id" class="flex items-center justify-between gap-3 py-2 text-sm">
@@ -304,7 +304,7 @@
       <div class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Sync History</h3>
+            <h3 class="heading-card">Sync History</h3>
             <button
               @click="refreshLogs"
               class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
@@ -321,13 +321,13 @@
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead>
                 <tr>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Broker</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Imported</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Duplicates</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Review</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                  <th class="px-4 py-3 text-left table-th">Broker</th>
+                  <th class="px-4 py-3 text-left table-th">Type</th>
+                  <th class="px-4 py-3 text-left table-th">Status</th>
+                  <th class="px-4 py-3 text-left table-th">Imported</th>
+                  <th class="px-4 py-3 text-left table-th">Duplicates</th>
+                  <th class="px-4 py-3 text-left table-th">Review</th>
+                  <th class="px-4 py-3 text-left table-th">Date</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">

@@ -13,7 +13,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+        <h1 class="heading-page">
           Backtest Sandbox
           <span v-if="sessionData" class="text-gray-500 dark:text-gray-400 font-medium">
             {{ sessionData.symbol }}
@@ -24,13 +24,13 @@
       <div class="flex items-center space-x-2">
         <span
           v-if="mode === 'review'"
-          class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 font-medium"
+          class="badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
         >
           Reviewing saved session
         </span>
         <span
           v-if="quotaChip"
-          class="text-xs px-2 py-1 rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
+          class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
         >
           {{ quotaChip }}
         </span>
@@ -39,7 +39,7 @@
 
     <!-- Initial loading -->
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Free quota exhausted -->
@@ -53,7 +53,7 @@
     <template v-else-if="mode === 'setup'">
       <div class="card mb-6">
         <div class="card-body">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">New Session</h2>
+          <h2 class="heading-card mb-1">New Session</h2>
           <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
             Pick a symbol and a past trading day, then trade it bar-by-bar with simulated orders.
             Fills execute at the close of the current 1-minute bar.
@@ -124,7 +124,7 @@
 
       <div class="card">
         <div class="card-body">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Saved Sessions</h2>
+          <h2 class="heading-card mb-4">Saved Sessions</h2>
           <div v-if="sessions.length === 0" class="text-center py-8">
             <p class="text-gray-500 dark:text-gray-400 text-sm">
               No saved sessions yet. Load a symbol and day above to run your first backtest.
@@ -134,13 +134,13 @@
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead>
                 <tr>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Symbol</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Session</th>
-                  <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">P&amp;L</th>
-                  <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Trades</th>
-                  <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Win Rate</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Saved</th>
-                  <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                  <th class="px-4 py-3 text-left table-th">Symbol</th>
+                  <th class="px-4 py-3 text-left table-th">Session</th>
+                  <th class="px-4 py-3 text-right table-th">P&amp;L</th>
+                  <th class="px-4 py-3 text-right table-th">Trades</th>
+                  <th class="px-4 py-3 text-right table-th">Win Rate</th>
+                  <th class="px-4 py-3 text-left table-th">Saved</th>
+                  <th class="px-4 py-3 text-right table-th">Actions</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -317,7 +317,7 @@
       <!-- Save (sandbox) / summary (review) -->
       <div v-if="mode === 'sandbox'" class="card">
         <div class="card-body">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">Save Session</h2>
+          <h2 class="heading-card mb-1">Save Session</h2>
           <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
             {{ fills.length === 0
               ? 'Place at least one order to save this session.'
@@ -352,7 +352,7 @@
 
       <div v-else-if="reviewedSession" class="card">
         <div class="card-body">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Session Result</h2>
+          <h2 class="heading-card mb-4">Session Result</h2>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <dt class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Total P&amp;L</dt>

@@ -20,7 +20,7 @@ const props = defineProps({
   },
   color: {
     type: String,
-    default: '#3B82F6'
+    default: '#F0812A'
   },
   dataKey: {
     type: String,

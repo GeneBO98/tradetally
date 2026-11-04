@@ -41,7 +41,7 @@
         <div v-else-if="loading" class="card">
             <div class="card-body text-center py-12">
                 <div
-                    class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                    class="spinner spinner-md inline-block"
                 ></div>
                 <p class="mt-4 text-gray-600 dark:text-gray-400">
                     Loading subscription details...
@@ -135,7 +135,7 @@
                                     class="flex justify-between"
                                 >
                                     <span>Cancels On:</span>
-                                    <span class="font-medium text-red-600">{{
+                                    <span class="font-medium text-red-600 dark:text-red-400">{{
                                         formatDate(
                                             subscription.subscription
                                                 .current_period_end,
@@ -196,7 +196,7 @@
                         >
                             <span
                                 v-if="portalLoading"
-                                class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"
+                                class="spinner spinner-xs spinner-current inline-block mr-2"
                             ></span>
                             Customer Portal
                         </button>
@@ -221,7 +221,7 @@
                         >
                             <span
                                 v-if="reactivateLoading"
-                                class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"
+                                class="spinner spinner-xs spinner-current inline-block mr-2"
                             ></span>
                             Reactivate Subscription
                         </button>
@@ -251,7 +251,7 @@
             >
                 <div class="card-body">
                     <div class="flex items-center">
-                        <div class="animate-spin rounded-full h-6 w-6 border-2 border-primary-200 border-t-primary-600 mr-3"></div>
+                        <div class="spinner spinner-sm mr-3"></div>
                         <p class="text-primary-800 dark:text-primary-200 font-medium">
                             Verifying your payment...
                         </p>
@@ -328,11 +328,11 @@
         <!-- Cancel Confirmation Modal -->
         <div
             v-if="showCancelModal"
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            class="modal-overlay flex items-center justify-center"
             @click.self="closeCancelModal"
         >
-            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+            <div class="modal-panel max-w-md w-full mx-4 p-6">
+                <h3 class="heading-card mb-2">
                     Cancel Subscription
                 </h3>
                 <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
@@ -400,7 +400,7 @@
                     >
                         <span
                             v-if="cancelLoading"
-                            class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"
+                            class="spinner spinner-xs spinner-current inline-block mr-2"
                         ></span>
                         Confirm Cancellation
                     </button>
@@ -584,7 +584,7 @@ export default {
             const classes = {
                 active: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
                 trialing:
-                    "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+                    "bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200",
                 past_due:
                     "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
                 canceled:

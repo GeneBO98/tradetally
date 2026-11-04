@@ -1,6 +1,6 @@
 <template>
     <div
-        class="max-w-md mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-md p-6"
+        class="max-w-md mx-auto card p-6"
     >
         <div class="text-center mb-6">
             <div
@@ -20,7 +20,7 @@
                     ></path>
                 </svg>
             </div>
-            <h3 class="mt-2 text-lg font-medium text-gray-900 dark:text-white">
+            <h3 class="heading-card mt-2">
                 Two-Factor Authentication
             </h3>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -40,7 +40,7 @@
                     pattern="[0-9]*"
                     maxlength="6"
                     placeholder="000000"
-                    class="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 text-center text-lg font-mono bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    class="input block text-center text-lg font-mono"
                     :disabled="loading"
                     autocomplete="one-time-code"
                     @input="handleInput"
@@ -60,7 +60,7 @@
                 <button
                     type="submit"
                     :disabled="loading || code.length !== 6"
-                    class="flex-1 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-md transition-colors"
+                    class="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <span v-if="loading">Verifying...</span>
                     <span v-else>Verify</span>
@@ -69,7 +69,7 @@
                 <button
                     type="button"
                     @click="$emit('cancel')"
-                    class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                    class="btn-secondary"
                 >
                     Cancel
                 </button>

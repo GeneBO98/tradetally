@@ -277,7 +277,7 @@
                                     </button>
                                     <button
                                         @click="$emit('view-trades')"
-                                        class="px-3 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                                        class="btn-primary"
                                     >
                                         View All
                                         {{
@@ -291,19 +291,19 @@
                             </div>
 
                             <div
-                                class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4"
+                                class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4 mb-4"
                             >
                                 <div
                                     class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center"
                                 >
                                     <div>
                                         <p
-                                            class="text-sm text-blue-700 dark:text-blue-300"
+                                            class="text-sm text-primary-700 dark:text-primary-300"
                                         >
                                             Total Analyzed
                                         </p>
                                         <p
-                                            class="text-xl font-bold text-blue-900 dark:text-blue-100"
+                                            class="text-xl font-bold text-primary-900 dark:text-primary-100"
                                         >
                                             {{
                                                 lossAversionData.analysis
@@ -314,12 +314,12 @@
                                     </div>
                                     <div>
                                         <p
-                                            class="text-sm text-blue-700 dark:text-blue-300"
+                                            class="text-sm text-primary-700 dark:text-primary-300"
                                         >
                                             Total Missed Profit
                                         </p>
                                         <p
-                                            class="text-xl font-bold text-blue-900 dark:text-blue-100"
+                                            class="text-xl font-bold text-primary-900 dark:text-primary-100"
                                         >
                                             ${{
                                                 lossAversionData.analysis.priceHistoryAnalysis.totalMissedProfit.toFixed(
@@ -330,12 +330,12 @@
                                     </div>
                                     <div>
                                         <p
-                                            class="text-sm text-blue-700 dark:text-blue-300"
+                                            class="text-sm text-primary-700 dark:text-primary-300"
                                         >
                                             Avg Missed %
                                         </p>
                                         <p
-                                            class="text-xl font-bold text-blue-900 dark:text-blue-100"
+                                            class="text-xl font-bold text-primary-900 dark:text-primary-100"
                                         >
                                             {{
                                                 lossAversionData.analysis.priceHistoryAnalysis.avgMissedProfitPercent.toFixed(
@@ -352,7 +352,7 @@
                                     v-for="trade in lossAversionData.analysis
                                         .priceHistoryAnalysis.exampleTrades"
                                     :key="trade.tradeId"
-                                    class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+                                    class="card p-4"
                                 >
                                     <div
                                         class="flex justify-between items-start mb-3"
@@ -524,7 +524,7 @@
                                                             signal.signal.includes(
                                                                 'overbought',
                                                             ),
-                                                        'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400':
+                                                        'bg-primary-100 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400':
                                                             signal.signal.includes(
                                                                 'pattern',
                                                             ) ||

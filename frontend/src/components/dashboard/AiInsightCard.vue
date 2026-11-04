@@ -216,7 +216,7 @@ const iconTintClass = computed(() => {
   if (c.type === 'news') {
     if (c.tone === 'positive') return 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400'
     if (c.tone === 'negative') return 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-    return 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+    return 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
   }
   switch (c.type) {
     case 'earnings':

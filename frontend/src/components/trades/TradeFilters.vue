@@ -33,7 +33,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
             </svg>
           </button>
-          <div v-if="showTimePeriodDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+          <div v-if="showTimePeriodDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
             <div
               v-for="option in timePeriodOptions"
               :key="option.value"
@@ -85,7 +85,7 @@
             </svg>
           </button>
 
-          <div v-if="showStrategyDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+          <div v-if="showStrategyDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
             <div class="p-1">
               <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                 <input
@@ -137,7 +137,7 @@
             </svg>
           </button>
 
-          <div v-if="showSetupDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+          <div v-if="showSetupDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
             <div class="p-1">
               <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                 <input
@@ -210,7 +210,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
             </svg>
           </button>
-          <div v-if="showStatusDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+          <div v-if="showStatusDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
             <div
               v-for="option in statusOptions"
               :key="option.value"
@@ -237,7 +237,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
             </svg>
           </button>
-          <div v-if="showSideDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+          <div v-if="showSideDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
             <div
               v-for="option in sideOptions"
               :key="option.value"
@@ -267,7 +267,7 @@
             </svg>
           </button>
 
-          <div v-if="showInstrumentTypeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+          <div v-if="showInstrumentTypeDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
             <div class="p-1">
               <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                 <input
@@ -431,7 +431,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                   </svg>
                 </button>
-                <div v-if="showHoldTimeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                <div v-if="showHoldTimeDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
                   <div
                     v-for="option in holdTimeOptions"
                     :key="option.value"
@@ -448,7 +448,7 @@
             <!-- Market Session -->
             <div>
               <label class="label">Market Session</label>
-              <div class="grid grid-cols-3 gap-1 rounded-lg border border-gray-200 bg-white p-1 dark:border-gray-600 dark:bg-gray-800">
+              <div class="card grid grid-cols-3 gap-1 p-1 dark:border-gray-600">
                 <label
                   v-for="session in marketSessionOptions"
                   :key="session.value"
@@ -486,7 +486,7 @@
                   </svg>
                 </button>
 
-                <div v-if="showDayOfWeekDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                <div v-if="showDayOfWeekDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
                   <div class="p-1">
                     <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                       <input
@@ -532,7 +532,7 @@
                   </svg>
                 </button>
 
-                <div v-if="showOptionTypeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                <div v-if="showOptionTypeDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
                   <div class="p-1">
                     <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                       <input
@@ -586,7 +586,7 @@
                 </svg>
               </button>
 
-              <div v-if="showSectorDropdown && !loadingSectors" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+              <div v-if="showSectorDropdown && !loadingSectors" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
                 <div class="p-1">
                   <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                     <input
@@ -629,7 +629,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
               </button>
-              <div v-if="showNewsDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+              <div v-if="showNewsDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
                 <div
                   v-for="option in newsOptions"
                   :key="option.value"
@@ -661,7 +661,7 @@
                 </svg>
               </button>
 
-              <div v-if="showBrokerDropdown && !loadingBrokers" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+              <div v-if="showBrokerDropdown && !loadingBrokers" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
                 <div class="p-1">
                   <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                     <input
@@ -704,7 +704,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
               </button>
-              <div v-if="showPnlTypeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+              <div v-if="showPnlTypeDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
                 <div
                   v-for="option in pnlTypeOptions"
                   :key="option.value"
@@ -735,7 +735,7 @@
                 </svg>
               </button>
 
-              <div v-if="showQualityGradeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+              <div v-if="showQualityGradeDropdown" class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none">
                 <div class="p-1">
                   <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                     <input

@@ -3,7 +3,7 @@
     <div class="card-body">
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Today's Journal Entries</h3>
+          <h3 class="heading-card">Today's Journal Entries</h3>
           <span
             v-if="todayEntries.length > 0"
             class="ml-3 inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
@@ -105,13 +105,13 @@
         </div>
 
         <!-- Watchlist -->
-        <div v-if="entry.watchlist && entry.watchlist.length > 0 && expanded" class="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-          <h5 class="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">Watchlist</h5>
+        <div v-if="entry.watchlist && entry.watchlist.length > 0 && expanded" class="bg-primary-50 dark:bg-primary-900/20 p-3 rounded-lg">
+          <h5 class="text-sm font-medium text-primary-800 dark:text-primary-200 mb-2">Watchlist</h5>
           <div class="flex flex-wrap gap-2">
             <span
               v-for="symbol in entry.watchlist"
               :key="symbol"
-              class="inline-flex items-center px-2 py-1 rounded bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-xs font-medium"
+              class="badge bg-primary-100 dark:bg-primary-800 text-primary-800 dark:text-primary-200"
             >
               {{ symbol }}
             </span>
@@ -123,7 +123,7 @@
           <span
             v-for="tag in entry.tags"
             :key="tag"
-            class="inline-flex items-center px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs"
+            class="badge bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
           >
             #{{ tag }}
           </span>
@@ -166,7 +166,7 @@
 
       <!-- Loading State -->
       <div v-if="loading" class="text-center py-6">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+        <div class="spinner spinner-md mx-auto"></div>
         <p class="text-gray-500 dark:text-gray-400 mt-2">Loading today's entry...</p>
       </div>
 

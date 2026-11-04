@@ -69,7 +69,7 @@
       <div class="card-body space-y-6">
         <!-- Trade Info Section -->
         <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
-          <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Information</h2>
+          <h2 class="heading-card mb-4">Trade Information</h2>
 
           <div class="grid grid-cols-1 gap-6 sm:grid-cols-4">
             <div>
@@ -228,7 +228,7 @@
         <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
           <div class="flex items-center justify-between mb-4">
             <div>
-              <h2 class="text-lg font-medium text-gray-900 dark:text-white">Executions</h2>
+              <h2 class="heading-card">Executions</h2>
               <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
                 Add individual fills or complete trades (grouped)
               </p>
@@ -237,14 +237,14 @@
               <button
                 type="button"
                 @click="addExecution"
-                class="px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 text-sm font-medium"
+                class="btn-primary"
               >
                 + Add Fill
               </button>
               <button
                 type="button"
                 @click="addGroupedExecution"
-                class="px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 text-sm font-medium"
+                class="btn-primary"
               >
                 + Add Complete Trade
               </button>
@@ -600,7 +600,7 @@
             @click="showAdditionalFields = !showAdditionalFields"
             class="flex items-center justify-between w-full text-left mb-4"
           >
-            <h2 class="text-lg font-medium text-gray-900 dark:text-white">Additional Fields</h2>
+            <h2 class="heading-card">Additional Fields</h2>
             <svg
               class="h-5 w-5 text-gray-500 dark:text-gray-400 transition-transform duration-200"
               :class="{ 'rotate-180': showAdditionalFields }"
@@ -796,7 +796,7 @@
             @click="showMoreOptions = !showMoreOptions"
             class="flex items-center justify-between w-full text-left mb-4"
           >
-            <h2 class="text-lg font-medium text-gray-900 dark:text-white">More Options</h2>
+            <h2 class="heading-card">More Options</h2>
             <svg
               class="h-5 w-5 text-gray-500 dark:text-gray-400 transition-transform duration-200"
               :class="{ 'rotate-180': showMoreOptions }"
@@ -1280,9 +1280,9 @@
     <!-- Public Profile Modal -->
     <div v-if="showPublicProfileModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="closePublicProfileModal"></div>
+        <div class="modal-backdrop" aria-hidden="true" @click="closePublicProfileModal"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-        <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
           <div class="sm:flex sm:items-start">
             <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-primary-100 dark:bg-primary-900/20 sm:mx-0 sm:h-10 sm:w-10">
               <svg class="h-6 w-6 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1290,7 +1290,7 @@
               </svg>
             </div>
             <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-              <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+              <h3 class="heading-card" id="modal-title">
                 Enable Public Profile?
               </h3>
               <div class="mt-2">
@@ -1307,14 +1307,14 @@
             <button
               type="button"
               @click="enablePublicProfile"
-              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm"
+              class="btn-primary w-full sm:ml-3 sm:w-auto"
             >
               Yes, make my profile public
             </button>
             <button
               type="button"
               @click="closePublicProfileModal"
-              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:w-auto sm:text-sm"
+              class="btn-secondary mt-3 w-full sm:mt-0 sm:w-auto"
             >
               Cancel
             </button>
@@ -1326,11 +1326,11 @@
     <!-- Save Futures Template Modal -->
     <div v-if="showSaveFuturesTemplateModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="showSaveFuturesTemplateModal = false"></div>
+        <div class="modal-backdrop" aria-hidden="true" @click="showSaveFuturesTemplateModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-        <div class="relative inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
           <div>
-            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+            <h3 class="heading-card" id="modal-title">
               Save Futures Template
             </h3>
             <div class="mt-4">
@@ -1353,14 +1353,14 @@
               type="button"
               :disabled="!newFuturesTemplateName.trim() || savingTemplate"
               @click="saveFuturesTemplate"
-              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:w-auto sm:text-sm disabled:opacity-50"
+              class="btn-primary w-full sm:w-auto disabled:opacity-50"
             >
               {{ savingTemplate ? 'Saving...' : 'Save Template' }}
             </button>
             <button
               type="button"
               @click="showSaveFuturesTemplateModal = false"
-              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm"
+              class="btn-secondary mt-3 w-full sm:mt-0 sm:w-auto"
             >
               Cancel
             </button>
@@ -1372,11 +1372,11 @@
     <!-- Save Options Template Modal -->
     <div v-if="showSaveOptionsTemplateModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="showSaveOptionsTemplateModal = false"></div>
+        <div class="modal-backdrop" aria-hidden="true" @click="showSaveOptionsTemplateModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-        <div class="relative inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
           <div>
-            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+            <h3 class="heading-card" id="modal-title">
               Save Options Template
             </h3>
             <div class="mt-4">
@@ -1399,14 +1399,14 @@
               type="button"
               :disabled="!newOptionsTemplateName.trim() || savingTemplate"
               @click="saveOptionsTemplate"
-              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:w-auto sm:text-sm disabled:opacity-50"
+              class="btn-primary w-full sm:w-auto disabled:opacity-50"
             >
               {{ savingTemplate ? 'Saving...' : 'Save Template' }}
             </button>
             <button
               type="button"
               @click="showSaveOptionsTemplateModal = false"
-              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm"
+              class="btn-secondary mt-3 w-full sm:mt-0 sm:w-auto"
             >
               Cancel
             </button>
@@ -1418,11 +1418,11 @@
     <!-- Manage Futures Templates Modal -->
     <div v-if="showManageFuturesTemplatesModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="showManageFuturesTemplatesModal = false"></div>
+        <div class="modal-backdrop" aria-hidden="true" @click="showManageFuturesTemplatesModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-        <div class="relative inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
           <div>
-            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">
+            <h3 class="heading-card mb-4">
               Manage Futures Templates
             </h3>
             <div class="space-y-2 max-h-64 overflow-y-auto">
@@ -1455,7 +1455,7 @@
             <button
               type="button"
               @click="showManageFuturesTemplatesModal = false"
-              class="w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none sm:text-sm"
+              class="btn-secondary w-full"
             >
               Close
             </button>
@@ -1467,11 +1467,11 @@
     <!-- Manage Options Templates Modal -->
     <div v-if="showManageOptionsTemplatesModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="showManageOptionsTemplatesModal = false"></div>
+        <div class="modal-backdrop" aria-hidden="true" @click="showManageOptionsTemplatesModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-        <div class="relative inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
           <div>
-            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">
+            <h3 class="heading-card mb-4">
               Manage Options Templates
             </h3>
             <div class="space-y-2 max-h-64 overflow-y-auto">
@@ -1504,7 +1504,7 @@
             <button
               type="button"
               @click="showManageOptionsTemplatesModal = false"
-              class="w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none sm:text-sm"
+              class="btn-secondary w-full"
             >
               Close
             </button>

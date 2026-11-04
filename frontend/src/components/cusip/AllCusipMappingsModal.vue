@@ -5,13 +5,13 @@
         >
             <!-- Background overlay -->
             <div
-                class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+                class="modal-backdrop"
                 @click="$emit('close')"
             ></div>
 
             <!-- Modal -->
             <div
-                class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-6xl sm:w-full"
+                class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-6xl sm:w-full"
             >
                 <!-- Header -->
                 <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6">
@@ -51,7 +51,7 @@
                                 type="text"
                                 placeholder="Search CUSIP, ticker, or company..."
                                 aria-label="Search CUSIP mappings"
-                                class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                                class="input"
                             />
                         </div>
                         <div class="min-w-40">
@@ -99,7 +99,7 @@
                         class="flex items-center justify-center py-12"
                     >
                         <div
-                            class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                            class="spinner spinner-md"
                         ></div>
                         <span class="ml-3 text-gray-500 dark:text-gray-400"
                             >Loading mappings...</span
@@ -134,7 +134,7 @@
                             <table
                                 class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
                             >
-                                <thead class="bg-gray-50 dark:bg-gray-700">
+                                <thead class="table-head">
                                     <tr>
                                         <th
                                             class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
@@ -236,7 +236,7 @@
                                         <td class="px-4 py-4 whitespace-nowrap">
                                             <span
                                                 v-if="mapping.resolution_source"
-                                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                                class="badge"
                                                 :class="
                                                     getSourceBadgeClass(
                                                         mapping.resolution_source,
@@ -392,7 +392,7 @@
                 >
                     <button
                         @click="$emit('close')"
-                        class="w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-800 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:w-auto sm:text-sm"
+                        class="btn-secondary w-full sm:w-auto"
                     >
                         Close
                     </button>
@@ -597,7 +597,7 @@ const getSourceLabel = (source, isUserOverride) => {
 
 const getSourceBadgeClass = (source, isUserOverride) => {
     if (isUserOverride) {
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+        return "bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200";
     }
 
     switch (source) {

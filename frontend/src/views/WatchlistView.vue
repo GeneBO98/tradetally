@@ -35,7 +35,7 @@
         <!-- Loading State for Auth -->
         <div v-if="authLoading" class="flex justify-center items-center py-12">
             <div
-                class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                class="spinner spinner-md"
             ></div>
         </div>
 
@@ -52,7 +52,7 @@
             class="flex justify-center items-center py-12"
         >
             <div
-                class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                class="spinner spinner-md"
             ></div>
         </div>
 
@@ -64,7 +64,7 @@
             <div
                 v-for="watchlist in watchlists"
                 :key="watchlist.id"
-                class="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow cursor-pointer"
+                class="card hover:shadow-md transition-shadow cursor-pointer"
                 @click="selectWatchlist(watchlist)"
             >
                 <div class="p-6">
@@ -72,7 +72,7 @@
                         <h3 class="heading-card">{{ watchlist.name }}</h3>
                         <span
                             v-if="watchlist.is_default"
-                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
+                            class="badge bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                         >
                             Default
                         </span>
@@ -135,7 +135,7 @@
             <div class="mt-6">
                 <button
                     @click="showCreateWatchlistModal = true"
-                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
+                    class="btn-primary"
                 >
                     Create Watchlist
                 </button>
@@ -145,10 +145,10 @@
         <!-- Create/Edit Watchlist Modal -->
         <div
             v-if="showCreateWatchlistModal || editingWatchlist"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
         >
             <div
-                class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                class="modal-panel top-20 mx-auto p-5 w-96"
             >
                 <div class="mt-3">
                     <h3

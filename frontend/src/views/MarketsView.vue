@@ -107,7 +107,7 @@
                     class="flex justify-center items-center py-12"
                 >
                     <div
-                        class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                        class="spinner spinner-md"
                     ></div>
                 </div>
 
@@ -119,7 +119,7 @@
                     <div
                         v-for="watchlist in watchlists"
                         :key="watchlist.id"
-                        class="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow cursor-pointer"
+                        class="card hover:shadow-md transition-shadow cursor-pointer"
                         @click="selectWatchlist(watchlist)"
                     >
                         <div class="p-6">
@@ -129,7 +129,7 @@
                                 </h3>
                                 <span
                                     v-if="watchlist.is_default"
-                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200"
+                                    class="badge bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200"
                                 >
                                     Default
                                 </span>
@@ -191,7 +191,7 @@
                     <div class="mt-6">
                         <button
                             @click="showCreateWatchlistModal = true"
-                            class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
+                            class="btn-primary"
                         >
                             Create Watchlist
                         </button>
@@ -213,7 +213,7 @@
                     <div class="mt-4 sm:mt-0 flex flex-wrap gap-3">
                         <a
                             href="#markets-webhook-destinations"
-                            class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                            class="btn-secondary dark:text-gray-200"
                         >
                             Webhook Destinations
                         </a>
@@ -229,7 +229,7 @@
 
                 <!-- Market & Connection Status -->
                 <div
-                    class="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow p-4"
+                    class="card mb-6 p-4"
                 >
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center space-x-3">
@@ -353,20 +353,20 @@
                     class="flex justify-center items-center py-12"
                 >
                     <div
-                        class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                        class="spinner spinner-md"
                     ></div>
                 </div>
 
                 <!-- Alerts Table -->
                 <div
                     v-else-if="alerts.length > 0"
-                    class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                    class="card overflow-hidden"
                 >
                     <div class="overflow-x-auto">
                         <table
                             class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
                         >
-                            <thead class="bg-gray-50 dark:bg-gray-700">
+                            <thead class="table-head">
                                 <tr>
                                     <th
                                         class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
@@ -456,7 +456,7 @@
                                                 alert.is_active &&
                                                 !alert.triggered_at
                                             "
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+                                            class="badge bg-green-100 text-green-800"
                                         >
                                             Active
                                         </span>
@@ -465,7 +465,7 @@
                                                 alert.is_active &&
                                                 alert.triggered_at
                                             "
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400"
+                                            class="badge bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400"
                                         >
                                             Triggered (Repeat)
                                         </span>
@@ -474,13 +474,13 @@
                                                 !alert.is_active &&
                                                 alert.triggered_at
                                             "
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
+                                            class="badge bg-orange-100 text-orange-800"
                                         >
                                             Triggered
                                         </span>
                                         <span
                                             v-else
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
+                                            class="badge bg-gray-100 text-gray-800"
                                         >
                                             Inactive
                                         </span>
@@ -534,7 +534,7 @@
                                         </button>
                                         <button
                                             @click="deleteAlert(alert)"
-                                            class="text-red-600 hover:text-red-900"
+                                            class="text-red-600 dark:text-red-400 hover:text-red-900"
                                         >
                                             Delete
                                         </button>
@@ -571,7 +571,7 @@
                     <div class="mt-6">
                         <button
                             @click="showCreateAlertModal = true"
-                            class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
+                            class="btn-primary"
                         >
                             Create Alert
                         </button>
@@ -583,13 +583,13 @@
         <!-- Create/Edit Watchlist Modal -->
         <div
             v-if="showCreateWatchlistModal || editingWatchlist"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
             role="dialog"
             aria-modal="true"
             @click.self="cancelEditWatchlist"
         >
             <div
-                class="relative top-20 mx-4 sm:mx-auto p-5 border w-full max-w-sm shadow-lg rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                class="modal-panel top-20 mx-4 sm:mx-auto p-5 w-full max-w-sm"
             >
                 <div class="mt-3">
                     <h3
@@ -674,13 +674,13 @@
         <!-- Create/Edit Alert Modal -->
         <div
             v-if="showCreateAlertModal || editingAlert"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
             role="dialog"
             aria-modal="true"
             @click.self="cancelEditAlert"
         >
             <div
-                class="relative top-20 mx-4 sm:mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700"
+                class="modal-panel top-20 mx-4 sm:mx-auto p-5 w-full max-w-lg"
             >
                 <div class="mt-3">
                     <h3

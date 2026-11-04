@@ -2,10 +2,10 @@
   <div v-if="isOpen" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <!-- Background overlay -->
     <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-      <div class="fixed inset-0 bg-gray-500 dark:bg-gray-900 bg-opacity-75 dark:bg-opacity-75 transition-opacity" aria-hidden="true" @click="$emit('close')"></div>
+      <div class="modal-backdrop" aria-hidden="true" @click="$emit('close')"></div>
 
       <!-- Modal panel -->
-      <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
+      <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
         <div>
           <!-- Success/Warning Icon -->
           <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full" :class="iconBgClass">
@@ -15,7 +15,7 @@
           </div>
 
           <div class="mt-3 text-center sm:mt-5">
-            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+            <h3 class="heading-card" id="modal-title">
               {{ title }}
             </h3>
           </div>
@@ -26,9 +26,9 @@
               <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{ tradesImported }}</p>
               <p class="text-xs text-green-700 dark:text-green-300">Imported</p>
             </div>
-            <div v-if="duplicatesSkipped > 0" class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 text-center">
-              <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">{{ duplicatesSkipped }}</p>
-              <p class="text-xs text-blue-700 dark:text-blue-300">Duplicates</p>
+            <div v-if="duplicatesSkipped > 0" class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-3 text-center">
+              <p class="text-2xl font-bold text-primary-600 dark:text-primary-400">{{ duplicatesSkipped }}</p>
+              <p class="text-xs text-primary-700 dark:text-primary-300">Duplicates</p>
             </div>
             <div v-else class="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
               <p class="text-2xl font-bold text-gray-400">0</p>
@@ -64,7 +64,7 @@
             </ul>
           </div>
 
-          <div v-if="props.tradesImported === 0" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+          <div v-if="props.tradesImported === 0" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
             <p class="text-sm font-semibold text-amber-900 dark:text-amber-100">{{ zeroTradeReason.title }}</p>
             <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">{{ zeroTradeReason.body }}</p>
             <ul class="mt-3 space-y-1 text-sm text-amber-800 dark:text-amber-200">
@@ -90,7 +90,7 @@
                     <span
                       v-for="achievement in props.achievements.slice(0, 4)"
                       :key="achievement.id || achievement.name"
-                      class="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-800"
+                      class="badge bg-white text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-800"
                     >
                       {{ achievement.name }}
                     </span>
@@ -164,10 +164,10 @@
 
             <div v-if="showSkippedDetails" class="mt-2 max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg">
               <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-600">
-                <thead class="bg-gray-50 dark:bg-gray-700 sticky top-0">
+                <thead class="table-head sticky top-0">
                   <tr>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Row</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Reason</th>
+                    <th class="px-3 py-2 text-left table-th">Row</th>
+                    <th class="px-3 py-2 text-left table-th">Reason</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -263,7 +263,7 @@
                   </a>
                   <a
                     :href="supportMailtoLink"
-                    class="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700"
+                    class="btn-primary btn-sm"
                     @click="$emit('support-clicked', { source: 'results_modal', detectedBroker: effectiveBroker, headerCount: diagnostics?.headerAnalysis?.foundHeaders?.length || 0 })"
                   >
                     Open a Support Ticket
@@ -295,7 +295,7 @@
           </button>
           <button
             type="button"
-            class="inline-flex w-full justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 sm:w-auto sm:text-sm"
+            class="btn-primary w-full sm:w-auto"
             @click="$emit('view-analytics')"
           >
             View Analytics

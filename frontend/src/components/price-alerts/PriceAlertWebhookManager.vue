@@ -1,7 +1,7 @@
 <template>
     <section
         id="markets-webhook-destinations"
-        class="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow"
+        class="card mb-6"
     >
         <button
             type="button"
@@ -60,7 +60,7 @@
 
             <div v-if="loading" class="flex justify-center py-6">
                 <div
-                    class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"
+                    class="spinner spinner-sm"
                 ></div>
             </div>
 
@@ -151,13 +151,13 @@
 
         <div
             v-if="showModal"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+            class="modal-overlay overflow-y-auto"
             role="dialog"
             aria-modal="true"
             @click.self="closeModal"
         >
             <div
-                class="relative top-20 mx-4 sm:mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700"
+                class="modal-panel top-20 mx-4 sm:mx-auto p-5 w-full max-w-2xl"
             >
                 <div class="mt-3">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">
@@ -408,7 +408,7 @@ function providerBadgeClass(providerType) {
         case "slack":
             return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300";
         case "discord":
-            return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300";
+            return "bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300";
         default:
             return "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200";
     }

@@ -412,10 +412,10 @@
                                 personalityData.peerComparison &&
                                 !personalityData.peerComparison.insufficientData
                             "
-                            class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-6"
+                            class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4 mb-6"
                         >
                             <h5
-                                class="text-lg font-medium text-blue-800 dark:text-blue-300 mb-4"
+                                class="text-lg font-medium text-primary-800 dark:text-primary-300 mb-4"
                             >
                                 Peer Comparison ({{
                                     personalityData.peerComparison.peerGroupSize
@@ -434,12 +434,12 @@
                             >
                                 <div class="text-center">
                                     <p
-                                        class="text-sm text-blue-700 dark:text-blue-300"
+                                        class="text-sm text-primary-700 dark:text-primary-300"
                                     >
                                         Your Percentile
                                     </p>
                                     <p
-                                        class="text-2xl font-bold text-blue-900 dark:text-blue-100"
+                                        class="text-2xl font-bold text-primary-900 dark:text-primary-100"
                                     >
                                         {{
                                             personalityData.peerComparison
@@ -447,7 +447,7 @@
                                         }}th
                                     </p>
                                     <p
-                                        class="text-xs text-blue-600 dark:text-blue-400"
+                                        class="text-xs text-primary-600 dark:text-primary-400"
                                     >
                                         {{
                                             personalityData.peerComparison
@@ -459,12 +459,12 @@
                                 </div>
                                 <div class="text-center">
                                     <p
-                                        class="text-sm text-blue-700 dark:text-blue-300"
+                                        class="text-sm text-primary-700 dark:text-primary-300"
                                     >
                                         Your Performance
                                     </p>
                                     <p
-                                        class="text-2xl font-bold text-blue-900 dark:text-blue-100"
+                                        class="text-2xl font-bold text-primary-900 dark:text-primary-100"
                                     >
                                         {{
                                             personalityData.peerComparison
@@ -473,7 +473,7 @@
                                         }}
                                     </p>
                                     <p
-                                        class="text-xs text-blue-600 dark:text-blue-400"
+                                        class="text-xs text-primary-600 dark:text-primary-400"
                                     >
                                         vs
                                         {{
@@ -486,12 +486,12 @@
                                 </div>
                                 <div class="text-center">
                                     <p
-                                        class="text-sm text-blue-700 dark:text-blue-300"
+                                        class="text-sm text-primary-700 dark:text-primary-300"
                                     >
                                         Top 10% Benchmark
                                     </p>
                                     <p
-                                        class="text-2xl font-bold text-blue-900 dark:text-blue-100"
+                                        class="text-2xl font-bold text-primary-900 dark:text-primary-100"
                                     >
                                         {{
                                             personalityData.peerComparison
@@ -500,7 +500,7 @@
                                         }}
                                     </p>
                                     <p
-                                        class="text-xs text-blue-600 dark:text-blue-400"
+                                        class="text-xs text-primary-600 dark:text-primary-400"
                                     >
                                         Elite performers
                                     </p>
@@ -511,7 +511,7 @@
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                     <p
-                                        class="text-sm text-blue-700 dark:text-blue-300 mb-1"
+                                        class="text-sm text-primary-700 dark:text-primary-300 mb-1"
                                     >
                                         Median Hold Time (You vs Peers vs
                                         Optimal)
@@ -535,7 +535,7 @@
                                             }}m</span
                                         >
                                         <span class="text-gray-500">vs</span>
-                                        <span class="text-green-600 font-medium"
+                                        <span class="text-green-600 dark:text-green-400 font-medium"
                                             >{{
                                                 personalityData.peerComparison
                                                     .behaviorComparison
@@ -546,7 +546,7 @@
                                 </div>
                                 <div>
                                     <p
-                                        class="text-sm text-blue-700 dark:text-blue-300 mb-1"
+                                        class="text-sm text-primary-700 dark:text-primary-300 mb-1"
                                     >
                                         Frequency (You vs Peers vs Optimal)
                                     </p>
@@ -569,7 +569,7 @@
                                             }}/d</span
                                         >
                                         <span class="text-gray-500">vs</span>
-                                        <span class="text-green-600 font-medium"
+                                        <span class="text-green-600 dark:text-green-400 font-medium"
                                             >{{
                                                 personalityData.peerComparison
                                                     .behaviorComparison
@@ -580,7 +580,7 @@
                                 </div>
                                 <div>
                                     <p
-                                        class="text-sm text-blue-700 dark:text-blue-300 mb-1"
+                                        class="text-sm text-primary-700 dark:text-primary-300 mb-1"
                                     >
                                         Consistency (You vs Peers vs Optimal)
                                     </p>
@@ -600,7 +600,7 @@
                                         }}</span>
                                         <span class="text-gray-500">vs</span>
                                         <span
-                                            class="text-green-600 font-medium"
+                                            class="text-green-600 dark:text-green-400 font-medium"
                                             >{{
                                                 personalityData.peerComparison
                                                     .behaviorComparison
@@ -626,7 +626,7 @@
                                 Behavioral Drift Detection
                                 <div class="relative group inline-block">
                                     <span
-                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium cursor-help"
+                                        class="badge cursor-help"
                                         :class="{
                                             'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300':
                                                 personalityData.driftAnalysis
@@ -935,12 +935,12 @@
                             <div
                                 v-for="rec in personalityData.recommendations"
                                 :key="rec.type"
-                                class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+                                class="card p-4"
                             >
                                 <div class="flex items-start">
                                     <div class="flex-shrink-0">
                                         <span
-                                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                            class="badge"
                                             :class="{
                                                 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300':
                                                     rec.priority === 'high',

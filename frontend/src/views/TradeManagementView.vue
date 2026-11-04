@@ -162,10 +162,10 @@
         <!-- Loading State for Analysis -->
         <div
             v-if="selectedTrade && !needsRiskLevels && analysisLoading"
-            class="mt-6 bg-white dark:bg-gray-800 shadow-sm rounded-lg p-8 text-center"
+            class="card mt-6 p-8 text-center"
         >
             <div
-                class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"
+                class="spinner spinner-md mx-auto mb-4"
             ></div>
             <p class="text-gray-600 dark:text-gray-400">
                 Calculating R-Multiple analysis...

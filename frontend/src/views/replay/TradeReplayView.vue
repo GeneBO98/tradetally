@@ -12,7 +12,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
           </svg>
         </router-link>
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+        <h1 class="heading-page">
           Trade Replay
           <span v-if="replayData" class="text-gray-500 dark:text-gray-400 font-medium">
             {{ replayData.symbol }}
@@ -32,13 +32,13 @@
         </span>
         <span
           v-if="replayData.trade.instrument_type === 'option'"
-          class="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
+          class="badge bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
         >
           Options Trade
         </span>
         <span
           v-if="quotaChip"
-          class="text-xs px-2 py-1 rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
+          class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
         >
           {{ quotaChip }}
         </span>
@@ -47,7 +47,7 @@
 
     <!-- Initial loading -->
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Free quota exhausted -->

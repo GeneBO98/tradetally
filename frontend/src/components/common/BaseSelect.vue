@@ -31,7 +31,7 @@
         v-if="open"
         :data-base-select-panel="uid"
         :style="panelStyle"
-        class="bg-white dark:bg-gray-800 shadow-lg max-h-72 rounded-md text-base ring-1 ring-black ring-opacity-5 overflow-hidden focus:outline-none flex flex-col"
+        class="dropdown-menu max-h-72 overflow-hidden focus:outline-none flex flex-col"
         style="z-index: 9999"
       >
         <!-- Search (auto-shown for longer lists) -->

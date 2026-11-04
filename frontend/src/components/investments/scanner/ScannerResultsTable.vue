@@ -35,7 +35,7 @@
     <!-- Table -->
     <div class="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
       <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-        <thead class="bg-gray-50 dark:bg-gray-700">
+        <thead class="table-head">
           <tr>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
               Symbol

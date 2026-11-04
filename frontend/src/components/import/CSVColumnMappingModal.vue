@@ -2,10 +2,10 @@
   <div v-if="isOpen" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
       <!-- Background overlay -->
-      <div class="fixed inset-0 bg-gray-500 dark:bg-gray-900 bg-opacity-75 dark:bg-opacity-75 transition-opacity" aria-hidden="true" @click="$emit('close')"></div>
+      <div class="modal-backdrop" aria-hidden="true" @click="$emit('close')"></div>
 
       <!-- Modal panel -->
-      <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6">
+      <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6">
         <div class="absolute top-0 right-0 pt-4 pr-4">
           <button
             type="button"
@@ -18,7 +18,7 @@
         </div>
 
         <div class="pr-8">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white" id="modal-title">
+          <h3 class="heading-card" id="modal-title">
             Match your CSV columns
           </h3>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -166,7 +166,7 @@
             <button
               type="submit"
               :disabled="loading || !isFormValid"
-              class="w-full inline-flex justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:col-start-2 sm:text-sm"
+              class="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50 sm:col-start-2"
             >
               <span v-if="loading">Saving...</span>
               <span v-else-if="!isFormValid">{{ unmatchedRequiredLabel }}</span>
@@ -174,7 +174,7 @@
             </button>
             <button
               type="button"
-              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 sm:col-start-1 sm:mt-0 sm:text-sm"
+              class="btn-secondary mt-3 w-full dark:text-gray-200 sm:col-start-1 sm:mt-0"
               @click="$emit('close')"
               :disabled="loading"
             >
@@ -596,33 +596,6 @@ async function saveMapping() {
 
 .dark .label {
   color: rgb(209 213 219);
-}
-
-.input {
-  display: block;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-  color: rgb(17 24 39);
-  background-color: white;
-  border: 1px solid rgb(209 213 219);
-  border-radius: 0.375rem;
-}
-
-.input:focus {
-  outline: none;
-  border-color: rgb(59 130 246);
-}
-
-.dark .input {
-  color: rgb(243 244 246);
-  background-color: rgb(55 65 81);
-  border-color: rgb(75 85 99);
-}
-
-.dark .input:focus {
-  border-color: rgb(96 165 250);
 }
 
 /* Per-row mapping select — compact, themed by mapping state */

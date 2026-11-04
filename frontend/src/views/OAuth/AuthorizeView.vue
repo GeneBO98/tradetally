@@ -8,10 +8,10 @@
     </div>
 
     <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-      <div class="bg-white dark:bg-gray-800 py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-gray-200 dark:border-gray-700">
+      <div class="card py-8 px-4 sm:px-10">
         <!-- Loading State -->
         <div v-if="loading" class="text-center py-8">
-          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+          <div class="spinner spinner-lg mx-auto"></div>
           <p class="mt-4 text-gray-600 dark:text-gray-400">Loading authorization request...</p>
         </div>
 
@@ -85,8 +85,8 @@
           </div>
 
           <!-- User Info -->
-          <div class="mb-6 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <p class="text-sm text-blue-800 dark:text-blue-300">
+          <div class="mb-6 p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
+            <p class="text-sm text-primary-800 dark:text-primary-300">
               Signing in as <strong>{{ user?.email }}</strong>
             </p>
           </div>
@@ -117,7 +117,7 @@
 
         <!-- Auto-redirect State -->
         <div v-else class="text-center py-8">
-          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+          <div class="spinner spinner-lg mx-auto"></div>
           <p class="mt-4 text-gray-600 dark:text-gray-400">Redirecting...</p>
         </div>
       </div>

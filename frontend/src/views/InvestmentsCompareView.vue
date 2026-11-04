@@ -9,7 +9,7 @@
         >
           ← Back to Investments
         </button>
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
+        <h1 class="heading-page">
           Compare Accounts
           <span v-if="selectedAccountLabels.length > 0" class="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
             ({{ selectedAccountLabels.length }})
@@ -44,19 +44,19 @@
       v-else-if="initialLoading"
       class="flex justify-center py-16"
     >
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Comparison table: all metrics for every selected account in one place,
          with a Difference column when exactly two accounts are being compared. -->
     <div v-else class="space-y-4">
-      <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+      <section class="card overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Comparison</h2>
         </div>
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
-            <thead class="bg-gray-50 dark:bg-gray-700">
+            <thead class="table-head">
               <tr>
                 <th class="px-4 py-2 text-left text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Metric</th>
                 <th
@@ -124,7 +124,7 @@
           <section
             v-for="account in selectedAccountValues"
             :key="account"
-            class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+            class="card overflow-hidden"
           >
           <!-- Account header -->
           <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -146,7 +146,7 @@
             v-if="perAccountLoading[account]"
             class="flex justify-center py-12"
           >
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            <div class="spinner spinner-md"></div>
           </div>
 
           <template v-else>
@@ -172,7 +172,7 @@
               <h3 class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">Holdings</h3>
               <div v-if="perAccountData[account]?.rebalance?.positions?.length" class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs">
-                  <thead class="bg-gray-50 dark:bg-gray-700">
+                  <thead class="table-head">
                     <tr>
                       <th class="px-2 py-1.5 text-left text-[10px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Symbol</th>
                       <th class="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Value</th>
@@ -311,7 +311,7 @@ function deltaColorClass(delta) {
     if (!delta) return ''
     const improved = delta.lowerIsBetter ? delta.delta < 0 : delta.delta > 0
     if (delta.delta === 0) return 'text-gray-500 dark:text-gray-400'
-    return improved ? 'text-green-600' : 'text-red-600'
+    return improved ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
 }
 
 function formatDeltaPercent(delta) {
@@ -415,7 +415,7 @@ const comparisonMetricRows = computed(() => [
         valueClass: (account) => {
             const value = metricValue(account, 'totalReturnPercent')
             if (value === null) return 'text-gray-500 dark:text-gray-400'
-            return value >= 0 ? 'text-green-600' : 'text-red-600'
+            return value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
         },
         formatDelta: (account) => {
             const delta = metricDelta(account, 'totalReturnPercent')
@@ -525,7 +525,7 @@ const comparisonMetricRows = computed(() => [
             if (value === null) return '—'
             return formatPercent(-Math.abs(value))
         },
-        valueClass: () => 'text-red-600',
+        valueClass: () => 'text-red-600 dark:text-red-400',
         formatDelta: (account) => {
             const delta = metricDelta(account, 'maxDrawdownPercent', { lowerIsBetter: true })
             return delta ? formatDeltaPercent(delta) : ''

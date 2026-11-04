@@ -90,7 +90,7 @@
         <div v-if="activeTab === 'screener'">
             <!-- Search Bar -->
             <div
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
+                class="card p-6 mb-6"
             >
                 <div class="flex items-center space-x-4">
                     <div class="flex-1">
@@ -186,7 +186,7 @@
             <!-- Search History -->
             <div
                 v-if="investmentsStore.searchHistory.length > 0"
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                class="card overflow-hidden"
             >
                 <div
                     class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
@@ -276,13 +276,13 @@
                 v-if="initialLoading || (investmentsStore.portfolioLoading && !investmentsStore.portfolioOverview)"
                 class="flex flex-col items-center justify-center py-24 gap-4"
             >
-                <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
+                <div class="spinner spinner-lg"></div>
                 <p class="text-sm text-gray-500 dark:text-gray-400">Loading portfolio data...</p>
             </div>
 
             <template v-else-if="investmentsStore.portfolioOverview">
                 <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-                    <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+                    <div class="card p-5">
                         <p class="text-sm text-gray-500 dark:text-gray-400">
                             Portfolio Value
                         </p>
@@ -293,14 +293,14 @@
                             {{ selectedAccountLabel }}
                         </p>
                     </div>
-                    <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+                    <div class="card p-5">
                         <p class="text-sm text-gray-500 dark:text-gray-400">
                             Total Return
                         </p>
                         <p
                             :class="[
                                 'text-2xl font-bold mt-2',
-                                portfolioOverviewReturn >= 0 ? 'text-green-600' : 'text-red-600',
+                                portfolioOverviewReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
                             ]"
                         >
                             {{ formatCurrency(investmentsStore.portfolioOverview.totalReturn) }}
@@ -314,18 +314,18 @@
                             {{ formatPercent(investmentsStore.portfolioOverview.totalReturnPercent) }}
                         </p>
                     </div>
-                    <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+                    <div class="card p-5">
                         <p class="text-sm text-gray-500 dark:text-gray-400">
                             Dividend Income
                         </p>
-                        <p class="text-2xl font-bold text-green-600 mt-2">
+                        <p class="text-2xl font-bold text-green-600 dark:text-green-400 mt-2">
                             {{ formatCurrency(investmentsStore.totalDividends) }}
                         </p>
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
                             Captured across tracked positions
                         </p>
                     </div>
-                    <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">
+                    <div class="card p-5">
                         <p class="text-sm text-gray-500 dark:text-gray-400">
                             Positions
                         </p>
@@ -340,7 +340,7 @@
 
                 <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6 mb-6 items-start">
                     <div class="space-y-6 min-w-0">
-                    <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+                    <section class="card overflow-hidden">
                         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div>
                                 <h2 class="text-lg font-medium text-gray-900 dark:text-white flex items-center gap-2">
@@ -376,7 +376,7 @@
                                     v-if="investmentsStore.portfolioLoading && investmentsStore.portfolioOverview"
                                     class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mr-1"
                                 >
-                                    <div class="animate-spin rounded-full h-3.5 w-3.5 border-2 border-primary-500 border-t-transparent"></div>
+                                    <div class="spinner h-3.5 w-3.5"></div>
                                     <span>Updating...</span>
                                 </div>
                                 <button
@@ -453,7 +453,7 @@
                                     </div>
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
                                         <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Max Drawdown</p>
-                                        <p class="text-lg font-semibold text-red-600 mt-1">
+                                        <p class="text-lg font-semibold text-red-600 dark:text-red-400 mt-1">
                                             {{ formatPercent(-Math.abs(investmentsStore.portfolioPerformance.metrics.maxDrawdownPercent || 0)) }}
                                         </p>
                                         <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Largest peak-to-trough decline during the period</p>
@@ -468,11 +468,11 @@
                     <!-- Allocation table fills the space beside the tall sidebar -->
                 <div
                     v-if="investmentsStore.portfolioPositions.length > 0"
-                    class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                    class="card overflow-hidden"
                 >
                     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-4">
                         <div>
-                            <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+                            <h2 class="heading-card">
                                 Allocation and Rebalancing
                             </h2>
                             <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -484,14 +484,14 @@
                                 v-if="pricesUpdating && pendingPriceCount > 0"
                                 class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
                             >
-                                <div class="animate-spin rounded-full h-3.5 w-3.5 border-2 border-primary-500 border-t-transparent"></div>
+                                <div class="spinner h-3.5 w-3.5"></div>
                                 <span>Updating prices ({{ pendingPriceCount }} remaining)…</span>
                             </div>
                             <button
                                 v-if="dirtyTargetSymbols.length > 0"
                                 @click="saveAllTargetAllocations"
                                 :disabled="targetSaving"
-                                class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="btn-primary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {{ targetSaving ? "Saving…" : `Save all (${dirtyTargetSymbols.length})` }}
                             </button>
@@ -533,14 +533,14 @@
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div>
                                 <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Buy total</p>
-                                <p class="text-sm font-semibold text-red-600 mt-0.5">
+                                <p class="text-sm font-semibold text-red-600 dark:text-red-400 mt-0.5">
                                     -{{ formatCurrency(rebalanceImpact.cashToBuy) }}
                                 </p>
                                 <p class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Cash needed</p>
                             </div>
                             <div>
                                 <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Sell proceeds</p>
-                                <p class="text-sm font-semibold text-green-600 mt-0.5">
+                                <p class="text-sm font-semibold text-green-600 dark:text-green-400 mt-0.5">
                                     +{{ formatCurrency(rebalanceImpact.cashFromSells) }}
                                 </p>
                                 <p class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Cash released</p>
@@ -549,7 +549,7 @@
                                 <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Net cash</p>
                                 <p
                                     class="text-sm font-semibold mt-0.5"
-                                    :class="rebalanceImpact.selfFunded ? 'text-green-600' : 'text-red-600'"
+                                    :class="rebalanceImpact.selfFunded ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                 >
                                     <template v-if="rebalanceImpact.selfFunded">Self-funded</template>
                                     <template v-else>Need {{ formatCurrency(rebalanceImpact.additionalCashNeeded) }}</template>
@@ -570,7 +570,7 @@
                                 <p class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Realized P&amp;L</p>
                                 <p
                                     class="text-sm font-semibold mt-0.5"
-                                    :class="rebalanceImpact.realizedPnl >= 0 ? 'text-green-600' : 'text-red-600'"
+                                    :class="rebalanceImpact.realizedPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                 >
                                     {{ rebalanceImpact.realizedPnl >= 0 ? '+' : '' }}{{ formatCurrency(rebalanceImpact.realizedPnl) }}
                                 </p>
@@ -581,7 +581,7 @@
 
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead class="bg-gray-50 dark:bg-gray-700">
+                            <thead class="table-head">
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Symbol
@@ -626,7 +626,7 @@
                                                         {{ position.symbol }}
                                                     </span>
                                                     <span
-                                                        class="inline-flex shrink-0 items-center whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                                                        class="badge shrink-0 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
                                                     >
                                                         {{ positionSourceLabel(position) }}
                                                     </span>
@@ -642,7 +642,7 @@
                                         <div class="flex items-center justify-end gap-1.5">
                                             <div
                                                 v-if="position.priceStale && pricesUpdating"
-                                                class="animate-spin rounded-full h-3 w-3 border-2 border-primary-500 border-t-transparent"
+                                                class="spinner spinner-xs"
                                                 title="Fetching the latest price…"
                                             ></div>
                                             <span>{{ position.currentValue === null ? "—" : formatCurrency(position.currentValue) }}</span>
@@ -684,7 +684,7 @@
                                             <span
                                                 :class="
                                                     Math.abs(position.driftPercent) >= portfolioPreferencesForm.driftThresholdPercent
-                                                        ? 'text-red-600 font-medium'
+                                                        ? 'text-red-600 dark:text-red-400 font-medium'
                                                         : 'text-gray-900 dark:text-gray-100'
                                                 "
                                             >
@@ -707,7 +707,7 @@
                                     <td
                                         :class="[
                                             'px-6 py-4 text-right text-sm font-medium',
-                                            position.valueDelta < 0 ? 'text-green-600' : position.valueDelta > 0 ? 'text-red-600' : 'text-gray-900 dark:text-gray-100',
+                                            position.valueDelta < 0 ? 'text-green-600 dark:text-green-400' : position.valueDelta > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
                                         ]"
                                     >
                                         <span v-if="position.valueDelta !== null">
@@ -734,7 +734,7 @@
                                         <button
                                             v-if="position.holdingId && !position.includesOpenTrades && !position.hasPlaidLots"
                                             @click="confirmDeleteHolding(position)"
-                                            class="text-red-600 hover:text-red-800"
+                                            class="text-red-600 dark:text-red-400 hover:text-red-800"
                                         >
                                             Delete
                                         </button>
@@ -746,7 +746,7 @@
                 </div>
                 <div
                     v-else
-                    class="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm"
+                    class="card text-center py-12"
                 >
                     <svg
                         class="mx-auto h-12 w-12 text-gray-400"
@@ -778,7 +778,7 @@
                 </div>
                     </div>
                     <aside class="space-y-4">
-                        <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+                        <section class="card overflow-hidden">
                             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                                 <div class="flex items-center justify-between gap-2">
                                     <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -786,7 +786,7 @@
                                     </h2>
                                     <div
                                         v-if="accountComparisonLoading"
-                                        class="animate-spin rounded-full h-4 w-4 border-2 border-primary-500 border-t-transparent"
+                                        class="spinner spinner-xs"
                                     ></div>
                                 </div>
                                 <div
@@ -827,7 +827,7 @@
                                  accounts while seeing the comparison update live. -->
                             <div v-if="inCompareMode && selectedComparisonRows.length >= 2" class="overflow-x-auto border-b border-gray-200 dark:border-gray-700">
                                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs">
-                                    <thead class="bg-gray-50 dark:bg-gray-700">
+                                    <thead class="table-head">
                                         <tr>
                                             <th class="px-3 py-2 text-left text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                                 Metric
@@ -862,14 +862,14 @@
                                                 class="px-3 py-2 text-right"
                                             >
                                                 <span
-                                                    :class="row.totalReturnPercent >= 0 ? 'text-green-600' : 'text-red-600'"
+                                                    :class="row.totalReturnPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                                     class="font-medium"
                                                 >
                                                     {{ formatPercent(row.totalReturnPercent) }}
                                                 </span>
                                                 <span
                                                     v-if="!row.isLeader && !isPairCompare"
-                                                    :class="row.returnDelta >= 0 ? 'text-green-600' : 'text-red-600'"
+                                                    :class="row.returnDelta >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                                     class="block text-[10px]"
                                                 >
                                                     {{ row.returnDelta >= 0 ? '+' : '' }}{{ row.returnDelta.toFixed(2) }}%
@@ -878,7 +878,7 @@
                                             <td
                                                 v-if="isPairCompare"
                                                 class="px-3 py-2 text-right font-medium"
-                                                :class="pairDifferenceRow.returnDelta >= 0 ? 'text-green-600' : 'text-red-600'"
+                                                :class="pairDifferenceRow.returnDelta >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                             >
                                                 {{ pairDifferenceRow.returnDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.returnDelta.toFixed(2) }}%
                                             </td>
@@ -939,7 +939,7 @@
                                                 </span>
                                                 <span
                                                     v-if="!row.isLeader && !isPairCompare && row.driftDelta !== null"
-                                                    :class="row.driftDelta <= 0 ? 'text-green-600' : 'text-red-600'"
+                                                    :class="row.driftDelta <= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                                     class="block text-[10px]"
                                                 >
                                                     {{ row.driftDelta >= 0 ? '+' : '' }}{{ row.driftDelta.toFixed(2) }}%
@@ -948,7 +948,7 @@
                                             <td
                                                 v-if="isPairCompare"
                                                 class="px-3 py-2 text-right font-medium"
-                                                :class="pairDifferenceRow.driftDelta === null ? 'text-gray-500 dark:text-gray-400' : pairDifferenceRow.driftDelta <= 0 ? 'text-green-600' : 'text-red-600'"
+                                                :class="pairDifferenceRow.driftDelta === null ? 'text-gray-500 dark:text-gray-400' : pairDifferenceRow.driftDelta <= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                             >
                                                 <template v-if="pairDifferenceRow.driftDelta === null">—</template>
                                                 <template v-else>{{ pairDifferenceRow.driftDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.driftDelta.toFixed(2) }}%</template>
@@ -962,7 +962,7 @@
                                  add or remove accounts from the comparison set at any time. -->
                             <div v-if="accountComparisonRows.length > 0" class="overflow-x-auto">
                                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                    <thead class="bg-gray-50 dark:bg-gray-700">
+                                    <thead class="table-head">
                                         <tr>
                                             <th class="px-3 py-2 text-left text-[11px] font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                                 Account
@@ -998,7 +998,7 @@
                                             <td
                                                 :class="[
                                                     'px-3 py-2 text-right text-xs font-medium',
-                                                    row.totalReturnPercent >= 0 ? 'text-green-600' : 'text-red-600',
+                                                    row.totalReturnPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
                                                 ]"
                                             >
                                                 {{ formatPercent(row.totalReturnPercent) }}
@@ -1015,14 +1015,14 @@
                             </div>
                         </section>
 
-                        <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+                        <section class="card overflow-hidden">
                             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                                 <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
                                     Data Status
                                 </h2>
                                 <span
                                     :class="[
-                                        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+                                        'badge',
                                         portfolioDataStatus.tone === 'good'
                                             ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'
                                             : portfolioDataStatus.tone === 'warning'
@@ -1069,7 +1069,7 @@
                             </div>
                         </section>
 
-                        <section class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+                        <section class="card overflow-hidden">
                             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                                 <div>
                                     <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -1238,7 +1238,7 @@
         <!-- Stock Scanner Tab -->
         <div v-if="activeTab === 'scanner'">
             <div
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                class="card overflow-hidden"
             >
                 <!-- Scanner Header -->
                 <div
@@ -1270,7 +1270,7 @@
                         class="flex items-center justify-center py-12"
                     >
                         <div
-                            class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                            class="spinner spinner-md"
                         ></div>
                     </div>
 
@@ -1328,7 +1328,7 @@
         <div v-if="activeTab === 'analyzer'">
             <!-- Search Bar -->
             <div
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
+                class="card p-6 mb-6"
             >
                 <div class="flex items-center space-x-4">
                     <div class="flex-1">
@@ -1353,7 +1353,7 @@
             <!-- Stock Info Header -->
             <div
                 v-if="analyzerStockInfo"
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
+                class="card p-6 mb-6"
             >
                 <div class="flex items-center justify-between">
                     <div class="flex items-center">
@@ -1415,10 +1415,10 @@
         <!-- Delete Confirmation Modal -->
         <div
             v-if="holdingToDelete"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
+            class="modal-overlay flex items-center justify-center"
         >
             <div
-                class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4"
+                class="modal-panel p-6 max-w-md w-full mx-4"
             >
                 <h3
                     class="text-lg font-medium text-gray-900 dark:text-white mb-4"
@@ -1447,10 +1447,10 @@
         <!-- Add to Watchlist Modal -->
         <div
             v-if="showWatchlistModal"
-            class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
+            class="modal-overlay flex items-center justify-center"
         >
             <div
-                class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4"
+                class="modal-panel p-6 max-w-md w-full mx-4"
             >
                 <h3
                     class="text-lg font-medium text-gray-900 dark:text-white mb-4"
@@ -1461,7 +1461,7 @@
                 <!-- Loading State -->
                 <div v-if="watchlistsLoading" class="flex justify-center py-4">
                     <div
-                        class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"
+                        class="spinner spinner-sm"
                     ></div>
                 </div>
 

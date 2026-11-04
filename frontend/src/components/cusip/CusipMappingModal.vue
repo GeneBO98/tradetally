@@ -3,18 +3,18 @@
     <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
       <!-- Background overlay -->
       <div
-        class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+        class="modal-backdrop"
         @click="$emit('close')"
       ></div>
 
       <!-- Modal -->
-      <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+      <div class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
         <form @submit.prevent="saveMapping">
           <!-- Header -->
           <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
             <div class="sm:flex sm:items-start">
               <div class="w-full">
-                <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                <h3 class="heading-card">
                   {{ isEditing ? 'Edit CUSIP Mapping' : 'Add CUSIP Mapping' }}
                 </h3>
                 <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -33,7 +33,7 @@
                       type="text"
                       maxlength="9"
                       placeholder="e.g., 123456789"
-                      class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white font-mono disabled:bg-gray-100 dark:disabled:bg-gray-600"
+                      class="input mt-1 block font-mono disabled:bg-gray-100 dark:disabled:bg-gray-600"
                       @input="validateCusip"
                     />
                     <p v-if="errors.cusip" class="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -53,7 +53,7 @@
                       v-model="form.ticker"
                       type="text"
                       placeholder="e.g., AAPL"
-                      class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white uppercase"
+                      class="input mt-1 block uppercase"
                       @input="validateTicker"
                     />
                     <p v-if="errors.ticker" class="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -70,7 +70,7 @@
                       v-model="form.company_name"
                       type="text"
                       placeholder="e.g., Apple Inc."
-                      class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                      class="input mt-1 block"
                     />
                   </div>
 
@@ -88,14 +88,14 @@
                   </div>
 
                   <!-- Impact Warning -->
-                  <div v-if="expectedTradeUpdates > 0" class="rounded-md bg-blue-50 dark:bg-blue-900/20 p-4">
+                  <div v-if="expectedTradeUpdates > 0" class="rounded-md bg-primary-50 dark:bg-primary-900/20 p-4">
                     <div class="flex">
-                      <InformationCircleIcon class="h-5 w-5 text-blue-400" />
+                      <InformationCircleIcon class="h-5 w-5 text-primary-400" />
                       <div class="ml-3">
-                        <h3 class="text-sm font-medium text-blue-800 dark:text-blue-200">
+                        <h3 class="text-sm font-medium text-primary-800 dark:text-primary-200">
                           Trade Updates
                         </h3>
-                        <p class="mt-1 text-sm text-blue-700 dark:text-blue-300">
+                        <p class="mt-1 text-sm text-primary-700 dark:text-primary-300">
                           This mapping will update {{ expectedTradeUpdates }} existing trade{{ expectedTradeUpdates !== 1 ? 's' : '' }} 
                           that currently use the CUSIP {{ form.cusip }}.
                         </p>
@@ -112,10 +112,10 @@
             <button
               type="submit"
               :disabled="!isFormValid || saving"
-              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              class="btn-primary w-full sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span v-if="saving" class="flex items-center">
-                <div class="animate-spin rounded-full h-4 w-4 border-b border-white mr-2"></div>
+                <div class="spinner h-4 w-4 spinner-light mr-2"></div>
                 Saving...
               </span>
               <span v-else>{{ isEditing ? 'Update' : 'Create' }} Mapping</span>
@@ -124,7 +124,7 @@
               type="button"
               @click="$emit('close')"
               :disabled="saving"
-              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-800 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+              class="btn-secondary mt-3 w-full sm:mt-0 sm:ml-3 sm:w-auto"
             >
               Cancel
             </button>

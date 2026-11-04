@@ -15,7 +15,7 @@
 
     <!-- Loading (initial only) -->
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Empty state -->
@@ -39,7 +39,7 @@
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div class="flex items-center gap-2">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                <h2 class="heading-card">
                   {{ profile.label || profile.account_identifier }}
                 </h2>
                 <span

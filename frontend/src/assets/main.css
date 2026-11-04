@@ -11,14 +11,28 @@
     --color-primary-500: theme('colors.primary.500');
   }
 
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+
   body {
     @apply bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100;
+  }
+
+  /* Every table in the app is numeric-heavy (prices, P&L, counts). Tabular
+     figures keep digits a fixed width so columns line up the way they do on
+     a broker blotter, without switching to a monospace face. */
+  table {
+    font-variant-numeric: tabular-nums;
   }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200;
+    @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200;
     min-height: 44px; /* Ensures proper touch target size on mobile */
   }
   
@@ -37,9 +51,20 @@
   .btn-yellow {
     @apply btn text-yellow-800 bg-yellow-100 hover:bg-yellow-200 border-yellow-300 focus:ring-yellow-500 dark:bg-yellow-900 dark:text-yellow-200 dark:border-yellow-700 dark:hover:bg-yellow-800;
   }
-  
+
+  /* Compact button modifier for toolbars, table rows and inline actions.
+     Pair with a variant: `btn-primary btn-sm`. */
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+    min-height: 32px;
+  }
+
+  /* Borderless, low-emphasis button (toolbar icons, tertiary actions). */
+  .btn-ghost {
+    @apply btn text-gray-600 bg-transparent hover:bg-gray-100 focus:ring-primary-500 dark:text-gray-300 dark:hover:bg-gray-700;
+  }
   .input {
-    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:border-gray-600;
+    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-900 dark:border-gray-600 dark:placeholder-gray-500;
     min-height: 44px; /* Ensures proper touch target size on mobile */
     font-size: 16px; /* Prevents iOS zoom on input focus */
   }
@@ -55,7 +80,7 @@
   }
   
   select.input:focus {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%233b82f6' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23e46a16' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
   }
   
   .dark select.input {
@@ -63,7 +88,7 @@
   }
   
   .dark select.input:focus {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2360a5fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23fab05b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
   }
   
   input[type="date"].input,
@@ -116,14 +141,130 @@
     @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1;
   }
   
+  /* Standard surface. Edges are defined by a hairline border with a light
+     shadow so cards read the same in light and dark mode; do not re-add
+     heavier shadows or alternate radii inline. */
   .card {
-    @apply bg-white dark:bg-gray-800 shadow rounded-lg;
+    @apply bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm;
   }
   
   .card-body {
     @apply p-3;
     @apply sm:p-4;
     @apply lg:p-6;
+  }
+
+  /* ---- Modals -------------------------------------------------------
+     Every dialog uses the same overlay tint, panel surface, radius and
+     elevation. BaseModal (components/common) is the preferred wrapper;
+     hand-rolled dialogs must at least use these classes. */
+  .modal-overlay {
+    @apply fixed inset-0 z-50 bg-gray-900/50 dark:bg-gray-950/70;
+  }
+  /* Backdrop variant for the "wrapper + separate backdrop div" pattern. */
+  .modal-backdrop {
+    @apply fixed inset-0 bg-gray-900/50 dark:bg-gray-950/70 transition-opacity;
+  }
+  .modal-panel {
+    @apply relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700;
+  }
+  .modal-title {
+    @apply text-lg font-semibold text-gray-900 dark:text-white;
+  }
+
+  /* ---- Spinners -----------------------------------------------------
+     One ring style, four sizes. Default color is the theme primary;
+     `spinner-light` for use on primary buttons, `spinner-current` to
+     inherit, `spinner-muted` for secondary surfaces. */
+  .spinner {
+    @apply animate-spin rounded-full border-2 border-primary-600 border-t-transparent h-8 w-8;
+  }
+  span.spinner {
+    @apply inline-block;
+  }
+  .spinner-xs { @apply h-4 w-4; }
+  .spinner-sm { @apply h-6 w-6; }
+  .spinner-md { @apply h-8 w-8; }
+  .spinner-lg { @apply h-12 w-12; }
+  .spinner-light { @apply border-white border-t-transparent; }
+  .spinner-current { @apply border-current border-t-transparent; }
+  .spinner-muted { @apply border-gray-400 border-t-transparent dark:border-gray-500 dark:border-t-transparent; }
+
+  /* ---- Floating menus / listboxes ---------------------------------- */
+  /* All floating surfaces (menus, listboxes, date pickers, popovers)
+     share one radius, one elevation and the hairline border. */
+  .popover {
+    @apply bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700;
+  }
+  .dropdown-menu {
+    @apply popover py-1 text-base;
+  }
+
+  /* ---- Callouts -----------------------------------------------------
+     Tinted inline notices. `callout-info` is the theme tint; the others
+     carry semantic meaning (success / warning / danger). */
+  .callout {
+    @apply rounded-lg border p-4 text-sm;
+  }
+  .callout-info {
+    @apply callout bg-primary-50 border-primary-200 text-primary-800 dark:bg-primary-900/20 dark:border-primary-800 dark:text-primary-200;
+  }
+  .callout-success {
+    @apply callout bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200;
+  }
+  .callout-warning {
+    @apply callout bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200;
+  }
+  .callout-danger {
+    @apply callout bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200;
+  }
+
+  /* ---- Badges -------------------------------------------------------
+     One chip shape for statuses, sides, tags and counts. Pick a tone;
+     green/red are reserved for direction (long/short, win/loss). */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap;
+  }
+  .badge-neutral {
+    @apply badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300;
+  }
+  .badge-primary {
+    @apply badge bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300;
+  }
+  .badge-success {
+    @apply badge bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300;
+  }
+  .badge-danger {
+    @apply badge bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300;
+  }
+  .badge-warning {
+    @apply badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300;
+  }
+
+  /* ---- Tables -------------------------------------------------------
+     Header row: a faint tint in light mode, and in dark mode a recessed
+     band instead of a lighter gray-700 stripe across the card. */
+  .table-head {
+    @apply bg-gray-50 dark:bg-gray-900/40;
+  }
+  .table-th {
+    @apply text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider;
+  }
+
+  /* ---- Underline tabs ----------------------------------------------- */
+  .tab {
+    @apply whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors;
+  }
+  .tab-active {
+    @apply border-primary-500 text-primary-600 dark:text-primary-400;
+  }
+  .tab-inactive {
+    @apply border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300;
+  }
+
+  /* Brand tagline on auth pages. */
+  .brand-tagline {
+    @apply text-xl sm:text-2xl md:text-3xl font-bold uppercase tracking-wide text-primary-600 dark:text-primary-400 whitespace-nowrap;
   }
 
   /* Horizontal scroll fade affordance. Soft edge shadows appear ONLY when the
@@ -240,7 +381,7 @@
   }
 
   .table-card-item {
-    @apply bg-white dark:bg-gray-800 shadow rounded-lg p-4 mb-3;
+    @apply card p-4 mb-3;
     @apply hover:shadow-md transition-shadow cursor-pointer;
   }
 

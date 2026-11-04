@@ -1,11 +1,11 @@
 <template>
   <div v-if="open" class="fixed inset-0 z-50 overflow-y-auto">
     <div class="flex min-h-full items-center justify-center p-4">
-      <div class="fixed inset-0 bg-gray-900/60" aria-hidden="true" @click="emit('close')"></div>
-      <section class="relative w-full max-w-lg rounded-xl bg-white shadow-xl dark:bg-gray-800" role="dialog" aria-modal="true" aria-labelledby="bulk-allocation-title">
+      <div class="modal-overlay" aria-hidden="true" @click="emit('close')"></div>
+      <section class="modal-panel w-full max-w-lg" role="dialog" aria-modal="true" aria-labelledby="bulk-allocation-title">
         <header class="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 dark:border-gray-700">
           <div>
-            <h2 id="bulk-allocation-title" class="text-lg font-semibold text-gray-900 dark:text-white">Allocate {{ tradeCount }} trades</h2>
+            <h2 id="bulk-allocation-title" class="heading-card">Allocate {{ tradeCount }} trades</h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Apply the same proportional split to every selected trade.</p>
           </div>
           <button type="button" class="rounded-md p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close" @click="emit('close')">

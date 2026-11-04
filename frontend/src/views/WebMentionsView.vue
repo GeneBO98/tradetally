@@ -10,21 +10,21 @@
     </div>
 
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <div v-else class="relative space-y-6">
       <div v-if="loading" class="absolute top-0 right-0 z-10">
         <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
-          <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+          <div class="spinner spinner-xs"></div>
           <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
         </div>
       </div>
 
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <section class="xl:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+        <section class="card xl:col-span-2">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ editingRuleId ? 'Edit Rule' : 'Rule Builder' }}</h2>
+            <h2 class="heading-card">{{ editingRuleId ? 'Edit Rule' : 'Rule Builder' }}</h2>
           </div>
           <form @submit.prevent="saveRule" class="p-6 space-y-5">
             <div class="grid grid-cols-1 gap-4">
@@ -109,7 +109,7 @@
                   <span
                     v-for="symbol in selectedHoldingSymbols"
                     :key="symbol"
-                    class="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                    class="badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
                   >
                     {{ symbol }}
                     <button type="button" class="text-primary-700 dark:text-primary-300" @click="removeHoldingSymbol(symbol)">×</button>
@@ -202,7 +202,7 @@
                     <span
                       v-for="source in selectedSourceNames"
                       :key="source.id"
-                      class="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                      class="badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
                     >
                       {{ source.name }}
                       <button type="button" class="text-primary-700 dark:text-primary-300" @click="removeSource(source.id)">×</button>
@@ -325,9 +325,9 @@
         </section>
 
         <aside class="space-y-6">
-          <section class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <section class="card">
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Active Rules</h2>
+              <h2 class="heading-card">Active Rules</h2>
             </div>
             <div v-if="rules.length === 0" class="p-6 text-sm text-gray-500 dark:text-gray-400">No Web Mention rules yet.</div>
             <div v-else class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -359,15 +359,15 @@
                   </button>
                   <button @click.stop="testExistingRule(rule)" class="text-xs text-primary-600 hover:text-primary-800">Preview</button>
                   <button @click.stop="editRule(rule)" class="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Edit</button>
-                  <button @click.stop="removeRule(rule)" class="text-xs text-red-600 hover:text-red-800">Delete</button>
+                  <button @click.stop="removeRule(rule)" class="text-xs text-red-600 dark:text-red-400 hover:text-red-800">Delete</button>
                 </div>
               </button>
             </div>
           </section>
 
-          <section class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <section class="card">
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Recent Mentions</h2>
+              <h2 class="heading-card">Recent Mentions</h2>
               <span v-if="selectedRule" class="text-sm text-gray-500 dark:text-gray-400">{{ selectedRule.name }}</span>
             </div>
             <div v-if="mentions.length === 0" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
@@ -419,7 +419,7 @@
             </div>
           </section>
 
-          <section class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <section class="card">
             <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
               <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Trusted Sources</h2>
             </div>
@@ -461,7 +461,7 @@
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ source.domain || source.source_type }}</p>
                         <p class="text-xs text-red-600 dark:text-red-300 mt-2">{{ source.last_fetch_error || 'Fetch failed' }}</p>
                       </div>
-                      <span class="inline-flex px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                      <span class="badge bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
                         error
                       </span>
                     </div>

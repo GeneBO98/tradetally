@@ -1,14 +1,16 @@
 <template>
   <div class="card">
     <div class="card-body">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white">Upcoming Earnings</h3>
-        <div class="flex items-center space-x-2">
-          <span class="text-xs text-gray-500 dark:text-gray-400">Next 2 weeks</span>
+      <div class="flex items-start justify-between gap-3 mb-4">
+        <div class="min-w-0">
+          <h3 class="heading-card">Upcoming Earnings</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400">Next 2 weeks</p>
+        </div>
+        <div class="flex items-center">
           <button
             @click="refreshEarnings"
             :disabled="loading"
-            class="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="btn-secondary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg
               class="w-4 h-4 mr-1.5"
@@ -30,7 +32,7 @@
       </div>
 
       <div v-if="loading && !earnings.length" class="flex justify-center py-8">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-md"></div>
       </div>
 
       <div v-else-if="error" class="text-center py-8">
@@ -52,77 +54,38 @@
         <p class="text-gray-500 dark:text-gray-400">No upcoming earnings for your open positions in the next 2 weeks.</p>
       </div>
 
-      <div v-else class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead>
-            <tr>
-              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Symbol
-              </th>
-              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Date
-              </th>
-              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Time
-              </th>
-              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Estimate
-              </th>
-              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Last Year
-              </th>
-              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Days Until
-              </th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-            <tr v-for="earning in earnings" :key="`${earning.symbol}-${earning.date}`" class="hover:bg-gray-50 dark:hover:bg-gray-800">
-              <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">
-                {{ earning.symbol }}
-              </td>
-              <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
-                {{ formatEarningsDate(earning.date) }}
-              </td>
-              <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
-                <span v-if="earning.hour" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                  :class="[
-                    earning.hour === 'bmo' 
-                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
-                      : 'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400'
-                  ]">
-                  {{ earning.hour === 'bmo' ? 'Before Market' : 'After Market' }}
-                </span>
-                <span v-else class="text-gray-400">TBD</span>
-              </td>
-              <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
-                <span v-if="earning.epsEstimate !== null">
-                  ${{ formatNumber(earning.epsEstimate) }}
-                </span>
-                <span v-else class="text-gray-400">-</span>
-              </td>
-              <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
-                <span v-if="earning.epsActual !== null">
-                  ${{ formatNumber(earning.epsActual) }}
-                </span>
-                <span v-else class="text-gray-400">-</span>
-              </td>
-              <td class="px-3 py-2 text-sm">
-                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-                  :class="[
-                    earning.daysUntil <= 3 
-                      ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-                      : earning.daysUntil <= 7
-                      ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
-                      : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                  ]">
-                  {{ earning.daysUntil === 0 ? 'Today' : earning.daysUntil === 1 ? 'Tomorrow' : `${earning.daysUntil} days` }}
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <!-- Compact two-line list: reads cleanly in the narrow dashboard rail
+           and in the main column without a horizontal scroller. -->
+      <ul v-else class="-mx-1 divide-y divide-gray-200 dark:divide-gray-700">
+        <li
+          v-for="earning in earnings"
+          :key="`${earning.symbol}-${earning.date}`"
+          class="flex items-start justify-between gap-3 px-1 py-2.5"
+        >
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-semibold text-gray-900 dark:text-white">{{ earning.symbol }}</span>
+              <span v-if="earning.hour" class="badge-neutral" :title="earning.hour === 'bmo' ? 'Before market open' : 'After market close'">
+                {{ earning.hour === 'bmo' ? 'BMO' : 'AMC' }}
+              </span>
+            </div>
+            <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400 text-mono-num">
+              Est. {{ formatEps(earning.epsEstimate) }}
+              <span class="mx-1 text-gray-300 dark:text-gray-600">/</span>
+              Last yr {{ formatEps(earning.epsActual) }}
+            </div>
+          </div>
+          <div class="shrink-0 text-right">
+            <div class="text-sm text-gray-700 dark:text-gray-300">{{ formatEarningsDate(earning.date) }}</div>
+            <span
+              class="mt-0.5"
+              :class="earning.daysUntil <= 3 ? 'badge-warning' : 'badge-neutral'"
+            >
+              {{ earning.daysUntil === 0 ? 'Today' : earning.daysUntil === 1 ? 'Tomorrow' : `${earning.daysUntil} days` }}
+            </span>
+          </div>
+        </li>
+      </ul>
     </div>
   </div>
 </template>
@@ -143,17 +106,19 @@ const loading = ref(false)
 const error = ref(null)
 
 const formatEarningsDate = (dateStr) => {
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric',
-    year: 'numeric'
-  })
+  // Earnings dates arrive as calendar dates (YYYY-MM-DD). Parse them as local
+  // dates; new Date('YYYY-MM-DD') is UTC midnight and renders a day early in
+  // US timezones.
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr || ''))
+  const date = match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(dateStr)
+  if (isNaN(date)) return '-'
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-const formatNumber = (num) => {
-  if (num === null || num === undefined) return '0.00'
-  return parseFloat(num).toFixed(2)
+const formatEps = (num) => {
+  if (num === null || num === undefined || isNaN(num)) return '-'
+  const value = parseFloat(num)
+  return `${value < 0 ? '-' : ''}$${Math.abs(value).toFixed(2)}`
 }
 
 const fetchEarnings = async () => {

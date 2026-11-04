@@ -12,7 +12,7 @@
 
     <div class="card-dense-body flex-1 flex flex-col">
       <div v-if="initialLoading" class="flex-1 flex items-center justify-center py-8">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-md"></div>
       </div>
 
       <div v-else-if="error" class="flex-1 flex items-center justify-center py-8">
@@ -73,7 +73,7 @@
               role="tooltip"
               class="absolute inset-x-0 top-full z-30 pt-2"
             >
-              <div class="rounded-md border border-gray-200 bg-white p-3 text-xs leading-relaxed text-gray-600 shadow-lg dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
+              <div class="dropdown-menu p-3 text-xs leading-relaxed text-gray-600 dark:text-gray-300">
                 {{ definitions[indicator.key] || indicator.description }}
               </div>
             </div>

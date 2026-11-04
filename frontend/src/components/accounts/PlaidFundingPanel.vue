@@ -11,7 +11,7 @@
       <!-- Connect buttons -->
       <div class="grid grid-cols-2 gap-2">
         <button
-          class="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary-600 px-3 py-2 text-xs font-medium text-white shadow-sm hover:bg-primary-700 disabled:opacity-60"
+          class="btn-primary btn-sm gap-1.5 disabled:opacity-60"
           :disabled="busyTarget === 'bank'"
           @click="openPlaidLink('bank')"
         >
@@ -21,7 +21,7 @@
           {{ busyTarget === 'bank' ? 'Connecting…' : 'Bank' }}
         </button>
         <button
-          class="inline-flex items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          class="btn-secondary gap-1.5 text-xs disabled:opacity-60 dark:text-gray-200"
           :disabled="busyTarget === 'investment'"
           @click="openPlaidLink('investment')"
         >

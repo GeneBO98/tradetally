@@ -3,7 +3,7 @@
     <!-- Panel header -->
     <div class="flex items-end justify-between mb-4">
       <div>
-        <h2 class="text-lg font-medium text-gray-900 dark:text-white">Start here</h2>
+        <h2 class="heading-card">Start here</h2>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           Ideas pulled from the latest 8 Pillars scan. Select any stock to run a fresh analysis.
         </p>
@@ -23,7 +23,7 @@
       <div
         v-for="n in 3"
         :key="n"
-        class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6"
+        class="card p-6"
       >
         <div class="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
         <div class="h-3 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mt-2"></div>
@@ -43,7 +43,7 @@
         <section
           v-for="list in lists"
           :key="list.key"
-          class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden flex flex-col"
+          class="card overflow-hidden flex flex-col"
         >
           <header class="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ list.title }}</h3>
@@ -98,7 +98,7 @@
     </template>
 
     <!-- No scan data yet (fresh install) -->
-    <div v-else class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
+    <div v-else class="card p-6">
       <div class="lg:flex lg:items-start lg:justify-between lg:gap-8">
         <div class="max-w-xl">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">

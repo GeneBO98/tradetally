@@ -19,7 +19,7 @@
 
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Clients List -->
@@ -27,7 +27,7 @@
       <div
         v-for="client in clients"
         :key="client.id"
-        class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700"
+        class="card p-6"
       >
         <div class="flex items-start justify-between">
           <div class="flex-1">
@@ -37,7 +37,7 @@
               </h3>
               <span
                 v-if="client.is_trusted"
-                class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400"
+                class="badge bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400"
               >
                 Trusted
               </span>
@@ -81,7 +81,7 @@
                   <span
                     v-for="scope in client.allowed_scopes"
                     :key="scope"
-                    class="px-2 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-400"
+                    class="badge bg-primary-100 dark:bg-primary-900/20 text-primary-800 dark:text-primary-400"
                   >
                     {{ scope }}
                   </span>
@@ -111,9 +111,9 @@
     </div>
 
     <!-- Empty State -->
-    <div v-else class="text-center py-12 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+    <div v-else class="card text-center py-12">
       <KeyIcon class="w-16 h-16 text-gray-400 mx-auto mb-4" />
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">No OAuth Applications</h3>
+      <h3 class="heading-card mb-2">No OAuth Applications</h3>
       <p class="text-gray-500 dark:text-gray-400 mb-6">
         Create your first OAuth2 application to enable external integrations.
       </p>
@@ -124,9 +124,9 @@
     </div>
 
     <!-- Create Client Modal -->
-    <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+    <div v-if="showCreateModal" class="modal-overlay flex items-center justify-center p-4">
+      <div class="modal-panel max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+        <h3 class="heading-card mb-4">
           Create OAuth2 Application
         </h3>
 
@@ -241,8 +241,8 @@
     </div>
 
     <!-- Client Created Modal (shows credentials) -->
-    <div v-if="createdClient" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full p-6">
+    <div v-if="createdClient" class="modal-overlay flex items-center justify-center p-4">
+      <div class="modal-panel max-w-2xl w-full p-6">
         <div class="flex items-center space-x-3 mb-4">
           <CheckCircleIcon class="w-8 h-8 text-green-500" />
           <h3 class="heading-card">
@@ -291,8 +291,8 @@
             </div>
           </div>
 
-          <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-            <p class="text-sm text-blue-800 dark:text-blue-300">
+          <div class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-4">
+            <p class="text-sm text-primary-800 dark:text-primary-300">
               <strong>For Discourse OAuth2 Basic plugin:</strong><br />
               Use these endpoints:<br />
               - Authorization: <code>{{ baseUrl }}/oauth/authorize</code><br />
@@ -311,9 +311,9 @@
     </div>
 
     <!-- Delete Confirmation Modal -->
-    <div v-if="clientToDelete" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+    <div v-if="clientToDelete" class="modal-overlay flex items-center justify-center p-4">
+      <div class="modal-panel max-w-md w-full p-6">
+        <h3 class="heading-card mb-4">
           Delete OAuth Application
         </h3>
         <p class="text-gray-600 dark:text-gray-400 mb-6">

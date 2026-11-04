@@ -7,7 +7,7 @@
       @click="expanded = !expanded"
     >
       <div>
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white">Optional accounting tools</h3>
+        <h3 class="heading-card">Optional accounting tools</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
           Additional tools for specialized recordkeeping workflows.
         </p>
@@ -66,7 +66,7 @@
         </div>
 
         <div v-if="loadingGroups" class="flex justify-center py-8">
-          <div class="h-7 w-7 animate-spin rounded-full border-2 border-primary-600 border-t-transparent"></div>
+          <div class="spinner spinner-md"></div>
         </div>
 
         <div v-else class="mt-5 space-y-3">

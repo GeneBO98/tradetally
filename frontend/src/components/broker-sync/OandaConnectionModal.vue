@@ -1,5 +1,5 @@
 <template>
-  <dialog ref="dialog" class="w-full max-w-lg rounded-xl bg-white p-0 text-gray-900 shadow-xl backdrop:bg-black/50 dark:bg-gray-800 dark:text-white" aria-labelledby="oanda-title" @cancel.prevent="close" @click="handle_backdrop">
+  <dialog ref="dialog" class="modal-panel w-full max-w-lg p-0 text-gray-900 backdrop:bg-black/50 dark:text-white" aria-labelledby="oanda-title" @cancel.prevent="close" @click="handle_backdrop">
     <form class="space-y-5 p-6" @submit.prevent="save">
       <div class="flex items-center justify-between">
         <h2 id="oanda-title" class="text-lg font-semibold">Connect OANDA</h2>

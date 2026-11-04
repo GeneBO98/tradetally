@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+  <div class="card p-6">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <div>
@@ -34,7 +34,7 @@
               v-for="preset in datePresets"
               :key="preset.label"
               @click="selectDatePreset(preset)"
-              class="px-3 py-1 text-sm bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-md hover:bg-gray-50 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200"
+              class="btn-secondary btn-sm dark:bg-gray-600 dark:border-gray-500 dark:hover:bg-gray-500 dark:text-gray-200"
             >
               {{ preset.label }}
             </button>
@@ -93,8 +93,8 @@
 
     <!-- Loading State -->
     <div v-if="analyzing" class="text-center py-8">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Analyzing Your Journal</h3>
+      <div class="spinner spinner-lg mx-auto mb-4"></div>
+      <h3 class="heading-card mb-2">Analyzing Your Journal</h3>
       <p class="text-gray-600 dark:text-gray-400">
         AI is reviewing your entries from {{ startDate }} to {{ endDate }}...
       </p>

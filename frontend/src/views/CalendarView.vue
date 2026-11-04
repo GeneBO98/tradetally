@@ -57,7 +57,7 @@
 
     <!-- Full page spinner only on initial load -->
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Content with optional refresh indicator -->
@@ -65,7 +65,7 @@
       <!-- Subtle refresh indicator -->
       <div v-if="loading" class="absolute top-0 right-0 z-10">
         <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
-          <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+          <div class="spinner spinner-xs"></div>
           <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
         </div>
       </div>
@@ -103,7 +103,7 @@
                       <span class="text-data-secondary block truncate">
                         {{ format(expandedMonth, 'MMMM') }} {{ showRValue ? 'R-Value' : pnlTypeLabel }}
                       </span>
-                      <span class="mt-1 block text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="monthlyTotal >= 0 ? 'text-green-600' : 'text-red-600'">
+                      <span class="mt-1 block text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="monthlyTotal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                         {{ showRValue ? formatRValue(monthlyTotal) : formatCurrency(monthlyTotal) }}
                       </span>
                       <span class="mt-2 block text-xs text-gray-500 dark:text-gray-400">
@@ -131,7 +131,7 @@
                       <dt class="text-data-secondary truncate">
                         Year To Date
                       </dt>
-                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="ytdTotal >= 0 ? 'text-green-600' : 'text-red-600'">
+                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="ytdTotal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                         {{ formatCurrency(ytdTotal) }}
                       </dd>
                       <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -178,7 +178,7 @@
               </div>
               <!-- Week P/L or R-Value Column -->
               <div class="flex items-center justify-center border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 bg-gray-50 dark:bg-gray-800">
-                <p class="text-xs sm:text-sm font-semibold" :class="getWeekTotal(week) >= 0 ? 'text-green-600' : 'text-red-600'">
+                <p class="text-xs sm:text-sm font-semibold" :class="getWeekTotal(week) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                   {{ showRValue ? formatRValue(week.weekRValue || 0, 1) : formatCurrency(getWeekTotal(week), { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
                 </p>
               </div>
@@ -220,9 +220,9 @@
     </div>
 
     <!-- Day Trades Modal -->
-    <div v-if="selectedDay" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div v-if="selectedDay" class="modal-overlay overflow-y-auto">
       <div
-        class="relative mx-auto p-5 border shadow-lg rounded-md bg-white dark:bg-gray-800 transition-all duration-300"
+        class="modal-panel mx-auto p-5 transition-all duration-300"
         :class="isModalExpanded
           ? 'top-4 w-full max-w-6xl h-[calc(100vh-2rem)]'
           : 'top-20 w-full max-w-2xl'">
@@ -261,10 +261,10 @@
                       ]">
                       {{ contrib.side }}
                     </span>
-                    <span v-if="contrib.is_partial" class="px-2 inline-flex text-xs leading-5 font-medium rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                    <span v-if="contrib.is_partial" class="badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
                       {{ (contrib.exit_count || 1) > 1 ? `Partial exits (${contrib.exit_count})` : 'Partial exit' }}
                     </span>
-                    <span v-else class="px-2 inline-flex text-xs leading-5 font-medium rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                    <span v-else class="badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
                       Trade
                     </span>
                   </div>
@@ -273,7 +273,7 @@
                   </p>
                 </div>
                 <div class="text-right">
-                  <p class="font-semibold" :class="getContributionDisplayPnl(contrib) >= 0 ? 'text-green-600' : 'text-red-600'">
+                  <p class="font-semibold" :class="getContributionDisplayPnl(contrib) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                     {{ showRValue && contrib.r_value != null ? formatRValue(contrib.r_value) : formatCurrency(getContributionDisplayPnl(contrib)) }}
                   </p>
                   <p v-if="showRValue && contrib.r_value == null && !contrib.is_partial" class="text-xs text-gray-400">
@@ -293,7 +293,7 @@
           <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div class="flex justify-between items-center">
               <span class="font-medium text-gray-900 dark:text-white">{{ showRValue ? 'Total R for day:' : `Total ${pnlTypeLabel} for day:` }}</span>
-              <span class="font-bold text-lg" :class="selectedDayTotal >= 0 ? 'text-green-600' : 'text-red-600'">
+              <span class="font-bold text-lg" :class="selectedDayTotal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                 {{ showRValue ? formatRValue(selectedDayTotalRValue) : formatCurrency(selectedDayTotal) }}
               </span>
             </div>
@@ -707,7 +707,7 @@ function getDayTextColor(day) {
 }
 
 function getDayPnlTextColor(day) {
-  if (!day.date || day.pnl === undefined) return getDayDisplayPnl(day) >= 0 ? 'text-green-600' : 'text-red-600'
+  if (!day.date || day.pnl === undefined) return getDayDisplayPnl(day) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
   // White bold text on colored backgrounds
   return 'text-white font-bold'
 }

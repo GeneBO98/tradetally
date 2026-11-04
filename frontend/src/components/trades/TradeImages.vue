@@ -1,6 +1,6 @@
 <template>
   <div v-if="images.length > 0" class="space-y-4">
-    <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+    <h3 class="heading-card">
       Trade Images
     </h3>
     
@@ -22,7 +22,7 @@
             v-else-if="!authedImage.urlFor(image)"
             class="w-full aspect-video flex items-center justify-center bg-gray-100 dark:bg-gray-700"
           >
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            <div class="spinner spinner-md"></div>
           </div>
           <button
             v-else
@@ -74,12 +74,12 @@
       @click="cancelDelete"
     >
       <div class="flex min-h-screen items-end justify-center px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+        <div class="modal-backdrop"></div>
         
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         
         <div
-          class="relative inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6"
+          class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6"
           @click.stop
         >
           <div class="sm:flex sm:items-start">
@@ -89,7 +89,7 @@
               </svg>
             </div>
             <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-              <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+              <h3 class="heading-card">
                 Delete Image
               </h3>
               <div class="mt-2">
@@ -110,7 +110,7 @@
             <button
               type="button"
               @click="cancelDelete"
-              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:text-gray-500 dark:hover:text-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:w-auto sm:text-sm"
+              class="btn-secondary mt-3 w-full sm:mt-0 sm:w-auto"
             >
               Cancel
             </button>

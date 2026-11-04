@@ -58,7 +58,7 @@
                 aria-hidden="true"
               />
             </button>
-            <div v-if="showTimeRangeDropdown" class="absolute right-0 z-10 mt-1 w-44 bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+            <div v-if="showTimeRangeDropdown" class="dropdown-menu absolute right-0 z-10 mt-1 w-44 max-h-60 overflow-auto focus:outline-none">
               <div
                 v-for="option in timeRangeOptions"
                 :key="option.value"
@@ -207,7 +207,7 @@
             <div class="mt-3 flex flex-wrap gap-2">
               <RouterLink
                 :to="{ name: 'import' }"
-                class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600"
+                class="btn-primary btn-sm"
               >
                 Import your first trades
               </RouterLink>
@@ -251,7 +251,7 @@
       <div class="card-body">
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-3">
-            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-800 dark:text-primary-200">
+            <span class="badge bg-primary-100 text-primary-800 dark:bg-primary-800 dark:text-primary-200">
               Pro Trial
             </span>
             <span class="text-sm text-primary-800 dark:text-primary-200">
@@ -261,7 +261,7 @@
           <div class="flex items-center gap-2">
             <RouterLink
               :to="{ name: 'billing' }"
-              class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600"
+              class="btn-primary btn-sm"
             >
               Upgrade before trial ends
             </RouterLink>
@@ -296,7 +296,7 @@
           <div class="flex items-center gap-2">
             <RouterLink
               :to="{ name: 'billing' }"
-              class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700"
+              class="btn-primary btn-sm"
             >
               View Pro plans
             </RouterLink>
@@ -317,7 +317,7 @@
 
     <!-- Full page spinner only on initial load -->
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <!-- Content with optional refresh indicator -->
@@ -605,7 +605,7 @@
                         <div class="animate-spin rounded-full h-3 w-3 border-[1.5px] border-primary-600 border-t-transparent"></div>
                         <span>Updating...</span>
                       </div>
-                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400">
+                      <span class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400">
                         {{ openTrades.length }} {{ openTrades.length === 1 ? 'position' : 'positions' }}
                       </span>
                     </div>
@@ -783,7 +783,7 @@
                     {{ totalOpenCostLabel }}
                   </div>
                   <div v-if="totalUnrealizedPnLAccount !== null" class="text-sm font-bold" :class="[
-                    totalUnrealizedPnLAccount >= 0 ? 'text-green-600' : 'text-red-600'
+                    totalUnrealizedPnLAccount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ totalUnrealizedPnLLabel }}
                   </div>
@@ -802,7 +802,7 @@
                   <div class="hidden lg:block overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead>
-                <tr class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                <tr class="table-th whitespace-nowrap">
                   <th class="px-3 py-2 text-left font-medium">Symbol</th>
                   <th class="px-3 py-2 text-left font-medium">Side</th>
                   <th class="px-3 py-2 text-right font-medium">Shares</th>
@@ -1114,7 +1114,7 @@
                       <div>
                         <div class="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Gross</div>
                         <dd class="text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
-                          dashboardGrossPnl >= 0 ? 'text-green-600' : 'text-red-600'
+                          dashboardGrossPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                         ]">
                           {{ formatCurrency(dashboardGrossPnl) }}
                         </dd>
@@ -1122,7 +1122,7 @@
                       <div>
                         <div class="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Net</div>
                         <dd class="text-base sm:text-lg font-semibold whitespace-nowrap" :class="[
-                          dashboardNetPnl >= 0 ? 'text-green-600' : 'text-red-600'
+                          dashboardNetPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                         ]">
                           {{ formatCurrency(dashboardNetPnl) }}
                         </dd>
@@ -1140,7 +1140,7 @@
                       Win Rate
                     </dt>
                     <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
-                      analytics.summary.winRate >= 50 ? 'text-green-600' : 'text-red-600'
+                      analytics.summary.winRate >= 50 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
                       {{ formatPercent(analytics.summary.winRate) }}%
                     </dd>
@@ -1156,7 +1156,7 @@
                       Profit Factor
                     </dt>
                     <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
-                      analytics.summary.profitFactor >= 1 ? 'text-green-600' : 'text-red-600'
+                      analytics.summary.profitFactor >= 1 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     ]">
                       {{ formatNumber(analytics.summary.profitFactor) }}
                     </dd>
@@ -1179,7 +1179,7 @@
                     <dt class="text-data-secondary truncate">
                       Max Drawdown
                     </dt>
-                    <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold text-red-600 whitespace-nowrap">
+                    <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold text-red-600 dark:text-red-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.maxDrawdown, { abs: true }) }}
                     </dd>
                     <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -1214,7 +1214,7 @@
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Win
                     </dt>
-                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
+                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 dark:text-green-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.avgWin) }}
                     </dd>
                   </div>
@@ -1233,7 +1233,7 @@
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Loss
                     </dt>
-                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
+                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 dark:text-red-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.avgLoss, { abs: true }) }}
                     </dd>
                   </div>
@@ -1252,7 +1252,7 @@
                     <dt class="text-data-secondary truncate">
                       Best Trade
                     </dt>
-                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
+                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 dark:text-green-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.bestTrade) }}
                     </dd>
                   </div>
@@ -1271,7 +1271,7 @@
                     <dt class="text-data-secondary truncate">
                       Worst Trade
                     </dt>
-                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
+                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 dark:text-red-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.worstTrade) }}
                     </dd>
                   </div>
@@ -1295,7 +1295,7 @@
                 <!-- Win/Loss Distribution -->
                 <div class="card">
                   <div class="card-body">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                    <h3 class="heading-card mb-4">
                       Win/Loss Distribution
                     </h3>
                     <div class="h-64 relative">
@@ -1309,7 +1309,7 @@
                           <div class="text-3xl font-bold text-gray-900 dark:text-white">
                             {{ computedWinRate }}%
                           </div>
-                          <div class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          <div class="table-th">
                             Win Rate
                           </div>
                         </div>
@@ -1349,7 +1349,7 @@
               <div class="grid grid-cols-1 gap-8">
                 <div class="card">
                   <div class="card-body">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                    <h3 class="heading-card mb-4">
                       Daily Win Rate &amp; P/L Ratio
                     </h3>
                     <div class="h-80">
@@ -1369,23 +1369,23 @@
                 <!-- Performance by Symbol -->
                 <div class="card">
                   <div class="card-body">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                    <h3 class="heading-card mb-4">
                       Performance by Symbol
                     </h3>
                     <div class="overflow-x-auto">
                       <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead>
                           <tr>
-                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            <th class="px-3 py-2 text-left table-th">
                               Symbol
                             </th>
-                            <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            <th class="px-3 py-2 text-right table-th">
                               Trades
                             </th>
-                            <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            <th class="px-3 py-2 text-right table-th">
                               P&L
                             </th>
-                            <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            <th class="px-3 py-2 text-right table-th">
                               Avg
                             </th>
                           </tr>
@@ -1407,7 +1407,7 @@
                               {{ symbol.trades }}
                             </td>
                             <td class="px-3 py-2 text-sm text-right" :class="[
-                              symbol.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                              symbol.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                             ]">
                               {{ formatCurrency(symbol.total_pnl) }}
                             </td>
@@ -1424,13 +1424,13 @@
                 <!-- Best and Worst Trades -->
                 <div class="card">
                   <div class="card-body">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                    <h3 class="heading-card mb-4">
                       Top Trades
                     </h3>
                     
                     <div class="space-y-4">
                       <div>
-                        <h4 class="text-sm font-medium text-green-600 mb-2">Best Trades</h4>
+                        <h4 class="text-sm font-medium text-green-600 dark:text-green-400 mb-2">Best Trades</h4>
                         <div class="space-y-1">
                           <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.id}-${trade.symbol}-${trade.trade_date}`"
                                @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
@@ -1443,7 +1443,7 @@
                                 {{ formatGroupStrategy(trade.group_detected_strategy) }}
                               </span>
                             </span>
-                            <span class="text-green-600 font-medium">
+                            <span class="text-green-600 dark:text-green-400 font-medium">
                               {{ formatCurrency(trade.pnl) }}
                             </span>
                           </div>
@@ -1451,7 +1451,7 @@
                       </div>
 
                       <div>
-                        <h4 class="text-sm font-medium text-red-600 mb-2">Worst Trades</h4>
+                        <h4 class="text-sm font-medium text-red-600 dark:text-red-400 mb-2">Worst Trades</h4>
                         <div class="space-y-1">
                           <div v-if="analytics.topTrades.worst && analytics.topTrades.worst.length > 0"
                                v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.id}-${trade.symbol}-${trade.trade_date}`"
@@ -1466,7 +1466,7 @@
                               </span>
                             </span>
                             <span :class="[
-                              trade.pnl >= 0 ? 'text-green-600' : 'text-red-600',
+                              trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
                               'font-medium'
                             ]">
                               {{ formatCurrency(trade.pnl) }}
@@ -1483,7 +1483,7 @@
                       <div v-if="analytics.topTrades.best?.length && analytics.topTrades.worst?.length" class="border-t border-gray-200 dark:border-gray-600 pt-3">
                         <div class="flex justify-between items-center px-2">
                           <span class="text-sm font-semibold text-gray-900 dark:text-white">Net Difference</span>
-                          <span class="text-sm font-semibold" :class="topTradesNetPnl >= 0 ? 'text-green-600' : 'text-red-600'">
+                          <span class="text-sm font-semibold" :class="topTradesNetPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                             {{ formatCurrency(topTradesNetPnl) }}
                           </span>
                         </div>
@@ -1498,7 +1498,7 @@
             <template v-if="element.id === 'additional-stats'">
               <div class="card">
                 <div class="card-body">
-                  <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                  <h3 class="heading-card mb-4">
                     Additional Statistics
                   </h3>
                   <!-- Each cell is a flex column with the value pushed to the
@@ -1621,10 +1621,10 @@
     >
       <div class="flex min-h-full items-start justify-center p-4 sm:p-6">
         <div
-          class="fixed inset-0 bg-gray-900/50 transition-opacity"
+          class="modal-backdrop"
           @click="showFiltersModal = false"
         ></div>
-        <div class="relative w-full max-w-5xl bg-white dark:bg-gray-800 rounded-lg shadow-xl">
+        <div class="modal-panel w-full max-w-5xl">
           <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 id="dashboard-filters-modal-title" class="heading-card">Filter dashboard</h3>
             <div class="flex items-center gap-2">

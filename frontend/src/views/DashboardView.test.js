@@ -304,7 +304,7 @@ describe('DashboardView loading and advanced filter wiring', () => {
 
     await flushPromises()
 
-    expect(wrapper.find('.animate-spin.h-12.w-12').exists()).toBe(true)
+    expect(wrapper.find('.spinner.spinner-lg').exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'draggable' }).exists()).toBe(false)
 
     resolveAnalytics({
@@ -323,7 +323,7 @@ describe('DashboardView loading and advanced filter wiring', () => {
     resolveOpenPositions({ data: { positions: [] } })
     await flushPromises()
 
-    expect(wrapper.find('.animate-spin.h-12.w-12').exists()).toBe(false)
+    expect(wrapper.find('.spinner.spinner-lg').exists()).toBe(false)
     expect(wrapper.findComponent({ name: 'draggable' }).exists()).toBe(true)
     expect(wrapper.findAll('pre')).toHaveLength(0)
   })
@@ -344,10 +344,10 @@ describe('DashboardView loading and advanced filter wiring', () => {
       return defaultGetImplementation(url)
     })
     wrapper = await mountDashboard()
-    expect(wrapper.find('.animate-spin.h-12.w-12').exists()).toBe(true)
+    expect(wrapper.find('.spinner.spinner-lg').exists()).toBe(true)
     resolve_analytics(await defaultGetImplementation('/trades/analytics'))
     await flushPromises()
-    expect(wrapper.find('.animate-spin.h-12.w-12').exists()).toBe(false)
+    expect(wrapper.find('.spinner.spinner-lg').exists()).toBe(false)
     expect(wrapper.findAll('pre')).toHaveLength(0)
   })
 
@@ -365,7 +365,7 @@ describe('DashboardView loading and advanced filter wiring', () => {
       return defaultGetImplementation(url)
     })
     wrapper = await mountDashboard()
-    expect(wrapper.find('.animate-spin.h-12.w-12').exists()).toBe(true)
+    expect(wrapper.find('.spinner.spinner-lg').exists()).toBe(true)
     resolve_positions({ data: { positions: [] } })
     await flushPromises()
     resolve_positions({ data: { positions: [] } })
@@ -396,7 +396,7 @@ describe('DashboardView loading and advanced filter wiring', () => {
     })
     wrapper = await mountDashboard()
     const dashboard_element = wrapper.findComponent({ name: 'draggable' }).element
-    expect(wrapper.find('.animate-spin.h-12.w-12').exists()).toBe(false)
+    expect(wrapper.find('.spinner.spinner-lg').exists()).toBe(false)
     expect(wrapper.text()).toContain('PLTR')
 
     resolve_analytics({ data: null })

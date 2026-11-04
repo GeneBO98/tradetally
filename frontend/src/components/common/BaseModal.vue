@@ -11,7 +11,7 @@
             <div
                 v-if="modelValue"
                 ref="overlayRef"
-                class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+                class="modal-overlay overflow-y-auto"
                 :class="overlayClass"
                 role="dialog"
                 aria-modal="true"
@@ -24,7 +24,7 @@
                 >
                 <div
                     ref="modalRef"
-                    class="relative p-5 border shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700"
+                    class="modal-panel p-5"
                     :class="[sizeClass, panelClass]"
                     tabindex="-1"
                 >
@@ -33,7 +33,7 @@
                             <slot name="header">
                                 <h3
                                     :id="titleId"
-                                    class="text-lg font-medium text-gray-900 dark:text-gray-100"
+                                    class="modal-title"
                                 >
                                     {{ title }}
                                 </h3>

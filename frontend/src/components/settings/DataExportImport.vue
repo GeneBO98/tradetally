@@ -43,7 +43,7 @@
                             class="flex items-center"
                         >
                             <div
-                                class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
+                                class="spinner spinner-xs spinner-light mr-2"
                             ></div>
                             Preparing Export...
                         </span>
@@ -96,7 +96,7 @@
                             class="flex items-center"
                         >
                             <div
-                                class="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"
+                                class="spinner spinner-xs spinner-muted mr-2"
                             ></div>
                             Exporting...
                         </span>
@@ -187,7 +187,7 @@
                             class="flex items-center"
                         >
                             <div
-                                class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
+                                class="spinner spinner-xs spinner-light mr-2"
                             ></div>
                             Importing...
                         </span>

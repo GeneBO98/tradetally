@@ -4,8 +4,8 @@
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <div class="flex items-center gap-2">
-                        <h2 id="session-timeline-title" class="text-lg font-medium text-gray-900 dark:text-white">Session activity timeline</h2>
-                        <span class="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">Review</span>
+                        <h2 id="session-timeline-title" class="heading-card">Session activity timeline</h2>
+                        <span class="badge bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">Review</span>
                     </div>
                     <p class="mt-1 max-w-2xl text-sm text-gray-600 dark:text-gray-400">See when entries clustered around losses and compare that activity with your own recent sessions.</p>
                 </div>
@@ -24,7 +24,7 @@
                             {{ formatDate(timeline.session_date) }}
                             <svg class="h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.51a.75.75 0 0 1-1.08 0l-4.25-4.51a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd" /></svg>
                         </button>
-                        <div v-if="calendarOpen" class="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-gray-700 dark:bg-gray-800" role="dialog" aria-label="Choose a session date" @click.stop>
+                        <div v-if="calendarOpen" class="popover absolute right-0 z-20 mt-2 w-72 p-3" role="dialog" aria-label="Choose a session date" @click.stop>
                             <div class="mb-3 flex items-center justify-between">
                                 <button type="button" class="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-30 dark:text-gray-300 dark:hover:bg-gray-700" :disabled="!canMoveToPreviousMonth" aria-label="Previous month" @click="moveMonth(-1)"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 0 1-.02 1.06L9.832 9l2.938 2.71a.75.75 0 1 1-1.04 1.08l-3.49-3.25a.75.75 0 0 1 0-1.08l3.49-3.25a.75.75 0 0 1 1.06.02Z" clip-rule="evenodd" /></svg></button>
                                 <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ calendarMonthLabel }}</div>
@@ -41,7 +41,7 @@
                 </div>
             </div>
 
-            <div v-if="loading" class="mt-6 flex h-72 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700"><div class="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400"><div class="h-5 w-5 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" aria-hidden="true"></div>Loading session activity…</div></div>
+            <div v-if="loading" class="mt-6 flex h-72 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700"><div class="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400"><div class="spinner spinner-sm" aria-hidden="true"></div>Loading session activity…</div></div>
             <div v-else-if="error" class="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200"><div class="flex items-center justify-between gap-3"><span>{{ error }}</span><button type="button" class="font-medium text-primary-700 underline dark:text-primary-300" @click="$emit('retry')">Retry</button></div></div>
             <div v-else-if="!timeline || !timeline.session_date" class="mt-6 rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">No session activity is available for the selected date range.</div>
             <template v-else>

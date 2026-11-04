@@ -1,11 +1,11 @@
 <template>
   <!-- Overview Stats -->
-  <div class="card overflow-hidden">
+  <div class="card overflow-hidden text-mono-num">
     <dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y divide-gray-100 dark:divide-gray-800 lg:divide-y-0 lg:divide-x lg:divide-gray-200 lg:dark:divide-gray-700">
       <!-- Total P&L -->
       <div class="px-4 py-3.5">
         <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">Total P&L</dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="overview.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'">
+        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="overview.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
           {{ formatCurrency(overview.total_pnl) }}
         </dd>
       </div>
@@ -32,7 +32,7 @@
       <!-- Average / Median Trade -->
       <div class="px-4 py-3.5">
         <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">{{ calculationMethod }} Trade</dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="overview.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'">
+        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="overview.avg_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
           {{ formatCurrency(overview.avg_pnl) }}
         </dd>
       </div>
@@ -57,7 +57,7 @@
           <dd v-if="!rMultipleFlipped" key="avg" class="mt-1 text-lg lg:text-xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
             {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(1) + 'R' : '0.0R' }}
           </dd>
-          <dd v-else key="total" class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="(overview.total_r_value ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'">
+          <dd v-else key="total" class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="(overview.total_r_value ?? 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
             {{ overview.total_r_value !== undefined && overview.total_r_value !== null ? Number(overview.total_r_value).toFixed(2) + 'R' : '0.00R' }}
           </dd>
         </transition>
@@ -80,10 +80,10 @@
             To calculate your K-Ratio, you need to track your account equity over time. The K-Ratio requires at least 3 equity entries to calculate meaningful consistency metrics.
           </p>
           <div class="mt-2 flex flex-wrap gap-2">
-            <router-link to="/settings" class="inline-flex items-center px-3 py-1 text-xs font-medium text-primary-700 bg-primary-100 rounded-full hover:bg-primary-200 dark:bg-primary-900/20 dark:text-primary-400 dark:hover:bg-primary-900/40">
+            <router-link to="/settings" class="btn-primary btn-sm">
               Update Current Equity
             </router-link>
-            <router-link to="/equity-history" class="inline-flex items-center px-3 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-full hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/40">
+            <router-link to="/equity-history" class="btn-secondary btn-sm">
               View Equity History
             </router-link>
           </div>

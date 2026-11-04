@@ -1,7 +1,7 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+  <div class="card overflow-hidden">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white">Trade Visualization</h3>
+      <h3 class="heading-card">Trade Visualization</h3>
       <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
         Price chart with entry, exit, stop loss, and take profit levels
       </p>
@@ -10,7 +10,7 @@
     <div class="p-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex flex-col items-center justify-center py-16">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mb-4"></div>
+        <div class="spinner spinner-lg mb-4"></div>
         <p class="text-sm text-gray-500 dark:text-gray-400">Loading chart data...</p>
       </div>
 
@@ -86,7 +86,7 @@
             <span
               v-if="takeProfitAchievable !== null"
               :class="[
-                'ml-2 px-2 py-0.5 text-xs font-medium rounded-full',
+                'ml-2 badge',
                 takeProfitAchievable
                   ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
                   : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
@@ -509,7 +509,7 @@ function addTradeMarkers(candles) {
       markers.push({
         time: entryCandle.time,
         position: isLong ? 'aboveBar' : 'belowBar',
-        color: '#4f46e5',  // indigo-600
+        color: '#4f46e5',  // primary-600
         shape: 'circle',
         text: `TP: ${formatCurrency(takeProfit)}`,
         size: 1
@@ -552,7 +552,7 @@ function addPriceLines() {
   if (takeProfit) {
     candleSeries.createPriceLine({
       price: takeProfit,
-      color: 'rgba(79, 70, 229, 0.35)',  // indigo-600 with opacity
+      color: 'rgba(79, 70, 229, 0.35)',  // primary-600 with opacity
       lineWidth: 1,
       lineStyle: LightweightCharts.LineStyle.Dotted,
       axisLabelVisible: true,

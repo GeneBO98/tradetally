@@ -3,7 +3,7 @@
     <div class="card-body">
       <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Trade Visualization</h3>
+          <h3 class="heading-card">Trade Visualization</h3>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Review price action, execution timing, indicators, and your own annotations.
           </p>
@@ -14,13 +14,13 @@
           </span>
           <span
             v-if="chartData.trade?.instrumentType === 'option'"
-            class="rounded-full bg-primary-100 px-2 py-1 text-xs font-medium text-primary-800 dark:bg-primary-900/40 dark:text-primary-200"
+            class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200"
           >
             Underlying price
           </span>
           <span
             v-if="chartData.source"
-            class="rounded-full bg-primary-100 px-2 py-1 text-xs font-medium text-primary-800 dark:bg-primary-900/40 dark:text-primary-200"
+            class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200"
             :class="{ 'cursor-help': sourceTitle }"
             :title="sourceTitle"
           >
@@ -51,7 +51,7 @@
       </div>
 
       <div v-if="loading" class="flex justify-center py-16">
-        <div class="h-12 w-12 animate-spin rounded-full border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-lg"></div>
       </div>
 
       <div v-else-if="!isConfigured" class="rounded-lg border border-gray-200 py-14 text-center dark:border-gray-700">

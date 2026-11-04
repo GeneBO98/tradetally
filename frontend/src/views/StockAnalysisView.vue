@@ -59,7 +59,7 @@
             class="flex justify-center items-center py-12"
         >
             <div
-                class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"
+                class="spinner spinner-md"
             ></div>
         </div>
 
@@ -71,7 +71,7 @@
             <p class="text-red-700 dark:text-red-400">{{ error }}</p>
             <button
                 @click="loadAnalysis"
-                class="mt-2 text-red-600 hover:text-red-800 text-sm"
+                class="mt-2 text-red-600 dark:text-red-400 hover:text-red-800 text-sm"
             >
                 Try Again
             </button>
@@ -81,7 +81,7 @@
         <div v-else-if="analysis">
             <!-- Summary Card -->
             <div
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6"
+                class="card p-6 mb-6"
             >
                 <div class="flex items-center justify-between mb-4">
                     <div>
@@ -141,7 +141,7 @@
 
             <!-- 8 Pillars Analysis -->
             <div
-                class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden"
+                class="card overflow-hidden"
             >
                 <div
                     class="px-6 py-4 border-b border-gray-200 dark:border-gray-700"

@@ -11,13 +11,13 @@
         <!-- Loading state -->
         <div v-if="loading" class="flex justify-center items-center h-64">
             <div
-                class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"
+                class="spinner spinner-lg"
             ></div>
         </div>
 
         <div v-else class="space-y-6">
             <!-- Settings Card -->
-            <div class="bg-white dark:bg-gray-800 shadow sm:rounded-lg">
+            <div class="card">
                 <div class="px-4 py-5 sm:p-6">
                     <h3
                         class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4"
@@ -162,7 +162,7 @@
                                 min="1"
                                 max="365"
                                 :disabled="savingSettings"
-                                class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                                class="input mt-1 block sm:text-sm"
                             />
                             <p
                                 class="mt-1 text-sm text-gray-500 dark:text-gray-400"
@@ -189,7 +189,7 @@
             </div>
 
             <!-- Manual Backup Card -->
-            <div class="bg-white dark:bg-gray-800 shadow sm:rounded-lg">
+            <div class="card">
                 <div class="px-4 py-5 sm:p-6">
                     <div class="flex items-center justify-between">
                         <div class="flex-1">
@@ -208,7 +208,7 @@
                             @click="createManualBackup"
                             :disabled="creatingBackup"
                             type="button"
-                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                            class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <svg
                                 v-if="creatingBackup"
@@ -241,7 +241,7 @@
             </div>
 
             <!-- Backup History -->
-            <div class="bg-white dark:bg-gray-800 shadow sm:rounded-lg">
+            <div class="card">
                 <div class="px-4 py-5 sm:p-6">
                     <div class="flex items-center justify-between mb-4">
                         <h3
@@ -286,7 +286,7 @@
                         <table
                             class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
                         >
-                            <thead class="bg-gray-50 dark:bg-gray-700">
+                            <thead class="table-head">
                                 <tr>
                                     <th
                                         class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
@@ -339,7 +339,7 @@
                                                 backup.backupType === 'manual'
                                                     ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-300'
                                                     : 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400',
-                                                'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                                                'badge',
                                             ]"
                                         >
                                             {{ backup.backupType }}
@@ -358,7 +358,7 @@
                                                     : backup.status === 'failed'
                                                       ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                                                       : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400',
-                                                'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                                                'badge',
                                             ]"
                                         >
                                             {{ backup.status }}
@@ -410,7 +410,7 @@
 
             <!-- Restore from Backup Card -->
             <div
-                class="bg-white dark:bg-gray-800 shadow sm:rounded-lg border-2 border-amber-200 dark:border-amber-800"
+                class="card border-2 border-amber-200 dark:border-amber-800"
             >
                 <div class="px-4 py-5 sm:p-6">
                     <div class="flex items-start">
@@ -490,7 +490,7 @@
             </div>
 
             <!-- Cleanup Section -->
-            <div class="bg-white dark:bg-gray-800 shadow sm:rounded-lg">
+            <div class="card">
                 <div class="px-4 py-5 sm:p-6">
                     <div class="flex items-center justify-between">
                         <div class="flex-1">
@@ -510,7 +510,7 @@
                             @click="cleanupOldBackups"
                             :disabled="cleaningUp"
                             type="button"
-                            class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                            class="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <svg
                                 v-if="cleaningUp"
@@ -553,13 +553,13 @@
         >
             <!-- Background overlay -->
             <div
-                class="fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 transition-opacity"
+                class="modal-backdrop"
                 @click="showRestoreModal = false"
             ></div>
 
             <!-- Modal panel -->
             <div
-                class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6"
+                class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6"
             >
                 <div class="sm:flex sm:items-start">
                     <div
@@ -784,7 +784,7 @@
                         @click="cancelRestore"
                         :disabled="restoring"
                         type="button"
-                        class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:w-auto sm:text-sm disabled:opacity-50"
+                        class="btn-secondary mt-3 w-full sm:mt-0 sm:w-auto disabled:opacity-50"
                     >
                         Cancel
                     </button>

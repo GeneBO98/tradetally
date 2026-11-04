@@ -36,10 +36,10 @@
           </div>
           <div class="mt-3">
             <div class="flex items-center text-xs">
-              <span v-if="healthSummary.heartRateTrend > 0" class="text-red-600">
+              <span v-if="healthSummary.heartRateTrend > 0" class="text-red-600 dark:text-red-400">
                 ↑ {{ Math.abs(healthSummary.heartRateTrend).toFixed(1) }}%
               </span>
-              <span v-else-if="healthSummary.heartRateTrend < 0" class="text-green-600">
+              <span v-else-if="healthSummary.heartRateTrend < 0" class="text-green-600 dark:text-green-400">
                 ↓ {{ Math.abs(healthSummary.heartRateTrend).toFixed(1) }}%
               </span>
               <span v-else class="text-gray-500">No change</span>
@@ -59,16 +59,16 @@
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">/ 100</p>
             </div>
-            <svg class="w-10 h-10 text-indigo-500" fill="currentColor" viewBox="0 0 24 24">
+            <svg class="w-10 h-10 text-primary-500" fill="currentColor" viewBox="0 0 24 24">
               <path d="M23,12H17V10L20.39,6H17V4H23V6L19.62,10H23V12M15,16H9V14L12.39,10H9V8H15V10L11.62,14H15V16M7,20H1V18L4.39,14H1V12H7V14L3.62,18H7V20Z" />
             </svg>
           </div>
           <div class="mt-3">
             <div class="flex items-center text-xs">
-              <span v-if="healthSummary.sleepScoreTrend > 0" class="text-green-600">
+              <span v-if="healthSummary.sleepScoreTrend > 0" class="text-green-600 dark:text-green-400">
                 ↑ {{ Math.abs(healthSummary.sleepScoreTrend).toFixed(1) }}%
               </span>
-              <span v-else-if="healthSummary.sleepScoreTrend < 0" class="text-red-600">
+              <span v-else-if="healthSummary.sleepScoreTrend < 0" class="text-red-600 dark:text-red-400">
                 ↓ {{ Math.abs(healthSummary.sleepScoreTrend).toFixed(1) }}%
               </span>
               <span v-else class="text-gray-500">No change</span>
@@ -88,16 +88,16 @@
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">hours</p>
             </div>
-            <svg class="w-10 h-10 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
+            <svg class="w-10 h-10 text-primary-500" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19,7H11V14H3V5H1V20H3V17H21V20H23V11A4,4 0 0,0 19,7M7,10H5V8H7V10Z" />
             </svg>
           </div>
           <div class="mt-3">
             <div class="flex items-center text-xs">
-              <span v-if="healthSummary.sleepHoursTrend > 0" class="text-green-600">
+              <span v-if="healthSummary.sleepHoursTrend > 0" class="text-green-600 dark:text-green-400">
                 ↑ {{ Math.abs(healthSummary.sleepHoursTrend).toFixed(1) }}%
               </span>
-              <span v-else-if="healthSummary.sleepHoursTrend < 0" class="text-red-600">
+              <span v-else-if="healthSummary.sleepHoursTrend < 0" class="text-red-600 dark:text-red-400">
                 ↓ {{ Math.abs(healthSummary.sleepHoursTrend).toFixed(1) }}%
               </span>
               <span v-else class="text-gray-500">No change</span>
@@ -123,10 +123,10 @@
           </div>
           <div class="mt-3">
             <div class="flex items-center text-xs">
-              <span v-if="healthSummary.stressLevelTrend > 0" class="text-red-600">
+              <span v-if="healthSummary.stressLevelTrend > 0" class="text-red-600 dark:text-red-400">
                 ↑ {{ Math.abs(healthSummary.stressLevelTrend).toFixed(1) }}%
               </span>
-              <span v-else-if="healthSummary.stressLevelTrend < 0" class="text-green-600">
+              <span v-else-if="healthSummary.stressLevelTrend < 0" class="text-green-600 dark:text-green-400">
                 ↓ {{ Math.abs(healthSummary.stressLevelTrend).toFixed(1) }}%
               </span>
               <span v-else class="text-gray-500">No change</span>
@@ -143,7 +143,7 @@
     <!-- Performance by Health Condition -->
     <div class="card mt-6">
       <div class="card-body">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        <h3 class="heading-card mb-4">
           Performance by Health Condition
         </h3>
         
@@ -151,19 +151,19 @@
           <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead class="bg-gray-50 dark:bg-gray-800">
               <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th class="px-6 py-3 text-left table-th">
                   Condition
                 </th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th class="px-6 py-3 text-left table-th">
                   Trades
                 </th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th class="px-6 py-3 text-left table-th">
                   Win Rate
                 </th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th class="px-6 py-3 text-left table-th">
                   Avg P&L
                 </th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th class="px-6 py-3 text-left table-th">
                   Total P&L
                 </th>
               </tr>
@@ -191,7 +191,7 @@
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex items-center">
                     <span class="text-sm font-medium" 
-                          :class="condition.winRate >= 50 ? 'text-green-600' : 'text-red-600'">
+                          :class="condition.winRate >= 50 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                       {{ condition.winRate.toFixed(1) }}%
                     </span>
                     <div class="ml-2 w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
@@ -201,12 +201,12 @@
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-mono"
-                    :class="condition.avgPnL >= 0 ? 'text-green-600' : 'text-red-600'">
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-mono-num"
+                    :class="condition.avgPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                   ${{ Math.abs(condition.avgPnL).toFixed(2) }}
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-mono font-semibold"
-                    :class="condition.totalPnL >= 0 ? 'text-green-600' : 'text-red-600'">
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-mono-num font-semibold"
+                    :class="condition.totalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                   ${{ Math.abs(condition.totalPnL).toFixed(2) }}
                 </td>
               </tr>
@@ -260,7 +260,7 @@
                   <span class="text-xs opacity-75">
                     Confidence: {{ (insight.confidence * 100).toFixed(0) }}%
                   </span>
-                  <span v-if="insight.isActionable" class="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-400 rounded-full">
+                  <span v-if="insight.isActionable" class="badge bg-primary-100 dark:bg-primary-900/20 text-primary-800 dark:text-primary-400">
                     Actionable
                   </span>
                 </div>
@@ -458,7 +458,7 @@ function calculateHealthConditions(trades) {
     {
       name: 'Well Rested',
       iconPath: 'M23,12H17V10L20.39,6H17V4H23V6L19.62,10H23V12M15,16H9V14L12.39,10H9V8H15V10L11.62,14H15V16M7,20H1V18L4.39,14H1V12H7V14L3.62,18H7V20Z',
-      iconColor: 'text-indigo-500',
+      iconColor: 'text-primary-500',
       description: 'Sleep > 7 hours',
       filter: t => {
         const sleepHours = getTradeHealthValue(t, 'sleep_hours')
@@ -591,7 +591,7 @@ function getInsightTypeClass(type) {
     'heart_rate': 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300',
     'stress': 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-800 dark:text-orange-300',
     'composure': 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300',
-    'overall': 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300'
+    'overall': 'bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 text-primary-800 dark:text-primary-300'
   }
   return classes[type] || classes.overall
 }

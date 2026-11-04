@@ -1,8 +1,8 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+  <div class="card overflow-hidden">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
       <div>
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white">R-Multiple Performance</h3>
+        <h3 class="heading-card">R-Multiple Performance</h3>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Cumulative R performance across trades with stop loss defined
         </p>
@@ -27,7 +27,7 @@
     <div class="p-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex flex-col items-center justify-center py-12">
-        <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600 mb-4"></div>
+        <div class="spinner spinner-lg mb-4"></div>
         <p class="text-sm text-gray-500 dark:text-gray-400">Loading R performance data...</p>
       </div>
 
@@ -257,7 +257,7 @@ function createChart() {
     {
       label: 'Target R (Net)',
       data: potentialData,
-      borderColor: '#6366f1', // indigo-500 - theme-adjacent
+      borderColor: '#6366f1', // primary-500 - theme-adjacent
       backgroundColor: 'transparent',
       fill: false,
       tension: 0.2,

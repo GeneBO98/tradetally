@@ -1,7 +1,7 @@
 <template>
   <div class="content-wrapper py-8">
     <div v-if="loading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <div v-else-if="error" class="text-center py-12">
@@ -50,10 +50,10 @@
       <!-- Public Trades -->
       <div class="card">
         <div class="card-body">
-          <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Public Trades</h2>
+          <h2 class="heading-card mb-6">Public Trades</h2>
           
           <div v-if="tradesLoading" class="flex justify-center py-8">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            <div class="spinner spinner-md"></div>
           </div>
 
           <div v-else-if="trades.length === 0" class="text-center py-8">
@@ -88,7 +88,7 @@
                       :class="[
                         trade.exit_price 
                           ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                          : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+                          : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400'
                       ]">
                       {{ trade.exit_price ? 'Closed' : 'Open' }}
                     </span>
@@ -100,7 +100,7 @@
                 
                 <div class="text-right">
                   <div class="text-lg font-semibold" :class="[
-                    trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
                     {{ trade.pnl ? formatCurrency(trade.pnl) : 'Open' }}
                   </div>
@@ -136,7 +136,7 @@
                   <span
                     v-for="tag in trade.tags"
                     :key="tag"
-                    class="px-2 py-1 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-xs rounded-full"
+                    class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400"
                   >
                     {{ tag }}
                   </span>

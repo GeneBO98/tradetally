@@ -1,7 +1,7 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg">
+  <div class="card">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white">Trade Summary</h3>
+      <h3 class="heading-card">Trade Summary</h3>
       <router-link
         :to="{ name: 'trade-detail', params: { id: trade.id } }"
         class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 border border-primary-300 dark:border-primary-600 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
@@ -52,7 +52,7 @@
               />
             </div>
             <div class="flex items-center gap-2">
-              <button @click="saveStopLoss" :disabled="saving" class="text-xs px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded flex items-center gap-1">
+              <button @click="saveStopLoss" :disabled="saving" class="btn-primary btn-sm gap-1">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                 </svg>
@@ -109,7 +109,7 @@
                 />
               </div>
               <div class="flex items-center gap-2">
-                <button @click="saveTakeProfit" :disabled="saving" class="text-xs px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded flex items-center gap-1">
+                <button @click="saveTakeProfit" :disabled="saving" class="btn-primary btn-sm gap-1">
                   <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                   </svg>
@@ -375,11 +375,11 @@ const hasMultipleTpTargets = computed(() => {
 function getTargetStatusClass(status) {
   switch (status) {
     case 'hit':
-      return 'px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      return 'badge bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
     case 'cancelled':
-      return 'px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+      return 'badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
     default:
-      return 'px-2 py-0.5 text-xs font-medium rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400'
+      return 'badge bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400'
   }
 }
 

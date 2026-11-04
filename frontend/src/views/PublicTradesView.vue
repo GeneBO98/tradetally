@@ -22,7 +22,7 @@
     </div>
 
     <div v-if="initialLoading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div class="spinner spinner-lg"></div>
     </div>
 
     <div v-else-if="trades.length === 0" class="text-center py-12">
@@ -75,7 +75,7 @@
                     :class="[
                       trade.exit_price
                         ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                        : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+                        : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400'
                     ]">
                     {{ trade.exit_price ? 'Closed' : 'Open' }}
                   </span>
@@ -88,7 +88,7 @@
             
             <div class="text-right">
               <div class="text-lg font-semibold" :class="[
-                trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
               ]">
                 {{ trade.pnl ? formatCurrency(trade.pnl) : 'Open' }}
               </div>
@@ -100,7 +100,7 @@
 
           <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
-              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <dt class="table-th">
                 Entry Price
               </dt>
               <dd class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
@@ -108,7 +108,7 @@
               </dd>
             </div>
             <div>
-              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <dt class="table-th">
                 Exit Price
               </dt>
               <dd class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
@@ -116,7 +116,7 @@
               </dd>
             </div>
             <div>
-              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <dt class="table-th">
                 Quantity
               </dt>
               <dd class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
@@ -124,7 +124,7 @@
               </dd>
             </div>
             <div>
-              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <dt class="table-th">
                 Value
               </dt>
               <dd class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
@@ -138,7 +138,7 @@
               <span
                 v-for="tag in trade.tags"
                 :key="tag"
-                class="px-2 py-1 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-xs rounded-full"
+                class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400"
               >
                 {{ tag }}
               </span>
@@ -180,7 +180,7 @@
               <button
                 v-if="canDeleteTrade(trade)"
                 @click="deleteTrade(trade)"
-                class="flex items-center text-red-600 hover:text-red-700 transition-colors"
+                class="flex items-center text-red-600 dark:text-red-400 hover:text-red-700 transition-colors"
                 title="Delete trade"
               >
                 <TrashIcon class="h-4 w-4" />

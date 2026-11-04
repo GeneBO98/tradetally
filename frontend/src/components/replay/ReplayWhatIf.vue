@@ -2,7 +2,7 @@
   <div>
     <div class="flex flex-wrap items-baseline justify-between gap-2 mb-4">
       <div>
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white">What-If Analysis</h3>
+        <h3 class="heading-card">What-If Analysis</h3>
         <p class="text-sm text-gray-500 dark:text-gray-400">
           How this trade would have ended under different exits. Estimates use the chart's
           market data and exclude commissions.

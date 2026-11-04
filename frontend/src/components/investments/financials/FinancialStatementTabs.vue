@@ -1,9 +1,9 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+  <div class="card overflow-hidden">
     <!-- Header -->
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center justify-between">
-        <h2 class="text-lg font-medium text-gray-900 dark:text-white">Financial Statements</h2>
+        <h2 class="heading-card">Financial Statements</h2>
 
         <!-- Annual/Quarterly Toggle -->
         <div class="flex items-center space-x-2">
@@ -59,7 +59,7 @@
     <div class="p-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-12">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div class="spinner spinner-md"></div>
       </div>
 
       <!-- Error State -->

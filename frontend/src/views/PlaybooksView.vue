@@ -28,7 +28,7 @@
         <div class="card">
           <div class="card-body">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Saved Profiles</h2>
+              <h2 class="heading-card">Saved Profiles</h2>
               <span class="text-sm text-gray-500 dark:text-gray-400">{{ playbooks.length }} total</span>
             </div>
 
@@ -41,7 +41,7 @@
                 v-for="playbook in playbooks"
                 :key="playbook.id"
                 @click="selectPlaybook(playbook)"
-                class="w-full text-left rounded-xl border px-4 py-4 transition"
+                class="w-full text-left rounded-lg border px-4 py-4 transition"
                 :class="selectedPlaybookId === playbook.id
                   ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 dark:border-primary-400'
                   : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
@@ -100,26 +100,26 @@
         <div class="card">
           <div class="card-body">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Adherence Analytics</h2>
+              <h2 class="heading-card">Adherence Analytics</h2>
               <router-link to="/trades" class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400">
                 Review trades
               </router-link>
             </div>
 
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+              <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
                 <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Active profiles</div>
                 <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ analytics.overview.active_playbook_count || 0 }}</div>
               </div>
-              <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+              <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
                 <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Reviewed trades</div>
                 <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ analytics.overview.reviewed_trade_count || 0 }}</div>
               </div>
-              <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+              <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
                 <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Avg adherence</div>
                 <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ analytics.overview.adherence_average || '0.00' }}</div>
               </div>
-              <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+              <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
                 <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Followed vs broken</div>
                 <div class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
                   {{ analytics.overview.followed_trade_count || 0 }} / {{ analytics.overview.broken_trade_count || 0 }}
@@ -158,7 +158,7 @@
                 <div
                   v-for="review in analytics.recentTrades"
                   :key="review.trade_id"
-                  class="flex items-center justify-between rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-3 text-sm"
+                  class="flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 text-sm"
                 >
                   <div>
                     <router-link :to="`/trades/${review.trade_id}`" class="font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
@@ -183,7 +183,7 @@
         <div class="card-body space-y-6">
           <div class="flex items-center justify-between">
             <div>
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              <h2 class="heading-card">
                 {{ form.id ? 'Edit Profile' : 'Create Profile' }}
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -219,7 +219,7 @@
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Review Type</label>
                 <div class="grid gap-3 sm:grid-cols-2">
                   <label
-                    class="flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3"
+                    class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3"
                     :class="form.reviewMode === 'checklist'
                       ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
                       : 'border-gray-200 dark:border-gray-700'"
@@ -231,7 +231,7 @@
                     </span>
                   </label>
                   <label
-                    class="flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3"
+                    class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3"
                     :class="form.reviewMode === 'score'
                       ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
                       : 'border-gray-200 dark:border-gray-700'"
@@ -322,7 +322,7 @@
                   <span
                     v-for="tag in selectedTags"
                     :key="tag"
-                    class="inline-flex items-center gap-1 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-2.5 py-1 text-xs font-medium"
+                    class="badge bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
                   >
                     {{ tag }}
                     <button
@@ -354,11 +354,11 @@
                   />
                 </div>
               </div>
-              <label class="inline-flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-3 md:col-span-2">
+              <label class="inline-flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 md:col-span-2">
                 <input v-model="form.requireStopLoss" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                 <span class="text-sm text-gray-700 dark:text-gray-300">Require stop loss for a passing review</span>
               </label>
-              <label class="inline-flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-3 md:col-span-2">
+              <label class="inline-flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3 md:col-span-2">
                 <input v-model="form.autoAssignEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                 <span>
                   <span class="block text-sm text-gray-700 dark:text-gray-300">Auto-suggest for matching trades</span>
@@ -386,7 +386,7 @@
                 <div
                   v-for="(item, index) in form.checklistItems"
                   :key="`${item.localId}-${index}`"
-                  class="rounded-xl border border-gray-200 dark:border-gray-700 p-4"
+                  class="rounded-lg border border-gray-200 dark:border-gray-700 p-4"
                 >
                   <div class="grid gap-3 md:grid-cols-[1fr_120px_120px_auto]">
                     <div>

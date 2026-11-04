@@ -3,10 +3,10 @@
     <!-- Loading State (fetching metrics for the selected symbol) -->
     <div
       v-if="symbol && dcfLoading && !dcfMetrics"
-      class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6"
+      class="card p-6"
     >
       <div class="flex items-center justify-center py-8">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mr-3"></div>
+        <div class="spinner spinner-md mr-3"></div>
         <span class="text-gray-600 dark:text-gray-400">Loading financial data...</span>
       </div>
     </div>
@@ -15,10 +15,10 @@
     <div
       v-else-if="symbol"
       ref="calculatorCardRef"
-      class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6"
+      class="card p-6"
     >
       <div class="flex items-start justify-between gap-4 mb-2">
-        <h2 class="text-lg font-medium text-gray-900 dark:text-white">Stock Valuation Calculator</h2>
+        <h2 class="heading-card">Stock Valuation Calculator</h2>
         <div v-if="isProUser" class="flex shrink-0 gap-2">
           <button
             type="button"
@@ -61,7 +61,7 @@
     <!-- Empty state when no symbol is selected -->
     <div
       v-else-if="!analyzerLoading"
-      class="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm"
+      class="card text-center py-12"
     >
       <svg
         class="mx-auto h-12 w-12 text-gray-400"
@@ -83,9 +83,9 @@
     </div>
 
     <!-- Saved Valuations -->
-    <div v-if="sortedValuations.length > 0" class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
+    <div v-if="sortedValuations.length > 0" class="card p-6">
       <div class="flex items-center justify-between mb-1">
-        <h2 class="text-lg font-medium text-gray-900 dark:text-white">Saved Valuations</h2>
+        <h2 class="heading-card">Saved Valuations</h2>
         <label
           v-if="symbol"
           class="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 cursor-pointer"
@@ -108,7 +108,7 @@
           v-model="searchQuery"
           type="text"
           placeholder="Search by symbol or notes..."
-          class="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+          class="input pl-10"
         />
         <svg
           class="absolute left-3 top-2.5 h-4 w-4 text-gray-400"
@@ -175,16 +175,16 @@
     <!-- Add to Watchlist Modal -->
     <div
       v-if="showWatchlistModal"
-      class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
+      class="modal-overlay flex items-center justify-center"
     >
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+      <div class="modal-panel p-6 max-w-md w-full mx-4">
+        <h3 class="heading-card mb-4">
           Add {{ symbol }} to Watchlist
         </h3>
 
         <!-- Loading State -->
         <div v-if="watchlistsLoading" class="flex justify-center py-4">
-          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+          <div class="spinner spinner-sm"></div>
         </div>
 
         <!-- No Watchlists -->
@@ -242,10 +242,10 @@
     <!-- Set Price Alert Modal -->
     <div
       v-if="showAlertModal"
-      class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
+      class="modal-overlay flex items-center justify-center"
     >
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-1">
+      <div class="modal-panel p-6 max-w-md w-full mx-4">
+        <h3 class="heading-card mb-1">
           Set Price Alert for {{ symbol }}
         </h3>
         <p v-if="currentPrice" class="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -278,7 +278,7 @@
               step="0.01"
               min="0"
               placeholder="e.g. 150.00"
-              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+              class="input"
             />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ alertForm.alert_type === 'above'
@@ -296,7 +296,7 @@
               type="number"
               step="0.1"
               placeholder="e.g. 5"
-              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+              class="input"
             />
           </div>
 
