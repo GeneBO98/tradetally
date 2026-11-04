@@ -8,7 +8,26 @@
                             :disabled="loadingOverconfidence"
                             class="btn btn-primary btn-sm"
                         >
-                            <span v-if="loadingOverconfidence" class="spinner spinner-xs spinner-current mr-2 -ml-1"></span>
+                            <svg
+                                v-if="loadingOverconfidence"
+                                class="animate-spin -ml-1 mr-2 h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                            >
+                                <circle
+                                    class="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    stroke-width="4"
+                                ></circle>
+                                <path
+                                    class="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                ></path>
+                            </svg>
                             {{
                                 loadingOverconfidence
                                     ? "Analyzing..."
@@ -29,7 +48,25 @@
                             <div
                                 class="flex items-center space-x-2 text-gray-600 dark:text-gray-400"
                             >
-                                <span class="spinner spinner-xs spinner-current mr-2"></span>
+                                <svg
+                                    class="animate-spin h-5 w-5"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <circle
+                                        class="opacity-25"
+                                        cx="12"
+                                        cy="12"
+                                        r="10"
+                                        stroke="currentColor"
+                                        stroke-width="4"
+                                    ></circle>
+                                    <path
+                                        class="opacity-75"
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    ></path>
+                                </svg>
                                 <span class="text-sm font-medium"
                                     >Updating analysis...</span
                                 >
@@ -540,13 +577,13 @@
                                         <h6
                                             class="text-sm font-semibold"
                                             :class="{
-                                                'text-red-900 dark:text-red-400':
+                                                'text-red-900 dark:text-red-200':
                                                     parseFloat(
                                                         event
                                                             .outcomeTradeDetails
                                                             .pnl || 0,
                                                     ) < 0,
-                                                'text-green-900 dark:text-green-400':
+                                                'text-green-900 dark:text-green-200':
                                                     parseFloat(
                                                         event
                                                             .outcomeTradeDetails
@@ -744,12 +781,12 @@
                                     <div
                                         class="mt-3 text-xs flex items-start"
                                         :class="{
-                                            'text-red-600 dark:text-red-400':
+                                            'text-red-800 dark:text-red-200':
                                                 parseFloat(
                                                     event.outcomeTradeDetails
                                                         .pnl || 0,
                                                 ) < 0,
-                                            'text-green-700 dark:text-green-400':
+                                            'text-green-800 dark:text-green-200':
                                                 parseFloat(
                                                     event.outcomeTradeDetails
                                                         .pnl || 0,
@@ -864,7 +901,7 @@
                                             <h6
                                                 class="text-sm font-bold flex items-center"
                                                 :class="{
-                                                    'text-red-900 dark:text-red-400':
+                                                    'text-red-900 dark:text-red-200':
                                                         event.outcomeAnalysis
                                                             .verdict.verdict ===
                                                         'true_overconfidence',
@@ -872,7 +909,7 @@
                                                         event.outcomeAnalysis
                                                             .verdict.verdict ===
                                                         'partial_overconfidence',
-                                                    'text-green-900 dark:text-green-400':
+                                                    'text-green-900 dark:text-green-200':
                                                         event.outcomeAnalysis
                                                             .verdict.verdict ===
                                                         'prudent_trade',
@@ -935,7 +972,7 @@
                                         <p
                                             class="text-xs mb-3"
                                             :class="{
-                                                'text-red-600 dark:text-red-400':
+                                                'text-red-800 dark:text-red-200':
                                                     event.outcomeAnalysis
                                                         .verdict.verdict ===
                                                     'true_overconfidence',
@@ -943,14 +980,136 @@
                                                     event.outcomeAnalysis
                                                         .verdict.verdict ===
                                                     'partial_overconfidence',
-                                                'text-green-700 dark:text-green-400':
+                                                'text-green-800 dark:text-green-200':
                                                     event.outcomeAnalysis
                                                         .verdict.verdict ===
                                                     'prudent_trade',
                                                 'text-gray-800 dark:text-gray-200':
                                                     event.outcomeAnalysis
                                                         .verdict.verdict ===
-                                                    'bad_luck', }" > {{ event.outcomeAnalysis.verdict .recommendation }} </p> <!-- Issues Found --> <div v-if=" event.outcomeAnalysis.verdict .reasons && event.outcomeAnalysis.verdict .reasons.length > 0 " class="mb-2" > <p class="text-xs font-semibold text-red-900 dark:text-red-400 mb-1" > Issues Found: </p> <ul class="text-xs space-y-1"> <li v-for="( reason, idx ) in event.outcomeAnalysis .verdict.reasons" :key="idx" class="flex items-start" > <span class="text-red-600 dark:text-red-400 mr-1.5" >•</span > <span class="text-red-800 dark:text-red-300" >{{ reason }}</span > </li> </ul> </div> <!-- Positive Factors --> <div v-if=" event.outcomeAnalysis.verdict .positiveFactors && event.outcomeAnalysis.verdict .positiveFactors.length > 0 " > <p class="text-xs font-semibold text-green-900 dark:text-green-400 mb-1" > What Went Well: </p> <ul class="text-xs space-y-1"> <li v-for="( factor, idx ) in event.outcomeAnalysis .verdict .positiveFactors" :key="idx" class="flex items-start" > <CheckIcon class="h-4 w-4 text-green-700 dark:text-green-400 mr-1.5 mt-0.5 shrink-0" /> <span class="text-green-800 dark:text-green-300" >{{ factor }}</span > </li> </ul> </div> <!-- Detailed Analysis Sections --> <div v-if=" event.outcomeAnalysis .stopLossAnalysis " class="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600" > <p class="text-xs font-semibold mb-2" > Stop Loss Analysis: </p> <div class="grid grid-cols-2 gap-2 text-xs" > <div> <p class="text-gray-600 dark:text-gray-400" > Recommended Stop: </p> <p class="font-medium"> {{ event .outcomeAnalysis .stopLossAnalysis .recommendedStopLoss ? `$${event.outcomeAnalysis.stopLossAnalysis.recommendedStopLoss.toFixed(2)}` : "N/A" }} </p> </div> <div> <p class="text-gray-600 dark:text-gray-400" > Adherence: </p> <p class="font-medium capitalize" :class="{'text-green-700 dark:text-green-400':
+                                                    'bad_luck',
+                                            }"
+                                        >
+                                            {{
+                                                event.outcomeAnalysis.verdict
+                                                    .recommendation
+                                            }}
+                                        </p>
+
+                                        <!-- Issues Found -->
+                                        <div
+                                            v-if="
+                                                event.outcomeAnalysis.verdict
+                                                    .reasons &&
+                                                event.outcomeAnalysis.verdict
+                                                    .reasons.length > 0
+                                            "
+                                            class="mb-2"
+                                        >
+                                            <p
+                                                class="text-xs font-semibold text-red-900 dark:text-red-200 mb-1"
+                                            >
+                                                Issues Found:
+                                            </p>
+                                            <ul class="text-xs space-y-1">
+                                                <li
+                                                    v-for="(
+                                                        reason, idx
+                                                    ) in event.outcomeAnalysis
+                                                        .verdict.reasons"
+                                                    :key="idx"
+                                                    class="flex items-start"
+                                                >
+                                                    <span
+                                                        class="text-red-600 dark:text-red-400 mr-1.5"
+                                                        >•</span
+                                                    >
+                                                    <span
+                                                        class="text-red-800 dark:text-red-300"
+                                                        >{{ reason }}</span
+                                                    >
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        <!-- Positive Factors -->
+                                        <div
+                                            v-if="
+                                                event.outcomeAnalysis.verdict
+                                                    .positiveFactors &&
+                                                event.outcomeAnalysis.verdict
+                                                    .positiveFactors.length > 0
+                                            "
+                                        >
+                                            <p
+                                                class="text-xs font-semibold text-green-900 dark:text-green-200 mb-1"
+                                            >
+                                                What Went Well:
+                                            </p>
+                                            <ul class="text-xs space-y-1">
+                                                <li
+                                                    v-for="(
+                                                        factor, idx
+                                                    ) in event.outcomeAnalysis
+                                                        .verdict
+                                                        .positiveFactors"
+                                                    :key="idx"
+                                                    class="flex items-start"
+                                                >
+                                                    <CheckIcon
+                                                        class="h-4 w-4 text-green-700 dark:text-green-400 mr-1.5 mt-0.5 shrink-0"
+                                                    />
+                                                    <span
+                                                        class="text-green-800 dark:text-green-300"
+                                                        >{{ factor }}</span
+                                                    >
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        <!-- Detailed Analysis Sections -->
+                                        <div
+                                            v-if="
+                                                event.outcomeAnalysis
+                                                    .stopLossAnalysis
+                                            "
+                                            class="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600"
+                                        >
+                                            <p
+                                                class="text-xs font-semibold mb-2"
+                                            >
+                                                Stop Loss Analysis:
+                                            </p>
+                                            <div
+                                                class="grid grid-cols-2 gap-2 text-xs"
+                                            >
+                                                <div>
+                                                    <p
+                                                        class="text-gray-600 dark:text-gray-400"
+                                                    >
+                                                        Recommended Stop:
+                                                    </p>
+                                                    <p class="font-medium">
+                                                        {{
+                                                            event
+                                                                .outcomeAnalysis
+                                                                .stopLossAnalysis
+                                                                .recommendedStopLoss
+                                                                ? `$${event.outcomeAnalysis.stopLossAnalysis.recommendedStopLoss.toFixed(2)}`
+                                                                : "N/A"
+                                                        }}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p
+                                                        class="text-gray-600 dark:text-gray-400"
+                                                    >
+                                                        Adherence:
+                                                    </p>
+                                                    <p
+                                                        class="font-medium capitalize"
+                                                        :class="{
+                                                            'text-green-700 dark:text-green-400':
                                                                 event
                                                                     .outcomeAnalysis
                                                                     .stopLossAnalysis

@@ -257,7 +257,7 @@
                         <p class="text-sm text-gray-500 dark:text-gray-400">
                             Portfolio Value
                         </p>
-                        <p class="text-2xl font-bold text-gray-900 dark:text-white mt-2">
+                        <p class="stat-value text-gray-900 dark:text-white mt-2">
                             {{ formatCurrency(investmentsStore.totalPortfolioValue) }}
                         </p>
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
@@ -286,7 +286,7 @@
                         <p class="text-sm text-gray-500 dark:text-gray-400">
                             Dividend Income
                         </p>
-                        <p class="text-2xl font-bold text-green-700 dark:text-green-400 mt-2">
+                        <p class="stat-value text-green-700 dark:text-green-400 mt-2">
                             {{ formatCurrency(investmentsStore.totalDividends) }}
                         </p>
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
@@ -297,7 +297,7 @@
                         <p class="text-sm text-gray-500 dark:text-gray-400">
                             Positions
                         </p>
-                        <p class="text-2xl font-bold text-gray-900 dark:text-white mt-2">
+                        <p class="stat-value text-gray-900 dark:text-white mt-2">
                             {{ investmentsStore.portfolioOverview.positionCount }}
                         </p>
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
@@ -380,42 +380,42 @@
                                 </div>
                                 <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
-                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Return</p>
+                                        <p class="text-label">Return</p>
                                         <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
                                             {{ formatPercent(investmentsStore.portfolioPerformance.metrics.totalReturnPercent) }}
                                         </p>
                                         <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Total gain/loss for the selected period</p>
                                     </div>
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
-                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Sharpe Ratio</p>
+                                        <p class="text-label">Sharpe Ratio</p>
                                         <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
                                             {{ formatMetric(investmentsStore.portfolioPerformance.metrics.sharpeRatio, 3) }}
                                         </p>
                                         <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Return per unit of risk. Above 1 is good, above 2 is excellent</p>
                                     </div>
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
-                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Beta</p>
+                                        <p class="text-label">Beta</p>
                                         <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
                                             {{ formatMetric(investmentsStore.portfolioPerformance.metrics.beta, 3) }}
                                         </p>
                                         <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Sensitivity to {{ benchmarkSymbol }}. 1 = moves with market, &lt;1 = less volatile</p>
                                     </div>
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
-                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Alpha</p>
+                                        <p class="text-label">Alpha</p>
                                         <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
                                             {{ formatPercent(investmentsStore.portfolioPerformance.metrics.alphaPercent) }}
                                         </p>
                                         <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Excess return vs {{ benchmarkSymbol }} after adjusting for market risk</p>
                                     </div>
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
-                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Volatility</p>
+                                        <p class="text-label">Volatility</p>
                                         <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
                                             {{ formatPercent(investmentsStore.portfolioPerformance.metrics.volatilityPercent) }}
                                         </p>
                                         <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Annualized price swing. Higher means larger day-to-day moves</p>
                                     </div>
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
-                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Max Drawdown</p>
+                                        <p class="text-label">Max Drawdown</p>
                                         <p class="text-lg font-semibold text-red-600 dark:text-red-400 mt-1">
                                             {{ formatPercent(-Math.abs(investmentsStore.portfolioPerformance.metrics.maxDrawdownPercent || 0)) }}
                                         </p>
@@ -495,21 +495,21 @@
                     >
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div>
-                                <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Buy total</p>
+                                <p class="text-label">Buy total</p>
                                 <p class="text-sm font-semibold text-red-600 dark:text-red-400 mt-0.5">
                                     -{{ formatCurrency(rebalanceImpact.cashToBuy) }}
                                 </p>
                                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Cash needed</p>
                             </div>
                             <div>
-                                <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Sell proceeds</p>
+                                <p class="text-label">Sell proceeds</p>
                                 <p class="text-sm font-semibold text-green-700 dark:text-green-400 mt-0.5">
                                     +{{ formatCurrency(rebalanceImpact.cashFromSells) }}
                                 </p>
                                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Cash released</p>
                             </div>
                             <div>
-                                <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Net cash</p>
+                                <p class="text-label">Net cash</p>
                                 <p
                                     class="text-sm font-semibold mt-0.5"
                                     :class="rebalanceImpact.selfFunded ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
@@ -530,7 +530,7 @@
                                 </p>
                             </div>
                             <div>
-                                <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Realized P&amp;L</p>
+                                <p class="text-label">Realized P&amp;L</p>
                                 <p
                                     class="text-sm font-semibold mt-0.5"
                                     :class="pnlClass(rebalanceImpact.realizedPnl)"
@@ -994,7 +994,7 @@
                             <div class="p-4 space-y-3">
                                 <div class="grid grid-cols-3 gap-3">
                                     <div>
-                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                        <p class="text-label">
                                             Quotes
                                         </p>
                                         <p class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -1002,7 +1002,7 @@
                                         </p>
                                     </div>
                                     <div>
-                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                        <p class="text-label">
                                             History
                                         </p>
                                         <p class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -1010,7 +1010,7 @@
                                         </p>
                                     </div>
                                     <div>
-                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                        <p class="text-label">
                                             Loaded
                                         </p>
                                         <p class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -1044,7 +1044,7 @@
                             <div class="p-4 space-y-4">
                                 <div>
                                     <div class="mb-2">
-                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                        <p class="text-label">
                                             Alert thresholds
                                         </p>
                                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -1110,7 +1110,7 @@
 
                                 <div>
                                     <div class="mb-2">
-                                        <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                        <p class="text-label">
                                             Active now
                                         </p>
                                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -1152,7 +1152,7 @@
                                 <div v-if="investmentsStore.portfolioAlertSummary?.recentAlerts?.length">
                                     <div class="flex items-start justify-between gap-3 mb-2">
                                         <div>
-                                            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                            <p class="text-label">
                                                 Recent alerts
                                             </p>
                                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -1337,7 +1337,7 @@
                             Current Price
                         </p>
                         <p
-                            class="text-2xl font-bold text-gray-900 dark:text-white"
+                            class="stat-value text-gray-900 dark:text-white"
                         >
                             {{
                                 analyzerStockInfo.currentPrice

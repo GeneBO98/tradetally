@@ -3,7 +3,7 @@
     <div class="sm:mx-auto sm:w-full sm:max-w-md">
       <!-- TradeTally Logo -->
       <div class="flex justify-center">
-        <div class="text-4xl font-bold text-primary-700">TradeTally</div>
+        <div class="stat-value text-primary-700">TradeTally</div>
       </div>
     </div>
 
@@ -36,7 +36,7 @@
               class="w-16 h-16 mx-auto mb-4 rounded-lg"
             />
             <div v-else class="w-16 h-16 mx-auto mb-4 bg-primary-100 dark:bg-primary-900 rounded-lg flex items-center justify-center">
-              <span class="text-2xl font-bold text-primary-700">{{ consentData.client.name[0] }}</span>
+              <span class="stat-value text-primary-700">{{ consentData.client.name[0] }}</span>
             </div>
 
             <h2 class="heading-section mb-2">

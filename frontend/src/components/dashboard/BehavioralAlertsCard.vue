@@ -110,7 +110,7 @@
 
         <!-- Pro pattern signal counts (only when there are patterns logged) -->
         <div v-if="proPatternSignals.length > 0" class="pt-2 border-t border-gray-200 dark:border-gray-700">
-          <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">Behavioral analysis · last 90 days</div>
+          <div class="text-label mb-1.5">Behavioral analysis · last 90 days</div>
           <div class="space-y-1">
             <div
               v-for="signal in proPatternSignals"

@@ -68,7 +68,7 @@
                         </button>
                         <div
                             v-if="openDropdown === 'strategies'"
-                            class="dropdown-menu absolute z-20 mt-1 w-full max-h-60 overflow-auto focus:outline-none"
+                            class="dropdown-menu absolute z-20 mt-1 w-full max-h-60 overflow-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                         >
                             <div class="p-1">
                                 <label
@@ -178,7 +178,7 @@
                             class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
                         >
                             <div
-                                class="text-2xl font-bold text-gray-900 dark:text-white"
+                                class="stat-value text-gray-900 dark:text-white"
                             >
                                 {{ yearTotals.trades.total.toLocaleString() }}
                             </div>
@@ -193,7 +193,7 @@
                             class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
                         >
                             <div
-                                class="text-2xl font-bold"
+                                class="stat-value"
                                 :class="yearTotals.metrics.winRate >= 50 ? 'text-success' : 'text-danger'"
                             >
                                 {{
@@ -217,7 +217,7 @@
                             class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
                         >
                             <div
-                                class="text-2xl font-bold"
+                                class="stat-value"
                                 :class="getPnLClass(yearTotals.pnl.total)"
                             >
                                 {{ formatCurrency(yearTotals.pnl.total) }}
@@ -233,7 +233,7 @@
                             class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
                         >
                             <div
-                                class="text-2xl font-bold"
+                                class="stat-value"
                                 :class="getRValueClass( yearTotals.metrics.totalRValue, )"
                             >
                                 {{
@@ -253,7 +253,7 @@
                         <div
                             class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
                         >
-                            <div class="text-2xl font-bold text-success">
+                            <div class="stat-value text-success">
                                 {{ formatCurrency(yearTotals.pnl.best) }}
                             </div>
                             <div
@@ -266,7 +266,7 @@
                         <div
                             class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
                         >
-                            <div class="text-2xl font-bold text-danger">
+                            <div class="stat-value text-danger">
                                 {{ formatCurrency(yearTotals.pnl.worst) }}
                             </div>
                             <div

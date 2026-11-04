@@ -63,13 +63,13 @@
           <!-- YTD Deposits / Withdrawals -->
           <div class="card card-body flex flex-col gap-4">
             <div>
-              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">YTD Deposits</div>
+              <div class="text-label">YTD Deposits</div>
               <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-700 dark:text-green-400">
                 {{ formatSignedCurrency(cashflow.summary.ytdDeposits) }}
               </div>
             </div>
             <div>
-              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">YTD Withdrawals</div>
+              <div class="text-label">YTD Withdrawals</div>
               <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-red-600 dark:text-red-400">
                 {{ formatSignedCurrency(-cashflow.summary.ytdWithdrawals) }}
               </div>
@@ -78,13 +78,13 @@
           <!-- Total Inflow / Outflow -->
           <div class="card card-body flex flex-col gap-4">
             <div>
-              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Inflow</div>
+              <div class="text-label">Total Inflow</div>
               <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-700 dark:text-green-400">
                 {{ formatSignedCurrency(cashflow.summary.totalInflow) }}
               </div>
             </div>
             <div>
-              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Outflow</div>
+              <div class="text-label">Total Outflow</div>
               <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-red-600 dark:text-red-400">
                 {{ formatSignedCurrency(-cashflow.summary.totalOutflow) }}
               </div>
@@ -92,8 +92,8 @@
           </div>
           <!-- Current Balance -->
           <div class="card card-body flex flex-col justify-center">
-            <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Current Balance</div>
-            <div class="mt-1 text-2xl font-bold tabular-nums tracking-tight whitespace-nowrap" :class="balanceClass">
+            <div class="text-label">Current Balance</div>
+            <div class="stat-value mt-1 whitespace-nowrap" :class="balanceClass">
               {{ formatCurrency(cashflow.summary.currentBalance) }}
             </div>
           </div>
@@ -184,7 +184,7 @@
                           <div v-else class="space-y-4">
                             <!-- Trades -->
                             <div v-if="expandedActivity.trades.length">
-                              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                              <div class="text-label mb-2">
                                 Trades
                               </div>
                               <ul class="space-y-1.5">
@@ -221,7 +221,7 @@
 
                             <!-- Deposits & Withdrawals -->
                             <div v-if="expandedActivity.transactions.length">
-                              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                              <div class="text-label mb-2">
                                 Deposits &amp; Withdrawals
                               </div>
                               <ul class="space-y-1.5">

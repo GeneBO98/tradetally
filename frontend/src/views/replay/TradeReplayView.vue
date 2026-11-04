@@ -124,7 +124,7 @@
       <div class="card mb-4">
         <div class="card-body">
           <div class="flex flex-wrap items-center justify-end gap-1.5 mb-3">
-            <span class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mr-1">Indicators</span>
+            <span class="text-label mr-1">Indicators</span>
             <button
               v-for="option in indicatorOptions"
               :key="option.key"

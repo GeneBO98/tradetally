@@ -15,7 +15,7 @@
       <section v-for="group in groups" :key="group.period">
         <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
           <div>
-            <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ group.eyebrow }}</div>
+            <div class="text-label">{{ group.eyebrow }}</div>
             <h2 class="heading-card">{{ group.title }}</h2>
           </div>
           <div v-if="group.challenges.length" class="text-sm text-gray-500 dark:text-gray-400">
@@ -101,7 +101,7 @@
       <!-- History -->
       <section v-if="history.length">
         <div class="mb-4">
-          <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">History</div>
+          <div class="text-label">History</div>
           <h2 class="heading-card">Past challenges</h2>
         </div>
         <div class="card overflow-hidden">

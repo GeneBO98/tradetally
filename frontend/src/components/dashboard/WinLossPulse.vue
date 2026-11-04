@@ -55,7 +55,7 @@
             >
               {{ winRate.toFixed(1) }}<span class="text-lg">%</span>
             </div>
-            <div class="mt-0.5 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <div class="text-label mt-0.5">
               {{ winRateVerdict }}
             </div>
             <div v-if="breakeven > 0" class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
@@ -77,7 +77,7 @@
           >
             <div class="flex items-center gap-1 mb-0.5">
               <span class="w-1.5 h-1.5 rounded-full bg-green-500" />
-              <span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Wins</span>
+              <span class="text-label">Wins</span>
             </div>
             <span class="text-mono-num text-base font-semibold text-green-700 dark:text-green-400">{{ winning }}</span>
           </button>
@@ -89,7 +89,7 @@
           >
             <div class="flex items-center gap-1 mb-0.5">
               <span class="w-1.5 h-1.5 rounded-full bg-red-500" />
-              <span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Losses</span>
+              <span class="text-label">Losses</span>
             </div>
             <span class="text-mono-num text-base font-semibold text-red-600 dark:text-red-400">{{ losing }}</span>
           </button>
@@ -100,7 +100,7 @@
           >
             <div class="flex items-center gap-1 mb-0.5">
               <span class="w-1.5 h-1.5 rounded-full bg-gray-400" />
-              <span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">BE</span>
+              <span class="text-label">BE</span>
             </div>
             <span class="text-mono-num text-base font-semibold text-gray-700 dark:text-gray-200">{{ breakeven }}</span>
           </button>
@@ -113,38 +113,38 @@
              by a stronger divider in the middle. -->
         <dl class="mt-4 divide-y divide-gray-200 dark:divide-gray-700">
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Avg win</dt>
+            <dt class="text-label">Avg win</dt>
             <dd class="text-mono-num text-sm font-medium text-green-700 dark:text-green-400">
               {{ formatCurrency(avgWin) }}
             </dd>
           </div>
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Avg loss</dt>
+            <dt class="text-label">Avg loss</dt>
             <dd class="text-mono-num text-sm font-medium text-red-600 dark:text-red-400">
               {{ formatCurrency(avgLoss) }}
             </dd>
           </div>
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Risk / reward</dt>
+            <dt class="text-label">Risk / reward</dt>
             <dd class="text-mono-num text-sm font-medium text-gray-900 dark:text-white">
               <template v-if="avgLoss > 0">{{ (avgWin / avgLoss).toFixed(2) }}<span class="text-gray-400">x</span></template>
               <template v-else>—</template>
             </dd>
           </div>
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Best win</dt>
+            <dt class="text-label">Best win</dt>
             <dd class="text-mono-num text-sm font-medium text-green-700 dark:text-green-400">
               {{ formatCurrency(bestTrade) }}
             </dd>
           </div>
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Worst loss</dt>
+            <dt class="text-label">Worst loss</dt>
             <dd class="text-mono-num text-sm font-medium text-red-600 dark:text-red-400">
               {{ formatCurrency(worstTrade) }}
             </dd>
           </div>
           <div class="py-2.5 flex items-baseline justify-between gap-3">
-            <dt class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Expectancy / trade</dt>
+            <dt class="text-label">Expectancy / trade</dt>
             <dd class="text-mono-num text-sm font-medium" :class="expectancyClass">
               {{ formatSignedCurrency(expectancy) }}
             </dd>
@@ -160,10 +160,10 @@
             :class="profitFactor >= 1 ? 'border-green-200 dark:border-green-900/50 bg-green-50/40 dark:bg-green-900/10' : 'border-red-200 dark:border-red-900/50 bg-red-50/40 dark:bg-red-900/10'"
           >
             <div>
-              <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Profit factor</div>
+              <div class="text-label">Profit factor</div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Gross wins / gross losses</div>
             </div>
-            <div class="text-mono-num text-2xl font-semibold tracking-tight" :class="profitFactorClass">
+            <div class="stat-value" :class="profitFactorClass">
               {{ profitFactorDisplay }}
             </div>
           </div>

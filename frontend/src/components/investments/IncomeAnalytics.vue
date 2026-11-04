@@ -27,26 +27,26 @@
       <!-- Summary cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div class="card card-body">
-          <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Dividends</div>
-          <div class="mt-1 text-2xl font-bold tabular-nums text-green-700 dark:text-green-400">
+          <div class="text-label">Dividends</div>
+          <div class="stat-value mt-1 text-green-700 dark:text-green-400">
             {{ formatCurrency(income.summary.totalDividends) }}
           </div>
         </div>
         <div class="card card-body">
-          <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Interest</div>
-          <div class="mt-1 text-2xl font-bold tabular-nums text-green-700 dark:text-green-400">
+          <div class="text-label">Interest</div>
+          <div class="stat-value mt-1 text-green-700 dark:text-green-400">
             {{ formatCurrency(income.summary.totalInterest) }}
           </div>
         </div>
         <div class="card card-body">
-          <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Fees & Taxes</div>
-          <div class="mt-1 text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">
+          <div class="text-label">Fees & Taxes</div>
+          <div class="stat-value mt-1 text-red-600 dark:text-red-400">
             {{ formatCurrency(income.summary.totalFees) }}
           </div>
         </div>
         <div class="card card-body">
-          <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Dividends (Trailing 12M)</div>
-          <div class="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">
+          <div class="text-label">Dividends (Trailing 12M)</div>
+          <div class="stat-value mt-1 text-gray-900 dark:text-white">
             {{ formatCurrency(income.summary.trailing12mDividends) }}
           </div>
         </div>

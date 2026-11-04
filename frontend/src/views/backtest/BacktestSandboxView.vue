@@ -193,7 +193,7 @@
       <div class="card mb-4">
         <div class="card-body">
           <div class="flex flex-wrap items-center justify-end gap-1.5 mb-3">
-            <span class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mr-1">Indicators</span>
+            <span class="text-label mr-1">Indicators</span>
             <button
               v-for="option in indicatorOptions"
               :key="option.key"
@@ -282,7 +282,7 @@
               </button>
             </div>
             <div class="ml-auto text-right">
-              <p class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Current price</p>
+              <p class="text-label">Current price</p>
               <p class="font-semibold text-gray-900 dark:text-white tabular-nums">
                 {{ currentBar ? formatCurrency(currentBar.close) : '--' }}
               </p>
@@ -349,28 +349,28 @@
           <h2 class="heading-card mb-4">Session Result</h2>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <dt class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Total P&amp;L</dt>
+              <dt class="text-label">Total P&amp;L</dt>
               <dd class="font-semibold tabular-nums" :class="pnlClass(reviewedSession.total_pnl)">
                 {{ formatSignedCurrency(reviewedSession.total_pnl) }}
               </dd>
             </div>
             <div>
-              <dt class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Round Trips</dt>
+              <dt class="text-label">Round Trips</dt>
               <dd class="font-medium text-gray-900 dark:text-white tabular-nums">{{ reviewedSession.round_trips }}</dd>
             </div>
             <div>
-              <dt class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Wins / Losses</dt>
+              <dt class="text-label">Wins / Losses</dt>
               <dd class="font-medium text-gray-900 dark:text-white tabular-nums">
                 {{ reviewedSession.wins }}W / {{ reviewedSession.losses }}L
               </dd>
             </div>
             <div>
-              <dt class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Fills</dt>
+              <dt class="text-label">Fills</dt>
               <dd class="font-medium text-gray-900 dark:text-white tabular-nums">{{ fills.length }}</dd>
             </div>
           </div>
           <div v-if="reviewedSession.notes" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <p class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Notes</p>
+            <p class="text-label mb-1">Notes</p>
             <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ reviewedSession.notes }}</p>
           </div>
         </div>

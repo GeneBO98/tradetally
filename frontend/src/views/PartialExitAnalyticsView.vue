@@ -66,15 +66,15 @@
       <!-- Summary stats -->
       <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
         <div class="card p-4 text-center">
-          <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ analytics.total_trades }}</div>
+          <div class="stat-value text-gray-900 dark:text-white">{{ analytics.total_trades }}</div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Trades Analyzed</div>
         </div>
         <div class="card p-4 text-center">
-          <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ analytics.max_partials }}</div>
+          <div class="stat-value text-gray-900 dark:text-white">{{ analytics.max_partials }}</div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Max Partial Levels</div>
         </div>
         <div class="card p-4 text-center">
-          <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ filteredPartials.length }}</div>
+          <div class="stat-value text-gray-900 dark:text-white">{{ filteredPartials.length }}</div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Partial Indices</div>
         </div>
       </div>

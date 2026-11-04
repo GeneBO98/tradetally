@@ -90,7 +90,7 @@
             type="button"
             :data-resolution="option.value"
             class="rounded px-2 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-40"
-            :class="selectedResolution === option.value ? 'bg-primary-700 text-white shadow-sm' : 'text-gray-500 hover:bg-white hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white'"
+            :class="selectedResolution === option.value ? 'segment-active' : 'text-gray-500 hover:bg-white hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white'"
             :disabled="resolutionLoading || !availableResolutions.includes(option.value)"
             :aria-pressed="selectedResolution === option.value"
             :title="availableResolutions.includes(option.value) ? `${option.label} candles` : 'This data source does not provide this resolution'"

@@ -9,7 +9,7 @@
         </p>
       </div>
       <div v-if="result.left_on_table !== null && result.left_on_table > 0.005" class="text-right">
-        <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Left on the table</div>
+        <div class="text-label">Left on the table</div>
         <div class="text-xl font-semibold text-yellow-600 dark:text-yellow-400">
           {{ formatCurrency(result.left_on_table) }}
         </div>

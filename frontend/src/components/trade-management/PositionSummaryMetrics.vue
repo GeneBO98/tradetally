@@ -13,7 +13,7 @@
       <!-- Combined metrics -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Risk Amount</div>
+          <div class="text-label mb-1">Risk Amount</div>
           <div class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ formatCurrency(analysis.risk_amount) }}
           </div>
@@ -23,7 +23,7 @@
         </div>
 
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Net P&L</div>
+          <div class="text-label mb-1">Net P&L</div>
           <div class="text-lg font-semibold" :class="pnlClass">
             {{ formatCurrency(trade.pnl) }}
           </div>
@@ -33,7 +33,7 @@
         </div>
 
         <div v-if="analysis.target_pl_amount !== null && analysis.target_pl_amount !== undefined">
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Target P&L</div>
+          <div class="text-label mb-1">Target P&L</div>
           <div class="text-lg font-semibold text-primary-700 dark:text-primary-400">
             {{ formatCurrency(analysis.target_pl_amount) }}
           </div>
@@ -42,7 +42,7 @@
           </div>
         </div>
         <div v-else>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Target P&L</div>
+          <div class="text-label mb-1">Target P&L</div>
           <div class="text-lg text-gray-400 dark:text-gray-500">
             N/A
           </div>
@@ -52,7 +52,7 @@
         </div>
 
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Risk:Reward</div>
+          <div class="text-label mb-1">Risk:Reward</div>
           <div class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ riskRewardActual }}
           </div>
@@ -67,19 +67,19 @@
       <!-- Position details -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Symbol</div>
+          <div class="text-label mb-1">Symbol</div>
           <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ trade.symbol }}</div>
         </div>
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Legs</div>
+          <div class="text-label mb-1">Legs</div>
           <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ trade.leg_count }}</div>
         </div>
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Total Quantity</div>
+          <div class="text-label mb-1">Total Quantity</div>
           <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ trade.quantity }}</div>
         </div>
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Opened / Closed</div>
+          <div class="text-label mb-1">Opened / Closed</div>
           <div class="text-sm font-semibold text-gray-900 dark:text-white">
             {{ formatDateTimeSafe(trade.entry_time) }}
           </div>

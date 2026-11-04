@@ -84,7 +84,7 @@
           <!-- Equity headline -->
           <div class="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
-              <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Equity</div>
+              <div class="text-label">Equity</div>
               <div class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
                 {{ formatMoney(profile.status?.current_equity) }}
               </div>
@@ -93,19 +93,19 @@
               </div>
             </div>
             <div>
-              <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Today</div>
+              <div class="text-label">Today</div>
               <div class="mt-1 text-xl font-semibold" :class="pnlClass(profile.status?.today_pnl)">
                 {{ formatSignedMoney(profile.status?.today_pnl) }}
               </div>
             </div>
             <div>
-              <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">High Water</div>
+              <div class="text-label">High Water</div>
               <div class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
                 {{ formatMoney(profile.status?.high_water_equity) }}
               </div>
             </div>
             <div>
-              <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Trading Days</div>
+              <div class="text-label">Trading Days</div>
               <div class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
                 {{ profile.status?.trading_days ?? 0 }}<span v-if="profile.min_trading_days" class="text-sm text-gray-500 dark:text-gray-400"> / {{ profile.min_trading_days }}</span>
               </div>

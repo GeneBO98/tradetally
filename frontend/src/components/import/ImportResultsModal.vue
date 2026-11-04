@@ -23,23 +23,23 @@
           <!-- Summary Stats -->
           <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <div class="callout-success text-center">
-              <p class="text-2xl font-bold text-green-700 dark:text-green-400">{{ tradesImported }}</p>
+              <p class="stat-value text-green-700 dark:text-green-400">{{ tradesImported }}</p>
               <p class="text-xs text-green-700 dark:text-green-300">Imported</p>
             </div>
             <div v-if="duplicatesSkipped > 0" class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-3 text-center">
-              <p class="text-2xl font-bold text-primary-700 dark:text-primary-400">{{ duplicatesSkipped }}</p>
+              <p class="stat-value text-primary-700 dark:text-primary-400">{{ duplicatesSkipped }}</p>
               <p class="text-xs text-primary-700 dark:text-primary-300">Duplicates</p>
             </div>
             <div v-else class="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
-              <p class="text-2xl font-bold text-gray-400">0</p>
+              <p class="stat-value text-gray-400">0</p>
               <p class="text-xs text-gray-500 dark:text-gray-400">Duplicates</p>
             </div>
             <div v-if="rowsSkipped > 0" class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 text-center">
-              <p class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{{ rowsSkipped }}</p>
+              <p class="stat-value text-yellow-600 dark:text-yellow-400">{{ rowsSkipped }}</p>
               <p class="text-xs text-yellow-700 dark:text-yellow-300">Skipped</p>
             </div>
             <div v-else class="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
-              <p class="text-2xl font-bold text-gray-400">0</p>
+              <p class="stat-value text-gray-400">0</p>
               <p class="text-xs text-gray-500 dark:text-gray-400">Skipped</p>
             </div>
           </div>

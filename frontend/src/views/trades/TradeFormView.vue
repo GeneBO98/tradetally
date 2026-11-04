@@ -262,7 +262,7 @@
                 </p>
               </div>
               <div class="text-right">
-                <p class="text-2xl font-bold"
+                <p class="stat-value"
                    :class="pnlClass(computedPnlPreview.value)">
                   {{ computedPnlPreview.value > 0 ? '+' : '' }}${{ computedPnlPreview.value.toFixed(2) }}
                 </p>

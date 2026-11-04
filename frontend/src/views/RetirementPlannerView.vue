@@ -857,7 +857,7 @@
                   </article>
 
                   <article class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
-                    <p class="text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300">
+                    <p class="text-label">
                       Historical assumptions
                     </p>
                     <p class="mt-2 text-sm font-semibold text-gray-950 dark:text-white">

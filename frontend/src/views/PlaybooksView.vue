@@ -106,19 +106,19 @@
 
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-                <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Active profiles</div>
-                <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ analytics.overview.active_playbook_count || 0 }}</div>
+                <div class="text-label">Active profiles</div>
+                <div class="stat-value mt-2 text-gray-900 dark:text-white">{{ analytics.overview.active_playbook_count || 0 }}</div>
               </div>
               <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-                <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Reviewed trades</div>
-                <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ analytics.overview.reviewed_trade_count || 0 }}</div>
+                <div class="text-label">Reviewed trades</div>
+                <div class="stat-value mt-2 text-gray-900 dark:text-white">{{ analytics.overview.reviewed_trade_count || 0 }}</div>
               </div>
               <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-                <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Avg adherence</div>
-                <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ analytics.overview.adherence_average || '0.00' }}</div>
+                <div class="text-label">Avg adherence</div>
+                <div class="stat-value mt-2 text-gray-900 dark:text-white">{{ analytics.overview.adherence_average || '0.00' }}</div>
               </div>
               <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-                <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Followed vs broken</div>
+                <div class="text-label">Followed vs broken</div>
                 <div class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
                   {{ analytics.overview.followed_trade_count || 0 }} / {{ analytics.overview.broken_trade_count || 0 }}
                 </div>

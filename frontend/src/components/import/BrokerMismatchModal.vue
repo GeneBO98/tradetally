@@ -27,11 +27,11 @@
           <div class="mt-4 bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">You Selected</p>
+                <p class="text-label">You Selected</p>
                 <p class="mt-1 text-sm font-medium text-gray-900 dark:text-white">{{ formatBrokerName(selectedBroker) }}</p>
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Detected Format</p>
+                <p class="text-label">Detected Format</p>
                 <p class="mt-1 text-sm font-medium text-primary-700 dark:text-primary-400">{{ formatBrokerName(detectedBroker) }}</p>
               </div>
             </div>
@@ -39,7 +39,7 @@
 
           <!-- File Info -->
           <div class="mt-4">
-            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">File Details</p>
+            <p class="text-label mb-2">File Details</p>
             <div class="text-sm text-gray-700 dark:text-gray-300">
               <p><span class="font-medium">Name:</span> {{ fileName }}</p>
               <p><span class="font-medium">Rows:</span> {{ rowCount.toLocaleString() }}</p>

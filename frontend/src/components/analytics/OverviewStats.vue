@@ -4,7 +4,7 @@
     <dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y divide-gray-100 dark:divide-gray-800 lg:divide-y-0 lg:divide-x lg:divide-gray-200 lg:dark:divide-gray-600">
       <!-- Total P&L -->
       <div class="px-4 py-3.5">
-        <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">Total P&L</dt>
+        <dt class="text-label truncate">Total P&L</dt>
         <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="pnlClass(overview.total_pnl)">
           {{ formatSignedCurrency(overview.total_pnl) }}
         </dd>
@@ -12,7 +12,7 @@
 
       <!-- Win Rate -->
       <div class="px-4 py-3.5">
-        <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">
+        <dt class="text-label truncate">
           Win Rate<span v-if="overview.position_grouping" class="ml-1 normal-case text-primary-700 dark:text-primary-400">· whole trade</span>
         </dt>
         <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="winRateClass(overview.win_rate)">
@@ -25,13 +25,13 @@
 
       <!-- Total Trades -->
       <div class="px-4 py-3.5">
-        <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">Total Trades</dt>
+        <dt class="text-label truncate">Total Trades</dt>
         <dd class="mt-1 text-lg lg:text-xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">{{ overview.total_trades }}</dd>
       </div>
 
       <!-- Average / Median Trade -->
       <div class="px-4 py-3.5">
-        <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">{{ calculationMethod }} Trade</dt>
+        <dt class="text-label truncate">{{ calculationMethod }} Trade</dt>
         <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="pnlClass(overview.avg_pnl)">
           {{ formatSignedCurrency(overview.avg_pnl) }}
         </dd>
@@ -39,7 +39,7 @@
 
       <!-- Profit Factor -->
       <div class="px-4 py-3.5">
-        <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">Profit Factor</dt>
+        <dt class="text-label truncate">Profit Factor</dt>
         <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="profitFactorClass(overview.profit_factor)">{{ overview.profit_factor ?? '0.00' }}</dd>
       </div>
 
@@ -49,7 +49,7 @@
         @click="toggleRMultipleDisplay"
         title="Click to toggle Average / Total R"
       >
-        <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">
+        <dt class="text-label truncate">
           {{ rMultipleFlipped ? 'Total R' : calculationMethod + ' R-Multiple' }}
           <span class="ml-1 normal-case text-gray-400">↻</span>
         </dt>
@@ -58,7 +58,7 @@
             {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(1) + 'R' : '0.0R' }}
           </dd>
           <dd v-else key="total" class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="(overview.total_r_value ?? pnlClass(0))">
-            {{ overview.total_r_value !== undefined && overview.total_r_value !== null ? Number(overview.total_r_value).toFixed(2) + 'R' : '0.00R' }}
+            {{ overview.total_r_value !== undefined && overview.total_r_value !== null ? Number(overview.total_r_value).toFixed(1) + 'R' : '0.0R' }}
           </dd>
         </transition>
       </div>

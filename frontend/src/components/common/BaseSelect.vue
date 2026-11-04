@@ -28,7 +28,7 @@
         v-if="open"
         :data-base-select-panel="uid"
         :style="panelStyle"
-        class="dropdown-menu max-h-72 overflow-hidden focus:outline-none flex flex-col"
+        class="dropdown-menu max-h-72 overflow-hidden focus:outline-none flex flex-col focus-visible:ring-2 focus-visible:ring-primary-500"
         style="z-index: 9999"
       >
         <!-- Search (auto-shown for longer lists) -->
@@ -58,7 +58,7 @@
           </button>
 
           <template v-for="(group, gi) in filteredGroups" :key="`g-${gi}`">
-            <div v-if="group.label" class="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            <div v-if="group.label" class="text-label px-3 pt-2 pb-1">
               {{ group.label }}
             </div>
             <button

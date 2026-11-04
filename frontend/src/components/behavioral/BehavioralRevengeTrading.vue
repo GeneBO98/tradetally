@@ -136,7 +136,38 @@
                                                     'profit',
                                                 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400':
                                                     event.outcome_type ===
-                                                    'neutral', }" > {{ event.outcome_type }} </span> <span class="text-sm text-gray-500 dark:text-gray-400" > {{ formatDate(event.created_at) }} </span> </div> <!-- Trigger Trade Information --> <div v-if="event.trigger_trade" class="callout-danger mt-3 border-l-4" > <div class="flex items-center justify-between mb-3" > <h4 class="heading-sub text-red-600 dark:text-red-400" > <MdiIcon :icon="mdiTrendingDown" :size="16" class="mr-1" /> Initial Loss Trade (Trigger) </h4> <button @click=" $emit('open-trade',
+                                                    'neutral',
+                                            }"
+                                        >
+                                            {{ event.outcome_type }}
+                                        </span>
+                                        <span
+                                            class="text-sm text-gray-500 dark:text-gray-400"
+                                        >
+                                            {{ formatDate(event.created_at) }}
+                                        </span>
+                                    </div>
+                                    <!-- Trigger Trade Information -->
+                                    <div
+                                        v-if="event.trigger_trade"
+                                        class="callout-danger mt-3 border-l-4"
+                                    >
+                                        <div
+                                            class="flex items-center justify-between mb-3"
+                                        >
+                                            <h4
+                                                class="heading-sub text-red-800 dark:text-red-400"
+                                            >
+                                                <MdiIcon
+                                                    :icon="mdiTrendingDown"
+                                                    :size="16"
+                                                    class="mr-1"
+                                                />
+                                                Initial Loss Trade (Trigger)
+                                            </h4>
+                                            <button
+                                                @click="
+                                                    $emit('open-trade',
                                                         event.trigger_trade.id,
                                                     )
                                                 "
@@ -889,10 +920,10 @@
                                         <div
                                             class="mt-3 text-xs"
                                             :class="{
-                                                'text-red-600 dark:text-red-400':
+                                                'text-red-700 dark:text-red-300':
                                                     event.outcome_type ===
                                                     'loss',
-                                                'text-green-700 dark:text-green-400':
+                                                'text-green-700 dark:text-green-300':
                                                     event.outcome_type ===
                                                     'profit',
                                                 'text-gray-700 dark:text-gray-300':
@@ -1055,7 +1086,7 @@
                                             )"
                                             :key="page"
                                         >
-                                            <button class="btn-link"
+                                            <button
                                                 @click="$emit('go-to-page', page)"
                                                 :class="[ page === pagination.page ? 'relative z-10 inline-flex items-center bg-primary-700 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600' : 'relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700', ]"
                                             >

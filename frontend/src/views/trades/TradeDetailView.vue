@@ -591,7 +591,7 @@
                     </p>
                   </div>
                   <div class="text-right">
-                    <div v-if="trade.qualityGrade" class="text-2xl font-bold"
+                    <div v-if="trade.qualityGrade" class="stat-value"
                       :class="{
                         'text-green-700 dark:text-green-400': trade.qualityGrade === 'A',
                         'text-primary-700 dark:text-primary-400': trade.qualityGrade === 'B',
@@ -601,7 +601,7 @@
                       }">
                       {{ Number(trade.qualityScore).toFixed(1) }}/5.0
                     </div>
-                    <div v-else class="text-2xl font-bold text-gray-500 dark:text-gray-400">
+                    <div v-else class="stat-value text-gray-500 dark:text-gray-400">
                       Not graded
                     </div>
                     <div v-if="trade.qualityGrade" class="text-sm font-semibold text-gray-600 dark:text-gray-400">
@@ -799,7 +799,7 @@
                         >
                           <div class="flex items-center justify-between gap-4">
                             <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
-                            <span :class="rule.passed ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'" class="text-xs font-semibold uppercase tracking-wide">
+                            <span :class="rule.passed ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'" class="text-label">
                               {{ rule.passed ? 'Passed' : 'Failed' }}
                             </span>
                           </div>
@@ -899,7 +899,7 @@
                         >
                           <div class="flex items-center justify-between gap-4">
                             <div class="text-sm font-medium text-gray-900 dark:text-white">{{ rule.label }}</div>
-                            <span :class="rule.passed ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'" class="text-xs font-semibold uppercase tracking-wide">
+                            <span :class="rule.passed ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'" class="text-label">
                               {{ rule.passed ? 'Passed' : 'Failed' }}
                             </span>
                           </div>

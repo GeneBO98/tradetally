@@ -40,7 +40,7 @@
       >
         <div class="py-1" role="menu">
           <!-- Header -->
-          <div class="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
+          <div class="text-label px-4 py-2 border-b border-gray-100 dark:border-gray-700">
             Filter by Account
           </div>
 

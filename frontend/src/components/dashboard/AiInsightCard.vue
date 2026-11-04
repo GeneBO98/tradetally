@@ -24,7 +24,7 @@
                 AI
               </span>
             </div>
-            <div class="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            <div class="text-label">
               {{ sourceLabel }}
             </div>
           </div>

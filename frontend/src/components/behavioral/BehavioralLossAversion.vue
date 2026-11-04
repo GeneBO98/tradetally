@@ -14,7 +14,258 @@
                             </p>
                         </div>
                         <button
-                            @click="$emit('analyze')" :disabled="loadingLossAversion" class="btn btn-primary btn-sm" > <span v-if="loadingLossAversion" class="spinner spinner-xs spinner-current mr-2 -ml-1"></span> {{ loadingLossAversion ? "Analyzing..." : "Analyze Exit Patterns" }} </button> </div> <div v-if="lossAversionData && lossAversionData.analysis"> <!-- Main Insight Message --> <div v-if="lossAversionData.analysis.message" class="callout-warning mb-6" > <div class="flex"> <div class="flex-shrink-0"> <svg class="h-5 w-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" > <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /> </svg> </div> <div class="ml-3"> <p class="text-sm font-medium text-yellow-800 dark:text-yellow-300" > {{ lossAversionData.analysis.message }} </p> </div> </div> </div> <!-- Hold Time Comparison --> <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6"> <div class="callout-success" > <h4 class="heading-sub text-green-700 dark:text-green-300" > Winners Hold Time </h4> <p class="text-2xl font-bold text-green-900 dark:text-green-200" > {{ formatMinutes( lossAversionData.analysis .avgWinnerHoldTime, ) }} </p> <p class="text-xs text-green-700 dark:text-green-400" > Average </p> </div> <div class="callout-danger" > <h4 class="heading-sub text-red-600 dark:text-red-300" > Losers Hold Time </h4> <p class="text-2xl font-bold text-red-900 dark:text-red-200" > {{ formatMinutes( lossAversionData.analysis .avgLoserHoldTime, ) }} </p> <p class="text-xs text-red-600 dark:text-red-400" > Average </p> </div> <div class="callout-info" > <h4 class="heading-sub text-primary-800 dark:text-primary-300" > Hold Time Ratio </h4> <p class="text-2xl font-bold text-primary-900 dark:text-primary-200" > {{ lossAversionData.analysis.holdTimeRatio.toFixed( 2, ) }}x </p> <p class="text-xs text-primary-700 dark:text-primary-400" > Losers vs Winners </p> </div> </div> <!-- Financial Impact --> <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-6" > <h4 class="heading-sub mb-3" > Financial Impact </h4> <div class="space-y-2"> <div class="flex justify-between"> <span class="text-sm text-gray-600 dark:text-gray-400" >Estimated Monthly Cost:</span > <span class="text-sm font-medium text-red-600 dark:text-red-400" > ${{ lossAversionData.analysis.financialImpact.estimatedMonthlyCost.toFixed( 2, ) }} </span> </div> <div class="flex justify-between"> <span class="text-sm text-gray-600 dark:text-gray-400" >Missed Profit Potential:</span > <span class="text-sm font-medium text-yellow-600 dark:text-yellow-400" > ${{ lossAversionData.analysis.financialImpact.missedProfitPotential.toFixed( 2, ) }} </span> </div> <div class="flex justify-between"> <span class="text-sm text-gray-600 dark:text-gray-400" >Extended Loss Costs:</span > <span class="text-sm font-medium text-red-600 dark:text-red-400" > ${{ lossAversionData.analysis.financialImpact.unnecessaryLossExtension.toFixed( 2, ) }} </span> </div> </div> </div> <!-- Risk/Reward Analysis --> <div class="grid grid-cols-2 gap-4"> <div> <h4 class="heading-sub mb-1" > Planned Risk/Reward </h4> <p class="text-lg font-semibold text-gray-900 dark:text-white" > 1:{{ lossAversionData.analysis.financialImpact.avgPlannedRiskReward.toFixed( 2, ) }} </p> </div> <div> <h4 class="heading-sub mb-1" > Actual Risk/Reward </h4> <p class="text-lg font-semibold text-gray-900 dark:text-white" > 1:{{ lossAversionData.analysis.financialImpact.avgActualRiskReward.toFixed( 2, ) }} </p> </div> </div> <!-- Price History Analysis Examples --> <div v-if=" lossAversionData.analysis.priceHistoryAnalysis ?.exampleTrades?.length > 0 " class="mt-6" > <div class="flex items-center justify-between mb-4"> <h4 class="heading-card" > Trades That Could Have Been More Profitable </h4> <div class="flex space-x-2"> <button @click="$emit('scroll-to-missed')"
+                            @click="$emit('analyze')"
+                            :disabled="loadingLossAversion"
+                            class="btn btn-primary btn-sm"
+                        >
+                            <svg
+                                v-if="loadingLossAversion"
+                                class="animate-spin -ml-1 mr-2 h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                            >
+                                <circle
+                                    class="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    stroke-width="4"
+                                ></circle>
+                                <path
+                                    class="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                ></path>
+                            </svg>
+                            {{
+                                loadingLossAversion
+                                    ? "Analyzing..."
+                                    : "Analyze Exit Patterns"
+                            }}
+                        </button>
+                    </div>
+
+                    <div v-if="lossAversionData && lossAversionData.analysis">
+                        <!-- Main Insight Message -->
+                        <div
+                            v-if="lossAversionData.analysis.message"
+                            class="callout-warning mb-6"
+                        >
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <svg
+                                        class="h-5 w-5 text-yellow-400"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                                        />
+                                    </svg>
+                                </div>
+                                <div class="ml-3">
+                                    <p
+                                        class="text-sm font-medium text-yellow-800 dark:text-yellow-300"
+                                    >
+                                        {{ lossAversionData.analysis.message }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Hold Time Comparison -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div
+                                class="callout-success"
+                            >
+                                <h4
+                                    class="heading-sub text-green-800 dark:text-green-300"
+                                >
+                                    Winners Hold Time
+                                </h4>
+                                <p
+                                    class="text-2xl font-bold text-green-900 dark:text-green-200"
+                                >
+                                    {{
+                                        formatMinutes(
+                                            lossAversionData.analysis
+                                                .avgWinnerHoldTime,
+                                        )
+                                    }}
+                                </p>
+                                <p
+                                    class="text-xs text-green-700 dark:text-green-400"
+                                >
+                                    Average
+                                </p>
+                            </div>
+
+                            <div
+                                class="callout-danger"
+                            >
+                                <h4
+                                    class="heading-sub text-red-800 dark:text-red-300"
+                                >
+                                    Losers Hold Time
+                                </h4>
+                                <p
+                                    class="text-2xl font-bold text-red-900 dark:text-red-200"
+                                >
+                                    {{
+                                        formatMinutes(
+                                            lossAversionData.analysis
+                                                .avgLoserHoldTime,
+                                        )
+                                    }}
+                                </p>
+                                <p
+                                    class="text-xs text-red-700 dark:text-red-400"
+                                >
+                                    Average
+                                </p>
+                            </div>
+
+                            <div
+                                class="callout-info"
+                            >
+                                <h4
+                                    class="heading-sub text-primary-800 dark:text-primary-300"
+                                >
+                                    Hold Time Ratio
+                                </h4>
+                                <p
+                                    class="text-2xl font-bold text-primary-900 dark:text-primary-200"
+                                >
+                                    {{
+                                        lossAversionData.analysis.holdTimeRatio.toFixed(
+                                            2,
+                                        )
+                                    }}x
+                                </p>
+                                <p
+                                    class="text-xs text-primary-700 dark:text-primary-400"
+                                >
+                                    Losers vs Winners
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Financial Impact -->
+                        <div
+                            class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-6"
+                        >
+                            <h4
+                                class="heading-sub mb-3"
+                            >
+                                Financial Impact
+                            </h4>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span
+                                        class="text-sm text-gray-600 dark:text-gray-400"
+                                        >Estimated Monthly Cost:</span
+                                    >
+                                    <span
+                                        class="text-sm font-medium text-red-600 dark:text-red-400"
+                                    >
+                                        ${{
+                                            lossAversionData.analysis.financialImpact.estimatedMonthlyCost.toFixed(
+                                                2,
+                                            )
+                                        }}
+                                    </span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span
+                                        class="text-sm text-gray-600 dark:text-gray-400"
+                                        >Missed Profit Potential:</span
+                                    >
+                                    <span
+                                        class="text-sm font-medium text-yellow-600 dark:text-yellow-400"
+                                    >
+                                        ${{
+                                            lossAversionData.analysis.financialImpact.missedProfitPotential.toFixed(
+                                                2,
+                                            )
+                                        }}
+                                    </span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span
+                                        class="text-sm text-gray-600 dark:text-gray-400"
+                                        >Extended Loss Costs:</span
+                                    >
+                                    <span
+                                        class="text-sm font-medium text-red-600 dark:text-red-400"
+                                    >
+                                        ${{
+                                            lossAversionData.analysis.financialImpact.unnecessaryLossExtension.toFixed(
+                                                2,
+                                            )
+                                        }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Risk/Reward Analysis -->
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <h4
+                                    class="heading-sub mb-1"
+                                >
+                                    Planned Risk/Reward
+                                </h4>
+                                <p
+                                    class="text-lg font-semibold text-gray-900 dark:text-white"
+                                >
+                                    1:{{
+                                        lossAversionData.analysis.financialImpact.avgPlannedRiskReward.toFixed(
+                                            2,
+                                        )
+                                    }}
+                                </p>
+                            </div>
+                            <div>
+                                <h4
+                                    class="heading-sub mb-1"
+                                >
+                                    Actual Risk/Reward
+                                </h4>
+                                <p
+                                    class="text-lg font-semibold text-gray-900 dark:text-white"
+                                >
+                                    1:{{
+                                        lossAversionData.analysis.financialImpact.avgActualRiskReward.toFixed(
+                                            2,
+                                        )
+                                    }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Price History Analysis Examples -->
+                        <div
+                            v-if="
+                                lossAversionData.analysis.priceHistoryAnalysis
+                                    ?.exampleTrades?.length > 0
+                            "
+                            class="mt-6"
+                        >
+                            <div class="flex items-center justify-between mb-4">
+                                <h4
+                                    class="heading-card"
+                                >
+                                    Trades That Could Have Been More Profitable
+                                </h4>
+                                <div class="flex space-x-2">
+                                    <button
+                                        @click="$emit('scroll-to-missed')"
                                         class="px-3 py-2 text-sm font-medium text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-md hover:bg-yellow-100 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800 dark:hover:bg-yellow-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 flex items-center"
                                     >
                                         <MdiIcon

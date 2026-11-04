@@ -39,7 +39,7 @@
         <!-- Main streak -->
         <div class="flex items-baseline gap-3">
           <div
-            class="text-mono-num text-4xl font-semibold tracking-tight"
+            class="stat-value"
             :class="streakClass"
           >
             {{ streakLabel }}

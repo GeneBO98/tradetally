@@ -29,7 +29,7 @@
 
         <!-- Advanced metrics (Pro) -->
         <div class="relative mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-          <p class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">Advanced Metrics</p>
+          <p class="text-label mb-3">Advanced Metrics</p>
 
           <!-- Pro Tier Overlay for Free Users -->
           <div v-if="isLocked && showProLock" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-lg">

@@ -113,7 +113,7 @@
                     <p class="text-sm text-gray-500 dark:text-gray-400">
                         Shares
                     </p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white">
+                    <p class="stat-value text-gray-900 dark:text-white">
                         {{ formatNumber(holding.shares) }}
                     </p>
                 </div>
@@ -123,7 +123,7 @@
                     <p class="text-sm text-gray-500 dark:text-gray-400">
                         Current Value
                     </p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white">
+                    <p class="stat-value text-gray-900 dark:text-white">
                         {{ formatCurrency(holding.currentValue) }}
                     </p>
                     <p
@@ -139,7 +139,7 @@
                     <p class="text-sm text-gray-500 dark:text-gray-400">
                         Cost Basis
                     </p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white">
+                    <p class="stat-value text-gray-900 dark:text-white">
                         {{ formatCurrency(holding.costBasis) }}
                     </p>
                     <p class="text-xs text-gray-400">

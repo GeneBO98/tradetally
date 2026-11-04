@@ -48,7 +48,7 @@
                                     alt="Profile picture preview"
                                     class="h-full w-full object-cover"
                                 />
-                                <span v-else class="text-2xl font-bold tracking-wider text-white drop-shadow-sm">
+                                <span v-else class="stat-value tracking-wider text-white drop-shadow-sm">
                                     {{ avatarInitials }}
                                 </span>
                             </div>
@@ -1905,7 +1905,509 @@ async function removeAvatar() {
             } catch (error) {
                 showError(
                     'Error',
-                    error.response?.data?.error || 'Failed to remove profile picture.'); } finally { avatarRemoving.value = false; } } ); } // Profile methods async function updateProfile() { profileLoading.value = true; try { const payload = { fullName: profileForm.value.fullName, timezone: profileForm.value.timezone, }; // Include email if it has changed if (profileForm.value.email !== authStore.user?.email) { payload.email = profileForm.value.email; } await api.put("/users/profile", payload); if (profileForm.value.timeDisplayFormat) { await api.put("/settings", { timeDisplayFormat: profileForm.value.timeDisplayFormat, }); } showSuccess("Success", "Profile updated successfully"); await authStore.fetchUser(); } catch (error) { showError( "Error", error.response?.data?.error || "Failed to update profile", ); } finally { profileLoading.value = false; } } // 2FA methods async function fetch2FAStatus() { try { const response = await api.get("/2fa/status"); twoFactorStatus.value = response.data; } catch (error) { console.error("Failed to fetch 2FA status:", error); } } async function setup2FA() { twoFactorLoading.value = true; try { const response = await api.post("/2fa/setup"); show2FASetup.value = true; qrCodeUrl.value = response.data.qrCode; setupSecret.value = response.data.secret; backupCodes.value = response.data.backupCodes || []; } catch (error) { showError("Error", "Failed to set up 2FA"); } finally { twoFactorLoading.value = false; } } async function enable2FA() { if (!verificationCode.value) { showError("Error", "Please enter the verification code"); return; } twoFactorLoading.value = true; try { await api.post("/2fa/enable", { secret: setupSecret.value, token: verificationCode.value, backupCodes: backupCodes.value, }); showSuccess("Success", "2FA has been enabled successfully"); show2FASetup.value = false; verificationCode.value = ""; await fetch2FAStatus(); } catch (error) { showError( "Error", error.response?.data?.error || "Failed to enable 2FA", ); } finally { twoFactorLoading.value = false; } } async function disable2FA() { showDisable2FAModal.value = true; } async function confirmDisable2FA() { if (!disable2FAForm.value.password || !disable2FAForm.value.token) { showError("Error", "Both password and verification code are required"); return; } twoFactorLoading.value = true; try { await api.post("/2fa/disable", { password: disable2FAForm.value.password, token: disable2FAForm.value.token, }); showSuccess("Success", "2FA has been disabled successfully"); showDisable2FAModal.value = false; disable2FAForm.value = { password: "", token: "" }; await fetch2FAStatus(); } catch (error) { showError( "Error", error.response?.data?.error || "Failed to disable 2FA", ); } finally { twoFactorLoading.value = false; } } function cancelDisable2FA() { showDisable2FAModal.value = false; disable2FAForm.value = { password: "", token: "" }; } function cancel2FASetup() { show2FASetup.value = false; verificationCode.value = ""; qrCodeUrl.value = ""; setupSecret.value = ""; backupCodes.value = []; } // Passkey methods async function fetchPasskeys() { try { passkeysLoading.value = true; const response = await api.get("/auth/passkey"); passkeys.value = response.data.passkeys; } catch (error) { console.error("[PASSKEYS] Failed to fetch passkeys:", error); } finally { passkeysLoading.value = false; } } async function addPasskey() { console.log("[PASSKEY] addPasskey() called"); addingPasskey.value = true; try { console.log("[PASSKEY] Importing @simplewebauthn/browser..."); const { startRegistration } = await import("@simplewebauthn/browser"); console.log("[PASSKEY] Import OK, fetching options..."); // Get registration options const optionsRes = await api.post("/auth/passkey/register/options"); const options = optionsRes.data; console.log("[PASSKEY] Options received, rpID:", options.rp?.id, "options:", JSON.stringify(options).substring(0, 200)); // Prompt browser for passkey creation const regResponse = await startRegistration({ optionsJSON: options }); console.log("[PASSKEY] Registration response received"); // Ask for device name const deviceName = prompt("Name this passkey (e.g., MacBook Touch ID):") || "Unnamed passkey"; // Verify with server await api.post("/auth/passkey/register/verify", { response: regResponse, deviceName, }); showSuccess("Success", "Passkey registered successfully."); await fetchPasskeys(); } catch (error) { console.error("[PASSKEY] Registration error:", error.name, error.message, error); if (error.name === "NotAllowedError" || error.name === "InvalidStateError") { showError("Cancelled", "Passkey registration was cancelled."); } else { showError("Error", error.response?.data?.error || error.message || "Failed to register passkey."); } } finally { addingPasskey.value = false; } } function deletePasskeyConfirm(pk) { passkeyToDelete.value = pk; if (confirm(`Delete passkey "${pk.device_name}"? This cannot be undone.`)) { deletePasskey(pk.id); } passkeyToDelete.value = null; } async function deletePasskey(id) { try { await api.delete(`/auth/passkey/${id}`); showSuccess("Success", "Passkey deleted."); await fetchPasskeys(); } catch (error) { showError("Error", error.response?.data?.error || "Failed to delete passkey."); } } // API Key methods async function fetchApiKeys() { if (!canManageApiKeys.value) { apiKeys.value = []; return; } try { apiKeysLoading.value = true; const response = await api.get("/api-keys"); apiKeys.value = response.data.apiKeys; } catch (error) { showError("Error", "Failed to load API keys"); } finally { apiKeysLoading.value = false; } } function closeCreateApiKeyModal() { showCreateApiKeyModal.value = false; createApiKeyForm.value = { name: "", permissions: ["read"], expiresIn: null, }; } async function createApiKey() { try { createApiKeyLoading.value = true; const response = await api.post("/api-keys", createApiKeyForm.value); createdApiKey.value = response.data.apiKey; showCreateApiKeyModal.value = false; showApiKeyCreatedModal.value = true; // Refresh the API keys list await fetchApiKeys(); showSuccess("Success", "API key created successfully"); } catch (error) { showError( "Error", error.response?.data?.error || "Failed to create API key", ); } finally { createApiKeyLoading.value = false; } } function closeApiKeyCreatedModal() { showApiKeyCreatedModal.value = false; createdApiKey.value = null; // Reset the form createApiKeyForm.value = { name: "", permissions: ["read"], expiresIn: null, }; } async function copyApiKey() { try { await navigator.clipboard.writeText(createdApiKey.value.key); showSuccess("Success", "API key copied to clipboard"); } catch (error) { showError("Error", "Failed to copy API key"); } } async function toggleApiKey(apiKey) { try { apiKeysLoading.value = true; await api.put(`/api-keys/${apiKey.id}`, { isActive: !apiKey.isActive, }); // Refresh the API keys list await fetchApiKeys(); showSuccess( "Success", `API key ${apiKey.isActive ? "deactivated" : "activated"}`, ); } catch (error) { showError( "Error", error.response?.data?.error || "Failed to update API key", ); } finally { apiKeysLoading.value = false; } } function deleteApiKey(apiKey) { showDangerConfirmation( "Delete API Key", `Are you sure you want to delete the API key "${apiKey.name}"? This action cannot be undone.`, async () => { try { apiKeysLoading.value = true; await api.delete(`/api-keys/${apiKey.id}`); // Refresh the API keys list await fetchApiKeys(); showSuccess("Success", "API key deleted successfully"); } catch (error) { showError( "Error", error.response?.data?.error || "Failed to delete API key", ); } finally { apiKeysLoading.value = false; } }, ); } // Subscription methods async function loadBillingStatus() { try { const response = await api.get("/billing/status"); billingStatus.value = response.data.data; } catch (error) { console.error("Error loading billing status:", error); } } async function loadSubscription() { if (!billingStatus.value.billing_available) { subscriptionLoading.value = false; return; } try { subscriptionLoading.value = true; const response = await api.get("/billing/subscription"); subscription.value = response.data.data; } catch (error) { console.error("Error loading subscription:", error); if (error.response?.data?.error === "billing_unavailable") { billingStatus.value.billing_available = false; } } finally { subscriptionLoading.value = false; } } async function openCustomerPortal() { try { portalLoading.value = true; const response = await api.post("/billing/portal"); if (response.data.data.portal_url) { window.location.href = response.data.data.portal_url; } } catch (error) { console.error("Error opening customer portal:", error); showError("Error", "Failed to open customer portal. Please try again."); } finally { portalLoading.value = false; } } function getSubscriptionStatusClass(status) { const classes = { active: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200", trialing: "bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200", past_due: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200", canceled: "bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-200", unpaid: "bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-200", }; return ( classes[status] || "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200" ); } function formatSubscriptionStatus(status) { const formatted = { active: "Active", trialing: "Trial", past_due: "Past Due", canceled: "Canceled", unpaid: "Unpaid", }; return formatted[status] || status; } // AI memory notes (short facts sent with every AI prompt) function addMemoryNote() { const note = newMemoryNote.value.replace(/\s+/g, " ").trim(); if (!note || tradingProfileForm.value.aiMemoryNotes.length >= 20) return; tradingProfileForm.value.aiMemoryNotes.push(note.slice(0, 300)); newMemoryNote.value = ""; } function removeMemoryNote(index) { tradingProfileForm.value.aiMemoryNotes.splice(index, 1); } // Trading profile methods async function updateTradingProfile() { tradingProfileLoading.value = true; try { await api.put("/settings/trading-profile", tradingProfileForm.value); showSuccess("Success", "Trading profile updated successfully"); } catch (error) { showError("Error", "Failed to update trading profile"); } finally { tradingProfileLoading.value = false; } } async function fetchTradingProfile() { try { const response = await api.get("/settings/trading-profile"); const profile = response.data.tradingProfile; tradingProfileForm.value = { tradingStrategies: profile.tradingStrategies || [], tradingStyles: profile.tradingStyles || [], riskTolerance: profile.riskTolerance || "moderate", primaryMarkets: profile.primaryMarkets || [], experienceLevel: profile.experienceLevel || "intermediate", averagePositionSize: profile.averagePositionSize || "medium", tradingGoals: profile.tradingGoals || [], preferredSectors: profile.preferredSectors || [], aboutTrading: profile.aboutTrading || "", aiMemoryNotes: Array.isArray(profile.aiMemoryNotes) ? profile.aiMemoryNotes : [], postExitExcursionWindowMode: profile.postExitExcursionWindowMode || "auto", postExitExcursionWindowMinutes: profile.postExitExcursionWindowMinutes || null, }; } catch (error) { console.error("Failed to fetch trading profile:", error); } } // Delete account methods function cancelDeleteAccount() { showDeleteAccountModal.value = false; deleteAccountForm.value.password = ""; deleteAccountError.value = ""; } async function confirmDeleteAccount() { if (!deleteAccountForm.value.password) { deleteAccountError.value = "Password is required"; return; } deleteAccountLoading.value = true; deleteAccountError.value = ""; try { await api.delete("/users/account", { data: { password: deleteAccountForm.value.password }, }); // Clear auth state and redirect to home authStore.logout(); router.push("/"); } catch (error) { deleteAccountError.value = error.response?.data?.error || "Failed to delete account. Please try again."; } finally { deleteAccountLoading.value = false; } } // Utility functions function formatDate(dateString) { if (!dateString) return "Never"; return new Date(dateString).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", }); } // Release the object URL backing the pending avatar preview, if any, so we // don't leak it when the user navigates away mid-selection.
+                    error.response?.data?.error || 'Failed to remove profile picture.'
+                );
+            } finally {
+                avatarRemoving.value = false;
+            }
+        }
+    );
+}
+
+// Profile methods
+async function updateProfile() {
+    profileLoading.value = true;
+
+    try {
+        const payload = {
+            fullName: profileForm.value.fullName,
+            timezone: profileForm.value.timezone,
+        };
+
+        // Include email if it has changed
+        if (profileForm.value.email !== authStore.user?.email) {
+            payload.email = profileForm.value.email;
+        }
+
+        await api.put("/users/profile", payload);
+
+        if (profileForm.value.timeDisplayFormat) {
+            await api.put("/settings", {
+                timeDisplayFormat: profileForm.value.timeDisplayFormat,
+            });
+        }
+
+        showSuccess("Success", "Profile updated successfully");
+
+        await authStore.fetchUser();
+    } catch (error) {
+        showError(
+            "Error",
+            error.response?.data?.error || "Failed to update profile",
+        );
+    } finally {
+        profileLoading.value = false;
+    }
+}
+
+// 2FA methods
+async function fetch2FAStatus() {
+    try {
+        const response = await api.get("/2fa/status");
+        twoFactorStatus.value = response.data;
+    } catch (error) {
+        console.error("Failed to fetch 2FA status:", error);
+    }
+}
+
+async function setup2FA() {
+    twoFactorLoading.value = true;
+
+    try {
+        const response = await api.post("/2fa/setup");
+        show2FASetup.value = true;
+        qrCodeUrl.value = response.data.qrCode;
+        setupSecret.value = response.data.secret;
+        backupCodes.value = response.data.backupCodes || [];
+    } catch (error) {
+        showError("Error", "Failed to set up 2FA");
+    } finally {
+        twoFactorLoading.value = false;
+    }
+}
+
+async function enable2FA() {
+    if (!verificationCode.value) {
+        showError("Error", "Please enter the verification code");
+        return;
+    }
+
+    twoFactorLoading.value = true;
+
+    try {
+        await api.post("/2fa/enable", {
+            secret: setupSecret.value,
+            token: verificationCode.value,
+            backupCodes: backupCodes.value,
+        });
+
+        showSuccess("Success", "2FA has been enabled successfully");
+        show2FASetup.value = false;
+        verificationCode.value = "";
+        await fetch2FAStatus();
+    } catch (error) {
+        showError(
+            "Error",
+            error.response?.data?.error || "Failed to enable 2FA",
+        );
+    } finally {
+        twoFactorLoading.value = false;
+    }
+}
+
+async function disable2FA() {
+    showDisable2FAModal.value = true;
+}
+
+async function confirmDisable2FA() {
+    if (!disable2FAForm.value.password || !disable2FAForm.value.token) {
+        showError("Error", "Both password and verification code are required");
+        return;
+    }
+
+    twoFactorLoading.value = true;
+
+    try {
+        await api.post("/2fa/disable", {
+            password: disable2FAForm.value.password,
+            token: disable2FAForm.value.token,
+        });
+
+        showSuccess("Success", "2FA has been disabled successfully");
+        showDisable2FAModal.value = false;
+        disable2FAForm.value = { password: "", token: "" };
+        await fetch2FAStatus();
+    } catch (error) {
+        showError(
+            "Error",
+            error.response?.data?.error || "Failed to disable 2FA",
+        );
+    } finally {
+        twoFactorLoading.value = false;
+    }
+}
+
+function cancelDisable2FA() {
+    showDisable2FAModal.value = false;
+    disable2FAForm.value = { password: "", token: "" };
+}
+
+function cancel2FASetup() {
+    show2FASetup.value = false;
+    verificationCode.value = "";
+    qrCodeUrl.value = "";
+    setupSecret.value = "";
+    backupCodes.value = [];
+}
+
+// Passkey methods
+async function fetchPasskeys() {
+    try {
+        passkeysLoading.value = true;
+        const response = await api.get("/auth/passkey");
+        passkeys.value = response.data.passkeys;
+    } catch (error) {
+        console.error("[PASSKEYS] Failed to fetch passkeys:", error);
+    } finally {
+        passkeysLoading.value = false;
+    }
+}
+
+async function addPasskey() {
+    console.log("[PASSKEY] addPasskey() called");
+    addingPasskey.value = true;
+    try {
+        console.log("[PASSKEY] Importing @simplewebauthn/browser...");
+        const { startRegistration } = await import("@simplewebauthn/browser");
+        console.log("[PASSKEY] Import OK, fetching options...");
+
+        // Get registration options
+        const optionsRes = await api.post("/auth/passkey/register/options");
+        const options = optionsRes.data;
+        console.log("[PASSKEY] Options received, rpID:", options.rp?.id, "options:", JSON.stringify(options).substring(0, 200));
+
+        // Prompt browser for passkey creation
+        const regResponse = await startRegistration({ optionsJSON: options });
+        console.log("[PASSKEY] Registration response received");
+
+        // Ask for device name
+        const deviceName = prompt("Name this passkey (e.g., MacBook Touch ID):") || "Unnamed passkey";
+
+        // Verify with server
+        await api.post("/auth/passkey/register/verify", {
+            response: regResponse,
+            deviceName,
+        });
+
+        showSuccess("Success", "Passkey registered successfully.");
+        await fetchPasskeys();
+    } catch (error) {
+        console.error("[PASSKEY] Registration error:", error.name, error.message, error);
+        if (error.name === "NotAllowedError" || error.name === "InvalidStateError") {
+            showError("Cancelled", "Passkey registration was cancelled.");
+        } else {
+            showError("Error", error.response?.data?.error || error.message || "Failed to register passkey.");
+        }
+    } finally {
+        addingPasskey.value = false;
+    }
+}
+
+function deletePasskeyConfirm(pk) {
+    passkeyToDelete.value = pk;
+    if (confirm(`Delete passkey "${pk.device_name}"? This cannot be undone.`)) {
+        deletePasskey(pk.id);
+    }
+    passkeyToDelete.value = null;
+}
+
+async function deletePasskey(id) {
+    try {
+        await api.delete(`/auth/passkey/${id}`);
+        showSuccess("Success", "Passkey deleted.");
+        await fetchPasskeys();
+    } catch (error) {
+        showError("Error", error.response?.data?.error || "Failed to delete passkey.");
+    }
+}
+
+// API Key methods
+async function fetchApiKeys() {
+    if (!canManageApiKeys.value) {
+        apiKeys.value = [];
+        return;
+    }
+
+    try {
+        apiKeysLoading.value = true;
+        const response = await api.get("/api-keys");
+        apiKeys.value = response.data.apiKeys;
+    } catch (error) {
+        showError("Error", "Failed to load API keys");
+    } finally {
+        apiKeysLoading.value = false;
+    }
+}
+
+function closeCreateApiKeyModal() {
+    showCreateApiKeyModal.value = false;
+    createApiKeyForm.value = {
+        name: "",
+        permissions: ["read"],
+        expiresIn: null,
+    };
+}
+
+async function createApiKey() {
+    try {
+        createApiKeyLoading.value = true;
+        const response = await api.post("/api-keys", createApiKeyForm.value);
+
+        createdApiKey.value = response.data.apiKey;
+        showCreateApiKeyModal.value = false;
+        showApiKeyCreatedModal.value = true;
+
+        // Refresh the API keys list
+        await fetchApiKeys();
+
+        showSuccess("Success", "API key created successfully");
+    } catch (error) {
+        showError(
+            "Error",
+            error.response?.data?.error || "Failed to create API key",
+        );
+    } finally {
+        createApiKeyLoading.value = false;
+    }
+}
+
+function closeApiKeyCreatedModal() {
+    showApiKeyCreatedModal.value = false;
+    createdApiKey.value = null;
+    // Reset the form
+    createApiKeyForm.value = {
+        name: "",
+        permissions: ["read"],
+        expiresIn: null,
+    };
+}
+
+async function copyApiKey() {
+    try {
+        await navigator.clipboard.writeText(createdApiKey.value.key);
+        showSuccess("Success", "API key copied to clipboard");
+    } catch (error) {
+        showError("Error", "Failed to copy API key");
+    }
+}
+
+async function toggleApiKey(apiKey) {
+    try {
+        apiKeysLoading.value = true;
+        await api.put(`/api-keys/${apiKey.id}`, {
+            isActive: !apiKey.isActive,
+        });
+
+        // Refresh the API keys list
+        await fetchApiKeys();
+
+        showSuccess(
+            "Success",
+            `API key ${apiKey.isActive ? "deactivated" : "activated"}`,
+        );
+    } catch (error) {
+        showError(
+            "Error",
+            error.response?.data?.error || "Failed to update API key",
+        );
+    } finally {
+        apiKeysLoading.value = false;
+    }
+}
+
+function deleteApiKey(apiKey) {
+    showDangerConfirmation(
+        "Delete API Key",
+        `Are you sure you want to delete the API key "${apiKey.name}"? This action cannot be undone.`,
+        async () => {
+            try {
+                apiKeysLoading.value = true;
+                await api.delete(`/api-keys/${apiKey.id}`);
+
+                // Refresh the API keys list
+                await fetchApiKeys();
+
+                showSuccess("Success", "API key deleted successfully");
+            } catch (error) {
+                showError(
+                    "Error",
+                    error.response?.data?.error || "Failed to delete API key",
+                );
+            } finally {
+                apiKeysLoading.value = false;
+            }
+        },
+    );
+}
+
+// Subscription methods
+async function loadBillingStatus() {
+    try {
+        const response = await api.get("/billing/status");
+        billingStatus.value = response.data.data;
+    } catch (error) {
+        console.error("Error loading billing status:", error);
+    }
+}
+
+async function loadSubscription() {
+    if (!billingStatus.value.billing_available) {
+        subscriptionLoading.value = false;
+        return;
+    }
+
+    try {
+        subscriptionLoading.value = true;
+        const response = await api.get("/billing/subscription");
+        subscription.value = response.data.data;
+    } catch (error) {
+        console.error("Error loading subscription:", error);
+        if (error.response?.data?.error === "billing_unavailable") {
+            billingStatus.value.billing_available = false;
+        }
+    } finally {
+        subscriptionLoading.value = false;
+    }
+}
+
+async function openCustomerPortal() {
+    try {
+        portalLoading.value = true;
+        const response = await api.post("/billing/portal");
+
+        if (response.data.data.portal_url) {
+            window.location.href = response.data.data.portal_url;
+        }
+    } catch (error) {
+        console.error("Error opening customer portal:", error);
+        showError("Error", "Failed to open customer portal. Please try again.");
+    } finally {
+        portalLoading.value = false;
+    }
+}
+
+function getSubscriptionStatusClass(status) {
+    const classes = {
+        active: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+        trialing:
+            "bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200",
+        past_due:
+            "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+        canceled: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+        unpaid: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+    };
+    return (
+        classes[status] ||
+        "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
+    );
+}
+
+function formatSubscriptionStatus(status) {
+    const formatted = {
+        active: "Active",
+        trialing: "Trial",
+        past_due: "Past Due",
+        canceled: "Canceled",
+        unpaid: "Unpaid",
+    };
+    return formatted[status] || status;
+}
+
+// AI memory notes (short facts sent with every AI prompt)
+function addMemoryNote() {
+    const note = newMemoryNote.value.replace(/\s+/g, " ").trim();
+    if (!note || tradingProfileForm.value.aiMemoryNotes.length >= 20) return;
+    tradingProfileForm.value.aiMemoryNotes.push(note.slice(0, 300));
+    newMemoryNote.value = "";
+}
+
+function removeMemoryNote(index) {
+    tradingProfileForm.value.aiMemoryNotes.splice(index, 1);
+}
+
+// Trading profile methods
+async function updateTradingProfile() {
+    tradingProfileLoading.value = true;
+
+    try {
+        await api.put("/settings/trading-profile", tradingProfileForm.value);
+        showSuccess("Success", "Trading profile updated successfully");
+    } catch (error) {
+        showError("Error", "Failed to update trading profile");
+    } finally {
+        tradingProfileLoading.value = false;
+    }
+}
+
+async function fetchTradingProfile() {
+    try {
+        const response = await api.get("/settings/trading-profile");
+        const profile = response.data.tradingProfile;
+
+        tradingProfileForm.value = {
+            tradingStrategies: profile.tradingStrategies || [],
+            tradingStyles: profile.tradingStyles || [],
+            riskTolerance: profile.riskTolerance || "moderate",
+            primaryMarkets: profile.primaryMarkets || [],
+            experienceLevel: profile.experienceLevel || "intermediate",
+            averagePositionSize: profile.averagePositionSize || "medium",
+            tradingGoals: profile.tradingGoals || [],
+            preferredSectors: profile.preferredSectors || [],
+            aboutTrading: profile.aboutTrading || "",
+            aiMemoryNotes: Array.isArray(profile.aiMemoryNotes) ? profile.aiMemoryNotes : [],
+            postExitExcursionWindowMode: profile.postExitExcursionWindowMode || "auto",
+            postExitExcursionWindowMinutes: profile.postExitExcursionWindowMinutes || null,
+        };
+    } catch (error) {
+        console.error("Failed to fetch trading profile:", error);
+    }
+}
+
+// Delete account methods
+function cancelDeleteAccount() {
+    showDeleteAccountModal.value = false;
+    deleteAccountForm.value.password = "";
+    deleteAccountError.value = "";
+}
+
+async function confirmDeleteAccount() {
+    if (!deleteAccountForm.value.password) {
+        deleteAccountError.value = "Password is required";
+        return;
+    }
+
+    deleteAccountLoading.value = true;
+    deleteAccountError.value = "";
+
+    try {
+        await api.delete("/users/account", {
+            data: { password: deleteAccountForm.value.password },
+        });
+
+        // Clear auth state and redirect to home
+        authStore.logout();
+        router.push("/");
+    } catch (error) {
+        deleteAccountError.value =
+            error.response?.data?.error ||
+            "Failed to delete account. Please try again.";
+    } finally {
+        deleteAccountLoading.value = false;
+    }
+}
+
+// Utility functions
+function formatDate(dateString) {
+    if (!dateString) return "Never";
+    return new Date(dateString).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+    });
+}
+
+// Release the object URL backing the pending avatar preview, if any, so we
+// don't leak it when the user navigates away mid-selection.
 onBeforeUnmount(() => {
     if (avatarPreviewUrl.value) {
         URL.revokeObjectURL(avatarPreviewUrl.value);

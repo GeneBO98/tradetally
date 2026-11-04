@@ -182,6 +182,10 @@ describe('design system consistency', () => {
     expect(bad).toEqual([])
   })
 
+  it('keeps source lines readable (guards against a codemod collapsing a script block)', () => {
+    expect(offenders(f => f.text.split('\n').some(l => l.length > 2500))).toEqual([])
+  })
+
   it('does not redefine shared primitives in scoped styles', () => {
     const re = /<style[^>]*>[\s\S]*?(?:^|\s)\.(?:input|btn(?:-primary|-secondary)?|card|badge|modal-panel)\s*\{/m
     expect(offenders(f => re.test(f.text))).toEqual([])

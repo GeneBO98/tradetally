@@ -65,7 +65,7 @@
 
             <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div>
-                <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Net P&L</div>
+                <div class="text-label">Net P&L</div>
                 <div class="mt-1 text-xl font-semibold" :class="pnlClass(week.total_pnl)">
                   {{ formatSignedMoney(week.total_pnl) }}
                 </div>
@@ -74,7 +74,7 @@
                 </div>
               </div>
               <div>
-                <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Win Rate</div>
+                <div class="text-label">Win Rate</div>
                 <div class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
                   {{ formatPercent(week.win_rate) }}
                 </div>
@@ -83,7 +83,7 @@
                 </div>
               </div>
               <div>
-                <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Trades</div>
+                <div class="text-label">Trades</div>
                 <div class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
                   {{ week.total_trades }}
                 </div>
@@ -92,7 +92,7 @@
                 </div>
               </div>
               <div>
-                <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Profit Factor</div>
+                <div class="text-label">Profit Factor</div>
                 <div class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
                   {{ week.profit_factor != null ? Number(week.profit_factor).toFixed(2) : '-' }}
                 </div>

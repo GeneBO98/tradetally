@@ -243,10 +243,10 @@ function toggleLevel(level) {
 // Get CSS class for log level badge
 function getLevelClass(level) {
   const classes = {
-    DEBUG: 'text-primary-400',
-    INFO: 'text-green-400',
-    WARN: 'text-yellow-400',
-    ERROR: 'text-red-400'
+    DEBUG: 'text-primary-700 dark:text-primary-400',
+    INFO: 'text-green-700 dark:text-green-400',
+    WARN: 'text-yellow-700 dark:text-yellow-400',
+    ERROR: 'text-red-600 dark:text-red-400'
   }
   return classes[level] || 'text-gray-400'
 }

@@ -9,7 +9,7 @@
         <div class="absolute top-0 right-0 pt-4 pr-4">
           <button
             type="button"
-            class="bg-white dark:bg-gray-800 rounded-md text-gray-400 hover:text-gray-500 focus:outline-none"
+            class="bg-white dark:bg-gray-800 rounded-md text-gray-400 hover:text-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             @click="$emit('close')"
           >
             <span class="sr-only">Close</span>
@@ -29,7 +29,7 @@
         <form @submit.prevent="saveMapping" class="mt-5 space-y-4">
           <!-- Column mapper table -->
           <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
-            <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)] gap-3 bg-gray-50 dark:bg-gray-900/40 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <div class="text-label grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)] gap-3 bg-gray-50 dark:bg-gray-900/40 px-4 py-2">
               <div>Your column</div>
               <div>Sample value</div>
               <div>TradeTally field</div>

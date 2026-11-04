@@ -216,13 +216,13 @@
 
               <div v-else class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div class="card p-3 ring-1 ring-gray-200 dark:ring-gray-700">
-                  <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Estimated rows</p>
+                  <p class="text-label">Estimated rows</p>
                   <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
                     {{ fileAnalysis.rowCount !== null ? fileAnalysis.rowCount.toLocaleString() : 'Unknown' }}
                   </p>
                 </div>
                 <div class="card p-3 ring-1 ring-gray-200 dark:ring-gray-700">
-                  <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Format check</p>
+                  <p class="text-label">Format check</p>
                   <p class="mt-1 text-sm font-semibold" :class="fileAnalysis.formatDetected ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'">
                     {{ fileAnalysis.formatDetected ? 'Recognized' : 'Needs review' }}
                   </p>
@@ -231,12 +231,12 @@
                   </p>
                 </div>
                 <div class="card p-3 ring-1 ring-gray-200 dark:ring-gray-700">
-                  <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Import mode</p>
+                  <p class="text-label">Import mode</p>
                   <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ selectedBrokerLabel }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ brokerRecommendation }}</p>
                 </div>
                 <div class="card p-3 ring-1 ring-gray-200 dark:ring-gray-700">
-                  <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Account</p>
+                  <p class="text-label">Account</p>
                   <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ accountReadinessLabel }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ accountReadinessMessage }}</p>
                   <p v-if="accountDetectionWarning" class="mt-1 text-xs text-yellow-600 dark:text-yellow-400">{{ accountDetectionWarning }}</p>
@@ -244,7 +244,7 @@
               </div>
 
               <div v-if="displayedHeaderPreview.length > 0" class="mt-4">
-                <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Detected columns</p>
+                <p class="text-label">Detected columns</p>
                 <div class="mt-2 flex flex-wrap gap-2">
                   <span
                     v-for="header in displayedHeaderPreview"

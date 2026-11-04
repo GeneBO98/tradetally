@@ -33,7 +33,7 @@
               @click="form.rating = star"
               @mouseenter="hoverRating = star"
               @mouseleave="hoverRating = 0"
-              class="p-1 focus:outline-none transition-transform hover:scale-110"
+              class="p-1 focus:outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-primary-500"
             >
               <StarIcon
                 class="h-8 w-8 transition-colors"

@@ -2,11 +2,11 @@
 // the top-symbols list. Kept in one place so the extracted analytics child
 // components don't each carry their own copy.
 
-// 2-decimal number formatting (used for R-multiple values in the tables).
+// R-multiple values in the tables: one decimal (DESIGN.md number policy).
 export function formatNumber(num) {
   return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
   }).format(num || 0)
 }
 

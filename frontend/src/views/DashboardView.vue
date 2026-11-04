@@ -56,7 +56,7 @@
                 aria-hidden="true"
               />
             </button>
-            <div v-if="showTimeRangeDropdown" class="dropdown-menu absolute right-0 z-10 mt-1 w-44 max-h-60 overflow-auto focus:outline-none">
+            <div v-if="showTimeRangeDropdown" class="dropdown-menu absolute right-0 z-10 mt-1 w-44 max-h-60 overflow-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500">
               <div
                 v-for="option in timeRangeOptions"
                 :key="option.value"
@@ -1096,7 +1096,7 @@
                     </dt>
                     <div class="mt-1 space-y-2">
                       <div>
-                        <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Gross</div>
+                        <div class="text-label">Gross</div>
                         <dd class="stat-value whitespace-nowrap text-mono-num" :class="[
                           pnlClass(dashboardGrossPnl)
                         ]">
@@ -1104,7 +1104,7 @@
                         </dd>
                       </div>
                       <div>
-                        <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Net</div>
+                        <div class="text-label">Net</div>
                         <dd class="text-base sm:text-lg font-semibold whitespace-nowrap" :class="[
                           pnlClass(dashboardNetPnl)
                         ]">
@@ -1198,7 +1198,7 @@
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Win
                     </dt>
-                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-700 dark:text-green-400 whitespace-nowrap">
+                    <dd class="stat-value mt-1 text-lg sm:text-xl text-green-700 dark:text-green-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.avgWin) }}
                     </dd>
                   </div>
@@ -1217,7 +1217,7 @@
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Loss
                     </dt>
-                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 dark:text-red-400 whitespace-nowrap">
+                    <dd class="stat-value mt-1 text-lg sm:text-xl text-red-600 dark:text-red-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.avgLoss, { abs: true }) }}
                     </dd>
                   </div>
@@ -1236,7 +1236,7 @@
                     <dt class="text-data-secondary truncate">
                       Best Trade
                     </dt>
-                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-700 dark:text-green-400 whitespace-nowrap">
+                    <dd class="stat-value mt-1 text-lg sm:text-xl text-green-700 dark:text-green-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.bestTrade) }}
                     </dd>
                   </div>
@@ -1255,7 +1255,7 @@
                     <dt class="text-data-secondary truncate">
                       Worst Trade
                     </dt>
-                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 dark:text-red-400 whitespace-nowrap">
+                    <dd class="stat-value mt-1 text-lg sm:text-xl text-red-600 dark:text-red-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.worstTrade) }}
                     </dd>
                   </div>

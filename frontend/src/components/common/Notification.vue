@@ -40,7 +40,7 @@
             <div class="ml-4 flex-shrink-0 flex">
               <button
                 @click="close"
-                class="rounded-md inline-flex text-gray-400 hover:text-gray-500 focus:outline-none"
+                class="rounded-md inline-flex text-gray-400 hover:text-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
                 <XMarkIcon class="h-5 w-5" />
               </button>

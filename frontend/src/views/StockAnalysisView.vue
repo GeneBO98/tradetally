@@ -89,7 +89,7 @@
                             Current Price
                         </p>
                         <p
-                            class="text-2xl font-bold text-gray-900 dark:text-white"
+                            class="stat-value text-gray-900 dark:text-white"
                         >
                             {{
                                 analysis.currentPrice
@@ -103,7 +103,7 @@
                             Market Cap
                         </p>
                         <p
-                            class="text-2xl font-bold text-gray-900 dark:text-white"
+                            class="stat-value text-gray-900 dark:text-white"
                         >
                             {{ formatMarketCap(analysis.marketCap) }}
                         </p>

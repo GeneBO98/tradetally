@@ -18,7 +18,7 @@
       <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
         <!-- Entry Price -->
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Entry Price</div>
+          <div class="text-label mb-1">Entry Price</div>
           <div class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ formatCurrency(trade.entry_price) }}
           </div>
@@ -26,7 +26,7 @@
 
         <!-- Exit Price -->
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Exit Price</div>
+          <div class="text-label mb-1">Exit Price</div>
           <div class="text-lg font-semibold" :class="pnlClass">
             {{ formatCurrency(trade.exit_price) }}
           </div>
@@ -34,7 +34,7 @@
 
         <!-- Stop Loss (Editable) -->
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+          <div class="text-label mb-1">
             Stop Loss
             <button v-if="!editingStopLoss" type="button" @click="startEditingStopLoss" class="ml-1 text-primary-700 hover:text-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded dark:text-primary-400" aria-label="Edit stop loss">(edit)</button>
           </div>
@@ -77,7 +77,7 @@
         <div class="space-y-3">
           <!-- TP1 (from take_profit field only when NO take_profit_targets exist - neither in DB nor locally) -->
           <div v-if="!hasMultipleTpTargets && editableTakeProfitTargets.length === 0">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+            <div class="text-label mb-1">
               Take Profit (TP1)
               <button v-if="!editingTakeProfit" type="button" @click="startEditingTakeProfit" class="ml-1 text-primary-700 hover:text-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded dark:text-primary-400" aria-label="Edit take profit">(edit)</button>
             </div>
@@ -140,7 +140,7 @@
           <!-- All TP Targets (TP1, TP2, etc. from take_profit_targets array) -->
           <div v-for="(target, index) in editableTakeProfitTargets" :key="index">
             <div class="flex items-center gap-1 mb-1">
-              <span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">TP{{ index + 1 }}</span>
+              <span class="text-label">TP{{ index + 1 }}</span>
               <!-- Show calculated R for this target (moved to header line) -->
               <span v-if="target.price && calculateTargetR(target.price)" class="text-xs text-primary-700 dark:text-primary-400 font-medium">
                 ({{ calculateTargetR(target.price) }}R)
@@ -210,7 +210,7 @@
       <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
         <!-- Risk Amount -->
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Risk Amount</div>
+          <div class="text-label mb-1">Risk Amount</div>
           <div class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ formatCurrency(analysis.risk_amount) }}
           </div>
@@ -221,7 +221,7 @@
 
         <!-- Actual P&L -->
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Actual P&L</div>
+          <div class="text-label mb-1">Actual P&L</div>
           <div class="text-lg font-semibold" :class="pnlClass">
             {{ formatCurrency(analysis.actual_pl_amount) }}
           </div>
@@ -232,7 +232,7 @@
 
         <!-- Target P&L -->
         <div v-if="potentialPL !== null">
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Target P&L</div>
+          <div class="text-label mb-1">Target P&L</div>
           <div class="text-lg font-semibold text-primary-700 dark:text-primary-400">
             {{ formatCurrency(potentialPL) }}
           </div>
@@ -241,7 +241,7 @@
           </div>
         </div>
         <div v-else>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Target P&L</div>
+          <div class="text-label mb-1">Target P&L</div>
           <div class="text-lg text-gray-400 dark:text-gray-500">
             N/A
           </div>
@@ -249,7 +249,7 @@
 
         <!-- Risk:Reward -->
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Risk:Reward</div>
+          <div class="text-label mb-1">Risk:Reward</div>
           <div class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ riskRewardActual }}
           </div>
@@ -264,21 +264,21 @@
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Symbol</div>
+          <div class="text-label mb-1">Symbol</div>
           <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ trade.symbol }}</div>
         </div>
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Side</div>
+          <div class="text-label mb-1">Side</div>
           <div class="text-lg font-semibold capitalize" :class="trade.side === 'long' ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
             {{ trade.side }}
           </div>
         </div>
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Quantity</div>
+          <div class="text-label mb-1">Quantity</div>
           <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ trade.quantity }}</div>
         </div>
         <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Trade Date & Time</div>
+          <div class="text-label mb-1">Trade Date & Time</div>
           <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ formatDateWithTime(trade) }}</div>
         </div>
       </div>
@@ -296,7 +296,7 @@
       <div v-show="analysis?.management_r !== null && analysis?.management_r !== undefined" class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
         <div class="flex items-center justify-between p-4 rounded-lg" :class="getManagementRBgClass">
           <div>
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Trade Management Impact</div>
+            <div class="text-label mb-1">Trade Management Impact</div>
             <div class="text-lg font-semibold" :class="getManagementRTextClass">
               {{ analysis?.management_r > 0 ? '+' : '' }}{{ analysis?.management_r }}R
             </div>

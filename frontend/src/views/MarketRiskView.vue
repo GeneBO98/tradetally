@@ -2,7 +2,7 @@
   <div class="content-wrapper py-8">
     <!-- Hero -->
     <div class="max-w-3xl">
-      <p class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 font-medium">Market conditions</p>
+      <p class="text-label">Market conditions</p>
       <h1 class="heading-page mt-1">Market Risk Indicators</h1>
       <p class="mt-2 text-gray-600 dark:text-gray-400">
         Seven macro gauges of stock market valuation and stress: the Shiller CAPE ratio, Buffett Indicator,
@@ -56,7 +56,7 @@
             </span>
           </div>
           <div class="mt-2 flex items-baseline gap-1.5">
-            <span class="text-4xl font-semibold text-mono-num text-gray-900 dark:text-white">
+            <span class="stat-value text-gray-900 dark:text-white">
               {{ indicator.display_value ?? '—' }}</span>
             <span v-if="indicator.unit" class="text-sm text-gray-500 dark:text-gray-400">{{ indicator.unit }}</span>
           </div>

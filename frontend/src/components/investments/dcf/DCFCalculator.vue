@@ -206,7 +206,7 @@
     <div class="flex items-center justify-between mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
       <div>
         <span class="text-gray-600 dark:text-gray-400">Current price</span>
-        <span class="ml-4 text-2xl font-bold text-gray-900 dark:text-white">{{ formatCurrency(currentPrice) }}</span>
+        <span class="stat-value ml-4 text-gray-900 dark:text-white">{{ formatCurrency(currentPrice) }}</span>
       </div>
       <div class="text-sm text-gray-500 dark:text-gray-400">
         <label class="inline-flex items-center gap-2">

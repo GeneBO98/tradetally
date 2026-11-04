@@ -57,7 +57,7 @@
             :key="tab.id"
             type="button"
             class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors"
-            :class="activeTab === tab.id ? 'bg-primary-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700/50'"
+            :class="activeTab === tab.id ? 'segment-active' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700/50'"
             @click="activeTab = tab.id"
           >
             {{ tab.label }}

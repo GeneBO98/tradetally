@@ -768,7 +768,7 @@
                             >
                                 <div>
                                     <p
-                                        class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
+                                        class="text-label"
                                     >
                                         Trades Analyzed
                                     </p>
@@ -780,7 +780,7 @@
                                 </div>
                                 <div>
                                     <p
-                                        class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
+                                        class="text-label"
                                     >
                                         Trades Exited Too Early
                                     </p>
@@ -794,7 +794,7 @@
                                 </div>
                                 <div>
                                     <p
-                                        class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
+                                        class="text-label"
                                     >
                                         Total Missed Profit
                                     </p>
@@ -810,7 +810,7 @@
                                 </div>
                                 <div>
                                     <p
-                                        class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
+                                        class="text-label"
                                     >
                                         Avg Missed %
                                     </p>

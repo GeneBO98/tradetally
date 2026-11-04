@@ -51,7 +51,7 @@
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 text-mono-num">
           <!-- Total Actual R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Actual R (Net)</div>
+            <div class="text-label truncate shrink-0">Actual R (Net)</div>
             <div class="stat-value" :class="pnlClass(summary.total_actual_r)">
               {{ formatR(summary.total_actual_r) }}
             </div>
@@ -59,7 +59,7 @@
 
           <!-- Total Potential R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Target R (Net)</div>
+            <div class="text-label truncate shrink-0">Target R (Net)</div>
             <div class="stat-value text-gray-900 dark:text-white">
               {{ formatR(summary.total_potential_r) }}
             </div>
@@ -67,7 +67,7 @@
 
           <!-- Management R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Management R</div>
+            <div class="text-label truncate shrink-0">Management R</div>
             <div class="stat-value" :class="getManagementRColor(summary.total_management_r)">
               {{ formatR(summary.total_management_r || 0) }}
             </div>
@@ -81,7 +81,7 @@
                "potential R" to compare against, so show N/A rather than a
                misleading negative-of-actual-R value. -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">R Left on Table</div>
+            <div class="text-label truncate shrink-0">R Left on Table</div>
             <template v-if="summary.trades_with_target > 0">
               <div class="stat-value" :class="summary.r_left_on_table > 0 ? 'text-red-600 dark:text-red-400' : summary.r_left_on_table < 0 ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
                 {{ formatR(-Math.abs(summary.r_left_on_table)) }}
@@ -102,7 +102,7 @@
 
           <!-- Win Rate -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Win Rate</div>
+            <div class="text-label truncate shrink-0">Win Rate</div>
             <div class="stat-value" :class="winRateClass(summary.win_rate)">
               {{ Number(summary.win_rate).toFixed(1) }}%
             </div>
@@ -116,7 +116,7 @@
 
           <!-- Avg Win/Loss R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Avg R</div>
+            <div class="text-label truncate shrink-0">Avg R</div>
             <div class="flex items-center gap-1 sm:gap-2 mt-0.5 flex-wrap min-h-[1.75rem]">
               <span class="text-base sm:text-lg font-bold text-green-700 dark:text-green-400">+{{ Number(summary.avg_win_r).toFixed(1) }}R</span>
               <span class="text-gray-400 shrink-0">/</span>

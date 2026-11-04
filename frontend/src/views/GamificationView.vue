@@ -34,7 +34,7 @@
                         <div class="flex items-center space-x-4">
                             <div class="text-right">
                                 <div
-                                    class="text-2xl font-bold text-primary-700 dark:text-primary-400"
+                                    class="stat-value text-primary-700 dark:text-primary-400"
                                 >
                                     Level {{ userStats.level || 1 }}
                                 </div>

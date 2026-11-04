@@ -10,7 +10,7 @@
         </div>
       </div>
       <div class="text-right">
-        <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ analysis.pillarsPassed }}/8</p>
+        <p class="stat-value text-gray-900 dark:text-white">{{ analysis.pillarsPassed }}/8</p>
         <p class="text-sm text-gray-500 dark:text-gray-400">Pillars Passed</p>
       </div>
     </div>

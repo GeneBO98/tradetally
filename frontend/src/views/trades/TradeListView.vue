@@ -490,7 +490,7 @@
                   :class="[column.key === 'symbol' ? 'pl-0 pr-2 py-3' : getHeaderPadding, 'group relative table-th', numericColumnKeys.has(column.key) ? 'text-right pr-4' : (column.key === 'comments' || column.key === 'quality') ? 'text-center' : 'text-left']">
                 <span class="block truncate">{{ column.label }}</span>
                 <span
-                  class="absolute inset-y-0 right-0 z-10 flex w-2 cursor-col-resize touch-none items-stretch justify-end focus:outline-none"
+                  class="absolute inset-y-0 right-0 z-10 flex w-2 cursor-col-resize touch-none items-stretch justify-end focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                   role="separator"
                   aria-orientation="vertical"
                   tabindex="0"

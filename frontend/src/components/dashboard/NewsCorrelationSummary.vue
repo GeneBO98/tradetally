@@ -16,13 +16,13 @@
 
       <div class="grid grid-cols-2 gap-4 mb-4">
         <div class="text-center">
-          <div class="text-2xl font-bold text-gray-900 dark:text-white">
+          <div class="stat-value text-gray-900 dark:text-white">
             {{ summary.total_trades_with_news }}
           </div>
           <div class="text-sm text-gray-500 dark:text-gray-400">Trades with News</div>
         </div>
         <div class="text-center">
-          <div class="text-2xl font-bold" :class="summary.overall_win_rate >= 50 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+          <div class="stat-value" :class="summary.overall_win_rate >= 50 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
             {{ Number(summary.overall_win_rate).toFixed(1) }}%
           </div>
           <div class="text-sm text-gray-500 dark:text-gray-400">Overall Win Rate</div>

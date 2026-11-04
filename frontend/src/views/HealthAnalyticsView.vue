@@ -25,7 +25,7 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-gray-500 dark:text-gray-400">Avg Heart Rate</p>
-              <p class="text-2xl font-semibold text-gray-900 dark:text-white">
+              <p class="stat-value text-gray-900 dark:text-white">
                 {{ healthSummary.avgHeartRate ? Math.round(healthSummary.avgHeartRate) : '--' }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">BPM</p>
@@ -54,7 +54,7 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-gray-500 dark:text-gray-400">Avg Sleep Score</p>
-              <p class="text-2xl font-semibold text-gray-900 dark:text-white">
+              <p class="stat-value text-gray-900 dark:text-white">
                 {{ healthSummary.avgSleepScore ? Math.round(healthSummary.avgSleepScore) : '--' }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">/ 100</p>
@@ -83,7 +83,7 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-gray-500 dark:text-gray-400">Avg Sleep Hours</p>
-              <p class="text-2xl font-semibold text-gray-900 dark:text-white">
+              <p class="stat-value text-gray-900 dark:text-white">
                 {{ healthSummary.avgSleepHours ? healthSummary.avgSleepHours.toFixed(1) : '--' }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">hours</p>
@@ -112,7 +112,7 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-gray-500 dark:text-gray-400">Avg Stress Level</p>
-              <p class="text-2xl font-semibold text-gray-900 dark:text-white">
+              <p class="stat-value text-gray-900 dark:text-white">
                 {{ healthSummary.avgStressLevel ? (healthSummary.avgStressLevel * 100).toFixed(0) : '--' }}%
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">calculated</p>

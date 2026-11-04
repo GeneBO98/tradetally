@@ -356,6 +356,10 @@
   .switch-on {
     @apply bg-primary-700 dark:bg-primary-500;
   }
+  /* Track driven by a preceding sr-only checkbox (`peer`), for label-wrapped switches. */
+  .switch-track {
+    @apply switch after:absolute after:left-0 after:top-0 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition after:content-[''] peer-checked:bg-primary-700 peer-checked:after:translate-x-5 peer-focus:ring-2 peer-focus:ring-primary-500 peer-focus:ring-offset-2 dark:peer-checked:bg-primary-500;
+  }
   .switch-knob {
     @apply pointer-events-none inline-block h-5 w-5 translate-x-0 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out;
   }

@@ -6,7 +6,7 @@
       <p class="text-sm font-medium uppercase tracking-wide" :class="labelClass">
         {{ scenario }}
       </p>
-      <p class="text-2xl font-bold mt-2" :class="valueClass">
+      <p class="stat-value mt-2" :class="valueClass">
         {{ formatCurrency(fairValue) }}
       </p>
       <p

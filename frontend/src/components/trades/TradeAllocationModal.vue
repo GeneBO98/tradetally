@@ -33,7 +33,7 @@
             <template v-else>
               <div class="flex flex-col gap-4 rounded-lg bg-gray-50 p-4 dark:bg-gray-900/40 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Allocation basis</div>
+                  <div class="text-label">Allocation basis</div>
                   <div class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
                     {{ formatQuantity(basisQuantity) }} {{ quantityLabel }}
                     <span v-if="tradePnl !== null" class="font-normal text-gray-500 dark:text-gray-400"> · {{ formatMoney(tradePnl) }} P&amp;L</span>
@@ -135,7 +135,7 @@ const rows = ref([])
 const hasExisting = ref(false)
 let rowCounter = 0
 
-const selectedModeClass = 'bg-primary-700 text-white shadow-sm'
+const selectedModeClass = 'segment-active'
 const unselectedModeClass = 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
 const tolerance = computed(() => mode.value === 'percentage' ? 0.01 : Math.max(0.000001, basisQuantity.value * 0.000001))
 const targetTotal = computed(() => mode.value === 'percentage' ? 100 : basisQuantity.value)

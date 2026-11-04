@@ -27,7 +27,7 @@
 
             <div
                 v-if="showTagDropdown"
-                class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none"
+                class="dropdown-menu absolute z-10 mt-1 w-full max-h-60 overflow-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             >
                 <!-- "All Tags" option -->
                 <div class="p-1">

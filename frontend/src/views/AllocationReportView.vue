@@ -53,27 +53,27 @@
         <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <article class="card">
             <div class="card-body">
-              <div class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Allocated P&amp;L</div>
-              <div class="mt-2 text-2xl font-semibold" :class="pnlClass(totalPnl)">{{ formatCurrency(totalPnl) }}</div>
+              <div class="text-label">Allocated P&amp;L</div>
+              <div class="stat-value mt-2" :class="pnlClass(totalPnl)">{{ formatCurrency(totalPnl) }}</div>
             </div>
           </article>
           <article class="card">
             <div class="card-body">
-              <div class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Groups</div>
-              <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ visibleGroups.length }}</div>
+              <div class="text-label">Groups</div>
+              <div class="stat-value mt-2 text-gray-900 dark:text-white">{{ visibleGroups.length }}</div>
             </div>
           </article>
           <article class="card">
             <div class="card-body">
-              <div class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Allocated trades</div>
-              <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ visibleAllocatedTradeCount }}</div>
+              <div class="text-label">Allocated trades</div>
+              <div class="stat-value mt-2 text-gray-900 dark:text-white">{{ visibleAllocatedTradeCount }}</div>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Distinct trades across all groups</p>
             </div>
           </article>
           <article class="card">
             <div class="card-body">
-              <div class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Not allocated</div>
-              <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ unallocatedTradeCount }}</div>
+              <div class="text-label">Not allocated</div>
+              <div class="stat-value mt-2 text-gray-900 dark:text-white">{{ unallocatedTradeCount }}</div>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">These remain in normal analytics</p>
             </div>
           </article>

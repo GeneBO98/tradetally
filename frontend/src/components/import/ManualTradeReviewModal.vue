@@ -47,23 +47,23 @@
                 </div>
                 <dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-5">
                   <div>
-                    <dt class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Symbol</dt>
+                    <dt class="text-label">Symbol</dt>
                     <dd class="font-medium text-gray-900 dark:text-white">{{ item.symbol || 'Unknown' }}</dd>
                   </div>
                   <div>
-                    <dt class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Quantity</dt>
+                    <dt class="text-label">Quantity</dt>
                     <dd class="font-medium text-gray-900 dark:text-white">{{ formatQuantity(item.quantity) }}</dd>
                   </div>
                   <div>
-                    <dt class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Price</dt>
+                    <dt class="text-label">Price</dt>
                     <dd class="font-medium text-gray-900 dark:text-white">{{ formatMoney(item.price) }}</dd>
                   </div>
                   <div>
-                    <dt class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Date</dt>
+                    <dt class="text-label">Date</dt>
                     <dd class="font-medium text-gray-900 dark:text-white">{{ formatDateTime(item.datetime) }}</dd>
                   </div>
                   <div>
-                    <dt class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Account</dt>
+                    <dt class="text-label">Account</dt>
                     <dd class="font-medium text-gray-900 dark:text-white">{{ item.account_identifier || 'Unknown' }}</dd>
                   </div>
                 </dl>

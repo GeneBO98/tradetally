@@ -41,7 +41,7 @@
                     </svg>
                 </div>
                 <div>
-                    <h4 class="heading-sub text-red-800">
+                    <h4 class="heading-sub text-red-600 dark:text-red-400">
                         Unable to load tick data
                     </h4>
                     <p class="text-sm text-red-700 dark:text-red-400 mt-1">{{ error }}</p>

@@ -392,7 +392,7 @@
                     </p>
                   </div>
                   <div class="shrink-0 text-right">
-                    <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Published</p>
+                    <p class="text-label">Published</p>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {{ formatDate(mention.published_at || mention.discovered_at) }}
                     </p>
@@ -401,13 +401,13 @@
 
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div class="rounded-md border border-gray-200 dark:border-gray-700 px-3 py-2">
-                    <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Matched symbols</p>
+                    <p class="text-label">Matched symbols</p>
                     <p class="mt-1 text-sm text-gray-700 dark:text-gray-200 break-words">
                       {{ (mention.matched_symbols || []).join(', ') || 'None' }}
                     </p>
                   </div>
                   <div class="rounded-md border border-gray-200 dark:border-gray-700 px-3 py-2">
-                    <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Matched terms</p>
+                    <p class="text-label">Matched terms</p>
                     <p class="mt-1 text-sm text-gray-700 dark:text-gray-200 break-words">
                       {{ (mention.matched_terms || []).join(', ') || 'None' }}
                     </p>
