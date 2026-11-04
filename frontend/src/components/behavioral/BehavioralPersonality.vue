@@ -763,15 +763,7 @@
                                                         .performanceImpact > 0,
                                             }"
                                         >
-                                            {{
-                                                personalityData.driftAnalysis
-                                                    .performanceImpact >= 0
-                                                    ? "+"
-                                                    : ""
-                                            }}${{
-                                                personalityData.driftAnalysis
-                                                    .performanceImpact
-                                            }}
+                                            {{ usdSigned(personalityData.driftAnalysis.performanceImpact) }}
                                         </p>
                                     </div>
                                     <div
@@ -986,6 +978,12 @@ import {
     formatMinutes,
 } from "@/utils/behavioralFormatters";
 import { mdiChartBox } from "@mdi/js";
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
+// Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
+const usd = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
+const usdSigned = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: 'USD', ...o })
 
 defineProps({
     personalityData: { type: Object, default: null },

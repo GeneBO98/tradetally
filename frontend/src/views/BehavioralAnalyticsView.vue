@@ -407,25 +407,10 @@
                                                 ) < 0
                                             "
                                         >
-                                            ${{
-                                                Math.abs(
-                                                    parseFloat(
-                                                        revengeAnalysis
-                                                            ?.statistics
-                                                            ?.total_additional_loss ||
-                                                            0,
-                                                    ),
-                                                ).toFixed(2)
-                                            }}
+                                            {{ usd(Math.abs( parseFloat( revengeAnalysis ?.statistics ?.total_additional_loss || 0))) }}
                                         </span>
                                         <span v-else>
-                                            ${{
-                                                parseFloat(
-                                                    revengeAnalysis?.statistics
-                                                        ?.total_additional_loss ||
-                                                        0,
-                                                ).toFixed(2)
-                                            }}
+                                            {{ usd(parseFloat( revengeAnalysis?.statistics ?.total_additional_loss || 0)) }}
                                         </span>
                                     </dd>
                                 </dl>
@@ -801,11 +786,7 @@
                                     <p
                                         class="stat-value text-gray-900 dark:text-white text-mono-num"
                                     >
-                                        ${{
-                                            topMissedTrades.totalMissedProfit.toFixed(
-                                                2,
-                                            )
-                                        }}
+                                        {{ usd(topMissedTrades.totalMissedProfit) }}
                                     </p>
                                 </div>
                                 <div>
@@ -909,7 +890,7 @@
                                             }}
                                             •
                                             {{ trade.side.toUpperCase() }} •
-                                            {{ trade.quantity }} shares
+                                            {{ formatQuantity(trade.quantity) }} shares
                                         </p>
                                         <div
                                             v-if="trade.hasRealPriceData"
@@ -945,13 +926,7 @@
                                         <p
                                             class="text-sm font-medium text-green-700 dark:text-green-400"
                                         >
-                                            +${{
-                                                (
-                                                    trade
-                                                        .potentialAdditionalProfit
-                                                        ?.optimal || 0
-                                                ).toFixed(2)
-                                            }}
+                                            +{{ usd(( trade.potentialAdditionalProfit ?.optimal || 0 )) }}
                                         </p>
                                     </div>
                                 </div>
@@ -967,11 +942,7 @@
                                             Entry Price
                                         </p>
                                         <p class="font-medium">
-                                            ${{
-                                                (trade.entryPrice || 0).toFixed(
-                                                    2,
-                                                )
-                                            }}
+                                            {{ usd((trade.entryPrice || 0)) }}
                                         </p>
                                     </div>
                                     <div>
@@ -981,11 +952,7 @@
                                             Exit Price
                                         </p>
                                         <p class="font-medium">
-                                            ${{
-                                                (trade.exitPrice || 0).toFixed(
-                                                    2,
-                                                )
-                                            }}
+                                            {{ usd((trade.exitPrice || 0)) }}
                                         </p>
                                     </div>
                                     <div>
@@ -997,11 +964,7 @@
                                         <p
                                             class="font-medium text-green-700 dark:text-green-400"
                                         >
-                                            ${{
-                                                (
-                                                    trade.actualProfit || 0
-                                                ).toFixed(2)
-                                            }}
+                                            {{ usd(( trade.actualProfit || 0 )) }}
                                         </p>
                                     </div>
                                     <div>
@@ -1040,21 +1003,7 @@
                                             <p
                                                 class="text-lg font-bold text-red-900 dark:text-red-200"
                                             >
-                                                ${{
-                                                    trade.side === "long"
-                                                        ? (
-                                                              trade
-                                                                  .priceMovement
-                                                                  ?.maxPriceWithin24Hours ||
-                                                              0
-                                                          ).toFixed(2)
-                                                        : (
-                                                              trade
-                                                                  .priceMovement
-                                                                  ?.minPriceWithin24Hours ||
-                                                              0
-                                                          ).toFixed(2)
-                                                }}
+                                                {{ usd(trade.side === "long" ? ( trade.priceMovement ?.maxPriceWithin24Hours || 0 ) : ( trade.priceMovement ?.minPriceWithin24Hours || 0 )) }}
                                             </p>
                                             <p
                                                 class="text-xs text-red-700 dark:text-red-400"
@@ -1094,24 +1043,12 @@
                                             <p
                                                 class="text-lg font-bold text-red-900 dark:text-red-200"
                                             >
-                                                ${{
-                                                    (
-                                                        (trade.actualProfit ||
-                                                            0) +
-                                                        (trade
-                                                            .potentialAdditionalProfit
-                                                            ?.optimal || 0)
-                                                    ).toFixed(2)
-                                                }}
+                                                {{ usd(( (trade.actualProfit || 0) + (trade.potentialAdditionalProfit ?.optimal || 0) )) }}
                                             </p>
                                             <p
                                                 class="text-xs text-red-700 dark:text-red-400"
                                             >
-                                                vs ${{
-                                                    (
-                                                        trade.actualProfit || 0
-                                                    ).toFixed(2)
-                                                }}
+                                                vs {{ usd(( trade.actualProfit || 0 )) }}
                                                 actual profit
                                             </p>
                                         </div>
@@ -1161,11 +1098,7 @@
                                                     <p
                                                         class="font-bold text-primary-900 dark:text-primary-200"
                                                     >
-                                                        ${{
-                                                            trade.entryAnalysis.bestEntryPrice.toFixed(
-                                                                2,
-                                                            )
-                                                        }}
+                                                        {{ usd(trade.entryAnalysis.bestEntryPrice) }}
                                                     </p>
                                                     <p
                                                         class="text-xs text-primary-700 dark:text-primary-500"
@@ -1195,11 +1128,7 @@
                                                     <p
                                                         class="text-xs text-primary-700 dark:text-primary-500"
                                                     >
-                                                        ${{
-                                                            trade.entryAnalysis.improvementDollar.toFixed(
-                                                                2,
-                                                            )
-                                                        }}
+                                                        {{ usd(trade.entryAnalysis.improvementDollar) }}
                                                         per share
                                                     </p>
                                                 </div>
@@ -1217,20 +1146,12 @@
                                                     <p
                                                         class="font-bold text-primary-900 dark:text-primary-200"
                                                     >
-                                                        ${{
-                                                            trade.entryAnalysis.improvedPnL.withBetterEntry.toFixed(
-                                                                2,
-                                                            )
-                                                        }}
+                                                        {{ usd(trade.entryAnalysis.improvedPnL.withBetterEntry) }}
                                                     </p>
                                                     <p
                                                         class="text-xs text-green-700 dark:text-green-500"
                                                     >
-                                                        +${{
-                                                            trade.entryAnalysis.improvedPnL.improvement.toFixed(
-                                                                2,
-                                                            )
-                                                        }}
+                                                        +{{ usd(trade.entryAnalysis.improvedPnL.improvement) }}
                                                     </p>
                                                 </div>
                                             </div>
@@ -1381,13 +1302,7 @@
                                             <span
                                                 class="text-xs text-gray-500 dark:text-gray-400 ml-2"
                                             >
-                                                (+${{
-                                                    (
-                                                        trade
-                                                            .potentialAdditionalProfit
-                                                            ?.optimal || 0
-                                                    ).toFixed(2)
-                                                }})
+                                                (+{{ usd(( trade.potentialAdditionalProfit ?.optimal || 0 )) }})
                                             </span>
                                         </div>
                                     </div>
@@ -1587,6 +1502,13 @@ import BehavioralLossAversion from "@/components/behavioral/BehavioralLossAversi
 import BehavioralOverconfidence from "@/components/behavioral/BehavioralOverconfidence.vue";
 import { formatDate, formatMinutes } from "@/utils/behavioralFormatters";
 import { mdiTarget, mdiLightbulb } from "@mdi/js";
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatQuantity } from '@/utils/formatters'
+
+const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
+// Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
+const usd = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
+const usdSigned = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: 'USD', ...o })
 
 const { showSuccess, showError } = useNotification();
 const authStore = useAuthStore();
@@ -2473,11 +2395,11 @@ const viewTradesByStrategy = (strategy) => {
 const generateLossAversionMessage = (holdTimeRatio, estimatedMonthlyCost) => {
     const cost = Number(estimatedMonthlyCost) || 0;
     if (holdTimeRatio > 3) {
-        return `You exit winners ${holdTimeRatio.toFixed(1)}x faster than losers - this is costing you $${cost.toFixed(2)}/month`;
+        return `You exit winners ${holdTimeRatio.toFixed(1)}x faster than losers - this is costing you ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(cost))}/month`;
     } else if (holdTimeRatio > 2) {
-        return `You hold losers ${holdTimeRatio.toFixed(1)}x longer than winners - consider using tighter stops to save $${cost.toFixed(2)}/month`;
+        return `You hold losers ${holdTimeRatio.toFixed(1)}x longer than winners - consider using tighter stops to save ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(cost))}/month`;
     } else if (holdTimeRatio > 1.5) {
-        return `Slight loss aversion detected - you could save $${cost.toFixed(2)}/month with better exit timing`;
+        return `Slight loss aversion detected - you could save ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(cost))}/month with better exit timing`;
     } else {
         return `Good exit discipline - your hold time ratio of ${holdTimeRatio.toFixed(1)}x is within healthy range`;
     }

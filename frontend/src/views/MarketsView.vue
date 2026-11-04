@@ -418,7 +418,7 @@
                                             formatPrice(alert.target_price)
                                         }}</span>
                                         <span v-else-if="alert.change_percent"
-                                            >{{ alert.change_percent }}%</span
+                                            >{{ formatPercent(alert.change_percent) }}</span
                                         >
                                     </td>
                                     <td
@@ -840,6 +840,7 @@ import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 import SymbolCurrentPrice from "@/components/price-alerts/SymbolCurrentPrice.vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import { useVisibilityPolling } from "@/composables/useVisibilityPolling";
+import { formatPercent } from '@/utils/formatters'
 
 const route = useRoute();
 const router = useRouter();

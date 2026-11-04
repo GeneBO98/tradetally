@@ -408,7 +408,7 @@
                     <!-- Show all targets from take_profit_targets as TP1, TP2, etc. -->
                     <span v-for="(target, index) in (trade.take_profit_targets || [])" :key="index">
                       <span class="text-xs text-gray-500 dark:text-gray-400 mr-1">TP{{ index + 1 }}:</span>{{ formatTargetPrice(target, index) }}
-                      <span v-if="target.shares" class="text-xs text-gray-400 ml-0.5">({{ target.shares }})</span>
+                      <span v-if="target.shares" class="text-xs text-gray-400 ml-0.5">({{ formatQuantity(target.shares) }})</span>
                     </span>
                   </dd>
                 </div>

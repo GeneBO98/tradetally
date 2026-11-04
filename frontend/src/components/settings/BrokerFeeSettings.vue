@@ -47,11 +47,7 @@
                             <span
                                 class="text-xs text-gray-500 dark:text-gray-400"
                             >
-                                Total: ${{
-                                    calculateTotalFees(
-                                        setting,
-                                    ).toFixed(6)
-                                }}/contract/side
+                                Total: {{ feeMoney(calculateTotalFees( setting)) }}/contract/side
                             </span>
                         </div>
                         <div
@@ -62,48 +58,36 @@
                                     setting.commissionPerContract >
                                     0
                                 "
-                                >Commission: ${{
-                                    setting.commissionPerContract
-                                }}/contract</span
+                                >Commission: {{ feeMoney(setting.commissionPerContract) }}/contract</span
                             >
                             <span
                                 v-if="setting.commissionPerSide > 0"
-                                >Per Side: ${{
-                                    setting.commissionPerSide
-                                }}</span
+                                >Per Side: {{ feeMoney(setting.commissionPerSide) }}</span
                             >
                             <span
                                 v-if="
                                     setting.exchangeFeePerContract >
                                     0
                                 "
-                                >Exchange: ${{
-                                    setting.exchangeFeePerContract
-                                }}/contract</span
+                                >Exchange: {{ feeMoney(setting.exchangeFeePerContract) }}/contract</span
                             >
                             <span
                                 v-if="setting.nfaFeePerContract > 0"
-                                >NFA: ${{
-                                    setting.nfaFeePerContract
-                                }}/contract</span
+                                >NFA: {{ feeMoney(setting.nfaFeePerContract) }}/contract</span
                             >
                             <span
                                 v-if="
                                     setting.clearingFeePerContract >
                                     0
                                 "
-                                >Clearing: ${{
-                                    setting.clearingFeePerContract
-                                }}/contract</span
+                                >Clearing: {{ feeMoney(setting.clearingFeePerContract) }}/contract</span
                             >
                             <span
                                 v-if="
                                     setting.platformFeePerContract >
                                     0
                                 "
-                                >Platform: ${{
-                                    setting.platformFeePerContract
-                                }}/contract</span
+                                >Platform: {{ feeMoney(setting.platformFeePerContract) }}/contract</span
                             >
                         </div>
                         <p
@@ -373,23 +357,13 @@
                             <span
                                 class="text-lg font-bold text-primary-900 dark:text-primary-100"
                             >
-                                ${{
-                                    calculateTotalFees(
-                                        form,
-                                    ).toFixed(6)
-                                }}
+                                {{ feeMoney(calculateTotalFees( form)) }}
                             </span>
                         </div>
                         <p
                             class="text-xs text-primary-700 dark:text-primary-300 mt-1"
                         >
-                            For a round-trip trade, total fees = ${{
-                                (
-                                    calculateTotalFees(
-                                        form,
-                                    ) * 2
-                                ).toFixed(6)
-                            }}
+                            For a round-trip trade, total fees = {{ feeMoney(( calculateTotalFees( form) * 2 )) }}
                             per contract
                         </p>
                     </div>
@@ -438,6 +412,9 @@
 
 <script setup>
 import BaseSelect from "@/components/common/BaseSelect.vue";
+
+// Per-contract fees can carry sub-cent precision (e.g. $0.0035), so keep up to 6 decimals.
+const feeMoney = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 6 }).format(Number(v) || 0)
 
 defineProps({
     settings: { type: Array, default: () => [] },

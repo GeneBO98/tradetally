@@ -141,25 +141,13 @@
                                         "
                                         class="text-red-600 dark:text-red-400"
                                     >
-                                        -${{
-                                            Math.abs(
-                                                overconfidenceData.analysis
-                                                    .statistics
-                                                    ?.performanceImpact || 0,
-                                            ).toFixed(2)
-                                        }}
+                                        -{{ usd(Math.abs( overconfidenceData.analysis.statistics ?.performanceImpact || 0)) }}
                                     </span>
                                     <span
                                         v-else
                                         class="text-green-700 dark:text-green-400"
                                     >
-                                        +${{
-                                            Math.abs(
-                                                overconfidenceData.analysis
-                                                    .statistics
-                                                    ?.performanceImpact || 0,
-                                            ).toFixed(2)
-                                        }}
+                                        +{{ usd(Math.abs( overconfidenceData.analysis.statistics ?.performanceImpact || 0)) }}
                                     </span>
                                 </p>
                                 <p
@@ -361,12 +349,7 @@
                                                 >Baseline Size:</span
                                             >
                                             <span class="font-medium ml-1"
-                                                >${{
-                                                    (
-                                                        event.baselinePositionSize ||
-                                                        0
-                                                    ).toLocaleString()
-                                                }}</span
+                                                >{{ usd(( event.baselinePositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}</span
                                             >
                                         </div>
                                         <div>
@@ -375,12 +358,7 @@
                                                 >Peak Size:</span
                                             >
                                             <span class="font-medium ml-1"
-                                                >${{
-                                                    (
-                                                        event.peakPositionSize ||
-                                                        0
-                                                    ).toLocaleString()
-                                                }}</span
+                                                >{{ usd(( event.peakPositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}</span
                                             >
                                         </div>
                                     </div>
@@ -401,17 +379,8 @@
                                                     ) || 0
                                                 }}%</span
                                             >
-                                            (from ${{
-                                                (
-                                                    event.baselinePositionSize ||
-                                                    0
-                                                ).toLocaleString()
-                                            }}
-                                            baseline to ${{
-                                                (
-                                                    event.peakPositionSize || 0
-                                                ).toLocaleString()
-                                            }}
+                                            (from {{ usd(( event.baselinePositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}
+                                            baseline to {{ usd(( event.peakPositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}
                                             peak)</span
                                         >
                                     </div>
@@ -443,17 +412,7 @@
                                                     ) === 0,
                                             }"
                                         >
-                                            {{
-                                                parseFloat(
-                                                    event.streakPnl || 0,
-                                                ) >= 0
-                                                    ? "+"
-                                                    : ""
-                                            }}${{
-                                                parseFloat(
-                                                    event.streakPnl || 0,
-                                                ).toFixed(2)
-                                            }}
+                                            {{ usdSigned(parseFloat( event.streakPnl || 0)) }}
                                         </p>
                                     </div>
                                     <div>
@@ -482,19 +441,7 @@
                                                     ) === 0,
                                             }"
                                         >
-                                            {{
-                                                parseFloat(
-                                                    event.subsequentTradeResult ||
-                                                        0,
-                                                ) >= 0
-                                                    ? "+"
-                                                    : ""
-                                            }}${{
-                                                parseFloat(
-                                                    event.subsequentTradeResult ||
-                                                        0,
-                                                ).toFixed(2)
-                                            }}
+                                            {{ usdSigned(parseFloat( event.subsequentTradeResult || 0)) }}
                                         </p>
                                     </div>
                                     <div>
@@ -520,17 +467,7 @@
                                                     ) === 0,
                                             }"
                                         >
-                                            {{
-                                                parseFloat(
-                                                    event.totalImpact || 0,
-                                                ) >= 0
-                                                    ? "+"
-                                                    : ""
-                                            }}${{
-                                                parseFloat(
-                                                    event.totalImpact || 0,
-                                                ).toFixed(2)
-                                            }}
+                                            {{ usdSigned(parseFloat( event.totalImpact || 0)) }}
                                         </p>
                                     </div>
                                 </div>
@@ -671,21 +608,7 @@
                                                             ) === 0,
                                                     }"
                                                 >
-                                                    {{
-                                                        parseFloat(
-                                                            event
-                                                                .outcomeTradeDetails
-                                                                .pnl || 0,
-                                                        ) >= 0
-                                                            ? "+"
-                                                            : ""
-                                                    }}${{
-                                                        parseFloat(
-                                                            event
-                                                                .outcomeTradeDetails
-                                                                .pnl || 0,
-                                                        ).toFixed(2)
-                                                    }}
+                                                    {{ usdSigned(parseFloat( event.outcomeTradeDetails.pnl || 0)) }}
                                                 </p>
                                                 <p
                                                     class="text-xs text-gray-500 dark:text-gray-400"
@@ -705,14 +628,7 @@
                                                     Entry Price
                                                 </p>
                                                 <p class="font-medium">
-                                                    ${{
-                                                        parseFloat(
-                                                            event
-                                                                .outcomeTradeDetails
-                                                                .entry_price ||
-                                                                0,
-                                                        ).toFixed(2)
-                                                    }}
+                                                    {{ usd(parseFloat( event.outcomeTradeDetails.entry_price || 0)) }}
                                                 </p>
                                             </div>
                                             <div>
@@ -722,14 +638,7 @@
                                                     Exit Price
                                                 </p>
                                                 <p class="font-medium">
-                                                    ${{
-                                                        parseFloat(
-                                                            event
-                                                                .outcomeTradeDetails
-                                                                .exit_price ||
-                                                                0,
-                                                        ).toFixed(2)
-                                                    }}
+                                                    {{ usd(parseFloat( event.outcomeTradeDetails.exit_price || 0)) }}
                                                 </p>
                                             </div>
                                             <div>
@@ -739,16 +648,7 @@
                                                     Position Size
                                                 </p>
                                                 <p class="font-medium">
-                                                    ${{
-                                                        (
-                                                            parseFloat(
-                                                                event
-                                                                    .outcomeTradeDetails
-                                                                    .position_size ||
-                                                                    0,
-                                                            )
-                                                        ).toLocaleString()
-                                                    }}
+                                                    {{ usd(( parseFloat( event.outcomeTradeDetails.position_size || 0) ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}
                                                 </p>
                                             </div>
                                             <div>
@@ -758,21 +658,7 @@
                                                     Fees
                                                 </p>
                                                 <p class="font-medium">
-                                                    ${{
-                                                        (
-                                                            parseFloat(
-                                                                event
-                                                                    .outcomeTradeDetails
-                                                                    .commission ||
-                                                                    0,
-                                                            ) +
-                                                            parseFloat(
-                                                                event
-                                                                    .outcomeTradeDetails
-                                                                    .fees || 0,
-                                                            )
-                                                        ).toFixed(2)
-                                                    }}
+                                                    {{ usd(( parseFloat( event.outcomeTradeDetails.commission || 0) + parseFloat( event.outcomeTradeDetails.fees || 0) )) }}
                                                 </p>
                                             </div>
                                         </div>
@@ -834,15 +720,7 @@
                                             that resulted in this losing trade,
                                             giving back
                                             <strong
-                                                >${{
-                                                    Math.abs(
-                                                        parseFloat(
-                                                            event
-                                                                .outcomeTradeDetails
-                                                                .pnl || 0,
-                                                        ),
-                                                    ).toFixed(2)
-                                                }}</strong
+                                                >{{ usd(Math.abs( parseFloat( event.outcomeTradeDetails.pnl || 0))) }}</strong
                                             >
                                             of the streak's profits.
                                         </p>
@@ -1147,11 +1025,7 @@
                                                 class="text-xs text-red-700 dark:text-red-300 mt-2"
                                             >
                                                 Additional loss from not
-                                                respecting stop: ${{
-                                                    event.outcomeAnalysis.stopLossAnalysis.additionalLoss.toFixed(
-                                                        2,
-                                                    )
-                                                }}
+                                                respecting stop: {{ usd(event.outcomeAnalysis.stopLossAnalysis.additionalLoss) }}
                                             </p>
                                         </div>
                                     </div>
@@ -1331,13 +1205,7 @@
                                                         >
                                                             <span
                                                                 class="font-medium"
-                                                                >${{
-                                                                    (
-                                                                        parseFloat(
-                                                                            trade.position_size,
-                                                                        ) || 0
-                                                                    ).toLocaleString()
-                                                                }}</span
+                                                                >{{ usd(( parseFloat( trade.position_size) || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}</span
                                                             >
                                                             <span
                                                                 v-if="
@@ -1460,18 +1328,7 @@
                                                                     ) === 0,
                                                             }"
                                                         >
-                                                            {{
-                                                                parseFloat(
-                                                                    trade.pnl,
-                                                                ) >= 0
-                                                                    ? "+"
-                                                                    : ""
-                                                            }}${{
-                                                                parseFloat(
-                                                                    trade.pnl ||
-                                                                        0,
-                                                                ).toFixed(2)
-                                                            }}
+                                                            {{ usdSigned(parseFloat( trade.pnl || 0)) }}
                                                         </div>
                                                     </div>
                                                     <div
@@ -1519,6 +1376,7 @@ import { computed } from "vue";
 import { CheckIcon } from "@heroicons/vue/24/outline";
 import MdiIcon from "@/components/MdiIcon.vue";
 import { formatRiskBasisLabel } from "@/utils/behavioralFormatters";
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import {
     mdiTrendingUp,
     mdiClose,
@@ -1527,6 +1385,11 @@ import {
     mdiFire,
     mdiTrophy,
 } from "@mdi/js";
+
+const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
+// Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
+const usd = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
+const usdSigned = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: 'USD', ...o })
 
 const props = defineProps({
     overconfidenceData: { type: Object, default: null },

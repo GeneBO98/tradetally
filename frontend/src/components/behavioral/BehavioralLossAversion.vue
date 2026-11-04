@@ -173,11 +173,7 @@
                                     <span
                                         class="text-sm font-medium text-red-600 dark:text-red-400"
                                     >
-                                        ${{
-                                            lossAversionData.analysis.financialImpact.estimatedMonthlyCost.toFixed(
-                                                2,
-                                            )
-                                        }}
+                                        {{ usd(lossAversionData.analysis.financialImpact.estimatedMonthlyCost) }}
                                     </span>
                                 </div>
                                 <div class="flex justify-between">
@@ -188,11 +184,7 @@
                                     <span
                                         class="text-sm font-medium text-yellow-600 dark:text-yellow-400"
                                     >
-                                        ${{
-                                            lossAversionData.analysis.financialImpact.missedProfitPotential.toFixed(
-                                                2,
-                                            )
-                                        }}
+                                        {{ usd(lossAversionData.analysis.financialImpact.missedProfitPotential) }}
                                     </span>
                                 </div>
                                 <div class="flex justify-between">
@@ -203,11 +195,7 @@
                                     <span
                                         class="text-sm font-medium text-red-600 dark:text-red-400"
                                     >
-                                        ${{
-                                            lossAversionData.analysis.financialImpact.unnecessaryLossExtension.toFixed(
-                                                2,
-                                            )
-                                        }}
+                                        {{ usd(lossAversionData.analysis.financialImpact.unnecessaryLossExtension) }}
                                     </span>
                                 </div>
                             </div>
@@ -321,11 +309,7 @@
                                         <p
                                             class="text-xl font-bold text-primary-900 dark:text-primary-100"
                                         >
-                                            ${{
-                                                lossAversionData.analysis.priceHistoryAnalysis.totalMissedProfit.toFixed(
-                                                    2,
-                                                )
-                                            }}
+                                            {{ usd(lossAversionData.analysis.priceHistoryAnalysis.totalMissedProfit) }}
                                         </p>
                                     </div>
                                     <div>
@@ -374,7 +358,7 @@
                                                 •
                                                 {{ trade.side.toUpperCase() }}
                                                 •
-                                                {{ trade.quantity }} shares
+                                                {{ formatQuantity(trade.quantity) }} shares
                                             </p>
                                         </div>
                                         <div class="text-right">
@@ -386,13 +370,7 @@
                                                 }}% missed opportunity
                                             </p>
                                             <p class="text-xs text-gray-500">
-                                                ${{
-                                                    (
-                                                        trade
-                                                            .potentialAdditionalProfit
-                                                            ?.optimal || 0
-                                                    ).toFixed(2)
-                                                }}
+                                                {{ usd(( trade.potentialAdditionalProfit ?.optimal || 0 )) }}
                                                 additional profit
                                             </p>
                                         </div>
@@ -408,11 +386,7 @@
                                                 Exit Price
                                             </p>
                                             <p class="font-medium">
-                                                ${{
-                                                    (
-                                                        trade.exitPrice || 0
-                                                    ).toFixed(2)
-                                                }}
+                                                {{ usd(( trade.exitPrice || 0 )) }}
                                             </p>
                                         </div>
                                         <div>
@@ -422,11 +396,7 @@
                                                 Actual Profit
                                             </p>
                                             <p class="font-medium">
-                                                ${{
-                                                    (
-                                                        trade.actualProfit || 0
-                                                    ).toFixed(2)
-                                                }}
+                                                {{ usd(( trade.actualProfit || 0 )) }}
                                             </p>
                                         </div>
                                         <div>
@@ -436,21 +406,7 @@
                                                 Peak Price (24h)
                                             </p>
                                             <p class="font-medium">
-                                                ${{
-                                                    trade.side === "long"
-                                                        ? (
-                                                              trade
-                                                                  .priceMovement
-                                                                  ?.maxPriceWithin24Hours ||
-                                                              0
-                                                          ).toFixed(2)
-                                                        : (
-                                                              trade
-                                                                  .priceMovement
-                                                                  ?.minPriceWithin24Hours ||
-                                                              0
-                                                          ).toFixed(2)
-                                                }}
+                                                {{ usd(trade.side === "long" ? ( trade.priceMovement ?.maxPriceWithin24Hours || 0 ) : ( trade.priceMovement ?.minPriceWithin24Hours || 0 )) }}
                                             </p>
                                         </div>
                                         <div>
@@ -587,6 +543,13 @@
 import MdiIcon from "@/components/MdiIcon.vue";
 import { formatMinutes } from "@/utils/behavioralFormatters";
 import { mdiTarget } from "@mdi/js";
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatQuantity } from '@/utils/formatters'
+
+const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
+// Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
+const usd = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
+const usdSigned = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: 'USD', ...o })
 
 defineProps({
     lossAversionData: { type: Object, default: null },

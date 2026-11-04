@@ -275,7 +275,7 @@
         </div>
         <div>
           <div class="text-label mb-1">Quantity</div>
-          <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ trade.quantity }}</div>
+          <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ formatQuantity(trade.quantity) }}</div>
         </div>
         <div>
           <div class="text-label mb-1">Trade Date & Time</div>
@@ -321,7 +321,7 @@
 <script setup>
 import { ref, computed, nextTick, watch } from 'vue'
 import { formatTradeDate } from '@/utils/date'
-import { formatPercent as formatPercentBase } from '@/utils/formatters'
+import { formatPercent as formatPercentBase, formatQuantity } from '@/utils/formatters'
 import api from '@/services/api'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'

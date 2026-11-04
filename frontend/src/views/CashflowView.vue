@@ -197,7 +197,7 @@
                                     <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="t.direction === 'inflow' ? 'bg-green-500' : 'bg-red-500'"></span>
                                     <span class="font-medium text-gray-900 dark:text-white">{{ t.symbol }}</span>
                                     <span class="text-gray-500 dark:text-gray-400 truncate">
-                                      {{ tradeActionLabel(t) }} {{ t.quantity }} @ {{ formatCurrency(t.price) }}
+                                      {{ tradeActionLabel(t) }} {{ formatQuantity(t.quantity) }} @ {{ formatCurrency(t.price) }}
                                     </span>
                                     <span v-if="t.commission" class="shrink-0 text-xs text-gray-400 dark:text-gray-500">
                                       fee {{ formatCurrency(t.commission) }}
@@ -494,6 +494,7 @@ import PlaidFundingPanel from '@/components/accounts/PlaidFundingPanel.vue'
 import PlaidReviewQueue from '@/components/accounts/PlaidReviewQueue.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatQuantity } from '@/utils/formatters'
 
 const { formatCurrency, formatSignedCurrency, currencySymbol } = useCurrencyFormatter()
 

@@ -76,7 +76,7 @@
         </div>
         <div>
           <div class="text-label mb-1">Total Quantity</div>
-          <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ trade.quantity }}</div>
+          <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ formatQuantity(trade.quantity) }}</div>
         </div>
         <div>
           <div class="text-label mb-1">Opened / Closed</div>

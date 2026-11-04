@@ -47,7 +47,7 @@
               v-model="alertForm.alertType"
               :options="[
                 { value: 'above', label: 'Above' },
-                { value: 'below', label: 'Below'} ]" /> </div> <!-- Target Price --> <div class="mb-4"> <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> Target Price </label> <input v-model.number="alertForm.targetPrice" type="number" step="0.01" min="0" class="input" placeholder="0.00" required /> <p v-if="currentPrice" class="text-xs text-gray-500 dark:text-gray-400 mt-1"> Current price: ${{ currentPrice.toFixed(2) }} </p> </div> <!-- Notification Methods --> <div class="mb-4 space-y-2"> <label class="block text-sm font-medium text-gray-700 dark:text-gray-300"> Notification Methods </label> <label class="flex items-center"> <input v-model="alertForm.emailEnabled" type="checkbox" class="checkbox" /> <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Email</span> </label> <label class="flex items-center"> <input v-model="alertForm.browserEnabled" type="checkbox" class="checkbox" /> <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Browser Push</span> </label> </div> <!-- Error Message --> <div v-if="alertError" class="callout-danger mb-4"> <p class="text-sm text-red-600 dark:text-red-200">{{ alertError }}</p> </div> <!-- Actions --> <div class="flex items-center justify-end gap-3"> <button type="button" @click="showAlertModal = false" class="btn-secondary" > Cancel </button> <button type="submit" :disabled="creatingAlert || (!alertForm.emailEnabled && !alertForm.browserEnabled)" class="btn-primary" > {{ creatingAlert ?'Creating...' : 'Create Alert' }}
+                { value: 'below', label: 'Below'} ]" /> </div> <!-- Target Price --> <div class="mb-4"> <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> Target Price </label> <input v-model.number="alertForm.targetPrice" type="number" step="0.01" min="0" class="input" placeholder="0.00" required /> <p v-if="currentPrice" class="text-xs text-gray-500 dark:text-gray-400 mt-1"> Current price: {{ usd(currentPrice) }} </p> </div> <!-- Notification Methods --> <div class="mb-4 space-y-2"> <label class="block text-sm font-medium text-gray-700 dark:text-gray-300"> Notification Methods </label> <label class="flex items-center"> <input v-model="alertForm.emailEnabled" type="checkbox" class="checkbox" /> <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Email</span> </label> <label class="flex items-center"> <input v-model="alertForm.browserEnabled" type="checkbox" class="checkbox" /> <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Browser Push</span> </label> </div> <!-- Error Message --> <div v-if="alertError" class="callout-danger mb-4"> <p class="text-sm text-red-600 dark:text-red-200">{{ alertError }}</p> </div> <!-- Actions --> <div class="flex items-center justify-end gap-3"> <button type="button" @click="showAlertModal = false" class="btn-secondary" > Cancel </button> <button type="submit" :disabled="creatingAlert || (!alertForm.emailEnabled && !alertForm.browserEnabled)" class="btn-primary" > {{ creatingAlert ?'Creating...' : 'Create Alert' }}
             </button>
           </div>
         </form>
@@ -61,6 +61,12 @@ import { ref } from 'vue'
 import { PlusCircleIcon, BellAlertIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import BaseSelect from '@/components/common/BaseSelect.vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
+// Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
+const usd = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
+const usdSigned = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: 'USD', ...o })
 
 const props = defineProps({
   symbol: {

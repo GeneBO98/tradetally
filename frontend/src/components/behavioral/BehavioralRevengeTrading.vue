@@ -1090,7 +1090,10 @@ const props = defineProps({
 defineEmits(["rerun", "open-trade", "prev-page", "next-page", "go-to-page"]);
 
 const { formatTime: formatTimeTz } = useUserTimezone();
-const { formatCurrency, formatSignedCurrency } = useCurrencyFormatter();
+const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter();
+// Behavioral endpoints return USD; they are not converted to the display currency.
+const formatCurrency = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: "USD", ...o });
+const formatSignedCurrency = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: "USD", ...o });
 const formatQuantity = (q) => Number(q).toLocaleString("en-US", { maximumFractionDigits: 4 });
 const formatTime = (dateString) => formatTimeTz(dateString);
 

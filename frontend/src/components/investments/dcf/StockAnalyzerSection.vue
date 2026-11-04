@@ -786,6 +786,6 @@ async function saveAlert() {
 
 function formatPrice(value) {
   if (value === null || value === undefined) return 'N/A'
-  return `$${Number(value).toFixed(2)}`
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value))
 }
 </script>

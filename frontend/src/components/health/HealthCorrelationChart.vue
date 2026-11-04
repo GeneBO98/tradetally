@@ -488,7 +488,7 @@ function updateChart() {
             label: function(context) {
               return [
                 `${getMetricLabel(metric)}: ${context.parsed.x.toFixed(1)} ${getMetricUnit(metric)}`,
-                `P&L: $${context.parsed.y.toFixed(2)}`
+                `P&L: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y)}`
               ]
             }
           }

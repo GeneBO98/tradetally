@@ -474,7 +474,7 @@
                                     v-if="earnings.epsEstimate"
                                     class="text-xs text-gray-600 dark:text-gray-400 mt-1"
                                 >
-                                    Est. EPS: ${{ earnings.epsEstimate }}
+                                    Est. EPS: {{ Number(earnings.epsEstimate) < 0 ? "-" : "" }}${{ Math.abs(Number(earnings.epsEstimate)).toFixed(2) }}
                                 </div>
                             </div>
                         </div>

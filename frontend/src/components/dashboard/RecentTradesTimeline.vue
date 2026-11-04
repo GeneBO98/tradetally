@@ -58,7 +58,7 @@
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 text-mono-num flex items-center gap-1">
                 <span>{{ formatDate(trade.trade_date || trade.tradeDate) }}</span>
-                <span v-if="trade.quantity">· {{ trade.quantity }} sh</span>
+                <span v-if="trade.quantity">· {{ formatQuantity(trade.quantity) }} sh</span>
                 <span v-if="trade.r_value || trade.rValue" class="text-gray-700 dark:text-gray-300">
                   · {{ formatR(trade.r_value ?? trade.rValue) }}R
                 </span>
@@ -92,6 +92,7 @@ import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiArrowRight } from '@mdi/js'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { formatTradeDate } from '@/utils/date'
+import { formatQuantity } from '@/utils/formatters'
 
 const props = defineProps({
   trades: { type: Array, default: () => [] },

@@ -264,7 +264,7 @@
               <div class="text-right">
                 <p class="stat-value"
                    :class="pnlClass(computedPnlPreview.value)">
-                  {{ computedPnlPreview.value > 0 ? '+' : '' }}${{ computedPnlPreview.value.toFixed(2) }}
+                  {{ formatSignedCurrency(computedPnlPreview.value, { currency: form.originalCurrency || 'USD' }) }}
                 </p>
               </div>
             </div>
@@ -1471,8 +1471,10 @@ import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useHiddenDropdownItems } from '@/composables/useHiddenDropdownItems'
 import { useStrategyOrder } from '@/composables/useStrategyOrder'
 import { useSetupOrder } from '@/composables/useSetupOrder'
-import { CURRENCY_OPTIONS } from '@/composables/useCurrencyFormatter'
+import { CURRENCY_OPTIONS, useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { parseNullableNumber } from '@/utils/numbers'
+
+const { formatSignedCurrency } = useCurrencyFormatter()
 
 // Load section preferences from localStorage
 const defaultSectionPrefs = {

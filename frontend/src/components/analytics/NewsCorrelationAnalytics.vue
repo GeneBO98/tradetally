@@ -157,8 +157,8 @@
                     ></div>
                   </div>
                   <div class="flex justify-between text-sm font-medium text-gray-900 dark:text-white mt-1">
-                    <span>{{ data.long_percentage }}%</span>
-                    <span>{{ data.short_percentage }}%</span>
+                    <span>{{ formatPercent(data.long_percentage) }}</span>
+                    <span>{{ formatPercent(data.short_percentage) }}</span>
                   </div>
                 </div>
 
@@ -365,7 +365,7 @@
                     </span>
                   </div>
                   <div class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ trade.quantity }} shares @ {{ formatCurrency(trade.entry_price) }} → {{ formatCurrency(trade.exit_price) }}
+                    {{ formatQuantity(trade.quantity) }} shares @ {{ formatCurrency(trade.entry_price) }} → {{ formatCurrency(trade.exit_price) }}
                   </div>
                 </div>
 
@@ -405,6 +405,7 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiRefresh, mdiAlertCircle, mdiLock, mdiChartLine, mdiClose } from '@mdi/js'
 import api from '@/services/api'
+import { formatQuantity, formatPercent } from '@/utils/formatters'
 
 const { formatCurrency } = useCurrencyFormatter()
 

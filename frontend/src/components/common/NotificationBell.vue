@@ -128,7 +128,7 @@
                   
                   <!-- Additional info for price alerts -->
                   <div v-if="notification.type === 'price_alert' && notification.trigger_price" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Triggered at ${{ parseFloat(notification.trigger_price).toFixed(2) }}
+                    Triggered at {{ usd(parseFloat(notification.trigger_price)) }}
                   </div>
                   <div v-if="notification.type === 'web_mention_alert' && notification.metadata?.article_count" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     {{ notification.metadata.article_count }} distinct articles
@@ -525,6 +525,12 @@ onUnmounted(() => {
 
 // Watch for auth changes
 import { watch } from 'vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
+// Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
+const usd = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
+const usdSigned = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: 'USD', ...o })
 watch(isAuthenticated, (newValue) => {
   if (newValue) {
     pollingDisabled.value = false

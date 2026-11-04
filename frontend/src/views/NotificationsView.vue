@@ -144,10 +144,10 @@
                   <!-- Additional details based on type -->
                   <div v-if="notification.type === 'price_alert'" class="text-xs text-gray-500 dark:text-gray-400">
                     <div v-if="notification.trigger_price" class="mb-1">
-                      <span class="font-medium">Triggered at:</span> ${{ parseFloat(notification.trigger_price).toFixed(2) }}
+                      <span class="font-medium">Triggered at:</span> {{ usd(parseFloat(notification.trigger_price)) }}
                     </div>
                     <div v-if="notification.target_price" class="mb-1">
-                      <span class="font-medium">Target price:</span> ${{ parseFloat(notification.target_price).toFixed(2) }}
+                      <span class="font-medium">Target price:</span> {{ usd(parseFloat(notification.target_price)) }}
                     </div>
                   </div>
                   
@@ -221,6 +221,12 @@ import {
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useNotification } from '@/composables/useNotification'
 import { useNotificationCenter } from '@/composables/useNotificationCenter'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
+// Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
+const usd = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
+const usdSigned = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: 'USD', ...o })
 
 const router = useRouter()
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()

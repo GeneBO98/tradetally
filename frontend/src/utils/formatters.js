@@ -33,3 +33,13 @@ export function formatPercent(value, options = {}) {
   const sign = showSign && scaled >= 0 ? '+' : ''
   return `${sign}${scaled.toFixed(digits)}%`
 }
+
+/**
+ * Share / contract counts. The API returns NUMERIC columns as strings with
+ * trailing zeros ("4600.00000000"); show "4,600" or "0.5" instead.
+ */
+export function formatQuantity(value) {
+  const n = Number(value)
+  if (value === null || value === undefined || value === '' || !Number.isFinite(n)) return '-'
+  return n.toLocaleString('en-US', { maximumFractionDigits: 4 })
+}

@@ -239,7 +239,7 @@
                                     formatCurrency(alert.target_price)
                                 }}</span>
                                 <span v-else-if="alert.change_percent"
-                                    >{{ alert.change_percent }}%</span
+                                    >{{ formatPercent(alert.change_percent) }}</span
                                 >
                             </td>
                             <td
@@ -562,6 +562,7 @@ import SymbolCurrentPrice from "@/components/price-alerts/SymbolCurrentPrice.vue
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import { useVisibilityPolling } from "@/composables/useVisibilityPolling";
+import { formatPercent } from '@/utils/formatters'
 
 export default {
     name: "PriceAlertsView",
@@ -837,6 +838,7 @@ export default {
         });
 
         return {
+            formatPercent,
             initialLoading,
             alerts,
             loading,

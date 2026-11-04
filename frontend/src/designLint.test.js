@@ -234,6 +234,22 @@ describe('design system consistency', () => {
     expect(offenders(f => /style="[^"]*z-index/.test(f.text))).toEqual([])
   })
 
+  it('formats money through a formatter instead of a literal $ before a raw number', () => {
+    // A literal "$" in front of {{ value }} prints "$-12.30" for losses and
+    // drops thousands separators. Remaining exceptions are always-positive
+    // unit labels (Stripe price, point value, per-point multiplier, prices).
+    const ALLOWED = [
+      'views/BillingView.vue', 'views/backtest/BacktestSandboxView.vue', 'views/trades/TradeFormView.vue',
+      'components/settings/FeeProfileSettings.vue', 'components/TickDataChart.vue', 'views/WatchlistDetailView.vue'
+    ]
+    const bad = offenders(f => !ALLOWED.includes(f.path) && /(?<![\w`])\$\s*\{\{/.test(f.text.split('<script')[0]))
+    expect(bad).toEqual([])
+  })
+
+  it('formats share and contract counts instead of printing the raw NUMERIC string', () => {
+    expect(offenders(f => /\{\{\s*[\w?.]+\.(?:quantity|shares)\s*\}\}/.test(f.text.split('<script')[0]))).toEqual([])
+  })
+
   it('does not pin decorative accent bars to the edge of cards and notices', () => {
     // The one allowed edge accent marks state: the selected comparison row.
     const ALLOWED = ['views/InvestmentsView.vue']

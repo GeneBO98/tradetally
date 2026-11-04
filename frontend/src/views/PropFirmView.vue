@@ -331,7 +331,7 @@ function pnlClass(value) {
 function formatMoney(value) {
   const parsed = parseFloat(value)
   if (!Number.isFinite(parsed)) return '-'
-  return `$${parsed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(parsed)
 }
 
 function formatSignedMoney(value) {
