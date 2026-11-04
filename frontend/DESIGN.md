@@ -12,12 +12,14 @@ the rules that can be checked mechanically.
 | Floating menu / popover | `popover`, `dropdown-menu` |
 | Buttons | `btn-primary`, `btn-secondary`, `btn-tint`, `btn-danger`, `btn-yellow` (caution), `btn-ghost`, `btn-icon`, `btn-icon-outline`; add `btn-sm` for compact |
 | Toggle group | `segmented` wrapper with `segment` buttons; `segment-active` on the selected one |
+| On/off switch | `switch` track + `switch-knob` span; add `switch-on` when checked |
 | Inputs | `input`; add `input-sm` for compact editors |
 | Status chip | `badge-neutral`, `badge-primary`, `badge-success`, `badge-danger`, `badge-warning` |
 | Table header | `<thead class="table-head">`, `<th class="table-th">` |
 | Tabs | `tab` + `tab-active` / `tab-inactive` |
 | Loading ring | `spinner spinner-{xs,sm,md,lg}` (+ `spinner-light` on dark fills) |
-| Notice | `callout-info`, `callout-success`, `callout-warning`, `callout-danger` |
+| Notice | `callout-info`, `callout-success`, `callout-warning`, `callout-danger` (never a hand-tinted `bg-*-50` div) |
+| Metric colour | `pnlClass`, `winRateClass`, `profitFactorClass` from `utils/metricTone.js`; percentages one decimal, R one decimal |
 | Numbers | tables get tabular figures automatically; use `text-mono-num` for stat tiles |
 
 Colour rules
