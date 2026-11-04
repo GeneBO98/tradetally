@@ -668,7 +668,7 @@
                 </div>
                 <div class="table-card-row">
                   <span class="table-card-label">Avg Price</span>
-                  <span class="table-card-value">{{ formatPositionCurrency(position.avgPrice, position) }}</span>
+                  <span class="table-card-value">{{ formatPositionPrice(position.avgPrice, position) }}</span>
                 </div>
                 <div class="table-card-row">
                   <span class="table-card-label">Total Cost</span>
@@ -692,7 +692,7 @@
                       </div>
                     </template>
                     <template v-else>
-                      <span v-if="position.currentPrice !== null">{{ formatPositionCurrency(position.currentPrice, position) }}</span>
+                      <span v-if="position.currentPrice !== null">{{ formatPositionPrice(position.currentPrice, position) }}</span>
                       <span v-else class="text-xs text-gray-400">-</span>
                     </template>
                   </span>
@@ -845,7 +845,7 @@
                       </div>
                     </td>
                     <td class="px-3 py-3 text-right text-gray-900 dark:text-white">
-                      {{ formatPositionCurrency(position.avgPrice, position) }}
+                      {{ formatPositionPrice(position.avgPrice, position) }}
                     </td>
                     <td class="px-3 py-3 text-right">
                       <!-- Option: manual premium input -->
@@ -866,7 +866,7 @@
                       <!-- Stock/Future: quoted price -->
                       <template v-else>
                         <div v-if="position.currentPrice !== null" class="text-gray-900 dark:text-white">
-                          {{ formatPositionCurrency(position.currentPrice, position) }}
+                          {{ formatPositionPrice(position.currentPrice, position) }}
                           <div v-if="position.dayChangePercent !== undefined && position.dayChangePercent !== null" class="text-xs" :class="[
                             position.dayChangePercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                           ]" :title="position.dayChange !== undefined ? formatSignedPositionCurrency(position.dayChange, position) + ' today' : undefined">
@@ -1638,6 +1638,7 @@
 
 <script setup>
 import { winRateClass, profitFactorClass } from '@/utils/metricTone'
+import { tradePriceFractionDigits } from '@/composables/useTradePriceFormatter'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, onMounted, nextTick, watch, computed, onUnmounted, defineAsyncComponent } from 'vue'
 import { useAuthStore } from '@/stores/auth'
@@ -2491,6 +2492,14 @@ function positionCurrency(position) {
 
 function formatPositionCurrency(value, position) {
   return formatCurrency(value, { currency: positionCurrency(position) })
+}
+
+// Quotes follow the trade price precision rule (cents; 4dp under $1; 6dp forex).
+function formatPositionPrice(value, position) {
+  return formatCurrency(value, {
+    currency: positionCurrency(position),
+    maximumFractionDigits: tradePriceFractionDigits({ symbol: position?.symbol, instrument_type: position?.instrument_type ?? position?.instrumentType }, value)
+  })
 }
 
 function formatSignedPositionCurrency(value, position) {

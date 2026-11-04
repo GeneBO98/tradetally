@@ -1460,7 +1460,7 @@ function createPerformanceByPriceChart() {
               if (rValueMode.value) {
                 return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: ${currencySymbol.value}${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
+              return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
           }
         }
@@ -1545,7 +1545,7 @@ function createPerformanceByVolumeChart() {
               if (rValueMode.value) {
                 return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: ${currencySymbol.value}${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
+              return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
           }
         }
@@ -1630,7 +1630,7 @@ function createPerformanceByPositionSizeChart() {
               if (rValueMode.value) {
                 return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: ${currencySymbol.value}${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
+              return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
           }
         }
@@ -1722,7 +1722,7 @@ function createDayOfWeekChart() {
               if (rValueMode.value) {
                 return `R-Multiple: ${context.parsed.x.toFixed(2)}R`
               }
-              return `P&L: ${currencySymbol.value}${context.parsed.x.toFixed(2)}`
+              return `P&L: ${formatCurrency(context.parsed.x)}`
             }
           }
         }
@@ -1819,7 +1819,7 @@ function createPerformanceByHoldTimeChart() {
               if (rValueMode.value) {
                 return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: ${currencySymbol.value}${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
+              return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
           }
         }
@@ -2015,7 +2015,7 @@ function createDrawdownChart() {
               if (rValueMode.value) {
                 return `Drawdown: ${context.parsed.y.toFixed(2)}R`
               }
-              return `Drawdown: ${currencySymbol.value}${context.parsed.y.toFixed(2)}`
+              return `Drawdown: ${formatCurrency(context.parsed.y)}`
             },
             title: function(context) {
               const originalDate = drawdownData.value[context[0].dataIndex].trade_date
