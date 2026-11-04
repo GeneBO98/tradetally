@@ -55,7 +55,7 @@
           <!-- Total Actual R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Actual R (Net)</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.total_actual_r >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="pnlClass(summary.total_actual_r)">
               {{ formatR(summary.total_actual_r) }}
             </div>
           </div>
@@ -86,7 +86,7 @@
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">R Left on Table</div>
             <template v-if="summary.trades_with_target > 0">
-              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-yellow-600 dark:text-yellow-400' : summary.r_left_on_table < 0 ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-gray-900 dark:text-white' : summary.r_left_on_table < 0 ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
                 {{ formatR(summary.r_left_on_table) }}
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
@@ -144,7 +144,7 @@
             <span class="text-gray-600 dark:text-gray-400">Target Performance (Net)</span>
           </div>
           <div class="flex items-center">
-            <span class="w-6 h-1 rounded-full bg-slate-500 dark:bg-slate-400 mr-2"></span>
+            <span class="w-6 h-1 rounded-full bg-red-600 mr-2"></span>
             <span class="text-gray-600 dark:text-gray-400">Trade Management Impact</span>
           </div>
         </div>
@@ -162,6 +162,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
@@ -287,7 +288,7 @@ function createChart() {
       label: 'Management R',
       data: managementData,
       // Neutral slate so it can't be confused with the orange Target line
-      borderColor: isDark ? '#94a3b8' : '#64748b',
+      borderColor: '#dc2626',
       backgroundColor: 'transparent',
       fill: false,
       tension: 0.2,

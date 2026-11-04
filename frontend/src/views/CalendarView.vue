@@ -99,7 +99,7 @@
                       <span class="text-data-secondary block truncate">
                         {{ format(expandedMonth, 'MMMM') }} {{ showRValue ? 'R-Value' : pnlTypeLabel }}
                       </span>
-                      <span class="mt-1 block text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="monthlyTotal >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      <span class="mt-1 block text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="pnlClass(monthlyTotal)">
                         {{ showRValue ? formatRValue(monthlyTotal) : formatCurrency(monthlyTotal) }}
                       </span>
                       <span class="mt-2 block text-xs text-gray-500 dark:text-gray-400">
@@ -127,7 +127,7 @@
                       <dt class="text-data-secondary truncate">
                         Year To Date
                       </dt>
-                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="ytdTotal >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="pnlClass(ytdTotal)">
                         {{ formatCurrency(ytdTotal) }}
                       </dd>
                       <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -174,7 +174,7 @@
               </div>
               <!-- Week P/L or R-Value Column -->
               <div class="flex items-center justify-center border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 bg-gray-50 dark:bg-gray-800">
-                <p class="text-xs sm:text-sm font-semibold" :class="getWeekTotal(week) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                <p class="text-xs sm:text-sm font-semibold" :class="pnlClass(getWeekTotal(week))">
                   {{ showRValue ? formatRValue(week.weekRValue || 0, 1) : formatCurrency(getWeekTotal(week), { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
                 </p>
               </div>
@@ -267,7 +267,7 @@
                   </p>
                 </div>
                 <div class="text-right">
-                  <p class="font-semibold" :class="getContributionDisplayPnl(contrib) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                  <p class="font-semibold" :class="pnlClass(getContributionDisplayPnl(contrib))">
                     {{ showRValue && contrib.r_value != null ? formatRValue(contrib.r_value) : formatCurrency(getContributionDisplayPnl(contrib)) }}
                   </p>
                   <p v-if="showRValue && contrib.r_value == null && !contrib.is_partial" class="text-xs text-gray-400">
@@ -287,7 +287,7 @@
           <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div class="flex justify-between items-center">
               <span class="font-medium text-gray-900 dark:text-white">{{ showRValue ? 'Total R for day:' : `Total ${pnlTypeLabel} for day:` }}</span>
-              <span class="font-bold text-lg" :class="selectedDayTotal >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+              <span class="font-bold text-lg" :class="pnlClass(selectedDayTotal)">
                 {{ showRValue ? formatRValue(selectedDayTotalRValue) : formatCurrency(selectedDayTotal) }}
               </span>
             </div>
@@ -303,6 +303,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
@@ -701,7 +702,7 @@ function getDayTextColor(day) {
 }
 
 function getDayPnlTextColor(day) {
-  if (!day.date || day.pnl === undefined) return getDayDisplayPnl(day) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+  if (!day.date || day.pnl === undefined) return pnlClass(getDayDisplayPnl(day))
   // White bold text on colored backgrounds
   return 'text-white font-bold'
 }

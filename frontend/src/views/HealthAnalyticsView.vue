@@ -202,11 +202,11 @@
                   </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-mono-num"
-                    :class="condition.avgPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                    :class="pnlClass(condition.avgPnL)">
                   {{ formatSignedCurrency(condition.avgPnL) }}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-mono-num font-semibold"
-                    :class="condition.totalPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                    :class="pnlClass(condition.totalPnL)">
                   {{ formatSignedCurrency(condition.totalPnL) }}
                 </td>
               </tr>
@@ -274,6 +274,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'

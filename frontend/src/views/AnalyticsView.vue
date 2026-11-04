@@ -346,7 +346,7 @@
                     {{ symbol.symbol }}
                     <span 
                       class="ml-1 text-xs"
-                      :class="symbol.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                      :class="pnlClass(symbol.pnl)"
                     >
                       {{ formatCurrency(symbol.pnl, { compact: true, minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
                     </span>
@@ -731,6 +731,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { resolveDatePreset, resolveMonthlyFilterParams } from '@/utils/datePresets'
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -1870,7 +1871,7 @@ function createDailyVolumeChart() {
       scales: {
         x: {
           title: {
-            display: true,
+            display: false,
             text: 'Date'
           },
           ticks: {
@@ -1977,7 +1978,7 @@ function createDrawdownChart() {
       scales: {
         x: {
           title: {
-            display: true,
+            display: false,
             text: 'Date'
           },
           ticks: {

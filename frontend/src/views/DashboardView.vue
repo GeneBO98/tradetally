@@ -630,7 +630,7 @@
                 <div v-if="position.requires_manual_price" class="text-right">
                   <template v-if="getOptionPnL(position).unrealizedPnL !== null">
                     <div class="text-lg font-bold" :class="[
-                      getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      pnlClass(getOptionPnL(position).unrealizedPnL)
                     ]">
                       {{ formatSignedPositionAmount(getOptionPnL(position).unrealizedPnL, position) }}
                     </div>
@@ -642,7 +642,7 @@
                 </div>
                 <div v-else-if="position.unrealizedPnL !== null" class="text-right">
                   <div class="text-lg font-bold" :class="[
-                    position.unrealizedPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    pnlClass(position.unrealizedPnL)
                   ]">
                     {{ formatSignedPositionAmount(position.unrealizedPnL, position) }}
                   </div>
@@ -701,7 +701,7 @@
 
               <div class="table-card-row mb-3" title="Price change since previous close × current holdings">
                 <span class="table-card-label">Daily P&amp;L</span>
-                <span v-if="daily_position_pnl(position) !== null" class="table-card-value" :class="daily_position_pnl(position) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                <span v-if="daily_position_pnl(position) !== null" class="table-card-value" :class="pnlClass(daily_position_pnl(position))">
                   {{ formatSignedPositionAmount(daily_position_pnl(position), position) }}
                 </span>
                 <span v-else class="text-xs text-gray-400">-</span>
@@ -767,7 +767,7 @@
                     {{ totalOpenCostLabel }}
                   </div>
                   <div v-if="totalUnrealizedPnLAccount !== null" class="text-sm font-bold" :class="[
-                    totalUnrealizedPnLAccount >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    pnlClass(totalUnrealizedPnLAccount)
                   ]">
                     {{ totalUnrealizedPnLLabel }}
                   </div>
@@ -775,7 +775,7 @@
               </div>
               <div v-if="total_daily_pnl !== null" class="flex justify-between items-center mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 text-sm">
                 <span class="text-gray-600 dark:text-gray-400">Daily P&amp;L<span v-if="daily_pnl_partial"> (partial)</span></span>
-                <span class="font-bold whitespace-nowrap" :class="total_daily_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                <span class="font-bold whitespace-nowrap" :class="pnlClass(total_daily_pnl)">
                   {{ formatSignedCurrency(total_daily_pnl, { currency: accountCurrency }) }}
                 </span>
               </div>
@@ -868,7 +868,7 @@
                         <div v-if="position.currentPrice !== null" class="text-gray-900 dark:text-white">
                           {{ formatPositionPrice(position.currentPrice, position) }}
                           <div v-if="position.dayChangePercent !== undefined && position.dayChangePercent !== null" class="text-xs" :class="[
-                            position.dayChangePercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                            pnlClass(position.dayChangePercent)
                           ]" :title="position.dayChange !== undefined ? formatSignedPositionCurrency(position.dayChange, position) + ' today' : undefined">
                             {{ position.dayChangePercent >= 0 ? '+' : '' }}{{ formatNumber(position.dayChangePercent) }}%
                           </div>
@@ -897,10 +897,10 @@
                     <td class="px-3 py-3 text-right">
                       <template v-if="position.requires_manual_price">
                         <div v-if="getOptionPnL(position).unrealizedPnL !== null" :title="nativeAmountTitle(getOptionPnL(position).unrealizedPnL, position)">
-                          <div class="font-semibold" :class="getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                          <div class="font-semibold" :class="pnlClass(getOptionPnL(position).unrealizedPnL)">
                             {{ formatSignedPositionAmount(getOptionPnL(position).unrealizedPnL, position) }}
                           </div>
-                          <div class="text-xs" :class="getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                          <div class="text-xs" :class="pnlClass(getOptionPnL(position).unrealizedPnLPercent)">
                             {{ getOptionPnL(position).unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
                           </div>
                         </div>
@@ -908,10 +908,10 @@
                       </template>
                       <template v-else>
                         <div v-if="position.unrealizedPnL !== null" :title="nativeAmountTitle(position.unrealizedPnL, position)">
-                          <div class="font-semibold" :class="position.unrealizedPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                          <div class="font-semibold" :class="pnlClass(position.unrealizedPnL)">
                             {{ formatSignedPositionAmount(position.unrealizedPnL, position) }}
                           </div>
-                          <div class="text-xs" :class="position.unrealizedPnLPercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                          <div class="text-xs" :class="pnlClass(position.unrealizedPnLPercent)">
                             {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
                           </div>
                         </div>
@@ -922,7 +922,7 @@
                       <span
                         v-if="daily_position_pnl(position) !== null"
                         class="font-semibold"
-                        :class="daily_position_pnl(position) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                        :class="pnlClass(daily_position_pnl(position))"
                         :title="nativeAmountTitle(daily_position_pnl(position), position)"
                       >
                         {{ formatSignedPositionAmount(daily_position_pnl(position), position) }}
@@ -1007,17 +1007,17 @@
                   </td>
                   <td class="px-3 py-3 text-right">
                     <div v-if="totalUnrealizedPnLAccount !== null">
-                      <div class="font-semibold" :class="totalUnrealizedPnLAccount >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      <div class="font-semibold" :class="pnlClass(totalUnrealizedPnLAccount)">
                         {{ totalUnrealizedPnLLabel }}
                       </div>
-                      <div class="text-xs" :class="totalUnrealizedPnLPercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      <div class="text-xs" :class="pnlClass(totalUnrealizedPnLPercent)">
                         {{ totalUnrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(totalUnrealizedPnLPercent) }}%
                       </div>
                     </div>
                     <span v-else class="text-xs text-gray-400">-</span>
                   </td>
                   <td class="px-3 py-3 text-right">
-                    <span v-if="total_daily_pnl !== null" class="font-semibold" :class="total_daily_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                    <span v-if="total_daily_pnl !== null" class="font-semibold" :class="pnlClass(total_daily_pnl)">
                       {{ formatSignedCurrency(total_daily_pnl, { currency: accountCurrency }) }}
                     </span>
                     <span v-else class="text-xs text-gray-400">-</span>
@@ -1098,7 +1098,7 @@
                       <div>
                         <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Gross</div>
                         <dd class="text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap text-mono-num" :class="[
-                          dashboardGrossPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                          pnlClass(dashboardGrossPnl)
                         ]">
                           {{ formatCurrency(dashboardGrossPnl) }}
                         </dd>
@@ -1106,7 +1106,7 @@
                       <div>
                         <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Net</div>
                         <dd class="text-base sm:text-lg font-semibold whitespace-nowrap" :class="[
-                          dashboardNetPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                          pnlClass(dashboardNetPnl)
                         ]">
                           {{ formatCurrency(dashboardNetPnl) }}
                         </dd>
@@ -1391,7 +1391,7 @@
                               {{ symbol.trades }}
                             </td>
                             <td class="px-3 py-2 text-sm text-right" :class="[
-                              symbol.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                              pnlClass(symbol.total_pnl)
                             ]">
                               {{ formatCurrency(symbol.total_pnl) }}
                             </td>
@@ -1450,7 +1450,7 @@
                               </span>
                             </span>
                             <span :class="[
-                              trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+                              pnlClass(trade.pnl),
                               'font-medium'
                             ]">
                               {{ formatCurrency(trade.pnl) }}
@@ -1467,7 +1467,7 @@
                       <div v-if="analytics.topTrades.best?.length && analytics.topTrades.worst?.length" class="border-t border-gray-200 dark:border-gray-600 pt-3">
                         <div class="flex justify-between items-center px-2">
                           <span class="text-sm font-semibold text-gray-900 dark:text-white">Net Difference</span>
-                          <span class="text-sm font-semibold" :class="topTradesNetPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                          <span class="text-sm font-semibold" :class="pnlClass(topTradesNetPnl)">
                             {{ formatCurrency(topTradesNetPnl) }}
                           </span>
                         </div>
@@ -1637,7 +1637,7 @@
 </template>
 
 <script setup>
-import { winRateClass, profitFactorClass } from '@/utils/metricTone'
+import { winRateClass, profitFactorClass, pnlClass } from '@/utils/metricTone'
 import { tradePriceFractionDigits } from '@/composables/useTradePriceFormatter'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, onMounted, nextTick, watch, computed, onUnmounted, defineAsyncComponent } from 'vue'

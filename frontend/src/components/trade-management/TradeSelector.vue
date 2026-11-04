@@ -89,7 +89,7 @@
             <div
               :class="[
                 'font-medium',
-                parseFloat(trade.pnl) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                pnlClass(parseFloat(trade.pnl))
               ]"
             >
               {{ formatCurrency(trade.pnl) }}
@@ -99,7 +99,7 @@
                 'text-sm',
                 trade.pnl_percent == null
                   ? 'text-gray-400 dark:text-gray-500'
-                  : parseFloat(trade.pnl_percent) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  : pnlClass(parseFloat(trade.pnl_percent))
               ]"
             >
               {{ formatPercent(trade.pnl_percent) }}
@@ -157,6 +157,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { formatTradeDate } from '@/utils/date'
 import { formatPercent as formatPercentBase } from '@/utils/formatters'
 import { useUserTimezone } from '@/composables/useUserTimezone'

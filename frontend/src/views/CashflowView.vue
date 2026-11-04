@@ -160,7 +160,7 @@
                         <span v-if="row.outflow > 0">{{ formatSignedCurrency(-row.outflow) }}</span>
                         <span v-else class="text-gray-400">-</span>
                       </td>
-                      <td class="px-4 py-3 text-sm text-right font-medium whitespace-nowrap" :class="row.net >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      <td class="px-4 py-3 text-sm text-right font-medium whitespace-nowrap" :class="pnlClass(row.net)">
                         {{ formatSignedCurrency(row.net) }}
                       </td>
                       <td class="px-4 py-3 text-sm text-right font-semibold text-gray-900 dark:text-white whitespace-nowrap">
@@ -210,7 +210,7 @@
                                     <span
                                       v-if="t.eventType === 'exit' && t.pnl !== null"
                                       class="ml-2 text-xs"
-                                      :class="t.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                                      :class="pnlClass(t.pnl)"
                                     >
                                       ({{ formatSignedCurrency(t.pnl) }} P&L)
                                     </span>
@@ -480,6 +480,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useAccountsStore } from '@/stores/accounts'
@@ -611,7 +612,7 @@ watch(reversedCashflow, () => {
 const balanceClass = computed(() => {
   if (!cashflow.value) return 'text-gray-900 dark:text-white'
   const diff = cashflow.value.summary.currentBalance - cashflow.value.summary.initialBalance
-  return diff >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+  return pnlClass(diff)
 })
 
 // Methods

@@ -59,12 +59,13 @@ function createChart() {
         {
           label: dailyLabel,
           data: dailyData,
-          // Direction, not accent: each segment is green above zero, red below.
-          borderColor: '#16a34a',
-          backgroundColor: 'rgba(22, 163, 74, 0.08)',
-          segment: { borderColor: ctx => (ctx.p1.parsed.y < 0 || ctx.p0.parsed.y < 0) ? '#dc2626' : '#16a34a' },
-          pointBackgroundColor: ctx => (ctx.parsed?.y ?? 0) < 0 ? '#dc2626' : '#16a34a',
-          pointRadius: labels.length > 60 ? 0 : 2,
+          // Daily values are bars coloured by sign (green gain, red loss);
+          // the cumulative line draws on top.
+          type: 'bar',
+          order: 2,
+          backgroundColor: ctx => (ctx.parsed?.y ?? ctx.raw ?? 0) < 0 ? 'rgba(220, 38, 38, 0.85)' : 'rgba(22, 163, 74, 0.85)',
+          borderWidth: 0,
+          borderRadius: 2,
           yAxisID: 'y'
         },
         {
@@ -72,6 +73,8 @@ function createChart() {
           data: cumulativeData,
           borderColor: '#16a34a',
           backgroundColor: 'rgba(22, 163, 74, 0.1)',
+          order: 1,
+          pointRadius: labels.length > 60 ? 0 : 2,
           yAxisID: 'y1'
         }
       ]

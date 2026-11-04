@@ -54,26 +54,20 @@
               <div class="space-y-1">
                 <div class="text-xs text-gray-500 dark:text-gray-400">Gross</div>
                 <div class="text-lg font-semibold text-mono-num" :class="[
-                tradesStore.totalGrossPnL >= 0
-                  ? 'text-green-700 dark:text-green-400'
-                  : 'text-red-600 dark:text-red-400'
+                pnlClass(tradesStore.totalGrossPnL)
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
                 </div>
                 <div class="text-xs text-gray-500 dark:text-gray-400">Net</div>
                 <div class="text-lg font-semibold text-mono-num" :class="[
-                tradesStore.totalNetPnL >= 0
-                  ? 'text-green-700 dark:text-green-400'
-                  : 'text-red-600 dark:text-red-400'
+                pnlClass(tradesStore.totalNetPnL)
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
                 </div>
                 <template v-if="isUnrealizedColumnVisible">
                   <div class="text-xs text-gray-500 dark:text-gray-400">Unrealized</div>
                   <div class="text-sm font-medium tabular-nums" :class="[
-                  totalUnrealizedPnl >= 0
-                    ? 'text-green-700 dark:text-green-400'
-                    : 'text-red-600 dark:text-red-400'
+                  pnlClass(totalUnrealizedPnl)
                   ]">
                     {{ formatSignedCurrency(totalUnrealizedPnl) }}
                   </div>
@@ -113,9 +107,7 @@
               <div class="text-center">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Gross</div>
                 <div class="text-lg font-semibold text-mono-num" :class="[
-                  tradesStore.totalGrossPnL >= 0
-                    ? 'text-green-700 dark:text-green-400'
-                    : 'text-red-600 dark:text-red-400'
+                  pnlClass(tradesStore.totalGrossPnL)
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
                 </div>
@@ -123,9 +115,7 @@
               <div class="text-center">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Net</div>
                 <div class="text-lg font-semibold text-mono-num" :class="[
-                  tradesStore.totalNetPnL >= 0
-                    ? 'text-green-700 dark:text-green-400'
-                    : 'text-red-600 dark:text-red-400'
+                  pnlClass(tradesStore.totalNetPnL)
                 ]">
                   {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
                 </div>
@@ -133,9 +123,7 @@
               <div v-if="isUnrealizedColumnVisible" class="text-center">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Unrealized</div>
                 <div class="text-lg font-semibold text-mono-num" :class="[
-                  totalUnrealizedPnl >= 0
-                    ? 'text-green-700 dark:text-green-400'
-                    : 'text-red-600 dark:text-red-400'
+                  pnlClass(totalUnrealizedPnl)
                 ]">
                   {{ formatSignedCurrency(totalUnrealizedPnl) }}
                 </div>
@@ -376,11 +364,11 @@
             <div>
               <div class="text-gray-500 dark:text-gray-400">Net P&L</div>
               <div v-if="!isTradeOpen(trade)" class="font-medium" :class="[
-                trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                pnlClass(trade.pnl)
               ]">
                 {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                 <span v-if="trade.pnl_percent" class="text-xs ml-1">
-                  ({{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%)
+                  ({{ trade.pnl_percent > 0 ? '+' : '' }}{{ Number(trade.pnl_percent).toFixed(1) }}%)
                 </span>
               </div>
               <div v-else class="font-medium text-gray-400 dark:text-gray-500">-</div>
@@ -388,7 +376,7 @@
             <div>
               <div class="text-gray-500 dark:text-gray-400">Gross P&L</div>
               <div v-if="!isTradeOpen(trade)" class="font-medium" :class="[
-                getTradeGrossPnl(trade) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                pnlClass(getTradeGrossPnl(trade))
               ]">
                 {{ formatTradeSignedCurrency(getTradeGrossPnl(trade), trade) }}
               </div>
@@ -397,11 +385,11 @@
             <div v-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined">
               <div class="text-gray-500 dark:text-gray-400">Unrealized</div>
               <div class="font-medium" :class="[
-                trade.unrealizedPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                pnlClass(trade.unrealizedPnl)
               ]">
                 {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                 <span v-if="trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="text-xs ml-1">
-                  ({{ trade.unrealizedPnlPercent > 0 ? '+' : '' }}{{ formatNumber(trade.unrealizedPnlPercent) }}%)
+                  ({{ trade.unrealizedPnlPercent > 0 ? '+' : '' }}{{ Number(trade.unrealizedPnlPercent).toFixed(1) }}%)
                 </span>
               </div>
             </div>
@@ -427,7 +415,7 @@
             <div class="flex items-center justify-between">
               <div class="text-xs text-gray-500 dark:text-gray-400">Quality</div>
               <span class="badge"
-                :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
+                :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                 {{ trade.qualityGrade }}
               </span>
             </div>
@@ -459,7 +447,7 @@
         <!-- Desktop view (table) -->
         <div class="hidden md:block card overflow-hidden">
         <!-- Top scroll bar wrapper -->
-        <div ref="topScroll" class="overflow-x-auto overflow-y-hidden" @scroll="syncBottomScroll" style="height: 17px;">
+        <div ref="topScroll" class="overflow-x-auto overflow-y-hidden" @scroll="syncBottomScroll">
           <div :style="{width: tableScrollWidth, height: '1px'}"></div>
         </div>
         <!-- Main table wrapper -->
@@ -644,16 +632,16 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="!isTradeOpen(trade) && trade.pnl_percent" class="relative min-h-14">
                     <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-sm font-medium" :class="[
-                      trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      pnlClass(trade.pnl)
                     ]">
                       {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                     </div>
                     <div class="absolute inset-x-0 bottom-0 text-xs text-gray-500 dark:text-gray-400">
-                      {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
+                      {{ trade.pnl_percent > 0 ? '+' : '' }}{{ Number(trade.pnl_percent).toFixed(1) }}%
                     </div>
                   </div>
                   <div v-else-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
-                    trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    pnlClass(trade.pnl)
                   ]">
                     {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                   </div>
@@ -665,7 +653,7 @@
                     :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
-                    getTradeGrossPnl(trade) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    pnlClass(getTradeGrossPnl(trade))
                   ]">
                     {{ formatTradeSignedCurrency(getTradeGrossPnl(trade), trade) }}
                   </div>
@@ -678,17 +666,17 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined && trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="relative min-h-14">
                     <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-sm font-medium" :class="[
-                      trade.unrealizedPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      pnlClass(trade.unrealizedPnl)
                     ]">
                       {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                     </div>
                     <div class="absolute inset-x-0 bottom-0 text-xs text-gray-500 dark:text-gray-400">
-                      {{ trade.unrealizedPnlPercent > 0 ? '+' : '' }}{{ formatNumber(trade.unrealizedPnlPercent) }}%
+                      {{ trade.unrealizedPnlPercent > 0 ? '+' : '' }}{{ Number(trade.unrealizedPnlPercent).toFixed(1) }}%
                     </div>
                   </div>
                   <div v-else-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined">
                     <div class="text-sm font-medium" :class="[
-                      trade.unrealizedPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      pnlClass(trade.unrealizedPnl)
                     ]">
                       {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                     </div>
@@ -717,7 +705,7 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span v-if="trade.qualityGrade"
                     class="badge"
-                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
+                    :class="{ 'bg-primary-700 text-white dark:bg-primary-700 dark:text-white': trade.qualityGrade === 'A', 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300': trade.qualityGrade === 'B', 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300': trade.qualityGrade === 'C', 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100': trade.qualityGrade === 'D', 'bg-yellow-200 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200': trade.qualityGrade === 'F' }">
                     {{ trade.qualityGrade }}
                   </span>
                   <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
@@ -833,9 +821,9 @@
                     :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm font-medium" :class="[
-                    (trade.pnl_percent || 0) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    (trade.pnl_percent || pnlClass(0))
                   ]">
-                    {{ trade.pnl_percent != null ? `${trade.pnl_percent > 0 ? '+' : ''}${formatNumber(trade.pnl_percent)}%` : '-' }}
+                    {{ trade.pnl_percent != null ? `${trade.pnl_percent > 0 ? '+' : ''}${Number(trade.pnl_percent).toFixed(1)}%` : '-' }}
                   </div>
                 </td>
 
@@ -1161,6 +1149,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { onMounted, onUnmounted, computed, watch, ref, nextTick, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'

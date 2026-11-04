@@ -130,11 +130,11 @@
                 <td class="py-2 pr-4 text-right" :class="leg.stop_loss ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'">
                   {{ leg.stop_loss ? formatCurrency(leg.stop_loss) : 'Not set' }}
                 </td>
-                <td class="py-2 pr-4 text-right font-medium" :class="parseFloat(leg.pnl) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                <td class="py-2 pr-4 text-right font-medium" :class="pnlClass(parseFloat(leg.pnl))">
                   {{ formatCurrency(leg.pnl) }}
                 </td>
                 <td class="py-2 pr-4 text-right">
-                  <span v-if="leg.included_in_analysis" :class="leg.actual_r >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                  <span v-if="leg.included_in_analysis" :class="pnlClass(leg.actual_r)">
                     {{ formatR(leg.actual_r) }}
                   </span>
                   <span v-else class="text-xs text-gray-400 dark:text-gray-500" title="Excluded from the combined analysis">
@@ -184,9 +184,7 @@ const props = defineProps({
 
 const pnlClass = computed(() => {
   const pnl = parseFloat(props.trade.pnl)
-  return pnl >= 0
-    ? 'text-green-700 dark:text-green-400'
-    : 'text-red-600 dark:text-red-400'
+  return pnlClass(pnl)
 })
 
 const riskRewardActual = computed(() => {

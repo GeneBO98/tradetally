@@ -633,9 +633,7 @@ const takeProfitInput = ref(null)
 
 const pnlClass = computed(() => {
   const pnl = parseFloat(props.trade.pnl)
-  return pnl >= 0
-    ? 'text-green-700 dark:text-green-400'
-    : 'text-red-600 dark:text-red-400'
+  return pnlClass(pnl)
 })
 
 const stopLossPercent = computed(() => {

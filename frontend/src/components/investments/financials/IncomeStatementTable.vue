@@ -190,6 +190,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { computed } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
@@ -244,6 +245,6 @@ function formatGrowth(current, previous) {
 function getGrowthClass(current, previous) {
   if (!current || !previous) return 'text-gray-400'
   const growth = ((current - previous) / Math.abs(previous)) * 100
-  return growth >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+  return pnlClass(growth)
 }
 </script>

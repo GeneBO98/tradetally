@@ -271,7 +271,7 @@
                         <p
                             :class="[
                                 'text-2xl font-bold mt-2',
-                                portfolioOverviewReturn >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+                                pnlClass(portfolioOverviewReturn),
                             ]"
                         >
                             {{ formatCurrency(investmentsStore.portfolioOverview.totalReturn) }}
@@ -533,7 +533,7 @@
                                 <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Realized P&amp;L</p>
                                 <p
                                     class="text-sm font-semibold mt-0.5"
-                                    :class="rebalanceImpact.realizedPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                                    :class="pnlClass(rebalanceImpact.realizedPnl)"
                                 >
                                     {{ rebalanceImpact.realizedPnl >= 0 ? '+' : '' }}{{ formatCurrency(rebalanceImpact.realizedPnl) }}
                                 </p>
@@ -825,14 +825,14 @@
                                                 class="px-3 py-2 text-right"
                                             >
                                                 <span
-                                                    :class="row.totalReturnPercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                                                    :class="pnlClass(row.totalReturnPercent)"
                                                     class="font-medium"
                                                 >
                                                     {{ formatPercent(row.totalReturnPercent) }}
                                                 </span>
                                                 <span
                                                     v-if="!row.isLeader && !isPairCompare"
-                                                    :class="row.returnDelta >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                                                    :class="pnlClass(row.returnDelta)"
                                                     class="block text-xs"
                                                 >
                                                     {{ row.returnDelta >= 0 ? '+' : '' }}{{ row.returnDelta.toFixed(1) }}%
@@ -841,7 +841,7 @@
                                             <td
                                                 v-if="isPairCompare"
                                                 class="px-3 py-2 text-right font-medium"
-                                                :class="pairDifferenceRow.returnDelta >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                                                :class="pnlClass(pairDifferenceRow.returnDelta)"
                                             >
                                                 {{ pairDifferenceRow.returnDelta >= 0 ? '+' : '' }}{{ pairDifferenceRow.returnDelta.toFixed(1) }}%
                                             </td>
@@ -956,7 +956,7 @@
                                             <td
                                                 :class="[
                                                     'px-3 py-2 text-right text-xs font-medium',
-                                                    row.totalReturnPercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+                                                    pnlClass(row.totalReturnPercent),
                                                 ]"
                                             >
                                                 {{ formatPercent(row.totalReturnPercent) }}
@@ -1492,6 +1492,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, nextTick, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";

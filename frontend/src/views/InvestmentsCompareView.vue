@@ -214,6 +214,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -415,7 +416,7 @@ const comparisonMetricRows = computed(() => [
         valueClass: (account) => {
             const value = metricValue(account, 'totalReturnPercent')
             if (value === null) return 'text-gray-500 dark:text-gray-400'
-            return value >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+            return pnlClass(value)
         },
         formatDelta: (account) => {
             const delta = metricDelta(account, 'totalReturnPercent')

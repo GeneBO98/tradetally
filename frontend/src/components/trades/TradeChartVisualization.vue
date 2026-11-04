@@ -130,6 +130,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { computed, h, markRaw, onMounted, ref, shallowRef, watch } from 'vue'
 import { PresentationChartLineIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
@@ -284,7 +285,7 @@ const sourceLabel = computed(() => {
 })
 
 function metricClass(value) {
-  return Number(value) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+  return pnlClass(Number(value))
 }
 
 function formatPercent(value) {

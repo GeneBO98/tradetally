@@ -116,7 +116,7 @@
                   {{ symbol.total_trades }}
                 </span>
                 <div class="text-sm font-medium text-right whitespace-nowrap tabular-nums" :class="[
-                  symbol.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  pnlClass(symbol.total_pnl)
                 ]">
                   {{ formatCurrency(symbol.total_pnl) }}
                 </div>
@@ -141,6 +141,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { computed } from 'vue'
 import StockLogo from '@/components/common/StockLogo.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'

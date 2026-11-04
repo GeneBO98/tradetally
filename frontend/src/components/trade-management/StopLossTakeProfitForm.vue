@@ -40,7 +40,7 @@
           <div
             :class="[
               'text-lg font-medium',
-              parseFloat(trade.pnl) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              pnlClass(parseFloat(trade.pnl))
             ]"
           >
             {{ formatCurrency(trade.pnl) }}
@@ -209,6 +209,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { ref, computed, watch } from 'vue'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'

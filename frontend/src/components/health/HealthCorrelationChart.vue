@@ -73,7 +73,7 @@
           
           <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400">Average P&L Impact</div>
-            <div class="text-xl font-semibold text-mono-num" :class="statistics.avgImpact >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+            <div class="text-xl font-semibold text-mono-num" :class="pnlClass(statistics.avgImpact)">
               {{ formatSignedCurrency(statistics.avgImpact) }}
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -83,7 +83,7 @@
 
           <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400">Win Rate Impact</div>
-            <div class="text-xl font-semibold" :class="statistics.winRateImpact >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+            <div class="text-xl font-semibold" :class="pnlClass(statistics.winRateImpact)">
               {{ statistics.winRateImpact > 0 ? '+' : '' }}{{ statistics.winRateImpact.toFixed(1) }}%
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -122,6 +122,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'

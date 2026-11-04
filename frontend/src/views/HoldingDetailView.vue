@@ -155,9 +155,7 @@
                     <p
                         :class="[
                             'text-2xl font-bold',
-                            holding.unrealizedPnL >= 0
-                                ? 'text-green-700 dark:text-green-400'
-                                : 'text-red-600 dark:text-red-400',
+                            pnlClass(holding.unrealizedPnL),
                         ]"
                     >
                         {{ formatCurrency(holding.unrealizedPnL) }}
@@ -295,9 +293,7 @@
                                     <td
                                         class="px-6 py-4 whitespace-nowrap text-sm text-right"
                                         :class="
-                                            lot.gainLoss >= 0
-                                                ? 'text-green-700 dark:text-green-400'
-                                                : 'text-red-600 dark:text-red-400'
+                                            pnlClass(lot.gainLoss)
                                         "
                                     >
                                         {{ formatCurrency(lot.gainLoss) }}
@@ -596,6 +592,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useInvestmentsStore } from "@/stores/investments";

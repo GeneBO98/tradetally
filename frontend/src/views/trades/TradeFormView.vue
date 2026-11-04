@@ -263,9 +263,7 @@
               </div>
               <div class="text-right">
                 <p class="text-2xl font-bold"
-                   :class="computedPnlPreview.value >= 0
-                     ? 'text-green-700 dark:text-green-400'
-                     : 'text-red-600 dark:text-red-400'">
+                   :class="pnlClass(computedPnlPreview.value)">
                   {{ computedPnlPreview.value >= 0 ? '+' : '' }}${{ computedPnlPreview.value.toFixed(2) }}
                 </p>
               </div>
@@ -1514,6 +1512,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'

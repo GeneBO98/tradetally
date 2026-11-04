@@ -51,13 +51,13 @@
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm" :class="[
-                (rValueMode ? hour.total_r_value : hour.total_pnl) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                (rValueMode ? hour.total_r_value : pnlClass(hour.total_pnl))
               ]">
                 <span v-if="rValueMode">{{ formatNumber(hour.total_r_value) }}R</span>
                 <span v-else>{{ formatCurrency(hour.total_pnl) }}</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm" :class="[
-                (rValueMode ? hour.avg_r_value : hour.avg_pnl) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                (rValueMode ? hour.avg_r_value : pnlClass(hour.avg_pnl))
               ]">
                 <span v-if="rValueMode">{{ formatNumber(hour.avg_r_value) }}R</span>
                 <span v-else>{{ formatCurrency(hour.avg_pnl) }}</span>
@@ -71,6 +71,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { formatNumber, winRateInclBE, winRateExclBE } from '@/utils/analyticsFormatters'

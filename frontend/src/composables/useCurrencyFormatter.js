@@ -113,7 +113,7 @@ export function useCurrencyFormatter() {
   function formatSignedCurrency(value, options = {}) {
     if (value === null || value === undefined || isNaN(value)) return '-'
     const formatted = formatCurrency(Math.abs(value), { ...options, abs: false })
-    const sign = value >= 0 ? '+' : '-'
+    const sign = value > 0 ? '+' : value < 0 ? '-' : ''
     return `${sign}${formatted}`
   }
 

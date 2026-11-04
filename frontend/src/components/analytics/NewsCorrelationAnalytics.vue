@@ -94,13 +94,13 @@
                   </div>
                   <div>
                     <div class="text-gray-500 dark:text-gray-400">Avg P&L</div>
-                    <div class="font-medium" :class="data.avg_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                    <div class="font-medium" :class="pnlClass(data.avg_pnl)">
                       {{ formatCurrency(data.avg_pnl) }}
                     </div>
                   </div>
                   <div>
                     <div class="text-gray-500 dark:text-gray-400">Total P&L</div>
-                    <div class="font-medium" :class="data.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                    <div class="font-medium" :class="pnlClass(data.total_pnl)">
                       {{ formatCurrency(data.total_pnl) }}
                     </div>
                   </div>
@@ -240,7 +240,7 @@
                   <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {{ performer.win_rate }}%
                   </td>
-                  <td class="px-4 py-4 whitespace-nowrap text-sm font-medium" :class="performer.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                  <td class="px-4 py-4 whitespace-nowrap text-sm font-medium" :class="pnlClass(performer.total_pnl)">
                     {{ formatCurrency(performer.total_pnl) }}
                   </td>
                   <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
@@ -324,7 +324,7 @@
             </div>
             <div>
               <div class="text-sm text-gray-500 dark:text-gray-400">Total P&L</div>
-              <div class="text-lg font-semibold" :class="selectedPerformer.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+              <div class="text-lg font-semibold" :class="pnlClass(selectedPerformer.total_pnl)">
                 {{ formatCurrency(selectedPerformer.total_pnl) }}
               </div>
             </div>
@@ -397,6 +397,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { ref, onMounted } from 'vue'
 import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'

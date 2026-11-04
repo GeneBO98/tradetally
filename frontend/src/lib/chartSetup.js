@@ -68,7 +68,7 @@ const CHART_THEMES = {
   dark: { text: '#d1d5db', line: 'rgba(107, 114, 128, 0.4)' } // gray-300 / gray-500 at 40%
 }
 
-// One presentation contract for every Chart.js chart: system font at 11px,
+// One presentation contract for every Chart.js chart: system font at 12px,
 // gentle line smoothing, small markers, unrotated ticks, compact legends.
 Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
 Chart.defaults.font.size = 12
@@ -80,6 +80,8 @@ Chart.defaults.plugins.legend.labels.boxWidth = 12
 Chart.defaults.plugins.legend.labels.boxHeight = 12
 Chart.defaults.scale.ticks.maxRotation = 0
 Chart.defaults.scale.ticks.autoSkipPadding = 12
+// Room for axis titles and the last tick label so cards never clip them.
+Chart.defaults.layout.padding = { left: 4, right: 12, top: 4, bottom: 0 }
 
 function applyChartTheme(theme) {
   Chart.defaults.color = theme.text

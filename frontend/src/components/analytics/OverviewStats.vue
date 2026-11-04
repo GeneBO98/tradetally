@@ -1,11 +1,11 @@
 <template>
   <!-- Overview Stats -->
   <div class="card overflow-hidden text-mono-num">
-    <dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y divide-gray-100 dark:divide-gray-800 lg:divide-y-0 lg:divide-x lg:divide-gray-200 lg:dark:divide-gray-700">
+    <dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y divide-gray-100 dark:divide-gray-800 lg:divide-y-0 lg:divide-x lg:divide-gray-200 lg:dark:divide-gray-600">
       <!-- Total P&L -->
       <div class="px-4 py-3.5">
         <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">Total P&L</dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="overview.total_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="pnlClass(overview.total_pnl)">
           {{ formatCurrency(overview.total_pnl) }}
         </dd>
       </div>
@@ -32,7 +32,7 @@
       <!-- Average / Median Trade -->
       <div class="px-4 py-3.5">
         <dt class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">{{ calculationMethod }} Trade</dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="overview.avg_pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="pnlClass(overview.avg_pnl)">
           {{ formatCurrency(overview.avg_pnl) }}
         </dd>
       </div>
@@ -57,7 +57,7 @@
           <dd v-if="!rMultipleFlipped" key="avg" class="mt-1 text-lg lg:text-xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
             {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(1) + 'R' : '0.0R' }}
           </dd>
-          <dd v-else key="total" class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="(overview.total_r_value ?? 0) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+          <dd v-else key="total" class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="(overview.total_r_value ?? pnlClass(0))">
             {{ overview.total_r_value !== undefined && overview.total_r_value !== null ? Number(overview.total_r_value).toFixed(2) + 'R' : '0.00R' }}
           </dd>
         </transition>
@@ -94,6 +94,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { ref } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 

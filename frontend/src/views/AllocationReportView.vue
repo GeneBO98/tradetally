@@ -54,7 +54,7 @@
           <article class="card">
             <div class="card-body">
               <div class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Allocated P&amp;L</div>
-              <div class="mt-2 text-2xl font-semibold" :class="totalPnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(totalPnl) }}</div>
+              <div class="mt-2 text-2xl font-semibold" :class="pnlClass(totalPnl)">{{ formatCurrency(totalPnl) }}</div>
             </div>
           </article>
           <article class="card">
@@ -108,7 +108,7 @@
                     <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ group.trade_count }}</td>
                     <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ winRate(group) }}</td>
                     <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ formatCurrency(Number(group.allocated_commission) + Number(group.allocated_fees)) }}</td>
-                    <td class="px-3 py-4 text-right text-sm font-semibold" :class="Number(group.allocated_pnl) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(Number(group.allocated_pnl)) }}</td>
+                    <td class="px-3 py-4 text-right text-sm font-semibold" :class="pnlClass(Number(group.allocated_pnl))">{{ formatCurrency(Number(group.allocated_pnl)) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -133,7 +133,7 @@
                   <tr v-for="row in monthlyRows" :key="row.month">
                     <td class="whitespace-nowrap px-3 py-4 text-sm font-medium text-gray-900 dark:text-white">{{ formatMonth(row.month) }}</td>
                     <td v-for="group in visibleGroups" :key="group.id" class="whitespace-nowrap px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ formatCurrency(row.values[group.id] || 0) }}</td>
-                    <td class="whitespace-nowrap px-3 py-4 text-right text-sm font-semibold" :class="row.total >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ formatCurrency(row.total) }}</td>
+                    <td class="whitespace-nowrap px-3 py-4 text-right text-sm font-semibold" :class="pnlClass(row.total)">{{ formatCurrency(row.total) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -146,6 +146,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { computed, onMounted, ref, watch } from 'vue'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'

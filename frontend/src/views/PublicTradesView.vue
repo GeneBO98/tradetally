@@ -84,12 +84,12 @@
             
             <div class="text-right">
               <div class="text-lg font-semibold" :class="[
-                trade.pnl >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                pnlClass(trade.pnl)
               ]">
                 {{ trade.pnl ? formatCurrency(trade.pnl) : 'Open' }}
               </div>
               <div v-if="trade.pnl_percent" class="text-sm text-gray-500 dark:text-gray-400">
-                {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
+                {{ trade.pnl_percent > 0 ? '+' : '' }}{{ Number(trade.pnl_percent).toFixed(1) }}%
               </div>
             </div>
           </div>
@@ -219,6 +219,7 @@
 </template>
 
 <script setup>
+import { pnlClass } from '@/utils/metricTone'
 import { ref, onMounted } from 'vue'
 import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
