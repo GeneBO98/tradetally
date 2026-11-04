@@ -61,25 +61,25 @@
                       {{ playbook.description }}
                     </p>
                     <div class="mt-3 flex flex-wrap gap-2 text-xs">
-                      <span v-if="playbook.side && playbook.side !== 'both'" class="rounded-full bg-gray-100 px-2 py-1 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                      <span v-if="playbook.side && playbook.side !== 'both'" class="badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
                         {{ formatEnum(playbook.side) }}
                       </span>
-                      <span v-if="playbook.timeframe" class="rounded-full bg-gray-100 px-2 py-1 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                      <span v-if="playbook.timeframe" class="badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
                         {{ formatEnum(playbook.timeframe) }}
                       </span>
-                      <span class="rounded-full bg-gray-100 px-2 py-1 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                      <span class="badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
                         {{ playbook.checklistItems.length }} {{ playbook.reviewMode === 'score' ? 'criterion' : 'checklist item' }}{{ playbook.checklistItems.length === 1 ? '' : 's' }}
                       </span>
-                      <span class="rounded-full bg-primary-100 px-2 py-1 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                      <span class="badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
                         {{ playbook.reviewMode === 'score' ? '0-5 grading' : 'Checklist' }}
                       </span>
-                      <span v-if="playbook.autoAssignEnabled" class="rounded-full bg-primary-100 px-2 py-1 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                      <span v-if="playbook.autoAssignEnabled" class="badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
                         Auto-suggest
                       </span>
-                      <span v-if="playbook.requireStopLoss" class="rounded-full bg-orange-100 px-2 py-1 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                      <span v-if="playbook.requireStopLoss" class="badge bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
                         Stop required
                       </span>
-                      <span v-if="playbook.minimumTargetR !== null" class="rounded-full bg-primary-100 px-2 py-1 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                      <span v-if="playbook.minimumTargetR !== null" class="badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
                         Min {{ Number(playbook.minimumTargetR).toFixed(1) }}R
                       </span>
                     </div>

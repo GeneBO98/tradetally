@@ -384,7 +384,7 @@
                                 >
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <span
-                                            class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
+                                            class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
                                         >
                                             {{ month.monthName }}
                                         </span>

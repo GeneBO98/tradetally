@@ -63,7 +63,7 @@
           <!-- Total Potential R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Target R (Net)</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-primary-700 dark:text-primary-400">
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-gray-900 dark:text-white">
               {{ formatR(summary.total_potential_r) }}
             </div>
           </div>

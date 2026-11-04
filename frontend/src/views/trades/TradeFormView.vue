@@ -774,7 +774,7 @@
                 <span class="text-sm text-gray-500 dark:text-gray-400">10</span>
               </div>
               <div class="mt-2 text-center">
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-300">
+                <span class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-300">
                   Confidence: {{ form.confidence }}/10
                 </span>
               </div>

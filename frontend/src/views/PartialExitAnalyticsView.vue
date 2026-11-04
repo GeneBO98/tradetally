@@ -138,7 +138,7 @@
                 <!-- Partial Label -->
                 <td class="px-4 py-3 whitespace-nowrap">
                   <div class="flex items-center gap-2">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200">
+                    <span class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200">
                       {{ partial.label }}
                     </span>
                     <span

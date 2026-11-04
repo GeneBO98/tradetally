@@ -1278,7 +1278,7 @@
                 <span
                   v-for="tag in trade.tags"
                   :key="tag"
-                  class="px-3 py-1 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-sm rounded-full"
+                  class="badge bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400"
                 >
                   {{ tag }}
                 </span>

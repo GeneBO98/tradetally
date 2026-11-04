@@ -15,14 +15,14 @@
                             >
                                 <span
                                     v-if="revengeFreshness.calculationVersion"
-                                    class="rounded-full bg-gray-100 px-2 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                                    class="badge bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
                                 >
                                     Version
                                     {{ revengeFreshness.calculationVersion }}
                                 </span>
                                 <span
                                     v-if="revengeFreshness.latestRunAt"
-                                    class="rounded-full bg-gray-100 px-2 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                                    class="badge bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
                                 >
                                     Last run
                                     {{ formatDate(revengeFreshness.latestRunAt) }}
