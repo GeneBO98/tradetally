@@ -10,7 +10,7 @@
     </div>
 
     <!-- Behavioral Alert -->
-    <div v-if="behavioralAlert" class="mb-6 card border-l-4 border-l-red-500 bg-red-50 dark:bg-red-900/10">
+    <div v-if="behavioralAlert" class="mb-6 card border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10">
       <div class="card-body">
         <div class="flex items-start">
           <div class="flex-shrink-0">
@@ -48,7 +48,7 @@
     </div>
 
     <!-- Trade Blocking Warning -->
-    <div v-if="tradeBlocked" class="mb-6 card border-l-4 border-l-red-600 bg-red-100 dark:bg-red-900/20">
+    <div v-if="tradeBlocked" class="mb-6 card border-red-300 dark:border-red-700 bg-red-100 dark:bg-red-900/20">
       <div class="card-body text-center">
         <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/20 mb-4">
           <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

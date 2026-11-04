@@ -566,8 +566,7 @@
               </p>
 
               <div class="space-y-4">
-                <div v-for="metric in qualityBreakdown" :key="metric.key" class="border-l-4 pl-4 py-2"
-                  :class="[ metric.excluded ? 'border-gray-300 dark:border-gray-600' : metric.score >= 0.8 ? 'border-primary-500' : metric.score >= 0.6 ? 'border-primary-300' : metric.score >= 0.4 ? 'border-yellow-400' : 'border-gray-300 dark:border-gray-600' ]">
+                <div v-for="metric in qualityBreakdown" :key="metric.key" class="py-2">
                   <div class="flex items-center justify-between mb-2">
                     <div>
                       <h4 class="heading-sub">{{ metric.label }}</h4>
@@ -1514,8 +1513,7 @@
               
               <div class="space-y-4">
                 <div v-for="(article, index) in trade.news_events" :key="index" 
-                     class="border-l-4 pl-4 py-3"
-                     :class="[ article.sentiment === 'positive' ? 'border-green-400' : article.sentiment === 'negative' ? 'border-red-400' : 'border-gray-400' ]">
+                     class="py-3">
                   <div class="flex items-start justify-between">
                     <h4 class="heading-sub mb-2">
                       {{ article.headline }}

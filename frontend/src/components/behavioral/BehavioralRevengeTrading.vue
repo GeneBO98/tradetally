@@ -150,7 +150,7 @@
                                     <!-- Trigger Trade Information -->
                                     <div
                                         v-if="event.trigger_trade"
-                                        class="callout-danger mt-3 border-l-4"
+                                        class="callout-danger mt-3"
                                     >
                                         <div
                                             class="flex items-center justify-between mb-3"
@@ -371,8 +371,8 @@
                                                 :key="
                                                     pattern.pattern_type + index
                                                 "
-                                                class="p-3 rounded-lg border-l-4 cursor-pointer transition-colors"
-                                                :class="{ 'bg-yellow-50 dark:bg-yellow-900/10 hover:bg-yellow-100 dark:hover:bg-yellow-900/20 border-yellow-400': pattern.pattern_type === 'same_symbol_revenge', 'bg-primary-50 dark:bg-primary-900/10 hover:bg-primary-100 dark:hover:bg-primary-900/20 border-primary-400': pattern.pattern_type === 'emotional_reactive_trading', }"
+                                                class="p-3 rounded-lg border cursor-pointer transition-colors"
+                                                :class="{ 'bg-yellow-50 dark:bg-yellow-900/10 hover:bg-yellow-100 dark:hover:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800': pattern.pattern_type === 'same_symbol_revenge', 'bg-primary-50 dark:bg-primary-900/10 hover:bg-primary-100 dark:hover:bg-primary-900/20 border-primary-200 dark:border-primary-800': pattern.pattern_type === 'emotional_reactive_trading', }"
                                                 @click="
                                                     $emit('open-trade', pattern.trade_id)
                                                 "

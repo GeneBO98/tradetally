@@ -376,7 +376,7 @@
                     <div
                       v-for="(headline, index) in trade.news_headlines"
                       :key="index"
-                      class="text-sm text-gray-600 dark:text-gray-400 p-2 bg-gray-50 dark:bg-gray-700 rounded border-l-2 border-primary-400"
+                      class="text-sm text-gray-600 dark:text-gray-400 p-2 bg-gray-50 dark:bg-gray-700 rounded"
                     >
                       {{ headline }}
                     </div>

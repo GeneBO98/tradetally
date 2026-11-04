@@ -136,8 +136,8 @@
                     <div
                         v-for="alert in activeAlerts"
                         :key="alert.id"
-                        class="card border-l-4"
-                        :class="{ 'border-l-red-500 bg-red-50 dark:bg-red-900/10': alert.alert_type === 'warning', 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/10': alert.alert_type === 'recommendation', 'border-l-red-600 bg-red-100 dark:bg-red-900/20': alert.alert_type === 'blocking', }"
+                        class="card"
+                        :class="{ 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10': alert.alert_type === 'warning', 'border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/10': alert.alert_type === 'recommendation', 'border-red-300 dark:border-red-700 bg-red-100 dark:bg-red-900/20': alert.alert_type === 'blocking', }"
                     >
                         <div class="card-body">
                             <div class="flex items-start justify-between">

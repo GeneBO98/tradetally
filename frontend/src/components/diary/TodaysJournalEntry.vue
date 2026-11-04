@@ -65,7 +65,7 @@
           Showing your most recent entry. Open the journal to view all entries from today.
         </p>
         <!-- Title -->
-        <div v-if="entry.title" class="border-l-4 border-primary-500 pl-3">
+        <div v-if="entry.title">
           <h4 class="heading-card">{{ entry.title }}</h4>
         </div>
 

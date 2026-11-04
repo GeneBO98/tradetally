@@ -234,6 +234,12 @@ describe('design system consistency', () => {
     expect(offenders(f => /style="[^"]*z-index/.test(f.text))).toEqual([])
   })
 
+  it('does not pin decorative accent bars to the edge of cards and notices', () => {
+    // The one allowed edge accent marks state: the selected comparison row.
+    const ALLOWED = ['views/InvestmentsView.vue']
+    expect(offenders(f => /\bborder-l-(?:4|\[\d+px\])\b/.test(f.text) && !ALLOWED.includes(f.path))).toEqual([])
+  })
+
   it('gives every loading ring the shared .spinner class', () => {
     const bad = offenders(f => classStrings(f.text).some(c =>
       /\banimate-spin\b/.test(c) && /\brounded-full\b/.test(c) && /\bborder/.test(c) && !/\bspinner\b/.test(c)
