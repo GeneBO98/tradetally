@@ -243,6 +243,7 @@ const authStore = useAuthStore();
 const comments = ref([]);
 const newComment = ref("");
 const loading = ref(false);
+const initialLoading = ref(true);
 const submitting = ref(false);
 const editingCommentId = ref(null);
 const editCommentText = ref("");

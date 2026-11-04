@@ -439,6 +439,7 @@ const { showDangerConfirmation } = useNotification();
 const mappings = ref([]);
 const pagination = ref(null);
 const loading = ref(false);
+const initialLoading = ref(true);
 const searchQuery = ref("");
 const statusFilter = ref("");
 const sourceFilter = ref("");

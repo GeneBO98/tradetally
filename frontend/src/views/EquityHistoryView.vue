@@ -283,6 +283,7 @@ const { formatCurrency, currencySymbol } = useCurrencyFormatter();
 const { showSuccess, showError, showDangerConfirmation } = useNotification();
 
 const loading = ref(true);
+const initialLoading = ref(true);
 const saving = ref(false);
 const equitySnapshots = ref([]);
 const showEquityModal = ref(false);

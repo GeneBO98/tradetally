@@ -191,6 +191,14 @@ describe('design system consistency', () => {
     expect(offenders(f => re.test(f.text))).toEqual([])
   })
 
+  it('declares initialLoading wherever a template or script uses it', () => {
+    const bad = offenders(f =>
+      /(?<![.\w])initialLoading\b/.test(f.text) &&
+      !/(?:const|let)\s+initialLoading\b|\binitialLoading\s*:/.test(f.text)
+    )
+    expect(bad).toEqual([])
+  })
+
   it('gives every loading ring the shared .spinner class', () => {
     const bad = offenders(f => classStrings(f.text).some(c =>
       /\banimate-spin\b/.test(c) && /\brounded-full\b/.test(c) && /\bborder/.test(c) && !/\bspinner\b/.test(c)

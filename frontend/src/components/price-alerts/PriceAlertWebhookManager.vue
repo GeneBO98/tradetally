@@ -324,6 +324,7 @@ const { showConfirmation, showCriticalError, showSuccess } = useNotification();
 
 const webhooks = ref([]);
 const loading = ref(true);
+const initialLoading = ref(true);
 const loadError = ref("");
 const showModal = ref(false);
 const saving = ref(false);
