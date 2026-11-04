@@ -95,6 +95,7 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import api from '@/services/api'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   symbols: {
@@ -117,10 +118,12 @@ const formatEarningsDate = (dateStr) => {
   return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+const { formatCurrency } = useCurrencyFormatter()
+
 const formatEps = (num) => {
   if (num === null || num === undefined || isNaN(num)) return '-'
   const value = parseFloat(num)
-  return `${value < 0 ? '-' : ''}$${Math.abs(value).toFixed(2)}`
+  return formatCurrency(value, { currency: 'USD' })
 }
 
 const fetchEarnings = async () => {

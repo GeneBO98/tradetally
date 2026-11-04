@@ -624,10 +624,10 @@
                                                             }"
                                                         >
                                                             {{
-                                                                parseFloat(
+                                                                formatPercent(
                                                                     pattern.return_percent,
-                                                                ).toFixed(2)
-                                                            }}%
+                                                                )
+                                                            }}
                                                         </span>
                                                         <span
                                                             v-if="
@@ -1063,6 +1063,7 @@ import { ref, computed } from "vue";
 import MdiIcon from "@/components/MdiIcon.vue";
 import { useUserTimezone } from "@/composables/useUserTimezone";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
+import { formatPercent } from "@/utils/formatters";
 import {
     formatDate,
     getTimeBetweenTrades,

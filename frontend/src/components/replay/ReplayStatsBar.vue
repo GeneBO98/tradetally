@@ -39,7 +39,7 @@
     <div>
       <dt class="text-label">R Multiple</dt>
       <dd class="font-medium tabular-nums" :class="stats.r_multiple !== null ? pnlClass(stats.r_multiple) : 'text-gray-500 dark:text-gray-400'">
-        {{ stats.r_multiple !== null ? `${stats.r_multiple > 0 ? '+' : ''}${stats.r_multiple.toFixed(1)}R` : 'No stop set' }}
+        {{ stats.r_multiple !== null ? formatR(stats.r_multiple) : 'No stop set' }}
       </dd>
     </div>
   </div>
@@ -48,6 +48,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatR } from '@/utils/rFormat'
 
 const props = defineProps({
   stats: { type: Object, required: true },

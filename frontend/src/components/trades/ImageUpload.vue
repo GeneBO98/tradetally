@@ -118,7 +118,7 @@
           <span class="truncate">{{ result.file_name || result.filename }}</span>
           <div class="flex items-center space-x-2 ml-2">
             <span v-if="!result.error && result.compressionRatio" class="text-xs">
-              {{ result.compressionRatio.toFixed(1) }}% compressed
+              {{ formatPercent(result.compressionRatio) }} compressed
             </span>
             <span v-if="result.error" class="text-xs">{{ result.error }}</span>
             <svg v-if="!result.error" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -137,6 +137,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useNotification } from '@/composables/useNotification'
+import { formatPercent } from '@/utils/formatters'
 import api from '@/services/api'
 
 const props = defineProps({

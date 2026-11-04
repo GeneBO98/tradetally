@@ -222,6 +222,8 @@ import api from '@/services/api'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { formatDecimal } from '@/utils/formatters'
+import { formatR as formatRBase } from '@/utils/rFormat'
 
 const { selectedAccount } = useGlobalAccountFilter()
 
@@ -297,15 +299,12 @@ const ptsColor = (pts) => {
 }
 
 const formatPts = (value) => {
-  if (value === null || value === undefined) return '--'
-  const sign = value > 0 ? '+' : ''
-  return `${sign}${value.toFixed(2)}`
+  return formatDecimal(value, { showSign: true, nullValue: '--' })
 }
 
 const formatR = (value) => {
   if (value === null || value === undefined) return '--'
-  const sign = value > 0 ? '+' : ''
-  return `${sign}${value.toFixed(1)}R`
+  return formatRBase(value)
 }
 
 watch(selectedAccount, () => {

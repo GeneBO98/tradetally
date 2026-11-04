@@ -164,8 +164,7 @@
                         v-if="holding.unrealizedPnLPercent !== undefined"
                         :class="[ 'text-xs', holding.unrealizedPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400', ]"
                     >
-                        {{ holding.unrealizedPnL >= 0 ? "+" : ""
-                        }}{{ holding.unrealizedPnLPercent.toFixed(1) }}%
+                        {{ formatPercent(holding.unrealizedPnLPercent, { digits: 1, showSign: holding.unrealizedPnL >= 0 }) }}
                     </p>
                 </div>
             </div>
@@ -299,8 +298,8 @@
                                         {{ formatCurrency(lot.gainLoss) }}
                                         <span class="text-xs ml-1"
                                             >({{
-                                                lot.gainLossPercent.toFixed(1)
-                                            }}%)</span
+                                                formatPercent(lot.gainLossPercent, { digits: 1 })
+                                            }})</span
                                         >
                                     </td>
                                     <td
@@ -372,14 +371,13 @@
                                         class="text-xl font-bold text-gray-900 dark:text-white"
                                     >
                                         {{
-                                            holding.costBasis > 0
-                                                ? (
-                                                      (totalDividends /
-                                                          holding.costBasis) *
-                                                      100
-                                                  ).toFixed(2)
-                                                : 0
-                                        }}%
+                                            formatPercent(
+                                                holding.costBasis > 0
+                                                    ? (totalDividends / holding.costBasis) * 100
+                                                    : 0,
+                                                { digits: 1 }
+                                            )
+                                        }}
                                     </p>
                                 </div>
                             </div>
@@ -598,6 +596,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useInvestmentsStore } from "@/stores/investments";
 import { useNotification } from "@/composables/useNotification";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
+import { formatPercent } from "@/utils/formatters";
 import { format, parseISO } from "date-fns";
 import EightPillarsCard from "@/components/investments/EightPillarsCard.vue";
 import AddLotModal from "@/components/investments/AddLotModal.vue";

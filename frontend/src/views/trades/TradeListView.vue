@@ -81,9 +81,9 @@
             <div>
               <dt class="text-xs text-gray-500 dark:text-gray-400">Win Rate</dt>
               <dd class="stat-value stat-value-sm" :class="winRateClass(tradesStore.winRate)">
-                {{ Number(tradesStore.winRate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+                {{ formatPercent(tradesStore.winRate) }}<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
               </dd>
-              <dd class="text-xs text-gray-500 dark:text-gray-400">{{ Number(tradesStore.winRateExcludingBreakeven).toFixed(1) }}% excl. BE</dd>
+              <dd class="text-xs text-gray-500 dark:text-gray-400">{{ formatPercent(tradesStore.winRateExcludingBreakeven) }} excl. BE</dd>
             </div>
             <div v-if="isUnrealizedColumnVisible">
               <dt class="text-xs text-gray-500 dark:text-gray-400">Unrealized</dt>
@@ -131,9 +131,9 @@
             <div class="text-right">
               <div class="text-sm text-gray-500 dark:text-gray-400">Win Rate</div>
               <div class="stat-value" :class="winRateClass(tradesStore.winRate)">
-                {{ Number(tradesStore.winRate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+                {{ formatPercent(tradesStore.winRate) }}<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
               </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">{{ Number(tradesStore.winRateExcludingBreakeven).toFixed(1) }}% excl. BE</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatPercent(tradesStore.winRateExcludingBreakeven) }} excl. BE</div>
             </div>
             <!-- Fullwidth Toggle -->
             <button
@@ -368,7 +368,7 @@
               ]">
                 {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                 <span v-if="trade.pnl_percent" class="text-xs ml-1">
-                  ({{ trade.pnl_percent > 0 ? '+' : '' }}{{ Number(trade.pnl_percent).toFixed(1) }}%)
+                  ({{ formatDecimal(Number(trade.pnl_percent), { digits: 1, showSign: true }) }}%)
                 </span>
               </div>
               <div v-else class="font-medium text-gray-400 dark:text-gray-500">-</div>
@@ -389,7 +389,7 @@
               ]">
                 {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                 <span v-if="trade.unrealizedPnlPercent !== null && trade.unrealizedPnlPercent !== undefined" class="text-xs ml-1">
-                  ({{ trade.unrealizedPnlPercent > 0 ? '+' : '' }}{{ Number(trade.unrealizedPnlPercent).toFixed(1) }}%)
+                  ({{ formatDecimal(Number(trade.unrealizedPnlPercent), { digits: 1, showSign: true }) }}%)
                 </span>
               </div>
             </div>
@@ -630,7 +630,7 @@
                       {{ formatTradeSignedCurrency(trade.pnl, trade) }}
                     </div>
                     <div class="absolute inset-x-0 bottom-0 text-xs text-gray-500 dark:text-gray-400">
-                      {{ trade.pnl_percent > 0 ? '+' : '' }}{{ Number(trade.pnl_percent).toFixed(1) }}%
+                      {{ formatDecimal(Number(trade.pnl_percent), { digits: 1, showSign: true }) }}%
                     </div>
                   </div>
                   <div v-else-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
@@ -664,7 +664,7 @@
                       {{ formatTradeSignedCurrency(trade.unrealizedPnl, trade) }}
                     </div>
                     <div class="absolute inset-x-0 bottom-0 text-xs text-gray-500 dark:text-gray-400">
-                      {{ trade.unrealizedPnlPercent > 0 ? '+' : '' }}{{ Number(trade.unrealizedPnlPercent).toFixed(1) }}%
+                      {{ formatDecimal(Number(trade.unrealizedPnlPercent), { digits: 1, showSign: true }) }}%
                     </div>
                   </div>
                   <div v-else-if="trade.unrealizedPnl !== null && trade.unrealizedPnl !== undefined">
@@ -809,7 +809,7 @@
                   <div class="text-sm font-medium" :class="[
                     (trade.pnl_percent || pnlClass(0))
                   ]">
-                    {{ trade.pnl_percent != null ? `${trade.pnl_percent > 0 ? '+' : ''}${Number(trade.pnl_percent).toFixed(1)}%` : '-' }}
+                    {{ trade.pnl_percent != null ? `${formatDecimal(Number(trade.pnl_percent), { digits: 1, showSign: true })}%` : '-' }}
                   </div>
                 </td>
 
@@ -838,7 +838,7 @@
                     trade.rValue >= 0 ? 'text-red-600 dark:text-red-400' :
                     'text-red-600 dark:text-red-400'
                   ]">
-                    {{ Number(trade.rValue).toFixed(1) }}R
+                    {{ formatR(trade.rValue) }}
                   </div>
                   <div v-else class="text-sm text-gray-500">-</div>
                 </td>
@@ -913,7 +913,7 @@
                 <td v-else-if="column.visible && column.key === 'sleepHours'"
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.sleep_hours ? `${Number(trade.sleep_hours).toFixed(1)}h` : '-' }}
+                  {{ trade.sleep_hours ? `${formatDecimal(Number(trade.sleep_hours), { digits: 1 })}h` : '-' }}
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'sleepScore'"
@@ -1136,6 +1136,8 @@
 
 <script setup>
 import { pnlClass, winRateClass } from '@/utils/metricTone'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
+import { formatR } from '@/utils/rFormat'
 import { onMounted, onUnmounted, computed, watch, ref, nextTick, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
@@ -1222,7 +1224,7 @@ function formatExcursionValue(trade, value) {
   const legacyPointUnits = hasLegacyFuturesExcursionUnits(trade, captured, scale)
   const points = legacyPointUnits ? numeric : numeric / scale
   const dollars = legacyPointUnits ? numeric * scale : numeric
-  return `${points.toFixed(2)} pts (${formatCurrency(dollars)})`
+  return `${formatDecimal(points)} pts (${formatCurrency(dollars)})`
 }
 
 function getCapturedMoveDollars(trade, scale) {

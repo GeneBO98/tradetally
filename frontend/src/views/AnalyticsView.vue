@@ -303,7 +303,7 @@
                 </div>
                 <div class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">Win Rate:</span>
-                  <span class="font-medium" :class="winRateClass(sector.win_rate)">{{ Number(sector.win_rate).toFixed(1) }}%</span>
+                  <span class="font-medium" :class="winRateClass(sector.win_rate)">{{ formatPercent(sector.win_rate) }}</span>
                 </div>
               </div>
               
@@ -748,6 +748,8 @@ import { useAIStore } from '@/stores/ai'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { usePricingExperiment } from '@/composables/usePricingExperiment'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatPercent } from '@/utils/formatters'
+import { formatR } from '@/utils/rFormat'
 import { Chart, chartGain, chartLoss, chartAccent } from '@/lib/chartSetup'
 
 const { formatCurrency, currencySymbol } = useCurrencyFormatter()
@@ -1445,7 +1447,7 @@ function createPerformanceByPriceChart() {
               const index = context.dataIndex
               const tradeCount = performanceByPriceCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(1)}R (${tradeCount} trades)`
+                return `Total R-Multiple: ${formatR(context.parsed.x)} (${tradeCount} trades)`
               }
               return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
@@ -1530,7 +1532,7 @@ function createPerformanceByVolumeChart() {
               const index = context.dataIndex
               const tradeCount = performanceByVolumeCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(1)}R (${tradeCount} trades)`
+                return `Total R-Multiple: ${formatR(context.parsed.x)} (${tradeCount} trades)`
               }
               return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
@@ -1615,7 +1617,7 @@ function createPerformanceByPositionSizeChart() {
               const index = context.dataIndex
               const tradeCount = performanceByPositionSizeCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(1)}R (${tradeCount} trades)`
+                return `Total R-Multiple: ${formatR(context.parsed.x)} (${tradeCount} trades)`
               }
               return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
@@ -1707,7 +1709,7 @@ function createDayOfWeekChart() {
           callbacks: {
             label: function(context) {
               if (rValueMode.value) {
-                return `R-Multiple: ${context.parsed.x.toFixed(1)}R`
+                return `R-Multiple: ${formatR(context.parsed.x)}`
               }
               return `P&L: ${formatCurrency(context.parsed.x)}`
             }
@@ -1804,7 +1806,7 @@ function createPerformanceByHoldTimeChart() {
               const index = context.dataIndex
               const tradeCount = performanceByHoldTimeCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(1)}R (${tradeCount} trades)`
+                return `Total R-Multiple: ${formatR(context.parsed.x)} (${tradeCount} trades)`
               }
               return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
@@ -2002,7 +2004,7 @@ function createDrawdownChart() {
           callbacks: {
             label: function(context) {
               if (rValueMode.value) {
-                return `Drawdown: ${context.parsed.y.toFixed(1)}R`
+                return `Drawdown: ${formatR(context.parsed.y)}`
               }
               return `Drawdown: ${formatCurrency(context.parsed.y)}`
             },

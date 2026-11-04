@@ -115,6 +115,7 @@ import { computed, ref, watch } from 'vue'
 import { PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useTradesStore } from '@/stores/trades'
+import { formatPercent } from '@/utils/formatters'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -191,7 +192,7 @@ function previewPnl(row) {
 }
 
 function formatRemaining() {
-  return mode.value === 'percentage' ? `${remaining.value.toFixed(2)}%` : formatQuantity(remaining.value)
+  return mode.value === 'percentage' ? formatPercent(remaining.value, { digits: 2 }) : formatQuantity(remaining.value)
 }
 
 function availableGroups(currentId) {

@@ -141,6 +141,7 @@
 <script setup>
 import { pnlClass } from '@/utils/metricTone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
 
 const props = defineProps({
   data: {
@@ -187,14 +188,13 @@ function formatNumber(value) {
 function formatDividends(value) {
   if (value === null || value === undefined || value === 0) return '-'
   // Dividends paid is typically negative (cash outflow)
-  return `($${formatNumber(Math.abs(value))})`
+  return `(${symbolFor(props.currency)}${formatNumber(Math.abs(value))})`
 }
 
 function formatGrowth(current, previous) {
   if (!current || !previous) return ''
   const growth = ((current - previous) / Math.abs(previous)) * 100
-  const sign = growth > 0 ? '+' : ''
-  return `${sign}${growth.toFixed(1)}% YoY`
+  return `${formatDecimal(growth, { digits: 1, showSign: true })}% YoY`
 }
 
 function getGrowthClass(current, previous) {
@@ -218,6 +218,6 @@ function formatFcfMargin(period) {
 function formatCapexRatio(period) {
   if (!period.capitalExpenditures || !period.operatingCashFlow) return '-'
   const ratio = (Math.abs(period.capitalExpenditures) / period.operatingCashFlow) * 100
-  return `${ratio.toFixed(1)}%`
+  return formatPercent(ratio, { digits: 1 })
 }
 </script>

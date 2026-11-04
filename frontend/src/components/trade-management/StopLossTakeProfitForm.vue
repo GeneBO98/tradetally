@@ -177,6 +177,7 @@
 
 <script setup>
 import { pnlClass } from '@/utils/metricTone'
+import { formatDecimal } from '@/utils/formatters'
 import { ref, computed, watch } from 'vue'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -300,7 +301,7 @@ async function saveLevels() {
 
 function formatPrice(value) {
   if (!value) return '-'
-  return parseFloat(value).toFixed(2)
+  return formatDecimal(value)
 }
 
 // Reset form when trade changes

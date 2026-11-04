@@ -8,6 +8,7 @@
 import { onMounted, ref, watch } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import { formatTradeDate } from '@/utils/date'
+import { formatDecimal } from '@/utils/formatters'
 
 const props = defineProps({
   data: {
@@ -82,7 +83,7 @@ function createChart() {
         tooltip: {
           callbacks: {
             label(context) {
-              return `${context.dataset.label}: ${Number(context.raw).toFixed(2)} index points`
+              return `${context.dataset.label}: ${formatDecimal(context.raw, { digits: 2 })} index points`
             }
           }
         }
@@ -110,7 +111,7 @@ function createChart() {
           ticks: {
             color: textColor,
             callback(value) {
-              return Number(value).toFixed(0)
+              return formatDecimal(value, { digits: 0 })
             }
           },
           grid: {

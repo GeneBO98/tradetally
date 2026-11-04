@@ -721,6 +721,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import api from "@/services/api";
+import { formatDecimal } from "@/utils/formatters";
 import { useUserTimezone } from "@/composables/useUserTimezone";
 import { useNotification } from "@/composables/useNotification";
 import AdminNav from "@/components/admin/AdminNav.vue";
@@ -1035,10 +1036,10 @@ function formatDate(dateString) {
 function formatFileSize(bytes) {
     if (!bytes) return "N/A";
     if (bytes < 1024) return bytes + " B";
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + " KB";
+    if (bytes < 1024 * 1024) return formatDecimal(bytes / 1024) + " KB";
     if (bytes < 1024 * 1024 * 1024)
-        return (bytes / (1024 * 1024)).toFixed(2) + " MB";
-    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+        return formatDecimal(bytes / (1024 * 1024)) + " MB";
+    return formatDecimal(bytes / (1024 * 1024 * 1024)) + " GB";
 }
 
 onMounted(() => {

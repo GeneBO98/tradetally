@@ -167,6 +167,7 @@ import { computed } from 'vue'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { formatR } from '@/utils/rFormat'
+import { formatDecimal, formatQuantity } from '@/utils/formatters'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 const { formatCurrency } = useCurrencyFormatter()
@@ -190,20 +191,14 @@ const pnlClass = computed(() => {
 const riskRewardActual = computed(() => {
   const actualR = props.analysis.actual_r
   if (actualR === null || actualR === undefined) return 'N/A'
-  return `1:${actualR.toFixed(2)}`
+  return `1:${formatDecimal(actualR)}`
 })
 
 const riskRewardPlanned = computed(() => {
   const targetR = props.analysis.target_r
   if (targetR === null || targetR === undefined) return null
-  return `1:${targetR.toFixed(2)}`
+  return `1:${formatDecimal(targetR)}`
 })
-
-function formatQuantity(value) {
-  const num = parseFloat(value)
-  if (!Number.isFinite(num)) return '-'
-  return Number.isInteger(num) ? String(num) : num.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
-}
 
 function formatDateTimeSafe(value) {
   if (!value) return '-'

@@ -161,7 +161,7 @@
           <span class="truncate">{{ result.file_name || result.filename }}</span>
           <div class="flex items-center space-x-2 ml-2">
             <span v-if="!result.error && result.compressionRatio" class="text-xs">
-              {{ result.compressionRatio.toFixed(1) }}% compressed
+              {{ formatPercent(result.compressionRatio) }} compressed
             </span>
             <span v-if="result.error" class="text-xs">{{ result.error }}</span>
             <svg v-if="!result.error" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -206,6 +206,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, toRef } from 'vue'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthedImage } from '@/composables/useAuthedImage'
 import api from '@/services/api'
+import { formatPercent } from '@/utils/formatters'
 
 const props = defineProps({
   diaryEntryId: {

@@ -124,7 +124,7 @@
               <div v-if="trade.take_profit">
                 <div class="text-lg font-semibold text-primary-700 dark:text-primary-400">
                   {{ formatCurrency(trade.take_profit) }}
-                  <span v-if="tp1R" class="text-sm font-medium ml-1">({{ tp1R }}R)</span>
+                  <span v-if="tp1R" class="text-sm font-medium ml-1">({{ formatR(Number(tp1R)) }})</span>
                 </div>
                 <div class="text-xs text-gray-500 dark:text-gray-400">
                   <span v-if="tp1Qty">{{ tp1Qty }} shares · </span>
@@ -143,7 +143,7 @@
               <span class="text-label">TP{{ index + 1 }}</span>
               <!-- Show calculated R for this target (moved to header line) -->
               <span v-if="target.price && calculateTargetR(target.price)" class="text-xs text-primary-700 dark:text-primary-400 font-medium">
-                ({{ calculateTargetR(target.price) }}R)
+                ({{ formatR(Number(calculateTargetR(target.price))) }})
               </span>
               <span v-if="target.status === 'hit'" :class="`${getTargetStatusClass('hit')} ml-2`">
                 Hit
@@ -321,7 +321,8 @@
 <script setup>
 import { ref, computed, nextTick, watch } from 'vue'
 import { formatTradeDate } from '@/utils/date'
-import { formatPercent as formatPercentBase, formatQuantity } from '@/utils/formatters'
+import { formatDecimal, formatPercent as formatPercentBase, formatQuantity } from '@/utils/formatters'
+import { formatR } from '@/utils/rFormat'
 import api from '@/services/api'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -691,7 +692,7 @@ const tp1Qty = computed(() => {
 const riskRewardActual = computed(() => {
   const actualR = props.analysis.actual_r
   if (actualR === null || actualR === undefined) return 'N/A'
-  return `1:${actualR.toFixed(2)}`
+  return `1:${formatDecimal(actualR)}`
 })
 
 // Calculate weighted average R for planned risk:reward
@@ -744,7 +745,7 @@ const riskRewardPlanned = computed(() => {
   // Use backend-calculated values to match the Target R card exactly
   const targetR = props.analysis.weighted_target_r ?? props.analysis.target_r
   if (targetR === null || targetR === undefined) return null
-  return `1:${targetR.toFixed(2)}`
+  return `1:${formatDecimal(targetR)}`
 })
 
 // Stop Loss editing

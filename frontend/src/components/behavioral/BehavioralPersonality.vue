@@ -102,14 +102,14 @@
                                     >
                                         Confidence:
                                         {{
-                                            (
+                                            formatPercent(
                                                 parseFloat(
                                                     personalityData.profile
                                                         .personality_confidence ||
                                                         0,
                                                 ) * 100
-                                            ).toFixed(0)
-                                        }}%
+                                            )
+                                        }}
                                     </p>
                                 </div>
                                 <div class="text-right">
@@ -122,11 +122,11 @@
                                         class="text-2xl font-bold text-primary-700 dark:text-primary-400"
                                     >
                                         {{
-                                            parseFloat(
+                                            formatDecimal(parseFloat(
                                                 personalityData.profile
                                                     .personality_performance_score ||
                                                     0,
-                                            ).toFixed(2)
+                                            ))
                                         }}
                                     </p>
                                 </div>
@@ -363,11 +363,11 @@
                                     class="text-xl font-bold text-gray-900 dark:text-white"
                                 >
                                     {{
-                                        parseFloat(
+                                        formatDecimal(parseFloat(
                                             personalityData.profile
                                                 .avg_trade_frequency_per_day ||
                                                 0,
-                                        ).toFixed(1)
+                                        ), { digits: 1 })
                                     }}
                                 </p>
                                 <p
@@ -389,14 +389,14 @@
                                     class="text-xl font-bold text-gray-900 dark:text-white"
                                 >
                                     {{
-                                        (
+                                        formatPercent(
                                             parseFloat(
                                                 personalityData.profile
                                                     .position_sizing_consistency ||
                                                     0,
                                             ) * 100
-                                        ).toFixed(0)
-                                    }}%
+                                        )
+                                    }}
                                 </p>
                                 <p
                                     class="text-xs text-gray-500 dark:text-gray-400"
@@ -979,6 +979,7 @@ import {
 } from "@/utils/behavioralFormatters";
 import { mdiChartBox } from "@mdi/js";
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
 
 const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
 // Behavioral, alert and market-data values arrive in USD (not converted to the display currency).

@@ -101,7 +101,7 @@
                     {{ trade.pnl ? formatCurrency(trade.pnl) : 'Open' }}
                   </div>
                   <div v-if="trade.pnl_percent" class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ trade.pnl_percent > 0 ? '+' : '' }}{{ Number(trade.pnl_percent).toFixed(1) }}%
+                    {{ formatDecimal(trade.pnl_percent, { digits: 1, showSign: true }) }}%
                   </div>
                 </div>
               </div>
@@ -169,6 +169,7 @@ import { formatTradeDate } from '@/utils/date'
 import { DocumentTextIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal } from '@/utils/formatters'
 
 const { formatCurrency } = useCurrencyFormatter()
 

@@ -193,6 +193,7 @@
 import { pnlClass } from '@/utils/metricTone'
 import { computed } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal, formatPercent as formatPercentValue } from '@/utils/formatters'
 
 const { formatCurrency, symbolFor } = useCurrencyFormatter()
 
@@ -232,14 +233,13 @@ function formatLargeNumber(value) {
 
 function formatPercent(numerator, denominator) {
   if (!numerator || !denominator) return '-'
-  return ((numerator / denominator) * 100).toFixed(1) + '%'
+  return formatPercentValue(numerator / denominator, { digits: 1, multiplier: 100 })
 }
 
 function formatGrowth(current, previous) {
   if (!current || !previous) return ''
   const growth = ((current - previous) / Math.abs(previous)) * 100
-  const sign = growth > 0 ? '+' : ''
-  return `${sign}${growth.toFixed(1)}% YoY`
+  return `${formatDecimal(growth, { digits: 1, showSign: true })}% YoY`
 }
 
 function getGrowthClass(current, previous) {

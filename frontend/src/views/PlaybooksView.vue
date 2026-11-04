@@ -80,7 +80,7 @@
                         Stop required
                       </span>
                       <span v-if="playbook.minimumTargetR !== null" class="badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                        Min {{ Number(playbook.minimumTargetR).toFixed(1) }}R
+                        Min {{ formatDecimal(playbook.minimumTargetR, { digits: 1 }) }}R
                       </span>
                     </div>
                   </div>
@@ -141,10 +141,10 @@
                   <tr v-for="row in analytics.playbooks" :key="row.id">
                     <td class="pr-4 font-medium text-gray-900 dark:text-white px-4 py-3">{{ row.name }}</td>
                     <td class="pr-4 px-4 py-3">{{ row.reviewed_trade_count }}</td>
-                    <td class="pr-4 px-4 py-3">{{ Number(row.win_rate || 0).toFixed(1) }}%</td>
-                    <td class="pr-4 px-4 py-3">{{ Number(row.profit_factor || 0).toFixed(2) }}</td>
-                    <td class="pr-4 px-4 py-3">{{ Number(row.avg_r || 0).toFixed(2) }}R</td>
-                    <td class="px-4 py-3">{{ Number(row.adherence_average || 0).toFixed(2) }}</td>
+                    <td class="pr-4 px-4 py-3">{{ formatPercent(row.win_rate || 0) }}</td>
+                    <td class="pr-4 px-4 py-3">{{ formatDecimal(row.profit_factor || 0) }}</td>
+                    <td class="pr-4 px-4 py-3">{{ formatR(Number(row.avg_r || 0)) }}</td>
+                    <td class="px-4 py-3">{{ formatDecimal(row.adherence_average || 0) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -165,7 +165,7 @@
                     <div class="text-gray-500 dark:text-gray-400">{{ formatDate(review.trade_date) }}</div>
                   </div>
                   <div class="text-right">
-                    <div class="font-semibold text-gray-900 dark:text-white">{{ Number(review.adherence_score || 0).toFixed(2) }}</div>
+                    <div class="font-semibold text-gray-900 dark:text-white">{{ formatDecimal(review.adherence_score || 0) }}</div>
                     <div :class="review.followed_plan ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                       {{ review.followed_plan ? 'Followed plan' : 'Broke plan' }}
                     </div>
@@ -426,6 +426,8 @@ import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useNotification } from '@/composables/useNotification'
 import BaseSelect from '@/components/common/BaseSelect.vue'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
+import { formatR } from '@/utils/rFormat'
 
 const { showSuccess, showError, showConfirmation } = useNotification()
 

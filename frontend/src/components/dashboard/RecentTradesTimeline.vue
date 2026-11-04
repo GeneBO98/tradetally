@@ -92,7 +92,7 @@ import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiArrowRight } from '@mdi/js'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { formatTradeDate } from '@/utils/date'
-import { formatQuantity } from '@/utils/formatters'
+import { formatDecimal, formatQuantity } from '@/utils/formatters'
 
 const props = defineProps({
   trades: { type: Array, default: () => [] },
@@ -120,12 +120,12 @@ function formatDate(d) {
 function formatR(r) {
   const n = parseFloat(r)
   if (!Number.isFinite(n)) return '—'
-  return (n > 0 ? '+' : '') + n.toFixed(1)
+  return formatDecimal(n, { digits: 1, showSign: true })
 }
 
 function formatPct(p) {
   const n = parseFloat(p)
   if (!Number.isFinite(n)) return ''
-  return (n > 0 ? '+' : '') + n.toFixed(1) + '%'
+  return formatDecimal(n, { digits: 1, showSign: true }) + '%'
 }
 </script>

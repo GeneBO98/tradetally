@@ -54,8 +54,8 @@
                 <tr v-for="rate in profile.rates" :key="rate.id || `${rate.broker}-${rate.instrument}`">
                   <td class="whitespace-nowrap px-3 py-2 text-gray-800 dark:text-gray-200">{{ brokerLabel(rate.broker) }}</td>
                   <td class="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-gray-400">{{ rate.instrument || 'All instruments' }}</td>
-                  <td class="whitespace-nowrap px-3 py-2 text-right text-gray-600 dark:text-gray-400">${{ money(rate.commissionPerContract + rate.commissionPerSide) }}</td>
-                  <td class="whitespace-nowrap px-3 py-2 text-right text-gray-600 dark:text-gray-400">${{ money(rate.exchangeFeePerContract + rate.nfaFeePerContract + rate.clearingFeePerContract + rate.platformFeePerContract) }}</td>
+                  <td class="whitespace-nowrap px-3 py-2 text-right text-gray-600 dark:text-gray-400">{{ money(rate.commissionPerContract + rate.commissionPerSide) }}</td>
+                  <td class="whitespace-nowrap px-3 py-2 text-right text-gray-600 dark:text-gray-400">{{ money(rate.exchangeFeePerContract + rate.nfaFeePerContract + rate.clearingFeePerContract + rate.platformFeePerContract) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -193,6 +193,7 @@
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
+import { formatDecimal } from '@/utils/formatters'
 
 const props = defineProps({
   profiles: { type: Array, default: () => [] },
@@ -303,8 +304,10 @@ function brokerLabel(value) {
   return brokerOptions.find(option => option.value === value)?.label || value
 }
 
+// Broker fee schedules are USD; sign goes before the symbol (-$0.0100 for rebates).
 function money(value) {
-  return Number(value || 0).toFixed(4)
+  const n = Number(value || 0)
+  return `${n < 0 ? '-' : ''}$${formatDecimal(Math.abs(n), { digits: 4 })}`
 }
 
 watch(() => props.profiles, profiles => {

@@ -87,6 +87,7 @@
 
 <script setup>
 import { pnlClass } from '@/utils/metricTone'
+import { formatDecimal } from '@/utils/formatters'
 import { computed, h, markRaw, onMounted, ref, shallowRef, watch } from 'vue'
 import { PresentationChartLineIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
@@ -251,7 +252,7 @@ function formatPercent(value) {
   if (value === null || value === undefined || value === '') return 'N/A'
   const number = Number(value)
   if (!Number.isFinite(number)) return 'N/A'
-  return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`
+  return `${formatDecimal(number, { digits: 1, showSign: true })}%`
 }
 
 function resolutionForInterval(interval) {

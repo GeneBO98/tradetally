@@ -38,7 +38,7 @@
             <button v-if="rows.length < groups.length" type="button" class="btn-secondary inline-flex items-center gap-2" @click="addRow">
               <PlusIcon class="h-4 w-4" /> Add group
             </button>
-            <div class="ml-auto text-sm" :class="Math.abs(remaining) <= 0.01 ? 'text-green-700 dark:text-green-400' : 'text-gray-600 dark:text-gray-300'">{{ remaining.toFixed(1) }}% remaining</div>
+            <div class="ml-auto text-sm" :class="Math.abs(remaining) <= 0.01 ? 'text-green-700 dark:text-green-400' : 'text-gray-600 dark:text-gray-300'">{{ formatPercent(remaining) }} remaining</div>
           </div>
 
           <p class="rounded-md bg-gray-50 px-4 py-3 text-sm leading-relaxed text-gray-600 dark:bg-gray-900/40 dark:text-gray-300">
@@ -60,6 +60,7 @@
 import { computed, ref, watch } from 'vue'
 import { PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+import { formatPercent } from '@/utils/formatters'
 
 const props = defineProps({
   open: { type: Boolean, default: false },

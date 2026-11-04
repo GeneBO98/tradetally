@@ -104,10 +104,10 @@
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-label truncate shrink-0">Win Rate</div>
             <div class="stat-value" :class="winRateClass(summary.win_rate)">
-              {{ Number(summary.win_rate).toFixed(1) }}%
+              {{ formatPercent(summary.win_rate) }}
             </div>
             <div v-if="summary.break_even_trades > 0" class="text-xs text-gray-500 dark:text-gray-400 truncate shrink-0">
-              {{ Number(summary.win_rate_excluding_breakeven).toFixed(1) }}% excl. BE
+              {{ formatPercent(summary.win_rate_excluding_breakeven) }} excl. BE
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
               {{ summary.winning_trades }}W / {{ summary.losing_trades }}L<template v-if="summary.break_even_trades > 0"> / {{ summary.break_even_trades }}BE</template>
@@ -118,9 +118,9 @@
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-label truncate shrink-0">Avg R</div>
             <div class="flex items-center gap-1 sm:gap-2 mt-0.5 flex-wrap min-h-[1.75rem]">
-              <span class="text-base sm:text-lg font-bold text-green-700 dark:text-green-400">+{{ Number(summary.avg_win_r).toFixed(1) }}R</span>
+              <span class="text-base sm:text-lg font-bold text-green-700 dark:text-green-400">{{ formatR(Number(summary.avg_win_r)) }}</span>
               <span class="text-gray-400 shrink-0">/</span>
-              <span class="text-base sm:text-lg font-bold text-red-600 dark:text-red-400">{{ Number(summary.avg_loss_r).toFixed(1) }}R</span>
+              <span class="text-base sm:text-lg font-bold text-red-600 dark:text-red-400">{{ formatR(Number(summary.avg_loss_r)) }}</span>
             </div>
           </div>
         </div>
@@ -160,6 +160,8 @@
 
 <script setup>
 import { pnlClass, winRateClass } from '@/utils/metricTone'
+import { formatPercent } from '@/utils/formatters'
+import { formatR } from '@/utils/rFormat'
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
@@ -375,14 +377,6 @@ function createChart() {
       }
     }
   })
-}
-
-function formatR(value) {
-  if (value === null || value === undefined) return '-'
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '-'
-  const prefix = n > 0 ? '+' : ''
-  return `${prefix}${n.toFixed(1)}R`
 }
 
 function getManagementRColor(managementR) {

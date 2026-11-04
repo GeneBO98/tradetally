@@ -237,11 +237,8 @@
                                 :class="getRValueClass( yearTotals.metrics.totalRValue, )"
                             >
                                 {{
-                                    formatNumber(
-                                        yearTotals.metrics.totalRValue,
-                                        2,
-                                    )
-                                }}R
+                                    formatR(yearTotals.metrics.totalRValue)
+                                }}
                             </div>
                             <div
                                 class="text-xs text-gray-600 dark:text-gray-400 mt-1"
@@ -522,10 +519,7 @@
                                     >
                                         {{
                                             month.metrics.avgRValue !== 0
-                                                ? formatNumber(
-                                                      month.metrics.avgRValue,
-                                                      2,
-                                                  ) + "R"
+                                                ? formatR(month.metrics.avgRValue)
                                                 : "-"
                                         }}
                                     </td>
@@ -536,10 +530,7 @@
                                         {{
                                             month.trades.total > 0 &&
                                             month.metrics.totalRValue !== 0
-                                                ? formatNumber(
-                                                      month.metrics.totalRValue,
-                                                      2,
-                                                  ) + "R"
+                                                ? formatR(month.metrics.totalRValue)
                                                 : "-"
                                         }}
                                     </td>
@@ -620,7 +611,8 @@ import { useUiPreferencesStore } from "@/stores/uiPreferences";
 import { Chart } from "@/lib/chartSetup";
 import { useGlobalAccountFilter } from "@/composables/useGlobalAccountFilter";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
-import { formatPercent as formatPercentBase } from "@/utils/formatters";
+import { formatDecimal, formatPercent as formatPercentBase } from "@/utils/formatters";
+import { formatR } from "@/utils/rFormat";
 import api from "@/services/api";
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import TagManagement from "@/components/trades/TagManagement.vue";
@@ -901,7 +893,7 @@ const createPnLChart = () => {
                     callbacks: {
                         label: (context) =>
                             showRValue.value
-                                ? `R-Value: ${context.raw.toFixed(1)}R`
+                                ? `R-Value: ${formatR(context.raw)}`
                                 : `P&L: ${formatCurrency(context.raw)}`,
                     },
                 },
@@ -912,7 +904,7 @@ const createPnLChart = () => {
                     ticks: {
                         callback: (value) =>
                             showRValue.value
-                                ? `${value.toFixed(1)}R`
+                                ? `${formatDecimal(value, { digits: 1 })}R`
                                 : formatCurrency(value, { compact: true }),
                     },
                 },
@@ -972,7 +964,7 @@ const createWinRateChart = () => {
                 tooltip: {
                     callbacks: {
                         label: (context) =>
-                            `Win Rate: ${context.raw.toFixed(1)}%`,
+                            `Win Rate: ${formatPercentBase(context.raw)}`,
                     },
                 },
             },
@@ -993,11 +985,6 @@ const createWinRateChart = () => {
 
 // Formatting helpers
 const formatPercentage = (value) => formatPercentBase(value, { digits: 1 });
-
-const formatNumber = (value, decimals = 2) => {
-    if (value === null || value === undefined) return "-";
-    return value.toFixed(decimals);
-};
 
 const getPnLClass = (value) => {
     if (value > 0) return "text-success";

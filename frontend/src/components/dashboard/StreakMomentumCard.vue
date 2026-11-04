@@ -111,7 +111,7 @@
           <div class="text-right">
             <div class="text-label">vs avg</div>
             <div class="text-mono-num text-gray-700 dark:text-gray-300">
-              {{ avgDailyTrades > 0 ? avgDailyTrades.toFixed(1) : '—' }}/day
+              {{ avgDailyTrades > 0 ? formatDecimal(avgDailyTrades, { digits: 1 }) : '—' }}/day
             </div>
           </div>
         </div>
@@ -123,6 +123,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal } from '@/utils/formatters'
 
 const props = defineProps({
   dailyPnL: {
@@ -169,7 +170,7 @@ const recentDaysSliced = computed(() => {
         : isLoss
           ? 'bg-red-500/80 dark:bg-red-500'
           : 'bg-gray-300 dark:bg-gray-600',
-      title: `${d.date}: ${d.pnl > 0 ? '+' : ''}${d.pnl.toFixed(2)} (${d.count})`
+      title: `${d.date}: ${formatSignedCurrency(d.pnl)} (${d.count})`
     }
   })
 })
@@ -186,7 +187,7 @@ const recentTradesSliced = computed(() => {
         : isLoss
           ? 'bg-red-500/80 dark:bg-red-500'
           : 'bg-gray-300 dark:bg-gray-600',
-      title: `${t.date}: ${t.pnl > 0 ? '+' : ''}${t.pnl.toFixed(2)}`
+      title: `${t.date}: ${formatSignedCurrency(t.pnl)}`
     }
   })
 })

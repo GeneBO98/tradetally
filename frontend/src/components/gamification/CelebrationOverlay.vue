@@ -227,6 +227,7 @@ import {
   playLevelUpFanfare,
 } from '@/composables/useCelebrationSound'
 import { useAuthStore } from '@/stores/auth'
+import { formatPercent } from '@/utils/formatters'
 
 const props = defineProps({
   queue: {
@@ -418,7 +419,7 @@ function formatUnlockPct(pct) {
   if (typeof pct !== 'number' || isNaN(pct)) return ''
   if (pct === 0) return '0%'
   if (pct < 0.1) return '<0.1%'
-  if (pct < 10) return `${pct.toFixed(1)}%`
+  if (pct < 10) return formatPercent(pct, { digits: 1 })
   return `${Math.round(pct)}%`
 }
 

@@ -92,7 +92,7 @@
                             <span
                                 class="font-medium text-gray-900 dark:text-white"
                             >
-                                ${{ analysis.price_at_entry?.toFixed(2) }}
+                                {{ formatCurrency(analysis.price_at_entry, { currency: 'USD' }) }}
                             </span>
                         </div>
                     </div>
@@ -116,10 +116,10 @@
                                 :class="getScoreColor(analysis.entry_timing_score)"
                             >
                                 {{
-                                    (analysis.entry_timing_score * 100).toFixed(
-                                        0,
-                                    )
-                                }}%
+                                    formatPercent(analysis.entry_timing_score, {
+                                        multiplier: 100,
+                                    })
+                                }}
                             </span>
                         </div>
                         <div class="flex justify-between text-sm">
@@ -184,6 +184,8 @@
 
 <script>
 import { ref, onMounted, onUnmounted, computed } from "vue";
+import { formatPercent } from "@/utils/formatters";
+import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 
 export default {
     name: "TickDataChart",
@@ -202,6 +204,7 @@ export default {
         },
     },
     setup(props) {
+        const { formatCurrency } = useCurrencyFormatter();
         const chartContainer = ref(null);
         const loading = ref(false);
         const error = ref(null);
@@ -404,7 +407,7 @@ export default {
             for (let i = 0; i <= 5; i++) {
                 const price = minPrice + (i / 5) * (maxPrice - minPrice);
                 const y = padding + (1 - i / 5) * chartHeight;
-                ctx.fillText(`$${price.toFixed(2)}`, padding - 20, y + 4);
+                ctx.fillText(formatCurrency(price, { currency: "USD" }), padding - 20, y + 4);
             }
 
             // Time labels
@@ -460,6 +463,8 @@ export default {
             formatTrend,
             getScoreColor,
             refreshChart,
+            formatCurrency,
+            formatPercent,
         };
     },
 };

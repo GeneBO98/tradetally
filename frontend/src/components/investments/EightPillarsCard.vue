@@ -79,7 +79,7 @@
     <!-- Actions -->
     <div class="px-6 py-4 bg-gray-50 dark:bg-gray-700 flex items-center justify-between">
       <span class="text-sm text-gray-500 dark:text-gray-400">
-        {{ analysis.currentPrice ? `$${analysis.currentPrice.toFixed(2)}` : '' }}
+        {{ analysis.currentPrice ? formatCurrency(analysis.currentPrice, { currency: 'USD' }) : '' }}
         {{ analysis.industry ? ` | ${analysis.industry}` : '' }}
       </span>
       <div class="flex items-center space-x-3">
@@ -108,6 +108,10 @@
 
 <script setup>
 import PillarBadge from './PillarBadge.vue'
+import { formatDecimal } from '@/utils/formatters'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+
+const { formatCurrency } = useCurrencyFormatter()
 
 defineProps({
   analysis: {
@@ -125,7 +129,7 @@ function formatPillarValue(pillar) {
     : 0
   
   if (typeof value === 'number') {
-    return value.toFixed(2)
+    return formatDecimal(value, { digits: 2 })
   }
   return String(value)
 }

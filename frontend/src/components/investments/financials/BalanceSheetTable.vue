@@ -170,6 +170,7 @@
 
 <script setup>
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal } from '@/utils/formatters'
 
 const props = defineProps({
   data: {
@@ -208,7 +209,7 @@ function formatShares(value) {
 
 function formatRatio(numerator, denominator) {
   if (!numerator || !denominator) return '-'
-  return (numerator / denominator).toFixed(2)
+  return formatDecimal(numerator / denominator, { digits: 2 })
 }
 
 </script>

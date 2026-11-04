@@ -94,7 +94,7 @@
               <div>
                 <div class="text-label">Profit Factor</div>
                 <div class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
-                  {{ week.profit_factor != null ? Number(week.profit_factor).toFixed(2) : '-' }}
+                  {{ formatDecimal(week.profit_factor) }}
                 </div>
               </div>
             </div>
@@ -194,7 +194,7 @@ import { ref, computed, onMounted } from 'vue'
 import { DocumentChartBarIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { formatTradeDate } from '@/utils/date'
-import { formatPercent as formatPercentBase } from '@/utils/formatters'
+import { formatDecimal, formatPercent as formatPercentBase } from '@/utils/formatters'
 import { useNotification } from '@/composables/useNotification'
 
 const { showError, showSuccess } = useNotification()
@@ -231,7 +231,7 @@ function formatPercent(value) {
 function formatSignedPercent(value) {
   const parsed = parseFloat(value)
   if (!Number.isFinite(parsed)) return '-'
-  return `${parsed > 0 ? '+' : ''}${parsed.toFixed(1)}pp`
+  return `${formatDecimal(parsed, { digits: 1, showSign: true })}pp`
 }
 
 const TYPE_LABELS = {

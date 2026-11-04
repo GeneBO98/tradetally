@@ -52,19 +52,19 @@
       <div>
         <span class="text-sm text-gray-500 dark:text-gray-400">P/E Ratio:</span>
         <span class="ml-2 font-semibold text-gray-900 dark:text-white">
-          {{ metrics.pe_ratio ? metrics.pe_ratio.toFixed(2) : 'N/A' }}
+          {{ metrics.pe_ratio ? formatDecimal(metrics.pe_ratio) : 'N/A' }}
         </span>
       </div>
       <div>
         <span class="text-sm text-gray-500 dark:text-gray-400" title="Price divided by next fiscal year's consensus EPS estimate">Forward P/E:</span>
         <span class="ml-2 font-semibold text-gray-900 dark:text-white">
-          {{ metrics.forward_pe ? metrics.forward_pe.toFixed(2) : 'N/A' }}
+          {{ metrics.forward_pe ? formatDecimal(metrics.forward_pe) : 'N/A' }}
         </span>
       </div>
       <div>
         <span class="text-sm text-gray-500 dark:text-gray-400">P/FCF:</span>
         <span class="ml-2 font-semibold text-gray-900 dark:text-white">
-          {{ metrics.price_to_fcf ? metrics.price_to_fcf.toFixed(2) : 'N/A' }}
+          {{ metrics.price_to_fcf ? formatDecimal(metrics.price_to_fcf) : 'N/A' }}
         </span>
       </div>
       <div>
@@ -90,7 +90,7 @@
 
 <script setup>
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
-import { formatPercent as formatPercentBase } from '@/utils/formatters'
+import { formatPercent as formatPercentBase, formatDecimal } from '@/utils/formatters'
 
 const props = defineProps({
   metrics: {

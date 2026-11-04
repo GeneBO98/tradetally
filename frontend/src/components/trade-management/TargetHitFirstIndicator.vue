@@ -62,7 +62,7 @@
               TP{{ index + 1 }} ({{ currencySymbol }}{{ formatPrice(target.price) }})
             </span>
             <span v-if="target.rValue" class="text-xs text-primary-700 dark:text-primary-400 font-medium">
-              {{ target.rValue }}R
+              {{ formatR(Number(target.rValue)) }}
             </span>
           </label>
           <span v-if="target.status === 'hit'" class="badge-success">
@@ -257,6 +257,8 @@ import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/services/api'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal } from '@/utils/formatters'
+import { formatR } from '@/utils/rFormat'
 
 const { formatTime: formatTimeTz } = useUserTimezone()
 const { currencySymbol } = useCurrencyFormatter()
@@ -580,6 +582,6 @@ async function runAnalysis() {
 
 function formatPrice(value) {
   if (!value) return '-'
-  return parseFloat(value).toFixed(2)
+  return formatDecimal(value)
 }
 </script>

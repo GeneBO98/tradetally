@@ -1014,6 +1014,7 @@ import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref
 import { useRetirementStore } from '@/stores/retirement'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal, formatPercent as formatPercentBase } from '@/utils/formatters'
 import { useNotification } from '@/composables/useNotification'
 import RetirementProjectionChart from '@/components/investments/RetirementProjectionChart.vue'
 import RetirementCashflowPanel from '@/components/investments/RetirementCashflowPanel.vue'
@@ -1646,21 +1647,22 @@ function formatWholeCurrency(value) {
 }
 
 function formatPercent(value) {
+  // Two decimals on purpose: these echo user-entered rates (APR, withdrawal, inflation).
   const number = Number(value)
   if (!Number.isFinite(number)) return '—'
-  return `${number.toFixed(2)}%`
+  return formatPercentBase(number, { digits: 2, nullValue: '—' })
 }
 
 function formatAge(value) {
   const number = Number(value)
   if (!Number.isFinite(number)) return '—'
-  return number % 1 === 0 ? String(number) : number.toFixed(1)
+  return formatDecimal(number, { digits: number % 1 === 0 ? 0 : 1 })
 }
 
 function formatCoverage(scenario) {
   const time = Number(scenario.time_coverage_percent) || 0
   const value = Number(scenario.portfolio_value_coverage_percent) || 0
-  return `${time.toFixed(0)}% time · ${value.toFixed(0)}% portfolio value`
+  return `${formatPercentBase(time, { digits: 1 })} time · ${formatPercentBase(value, { digits: 1 })} portfolio value`
 }
 
 watch(() => JSON.stringify(planPayload()), key => {

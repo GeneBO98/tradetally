@@ -95,10 +95,10 @@
             <div class="text-label mb-1">Win Rate</div>
             <div class="mt-auto pt-1">
               <div class="text-mono-num text-lg @sm:text-xl @3xl:text-2xl @4xl:text-3xl font-semibold tracking-tight" :class="winRateClass">
-                {{ totalTrades > 0 ? winRate + '%' : '—' }}<span v-if="totalTrades > 0" class="text-xs font-normal text-gray-500 dark:text-gray-400"> incl. BE</span>
+                {{ totalTrades > 0 ? formatPercent(winRate) : '—' }}<span v-if="totalTrades > 0" class="text-xs font-normal text-gray-500 dark:text-gray-400"> incl. BE</span>
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 text-mono-num mt-0.5 truncate">
-                <span v-if="totalTrades > 0">{{ winningTrades }}W · {{ losingTrades }}L<span v-if="breakevenTrades > 0"> · {{ winRateExcludingBe }}% excl. BE</span></span>
+                <span v-if="totalTrades > 0">{{ winningTrades }}W · {{ losingTrades }}L<span v-if="breakevenTrades > 0"> · {{ formatPercent(winRateExcludingBe) }} excl. BE</span></span>
                 <span v-else>—</span>
               </div>
             </div>
@@ -158,7 +158,7 @@
           {{ rMode ? formatSignedR(todayR) : formatSignedCurrency(todayPnl) }}
         </span>
         <span class="text-gray-500 dark:text-gray-400 text-mono-num" v-if="avgDailyTrades > 0">
-          avg {{ avgDailyTrades.toFixed(1) }}/day
+          avg {{ formatDecimal(avgDailyTrades, { digits: 1 }) }}/day
         </span>
       </div>
     </div>
@@ -170,6 +170,8 @@ import { winRateClass as winRateTone, profitFactorClass as profitFactorTone } fr
 import { computed } from 'vue'
 import MiniBarChart from '@/components/common/MiniBarChart.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
+import { formatR } from '@/utils/rFormat'
 
 const props = defineProps({
   analytics: {
@@ -195,8 +197,7 @@ const { formatCurrency, formatSignedCurrency } = useCurrencyFormatter()
 
 // R-multiples are unitless; show a signed value with a trailing R.
 function formatSignedR(value) {
-  const v = Number(value) || 0
-  return `${v > 0 ? '+' : ''}${v.toFixed(1)}R`
+  return formatR(Number(value) || 0)
 }
 
 const summary = computed(() => props.analytics?.summary || {})
@@ -218,14 +219,14 @@ const totalCosts = computed(() => parseFloat(summary.value.totalCosts) || 0)
 
 const winRate = computed(() => {
   if (totalTrades.value === 0) return 0
-  return ((winningTrades.value / totalTrades.value) * 100).toFixed(1)
+  return (winningTrades.value / totalTrades.value) * 100
 })
 
 // Win rate among decisive (non-breakeven) trades only.
 const winRateExcludingBe = computed(() => {
   const decisive = winningTrades.value + losingTrades.value
   if (decisive === 0) return 0
-  return ((winningTrades.value / decisive) * 100).toFixed(1)
+  return (winningTrades.value / decisive) * 100
 })
 const breakevenTrades = computed(() => parseInt(summary.value.breakevenTrades) || 0)
 
@@ -234,7 +235,7 @@ const profitFactorDisplay = computed(() => {
   if (totalTrades.value === 0) return '—'
   if (!Number.isFinite(profitFactor.value)) return '∞'
   if (profitFactor.value === 0) return '0.00'
-  return profitFactor.value.toFixed(2)
+  return formatDecimal(profitFactor.value)
 })
 
 const dailyPnL = computed(() => Array.isArray(props.analytics?.dailyPnL) ? props.analytics.dailyPnL : [])

@@ -37,10 +37,10 @@
           <div class="mt-3">
             <div class="flex items-center text-xs">
               <span v-if="healthSummary.heartRateTrend > 0" class="text-red-600 dark:text-red-400">
-                ↑ {{ Math.abs(healthSummary.heartRateTrend).toFixed(1) }}%
+                ↑ {{ formatPercent(healthSummary.heartRateTrend, { abs: true }) }}
               </span>
               <span v-else-if="healthSummary.heartRateTrend < 0" class="text-green-700 dark:text-green-400">
-                ↓ {{ Math.abs(healthSummary.heartRateTrend).toFixed(1) }}%
+                ↓ {{ formatPercent(healthSummary.heartRateTrend, { abs: true }) }}
               </span>
               <span v-else class="text-gray-500">No change</span>
               <span class="ml-1 text-gray-500">vs last period</span>
@@ -66,10 +66,10 @@
           <div class="mt-3">
             <div class="flex items-center text-xs">
               <span v-if="healthSummary.sleepScoreTrend > 0" class="text-green-700 dark:text-green-400">
-                ↑ {{ Math.abs(healthSummary.sleepScoreTrend).toFixed(1) }}%
+                ↑ {{ formatPercent(healthSummary.sleepScoreTrend, { abs: true }) }}
               </span>
               <span v-else-if="healthSummary.sleepScoreTrend < 0" class="text-red-600 dark:text-red-400">
-                ↓ {{ Math.abs(healthSummary.sleepScoreTrend).toFixed(1) }}%
+                ↓ {{ formatPercent(healthSummary.sleepScoreTrend, { abs: true }) }}
               </span>
               <span v-else class="text-gray-500">No change</span>
               <span class="ml-1 text-gray-500">vs last period</span>
@@ -84,7 +84,7 @@
             <div>
               <p class="text-sm text-gray-500 dark:text-gray-400">Avg Sleep Hours</p>
               <p class="stat-value text-gray-900 dark:text-white">
-                {{ healthSummary.avgSleepHours ? healthSummary.avgSleepHours.toFixed(1) : '--' }}
+                {{ healthSummary.avgSleepHours ? formatDecimal(healthSummary.avgSleepHours, { digits: 1 }) : '--' }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">hours</p>
             </div>
@@ -95,10 +95,10 @@
           <div class="mt-3">
             <div class="flex items-center text-xs">
               <span v-if="healthSummary.sleepHoursTrend > 0" class="text-green-700 dark:text-green-400">
-                ↑ {{ Math.abs(healthSummary.sleepHoursTrend).toFixed(1) }}%
+                ↑ {{ formatPercent(healthSummary.sleepHoursTrend, { abs: true }) }}
               </span>
               <span v-else-if="healthSummary.sleepHoursTrend < 0" class="text-red-600 dark:text-red-400">
-                ↓ {{ Math.abs(healthSummary.sleepHoursTrend).toFixed(1) }}%
+                ↓ {{ formatPercent(healthSummary.sleepHoursTrend, { abs: true }) }}
               </span>
               <span v-else class="text-gray-500">No change</span>
               <span class="ml-1 text-gray-500">vs last period</span>
@@ -113,7 +113,7 @@
             <div>
               <p class="text-sm text-gray-500 dark:text-gray-400">Avg Stress Level</p>
               <p class="stat-value text-gray-900 dark:text-white">
-                {{ healthSummary.avgStressLevel ? (healthSummary.avgStressLevel * 100).toFixed(0) : '--' }}%
+                {{ healthSummary.avgStressLevel ? formatPercent(healthSummary.avgStressLevel, { multiplier: 100 }) : '--%' }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">calculated</p>
             </div>
@@ -124,10 +124,10 @@
           <div class="mt-3">
             <div class="flex items-center text-xs">
               <span v-if="healthSummary.stressLevelTrend > 0" class="text-red-600 dark:text-red-400">
-                ↑ {{ Math.abs(healthSummary.stressLevelTrend).toFixed(1) }}%
+                ↑ {{ formatPercent(healthSummary.stressLevelTrend, { abs: true }) }}
               </span>
               <span v-else-if="healthSummary.stressLevelTrend < 0" class="text-green-700 dark:text-green-400">
-                ↓ {{ Math.abs(healthSummary.stressLevelTrend).toFixed(1) }}%
+                ↓ {{ formatPercent(healthSummary.stressLevelTrend, { abs: true }) }}
               </span>
               <span v-else class="text-gray-500">No change</span>
               <span class="ml-1 text-gray-500">vs last period</span>
@@ -192,7 +192,7 @@
                   <div class="flex items-center">
                     <span class="text-sm font-medium" 
                           :class="condition.winRate >= 50 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                      {{ condition.winRate.toFixed(1) }}%
+                      {{ formatPercent(condition.winRate) }}
                     </span>
                     <div class="ml-2 w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                       <div class="h-2 rounded-full" 
@@ -255,7 +255,7 @@
                 <p class="mt-1 text-sm">{{ insight.description }}</p>
                 <div class="mt-2 flex items-center justify-between">
                   <span class="text-xs opacity-75">
-                    Confidence: {{ (insight.confidence * 100).toFixed(1) }}%
+                    Confidence: {{ formatPercent(insight.confidence, { multiplier: 100 }) }}
                   </span>
                   <span v-if="insight.isActionable" class="badge-primary">
                     Actionable
@@ -277,6 +277,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
 import api from '@/services/api'
 import HealthCorrelationChart from '@/components/health/HealthCorrelationChart.vue'
 

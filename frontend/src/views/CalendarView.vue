@@ -166,7 +166,7 @@
                   </div>
                   <div v-if="day.pnl !== undefined && day.trades > 0" class="mt-1">
                     <p class="text-xs sm:text-sm font-semibold truncate" :class="getDayPnlTextColor(day)">
-                      {{ showRValue ? formatRValue(day.rValue || 0, 1) : formatCurrency(getDayDisplayPnl(day), { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+                      {{ showRValue ? formatRValue(day.rValue || 0) : formatCurrency(getDayDisplayPnl(day), { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
                     </p>
                     <p class="text-xs" :class="getDaySubTextColor(day)">
                       {{ day.trades }} {{ day.trades === 1 ? 'trade' : 'trades' }}
@@ -177,7 +177,7 @@
               <!-- Week P/L or R-Value Column -->
               <div class="flex items-center justify-center border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 bg-gray-50 dark:bg-gray-800">
                 <p class="text-xs sm:text-sm font-semibold" :class="pnlClass(getWeekTotal(week))">
-                  {{ showRValue ? formatRValue(week.weekRValue || 0, 1) : formatCurrency(getWeekTotal(week), { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+                  {{ showRValue ? formatRValue(week.weekRValue || 0) : formatCurrency(getWeekTotal(week), { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
                 </p>
               </div>
             </div>
@@ -317,6 +317,7 @@ import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon, ArrowsPointingOutIcon, Ar
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatR } from '@/utils/rFormat'
 
 const { formatCurrency, currencySymbol } = useCurrencyFormatter()
 
@@ -829,10 +830,8 @@ function changeMonth(direction) {
 }
 
 
-function formatRValue(num, decimals = 2) {
-  const value = parseFloat(num) || 0
-  const sign = value > 0 ? '+' : ''
-  return `${sign}${value.toFixed(decimals)}R`
+function formatRValue(num) {
+  return formatR(parseFloat(num) || 0)
 }
 
 function getWeekTotal(week) {

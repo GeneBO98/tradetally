@@ -95,7 +95,7 @@
                 <td class="px-3 py-2 text-gray-900 dark:text-white">{{ row.year }}</td>
                 <td class="px-3 py-2 text-right text-gray-900 dark:text-white">{{ formatPrice(row.price) }}</td>
                 <td class="px-3 py-2 text-right text-gray-900 dark:text-white">{{ formatPrice(row.eps) }}</td>
-                <td class="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">{{ row.pe?.toFixed(2) }}</td>
+                <td class="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">{{ formatDecimal(row.pe, { nullValue: '' }) }}</td>
               </tr>
             </tbody>
           </table>
@@ -120,7 +120,7 @@
                 <td class="px-3 py-2 text-gray-900 dark:text-white">{{ row.year }}</td>
                 <td class="px-3 py-2 text-right text-gray-900 dark:text-white">{{ formatCurrency(row.operatingIncome) }}</td>
                 <td class="px-3 py-2 text-right text-gray-900 dark:text-white">{{ formatCurrency(row.investedCapital) }}</td>
-                <td class="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">{{ row.roic?.toFixed(1) }}%</td>
+                <td class="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">{{ formatPercent(row.roic, { digits: 1 }) }}</td>
               </tr>
             </tbody>
           </table>
@@ -150,9 +150,10 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
 
 const route = useRoute()
-const { symbolFor } = useCurrencyFormatter()
+const { symbolFor, formatCurrency: formatMoney } = useCurrencyFormatter()
 
 const props = defineProps({
   pillarNumber: {
@@ -275,7 +276,7 @@ const displayValue = computed(() => {
     : 0
 
   if (typeof value === 'number') {
-    return value.toFixed(2)
+    return formatDecimal(value, { digits: 2 })
   }
 
   return String(value)
@@ -337,7 +338,7 @@ function formatLabel(key) {
 
 function formatPrice(value) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'N/A'
-  return `${symbolFor(props.currency)}${Number(value).toFixed(2)}`
+  return formatMoney(Number(value), { currency: props.currency })
 }
 
 function formatCurrency(value) {

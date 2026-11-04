@@ -102,6 +102,8 @@
 import { ref, watch, nextTick, computed } from 'vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import { formatTradeDate } from '@/utils/date'
+import { formatDecimal } from '@/utils/formatters'
+import { formatR } from '@/utils/rFormat'
 import api from '@/services/api'
 import { ChevronUpIcon } from '@heroicons/vue/24/outline'
 import { useNotification } from '@/composables/useNotification'
@@ -363,9 +365,9 @@ function draw(logo) {
   } else if (showDollarAmounts.value) {
     hero = formatMoney(pnl)
   } else if (pnlPercent !== null) {
-    hero = `${pnlPercent > 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`
+    hero = `${formatDecimal(pnlPercent, { digits: 1, showSign: true })}%`
   } else if (rValue !== null) {
-    hero = `${rValue > 0 ? '+' : ''}${rValue.toFixed(1)}R`
+    hero = formatR(rValue)
   } else {
     hero = isWin ? 'WIN' : 'LOSS'
   }
@@ -380,10 +382,10 @@ function draw(logo) {
     secondaryParts.push('unrealized')
   }
   if (showDollarAmounts.value && pnlPercent !== null) {
-    secondaryParts.push(`${pnlPercent > 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`)
+    secondaryParts.push(`${formatDecimal(pnlPercent, { digits: 1, showSign: true })}%`)
   }
   if (rValue !== null) {
-    secondaryParts.push(`${rValue > 0 ? '+' : ''}${rValue.toFixed(1)}R`)
+    secondaryParts.push(formatR(rValue))
   }
   if (secondaryParts.length > 0) {
     ctx.fillText(secondaryParts.join('  ·  '), PAD + heroWidth + 36, heroY - 8)

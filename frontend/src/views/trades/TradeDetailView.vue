@@ -491,7 +491,7 @@
                         Grade {{ trade.qualityGrade }}
                       </span>
                       <span v-if="trade.qualityScore" class="text-sm text-gray-600 dark:text-gray-400">
-                        ({{ Number(trade.qualityScore).toFixed(1) }}/5.0)
+                        ({{ formatDecimal(Number(trade.qualityScore), { digits: 1 }) }}/5.0)
                       </span>
                     </div>
                     <div v-else-if="trade.instrument_type === 'future'">
@@ -578,7 +578,7 @@
                       </div>
                       <div v-else class="text-sm font-semibold"
                         :class="[ metric.score >= 0.8 ? 'text-primary-700 dark:text-primary-400' : metric.score >= 0.6 ? 'text-primary-700 dark:text-primary-300' : metric.score >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400' ]">
-                        {{ (metric.score * 100).toFixed(1) }}%
+                        {{ formatPercent(metric.score, { multiplier: 100 }) }}
                       </div>
                       <div class="text-xs text-gray-500 dark:text-gray-400">
                         {{ metric.excluded ? 'Excluded from score' : metric.display }}
@@ -614,7 +614,7 @@
                         'text-yellow-600 dark:text-yellow-400': trade.qualityGrade === 'D',
                         'text-red-600 dark:text-red-400': trade.qualityGrade === 'F'
                       }">
-                      {{ Number(trade.qualityScore).toFixed(1) }}/5.0
+                      {{ formatDecimal(Number(trade.qualityScore), { digits: 1 }) }}/5.0
                     </div>
                     <div v-else class="stat-value text-gray-500 dark:text-gray-400">
                       Not graded
@@ -656,7 +656,7 @@
                     Grade {{ trade.setupQuality.grade }}
                   </span>
                   <span v-if="trade.setupQuality?.score" class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ Number(trade.setupQuality.score).toFixed(1) }}/5.0
+                    {{ formatDecimal(Number(trade.setupQuality.score), { digits: 1 }) }}/5.0
                   </span>
                   <span v-else class="text-sm text-gray-500 dark:text-gray-400">
                     Calculate setup quality to pair setup context with adherence.
@@ -728,7 +728,7 @@
                               ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
                               : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
                           >
-                            {{ Number(selectedAdherenceReview.adherenceScore || 0).toFixed(2) }} adherence
+                            {{ formatDecimal(Number(selectedAdherenceReview.adherenceScore || 0)) }} adherence
                           </span>
                         </div>
 
@@ -748,7 +748,7 @@
                                 {{ item.label }}
                               </div>
                               <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
-                                <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
+                                <span>Weight {{ formatDecimal(Number(item.weight || 1)) }}</span>
                                 <span v-if="item.isRequired" class="text-yellow-600 dark:text-yellow-400">Required</span>
                               </div>
                             </div>
@@ -825,7 +825,7 @@
                               ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
                               : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
                           >
-                            {{ selectedManualGradingReview.grade ? `Grade ${selectedManualGradingReview.grade}` : `${Number(selectedManualGradingReview.adherenceScore || 0).toFixed(2)} score` }}
+                            {{ selectedManualGradingReview.grade ? `Grade ${selectedManualGradingReview.grade}` : `${formatDecimal(Number(selectedManualGradingReview.adherenceScore || 0))} score` }}
                           </span>
                         </div>
 
@@ -841,7 +841,7 @@
                                   {{ item.label }}
                                 </div>
                                 <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
-                                  <span>Weight {{ Number(item.weight || 1).toFixed(2) }}</span>
+                                  <span>Weight {{ formatDecimal(Number(item.weight || 1)) }}</span>
                                   <span v-if="item.isRequired" class="text-yellow-600 dark:text-yellow-400">Required</span>
                                 </div>
                               </div>
@@ -1441,7 +1441,7 @@
                   <dd class="mt-1 text-lg font-semibold" :class="[
                     pnlClass(trade.exit_time ? trade.pnl_percent : openUnrealizedPnLPercent)
                   ]">
-                    <template v-if="trade.exit_time">{{ trade.pnl_percent > 0 ? '+' : '' }}{{ Number(trade.pnl_percent).toFixed(1) }}%</template>
+                    <template v-if="trade.exit_time">{{ formatDecimal(Number(trade.pnl_percent), { digits: 1, showSign: true }) }}%</template>
                     <template v-else>{{ openUnrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(openUnrealizedPnLPercent) }}%</template>
                   </dd>
                 </div>
@@ -1569,6 +1569,7 @@
 <script setup>
 import { pnlClass } from '@/utils/metricTone'
 import { formatR } from '@/utils/rFormat'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
 import { newsBadgeTone, tradeBadgeClass } from '@/utils/tradeBadges'
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -1674,7 +1675,7 @@ function formatExcursionValue(value) {
   const legacyPointUnits = hasLegacyFuturesExcursionUnits(currentTrade, captured, scale)
   const points = legacyPointUnits ? numeric : numeric / scale
   const dollars = legacyPointUnits ? numeric * scale : numeric
-  return `${points.toFixed(2)} pts (${formatCurrency(dollars)})`
+  return `${formatDecimal(points)} pts (${formatCurrency(dollars)})`
 }
 
 function getCapturedMoveDollars(currentTrade, scale) {
@@ -1880,7 +1881,7 @@ const formatFloat = (value) => {
   if (value === null || value === undefined || value === 0) return 'N/A'
   const num = Number(value)
   if (isNaN(num)) return 'N/A'
-  return num.toFixed(2) + 'M'
+  return formatDecimal(num) + 'M'
 }
 
 // User's quality grading weights, for the breakdown display (defaults until fetched)
@@ -1920,22 +1921,22 @@ const qualityBreakdown = computed(() => {
   const profileType = m.profile === 'option' ? 'option' : 'stock'
   const w = qualityProfiles.value?.[profileType] || {}
 
-  const signedPct = (v) => (Number(v) > 0 ? '+' : '') + Number(v).toFixed(1) + '%'
+  const signedPct = (v) => formatDecimal(Number(v), { digits: 1, showSign: true }) + '%'
 
   if (profileType === 'option') {
     return [
-      { key: 'newsSentiment', label: 'News Sentiment', weight: w.news ?? 25, valueField: 'newsSentiment', scoreField: 'newsSentimentScore', format: v => Number(v).toFixed(2) },
+      { key: 'newsSentiment', label: 'News Sentiment', weight: w.news ?? 25, valueField: 'newsSentiment', scoreField: 'newsSentimentScore', format: v => formatDecimal(Number(v)) },
       { key: 'gap', label: 'Underlying Gap', weight: w.gap ?? 15, valueField: 'gap', scoreField: 'gapScore', format: signedPct },
-      { key: 'relativeVolume', label: 'Underlying Relative Volume', weight: w.relativeVolume ?? 15, valueField: 'relativeVolume', scoreField: 'relativeVolumeScore', format: v => Number(v).toFixed(1) + 'x' },
+      { key: 'relativeVolume', label: 'Underlying Relative Volume', weight: w.relativeVolume ?? 15, valueField: 'relativeVolume', scoreField: 'relativeVolumeScore', format: v => formatDecimal(Number(v), { digits: 1 }) + 'x' },
       { key: 'dte', label: 'Days to Expiration', weight: w.dte ?? 25, valueField: 'dte', scoreField: 'dteScore', format: v => `${Number(v)} day${Number(v) === 1 ? '' : 's'}` },
       { key: 'moneyness', label: 'Strike Distance (Moneyness)', weight: w.moneyness ?? 20, valueField: 'moneyness', scoreField: 'moneynessScore', format: v => `${signedPct(v)} ITM` }
     ].map(def => buildQualityRow(m, def))
   }
 
   return [
-    { key: 'newsSentiment', label: 'News Sentiment', weight: w.news ?? 30, valueField: 'newsSentiment', scoreField: 'newsSentimentScore', format: v => Number(v).toFixed(2) },
+    { key: 'newsSentiment', label: 'News Sentiment', weight: w.news ?? 30, valueField: 'newsSentiment', scoreField: 'newsSentimentScore', format: v => formatDecimal(Number(v)) },
     { key: 'gap', label: 'Gap from Previous Close', weight: w.gap ?? 20, valueField: 'gap', scoreField: 'gapScore', format: signedPct },
-    { key: 'relativeVolume', label: 'Relative Volume', weight: w.relativeVolume ?? 20, valueField: 'relativeVolume', scoreField: 'relativeVolumeScore', format: v => Number(v).toFixed(1) + 'x' },
+    { key: 'relativeVolume', label: 'Relative Volume', weight: w.relativeVolume ?? 20, valueField: 'relativeVolume', scoreField: 'relativeVolumeScore', format: v => formatDecimal(Number(v), { digits: 1 }) + 'x' },
     { key: 'float', label: 'Float (Shares Outstanding)', weight: w.float ?? 15, valueField: 'float', scoreField: 'floatScore', format: v => formatFloat(v) },
     { key: 'priceRange', label: 'Price Range', weight: w.priceRange ?? 15, valueField: 'price', scoreField: 'priceScore', format: v => formatCurrency(v) }
   ].map(def => buildQualityRow(m, def))
@@ -2578,8 +2579,8 @@ function calculateRiskReward() {
     const move = isLongSide
       ? ((current - entry) / entry) * 100
       : ((entry - current) / entry) * 100
-    if (move > 0) return `+${move.toFixed(1)}%`
-    if (move < 0) return `${move.toFixed(1)}%`
+    if (move > 0) return `${formatDecimal(move, { digits: 1, showSign: true })}%`
+    if (move < 0) return `${formatDecimal(move, { digits: 1 })}%`
     return 'Breakeven'
   }
 
@@ -2595,9 +2596,9 @@ function calculateRiskReward() {
     : ((entryPrice - exitPrice) / entryPrice) * 100
 
   if (priceChange > 0) {
-    return `+${priceChange.toFixed(1)}%`
+    return `${formatDecimal(priceChange, { digits: 1, showSign: true })}%`
   } else if (priceChange < 0) {
-    return `${priceChange.toFixed(1)}%`
+    return `${formatDecimal(priceChange, { digits: 1 })}%`
   } else {
     return 'Breakeven'
   }

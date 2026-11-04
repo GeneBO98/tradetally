@@ -474,7 +474,7 @@
                                     v-if="earnings.epsEstimate"
                                     class="text-xs text-gray-600 dark:text-gray-400 mt-1"
                                 >
-                                    Est. EPS: {{ Number(earnings.epsEstimate) < 0 ? "-" : "" }}${{ Math.abs(Number(earnings.epsEstimate)).toFixed(2) }}
+                                    Est. EPS: {{ formatPrice(Number(earnings.epsEstimate)) }}
                                 </div>
                             </div>
                         </div>
@@ -839,6 +839,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useNotification } from "@/composables/useNotification";
 import { useInvestmentsStore } from "@/stores/investments";
 import { parseTradeDate } from "@/utils/date";
+import { formatDecimal } from "@/utils/formatters";
 import api from "@/services/api";
 import SymbolAutocomplete from "@/components/common/SymbolAutocomplete.vue";
 import StockLogo from "@/components/common/StockLogo.vue";
@@ -1132,13 +1133,12 @@ const initialLoading = ref(true);
         };
 
         const formatPriceChange = (change) => {
-            const formatted = Math.abs(change).toFixed(2);
-            return change >= 0 ? `+$${formatted}` : `-$${formatted}`;
+            const formatted = formatPrice(Math.abs(change));
+            return change >= 0 ? `+${formatted}` : `-${formatted}`;
         };
 
         const formatPercentChange = (change) => {
-            const formatted = Math.abs(change).toFixed(2);
-            return change >= 0 ? `+${formatted}%` : `-${formatted}%`;
+            return `${formatDecimal(change, { digits: 1, showSign: true })}%`;
         };
 
         const priceChangeClass = (change) => {

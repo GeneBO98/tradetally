@@ -150,6 +150,7 @@ import { pnlClass } from '@/utils/metricTone'
 import { computed, onMounted, ref, watch } from 'vue'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatPercent } from '@/utils/formatters'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 
 const { formatCurrency } = useCurrencyFormatter()
@@ -190,7 +191,7 @@ function winRate(group) {
   const wins = Number(group.winning_trades || 0)
   const losses = Number(group.losing_trades || 0)
   const count = wins + losses
-  return count > 0 ? `${((wins / count) * 100).toFixed(1)}%` : '—'
+  return count > 0 ? formatPercent((wins / count) * 100) : '—'
 }
 
 function formatMonth(value) {

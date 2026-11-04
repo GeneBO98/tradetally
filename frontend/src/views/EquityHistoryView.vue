@@ -277,6 +277,7 @@ import { ref, onMounted } from "vue";
 import { useNotification } from "@/composables/useNotification";
 import api from "@/services/api";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
+import { formatPercent } from "@/utils/formatters";
 
 const { formatCurrency, currencySymbol } = useCurrencyFormatter();
 
@@ -437,8 +438,8 @@ function updateMonthlyStats() {
 
     if (monthStartEquity.value && monthEndEquity.value) {
         const change = monthEndEquity.value - monthStartEquity.value;
-        const percentage = ((change / monthStartEquity.value) * 100).toFixed(2);
-        monthlyChange.value = `${formatCurrency(change)} (${percentage}%)`;
+        const percentage = formatPercent((change / monthStartEquity.value) * 100);
+        monthlyChange.value = `${formatCurrency(change)} (${percentage})`;
         monthlyChangeClass.value =
             change >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400";
     } else {

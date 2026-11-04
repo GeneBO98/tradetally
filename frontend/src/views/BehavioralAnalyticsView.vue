@@ -799,10 +799,8 @@
                                         class="stat-value text-gray-900 dark:text-white text-mono-num"
                                     >
                                         {{
-                                            topMissedTrades.avgMissedOpportunityPercent.toFixed(
-                                                1,
-                                            )
-                                        }}%
+                                            formatPercent(topMissedTrades.avgMissedOpportunityPercent)
+                                        }}
                                     </p>
                                 </div>
                             </div>
@@ -1009,7 +1007,7 @@
                                                 class="text-xs text-red-700 dark:text-red-400"
                                             >
                                                 {{
-                                                    (
+                                                    formatPercent(
                                                         (trade.side === "long"
                                                             ? ((trade
                                                                   .priceMovement
@@ -1024,8 +1022,8 @@
                                                                       0)) /
                                                               trade.exitPrice) *
                                                         100
-                                                    ).toFixed(1)
-                                                }}%
+                                                    )
+                                                }}
                                                 {{
                                                     trade.side === "long"
                                                         ? "higher"
@@ -1120,10 +1118,8 @@
                                                         class="font-bold text-primary-900 dark:text-primary-200"
                                                     >
                                                         {{
-                                                            trade.entryAnalysis.improvementPercent.toFixed(
-                                                                1,
-                                                            )
-                                                        }}%
+                                                            formatPercent(trade.entryAnalysis.improvementPercent)
+                                                        }}
                                                     </p>
                                                     <p
                                                         class="text-xs text-primary-700 dark:text-primary-500"
@@ -1191,10 +1187,10 @@
                                         class="text-sm font-medium text-gray-700 dark:text-gray-300"
                                     >
                                         {{
-                                            (
+                                            formatPercent(
                                                 trade.exitQualityScore * 100
-                                            ).toFixed(0)
-                                        }}%
+                                            )
+                                        }}
                                     </span>
                                 </div>
 
@@ -1503,7 +1499,7 @@ import BehavioralOverconfidence from "@/components/behavioral/BehavioralOverconf
 import { formatDate, formatMinutes } from "@/utils/behavioralFormatters";
 import { mdiTarget, mdiLightbulb } from "@mdi/js";
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
-import { formatQuantity } from '@/utils/formatters'
+import { formatDecimal, formatPercent, formatQuantity } from '@/utils/formatters'
 
 const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
 // Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
@@ -2395,13 +2391,13 @@ const viewTradesByStrategy = (strategy) => {
 const generateLossAversionMessage = (holdTimeRatio, estimatedMonthlyCost) => {
     const cost = Number(estimatedMonthlyCost) || 0;
     if (holdTimeRatio > 3) {
-        return `You exit winners ${holdTimeRatio.toFixed(1)}x faster than losers - this is costing you ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(cost))}/month`;
+        return `You exit winners ${formatDecimal(holdTimeRatio, { digits: 1 })}x faster than losers - this is costing you ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(cost))}/month`;
     } else if (holdTimeRatio > 2) {
-        return `You hold losers ${holdTimeRatio.toFixed(1)}x longer than winners - consider using tighter stops to save ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(cost))}/month`;
+        return `You hold losers ${formatDecimal(holdTimeRatio, { digits: 1 })}x longer than winners - consider using tighter stops to save ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(cost))}/month`;
     } else if (holdTimeRatio > 1.5) {
         return `Slight loss aversion detected - you could save ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(cost))}/month with better exit timing`;
     } else {
-        return `Good exit discipline - your hold time ratio of ${holdTimeRatio.toFixed(1)}x is within healthy range`;
+        return `Good exit discipline - your hold time ratio of ${formatDecimal(holdTimeRatio, { digits: 1 })}x is within healthy range`;
     }
 };
 

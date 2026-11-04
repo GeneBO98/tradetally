@@ -142,9 +142,7 @@
                                     class="text-2xl font-bold text-primary-900 dark:text-primary-200"
                                 >
                                     {{
-                                        lossAversionData.analysis.holdTimeRatio.toFixed(
-                                            2,
-                                        )
+                                        formatDecimal(lossAversionData.analysis.holdTimeRatio)
                                     }}x
                                 </p>
                                 <p
@@ -213,9 +211,7 @@
                                     class="text-lg font-semibold text-gray-900 dark:text-white"
                                 >
                                     1:{{
-                                        lossAversionData.analysis.financialImpact.avgPlannedRiskReward.toFixed(
-                                            2,
-                                        )
+                                        formatDecimal(lossAversionData.analysis.financialImpact.avgPlannedRiskReward)
                                     }}
                                 </p>
                             </div>
@@ -229,9 +225,7 @@
                                     class="text-lg font-semibold text-gray-900 dark:text-white"
                                 >
                                     1:{{
-                                        lossAversionData.analysis.financialImpact.avgActualRiskReward.toFixed(
-                                            2,
-                                        )
+                                        formatDecimal(lossAversionData.analysis.financialImpact.avgActualRiskReward)
                                     }}
                                 </p>
                             </div>
@@ -322,10 +316,8 @@
                                             class="text-xl font-bold text-primary-900 dark:text-primary-100"
                                         >
                                             {{
-                                                lossAversionData.analysis.priceHistoryAnalysis.avgMissedProfitPercent.toFixed(
-                                                    1,
-                                                )
-                                            }}%
+                                                formatPercent(lossAversionData.analysis.priceHistoryAnalysis.avgMissedProfitPercent)
+                                            }}
                                         </p>
                                     </div>
                                 </div>
@@ -544,7 +536,7 @@ import MdiIcon from "@/components/MdiIcon.vue";
 import { formatMinutes } from "@/utils/behavioralFormatters";
 import { mdiTarget } from "@mdi/js";
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
-import { formatQuantity } from '@/utils/formatters'
+import { formatDecimal, formatPercent, formatQuantity } from '@/utils/formatters'
 
 const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
 // Behavioral, alert and market-data values arrive in USD (not converted to the display currency).

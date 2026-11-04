@@ -315,7 +315,7 @@ import { ref, computed, watch } from 'vue'
 import DCFResultCard from './DCFResultCard.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
-import { formatPercent as formatPercentBase } from '@/utils/formatters'
+import { formatPercent as formatPercentBase, formatDecimal } from '@/utils/formatters'
 
 const { formatCurrency } = useCurrencyFormatter()
 
@@ -381,7 +381,7 @@ function formatPercent(value) {
 
 function formatRatio(value) {
   if (value === null || value === undefined) return '-'
-  return `${value.toFixed(1)}x`
+  return `${formatDecimal(value, { digits: 1 })}x`
 }
 
 // Reset inputs when metrics change (new symbol selected)

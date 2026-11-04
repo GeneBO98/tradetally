@@ -411,6 +411,7 @@ import { ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAnalytics } from "@/composables/useAnalytics";
 import api from "@/services/api";
+import { formatDecimal } from "@/utils/formatters";
 
 const cancellationReasonOptions = [
     { value: "too_expensive", label: "Too expensive" },
@@ -621,7 +622,7 @@ export default {
                 return "0";
             const firstItem = subscription.value.subscription.items[0];
             if (!firstItem || !firstItem.amount) return "0";
-            return (firstItem.amount / 100).toFixed(0); // Convert from cents to dollars
+            return formatDecimal(firstItem.amount / 100, { digits: 0 }); // Convert from cents to dollars
         };
 
         const getSubscriptionInterval = () => {

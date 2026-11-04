@@ -6,6 +6,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as LightweightCharts from 'lightweight-charts'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal } from '@/utils/formatters'
 
 /**
  * Candlestick chart driven by the replay cursor. Bars up to the cursor are
@@ -92,8 +93,7 @@ function shiftBar(bar) {
 }
 
 function formatPrice(value) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num.toFixed(2) : ''
+  return formatDecimal(value, { nullValue: '' })
 }
 
 function computeIndicatorData() {

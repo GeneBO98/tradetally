@@ -221,7 +221,7 @@ import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
-import { formatPercent as formatPercentBase } from '@/utils/formatters'
+import { formatPercent as formatPercentBase, formatDecimal } from '@/utils/formatters'
 import PortfolioPerformanceChart from '@/components/investments/PortfolioPerformanceChart.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 
@@ -317,8 +317,7 @@ function deltaColorClass(delta) {
 
 function formatDeltaPercent(delta) {
     if (!delta) return ''
-    const sign = delta.delta > 0 ? '+' : ''
-    return `${sign}${delta.delta.toFixed(2)}%`
+    return `${formatDecimal(delta.delta, { digits: 1, showSign: true })}%`
 }
 
 function formatDeltaCurrency(delta) {
@@ -329,8 +328,7 @@ function formatDeltaCurrency(delta) {
 
 function formatDeltaNumber(delta, decimals = 2) {
     if (!delta) return ''
-    const sign = delta.delta > 0 ? '+' : ''
-    return `${sign}${delta.delta.toFixed(decimals)}`
+    return formatDecimal(delta.delta, { digits: decimals, showSign: true })
 }
 
 function formatDeltaInt(delta) {
@@ -556,8 +554,7 @@ function formatPercent(value, showSign = true) {
 }
 
 function formatMetric(value, decimals = 2) {
-    if (value === null || value === undefined) return 'N/A'
-    return Number(value).toFixed(decimals)
+    return formatDecimal(value, { digits: decimals, nullValue: 'N/A' })
 }
 
 function driftColorClass(driftPercent) {

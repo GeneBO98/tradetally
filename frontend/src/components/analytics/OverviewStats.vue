@@ -16,10 +16,10 @@
           Win Rate<span v-if="overview.position_grouping" class="ml-1 normal-case text-primary-700 dark:text-primary-400">· whole trade</span>
         </dt>
         <dd class="stat-value stat-value-sm mt-1 whitespace-nowrap" :class="winRateClass(overview.win_rate)">
-          {{ Number(overview.win_rate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+          {{ formatPercent(overview.win_rate) }}<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
         </dd>
         <dd v-if="overview.breakeven_trades > 0" class="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
-          {{ Number(overview.win_rate_excluding_breakeven).toFixed(1) }}% excl. BE
+          {{ formatPercent(overview.win_rate_excluding_breakeven) }} excl. BE
         </dd>
       </div>
 
@@ -55,10 +55,10 @@
         </dt>
         <transition name="r-fade" mode="out-in">
           <dd v-if="!rMultipleFlipped" key="avg" class="stat-value stat-value-sm mt-1 text-gray-900 dark:text-white whitespace-nowrap">
-            {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(1) + 'R' : '0.0R' }}
+            {{ formatR(overview.avg_r_value ?? 0) }}
           </dd>
           <dd v-else key="total" class="stat-value stat-value-sm mt-1 whitespace-nowrap" :class="pnlClass(overview.total_r_value ?? 0)">
-            {{ overview.total_r_value !== undefined && overview.total_r_value !== null ? Number(overview.total_r_value).toFixed(1) + 'R' : '0.0R' }}
+            {{ formatR(overview.total_r_value ?? 0) }}
           </dd>
         </transition>
       </div>
@@ -79,6 +79,8 @@
 import { pnlClass, winRateClass, profitFactorClass } from '@/utils/metricTone'
 import { ref } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatPercent } from '@/utils/formatters'
+import { formatR } from '@/utils/rFormat'
 
 defineProps({
   overview: { type: Object, default: () => ({}) },

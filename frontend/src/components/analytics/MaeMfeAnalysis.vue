@@ -189,7 +189,7 @@
             <p class="text-xs text-gray-500 dark:text-gray-400" title="Average realized P&L divided by best available MFE on winning trades. After-trade MFE is used when present.">Exit efficiency</p>
             <p class="text-lg font-semibold text-mono-num mt-1" :class="exitEfficiency >= 60 ? 'text-green-700 dark:text-green-400' : exitEfficiency >= 40 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'">
               <span v-if="loading" class="text-gray-300 dark:text-gray-600">—</span>
-              <span v-else-if="exitEfficiency != null">{{ exitEfficiency.toFixed(1) }}%</span>
+              <span v-else-if="exitEfficiency != null">{{ formatPercent(exitEfficiency) }}</span>
               <span v-else class="text-gray-400">—</span>
             </p>
             <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Avg P&L / best MFE (winners)</p>
@@ -272,6 +272,7 @@ import { useRouter } from 'vue-router'
 import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { findOutliers, symlog, inverseSymlog, symlogTicks } from '@/utils/chartScaling'
 
@@ -386,12 +387,12 @@ function axisScale(title) {
 
 function formatPoints(val) {
   if (val == null) return '—'
-  return `${val.toFixed(2)} pts`
+  return `${formatDecimal(val)} pts`
 }
 
 function formatValue(val) {
   if (val == null) return '—'
-  if (displayMode.value === 'r') return `${val.toFixed(1)}R`
+  if (displayMode.value === 'r') return `${formatDecimal(val, { digits: 1 })}R`
   if (displayMode.value === 'points') return formatPoints(val)
   return formatCurrency(val)
 }
@@ -504,7 +505,7 @@ const insights = computed(() => {
   const { winners_avg_mae, losers_avg_mfe, avg_profit_left } = displayStats.value
 
   if (exitEfficiency.value != null && exitEfficiency.value < 50) {
-    out.push({ type: 'warn', text: `Exit efficiency is ${exitEfficiency.value.toFixed(0)}% — on average you're capturing less than half of each winner's favorable move. Consider a trailing stop or restructured TP ladder.` })
+    out.push({ type: 'warn', text: `Exit efficiency is ${formatPercent(exitEfficiency.value)} — on average you're capturing less than half of each winner's favorable move. Consider a trailing stop or restructured TP ladder.` })
   }
   if (losers_avg_mfe != null && winners_avg_mae != null && losers_avg_mfe > winners_avg_mae * 1.5) {
     out.push({ type: 'warn', text: `Losers ran ${formatValue(losers_avg_mfe)} in your favor before stopping out vs. ${formatValue(winners_avg_mae)} heat on winners — entry timing or TP1 placement may need adjustment.` })
@@ -783,8 +784,8 @@ function renderHistogram() {
   const labels = bins.map((_, i) => {
     const lo = fromBinSpace(i * binSize)
     const hi = fromBinSpace((i + 1) * binSize)
-    if (displayMode.value === 'r') return `${lo.toFixed(1)}–${hi.toFixed(1)}R`
-    if (displayMode.value === 'points') return `${lo.toFixed(1)}–${hi.toFixed(1)} pts`
+    if (displayMode.value === 'r') return `${formatDecimal(lo, { digits: 1 })}–${formatDecimal(hi, { digits: 1 })}R`
+    if (displayMode.value === 'points') return `${formatDecimal(lo, { digits: 1 })}–${formatDecimal(hi, { digits: 1 })} pts`
     return `${formatCurrency(lo)}–${formatCurrency(hi)}`
   })
 

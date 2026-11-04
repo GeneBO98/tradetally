@@ -53,13 +53,13 @@
               :class="winRateClass"
               style="font-size: 2.5rem;"
             >
-              {{ winRate.toFixed(1) }}<span class="text-lg">%</span>
+              {{ formatDecimal(winRate, { digits: 1 }) }}<span class="text-lg">%</span>
             </div>
             <div class="text-label mt-0.5">
               {{ winRateVerdict }}
             </div>
             <div v-if="breakeven > 0" class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-              {{ winRateExcludingBe.toFixed(1) }}% excl. BE
+              {{ formatPercent(winRateExcludingBe) }} excl. BE
             </div>
           </div>
         </div>
@@ -127,7 +127,7 @@
           <div class="py-2.5 flex items-baseline justify-between gap-3">
             <dt class="text-label">Risk / reward</dt>
             <dd class="text-mono-num text-sm font-medium text-gray-900 dark:text-white">
-              <template v-if="avgLoss > 0">{{ (avgWin / avgLoss).toFixed(2) }}<span class="text-gray-400">x</span></template>
+              <template v-if="avgLoss > 0">{{ formatDecimal(avgWin / avgLoss) }}<span class="text-gray-400">x</span></template>
               <template v-else>—</template>
             </dd>
           </div>
@@ -176,6 +176,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
 
 const props = defineProps({
   summary: {
@@ -277,7 +278,7 @@ const profitFactorDisplay = computed(() => {
   if (totalTrades.value === 0) return '—'
   if (!Number.isFinite(profitFactor.value)) return '∞'
   if (profitFactor.value === 0) return '0.00'
-  return profitFactor.value.toFixed(2)
+  return formatDecimal(profitFactor.value)
 })
 const profitFactorClass = computed(() => {
   if (!Number.isFinite(profitFactor.value)) return 'text-green-700 dark:text-green-400'

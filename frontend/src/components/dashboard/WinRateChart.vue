@@ -9,6 +9,7 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import { formatTradeDate } from '@/utils/date'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
 
 const props = defineProps({
   dailyWinRate: {
@@ -106,10 +107,10 @@ function renderChart() {
               if (context.dataset.label === 'P/L Ratio') {
                 const raw = rawPlRatios[context.dataIndex] || 0
                 if (raw >= 999) return ' P/L Ratio: ∞ (no losses)'
-                if (raw > PL_DISPLAY_CAP) return ` P/L Ratio: ${raw.toFixed(2)} (capped at ${PL_DISPLAY_CAP} on chart)`
-                return ` P/L Ratio: ${raw.toFixed(2)}`
+                if (raw > PL_DISPLAY_CAP) return ` P/L Ratio: ${formatDecimal(raw)} (capped at ${PL_DISPLAY_CAP} on chart)`
+                return ` P/L Ratio: ${formatDecimal(raw)}`
               }
-              return ` Win Rate: ${(parseFloat(context.raw) || 0).toFixed(1)}%`
+              return ` Win Rate: ${formatPercent(parseFloat(context.raw) || 0)}`
             }
           }
         }

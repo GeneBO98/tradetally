@@ -153,6 +153,7 @@ import { computed, onMounted, ref } from 'vue'
 import { format } from 'date-fns'
 import { useInvestmentsStore } from '@/stores/investments'
 import StockLogo from '@/components/common/StockLogo.vue'
+import { formatDecimal } from '@/utils/formatters'
 
 const emit = defineEmits(['select', 'open-scanner'])
 
@@ -214,7 +215,7 @@ const coverageText = computed(() => {
 })
 
 function primaryMetric(listKey, item) {
-  if (listKey === 'lowestPe') return item.fiveYearPe !== null ? Number(item.fiveYearPe).toFixed(1) : '-'
+  if (listKey === 'lowestPe') return item.fiveYearPe !== null ? formatDecimal(item.fiveYearPe, { digits: 1 }) : '-'
   if (listKey === 'mostPillars') return `${item.pillarsPassed}/8`
   if (listKey === 'upcomingEarnings') return formatEarningsDate(item.earningsDate)
   return ''
@@ -231,7 +232,7 @@ function secondaryLine(listKey, item) {
   const parts = []
   if (listKey !== 'mostPillars') parts.push(`${item.pillarsPassed}/8 pillars`)
   if (listKey === 'mostPillars' && item.fiveYearPe !== null) {
-    parts.push(`5-yr P/E ${Number(item.fiveYearPe).toFixed(1)}`)
+    parts.push(`5-yr P/E ${formatDecimal(item.fiveYearPe, { digits: 1 })}`)
   }
   const cap = formatMarketCap(item.marketCap)
   if (cap) parts.push(cap)

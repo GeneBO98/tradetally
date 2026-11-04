@@ -835,7 +835,7 @@
                                                     :class="pnlClass(row.returnDelta)"
                                                     class="block text-xs"
                                                 >
-                                                    {{ row.returnDelta > 0 ? '+' : '' }}{{ row.returnDelta.toFixed(1) }}%
+                                                    {{ formatDecimal(row.returnDelta, { digits: 1, showSign: true }) }}%
                                                 </span>
                                             </td>
                                             <td
@@ -843,7 +843,7 @@
                                                 class="px-3 py-2 text-right font-medium"
                                                 :class="pnlClass(pairDifferenceRow.returnDelta)"
                                             >
-                                                {{ pairDifferenceRow.returnDelta > 0 ? '+' : '' }}{{ pairDifferenceRow.returnDelta.toFixed(1) }}%
+                                                {{ formatDecimal(pairDifferenceRow.returnDelta, { digits: 1, showSign: true }) }}%
                                             </td>
                                         </tr>
                                         <tr>
@@ -905,7 +905,7 @@
                                                     :class="row.driftDelta <= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                                     class="block text-xs"
                                                 >
-                                                    {{ row.driftDelta > 0 ? '+' : '' }}{{ row.driftDelta.toFixed(1) }}%
+                                                    {{ formatDecimal(row.driftDelta, { digits: 1, showSign: true }) }}%
                                                 </span>
                                             </td>
                                             <td
@@ -914,7 +914,7 @@
                                                 :class="pairDifferenceRow.driftDelta === null ? 'text-gray-500 dark:text-gray-400' : pairDifferenceRow.driftDelta <= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                                             >
                                                 <template v-if="pairDifferenceRow.driftDelta === null">—</template>
-                                                <template v-else>{{ pairDifferenceRow.driftDelta > 0 ? '+' : '' }}{{ pairDifferenceRow.driftDelta.toFixed(1) }}%</template>
+                                                <template v-else>{{ formatDecimal(pairDifferenceRow.driftDelta, { digits: 1, showSign: true }) }}%</template>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -1499,7 +1499,7 @@ import { useRouter, useRoute } from "vue-router";
 import { useInvestmentsStore } from "@/stores/investments";
 import { useNotification } from "@/composables/useNotification";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
-import { formatPercent as formatPercentBase } from "@/utils/formatters";
+import { formatPercent as formatPercentBase, formatDecimal } from "@/utils/formatters";
 import { format } from "date-fns";
 import api from "@/services/api";
 import EightPillarsCard from "@/components/investments/EightPillarsCard.vue";
@@ -2601,8 +2601,7 @@ function formatPercent(value, showSign = true) {
 }
 
 function formatMetric(value, decimals = 2) {
-    if (value === null || value === undefined) return "N/A";
-    return Number(value).toFixed(decimals);
+    return formatDecimal(value, { digits: decimals, nullValue: "N/A" });
 }
 
 function formatDate(date) {

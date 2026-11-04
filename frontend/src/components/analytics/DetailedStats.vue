@@ -122,7 +122,7 @@
                 </div>
                 <div class="text-right">
                   <div class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ (symbol.winning_trades / symbol.total_trades * 100).toFixed(1) }}%
+                    {{ formatPercent(symbol.winning_trades / symbol.total_trades * 100) }}
                   </div>
                   <div
                     v-if="(Number(symbol.breakeven_trades) || 0) > 0"
@@ -148,6 +148,7 @@ import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import { useProAccess } from '@/composables/useProAccess'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { winRateExclBERounded } from '@/utils/analyticsFormatters'
+import { formatPercent } from '@/utils/formatters'
 
 const props = defineProps({
   overview: { type: Object, default: () => ({}) },
@@ -205,8 +206,8 @@ const freeStatRows = computed(() => {
   const o = props.overview || {}
   const m = props.calculationMethod
   const total = Number(o.total_trades) || 0
-  const winPct = total > 0 ? ((Number(o.winning_trades) / total) * 100).toFixed(1) : '0.0'
-  const lossPct = total > 0 ? ((Number(o.losing_trades) / total) * 100).toFixed(1) : '0.0'
+  const winPct = formatPercent(total > 0 ? (Number(o.winning_trades) / total) * 100 : 0)
+  const lossPct = formatPercent(total > 0 ? (Number(o.losing_trades) / total) * 100 : 0)
   return [
     { label: 'Total Gain/Loss', display: formatCurrency(o.total_pnl ?? 0), class: signClass(o.total_pnl) },
     { label: 'Largest Gain', display: formatCurrency(o.best_trade ?? 0), class: POSITIVE_CLASS },
@@ -221,8 +222,8 @@ const freeStatRows = computed(() => {
     { label: `${m} Losing Trade`, display: formatCurrency(o.avg_loss ?? 0), class: NEGATIVE_CLASS },
 
     { label: 'Total Number of Trades', display: formatCount(o.total_trades ?? 0) },
-    { label: 'Number of Winning Trades', display: `${formatCount(o.winning_trades ?? 0)} (${winPct}%)`, class: POSITIVE_CLASS },
-    { label: 'Number of Losing Trades', display: `${formatCount(o.losing_trades ?? 0)} (${lossPct}%)`, class: NEGATIVE_CLASS },
+    { label: 'Number of Winning Trades', display: `${formatCount(o.winning_trades ?? 0)} (${winPct})`, class: POSITIVE_CLASS },
+    { label: 'Number of Losing Trades', display: `${formatCount(o.losing_trades ?? 0)} (${lossPct})`, class: NEGATIVE_CLASS },
 
     { label: 'Average Hold Time (scratch trades)', display: formatHoldDuration(o.avg_hold_scratch_minutes) },
     { label: 'Average Hold Time (winning trades)', display: formatHoldDuration(o.avg_hold_win_minutes) },

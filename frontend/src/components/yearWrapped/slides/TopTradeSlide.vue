@@ -22,7 +22,7 @@
         </div>
 
         <div v-if="data.bestTrade.percentGain" class="text-xl sm:text-2xl text-green-300">
-          +{{ data.bestTrade.percentGain.toFixed(2) }}% return
+          {{ formatPercent(data.bestTrade.percentGain, { digits: 1, showSign: true }) }} return
         </div>
 
         <div class="text-white/60 pt-4">
@@ -40,6 +40,7 @@
 <script setup>
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { formatTradeDate } from '@/utils/date'
+import { formatPercent } from '@/utils/formatters'
 
 defineProps({
   data: {

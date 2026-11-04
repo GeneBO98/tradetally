@@ -161,13 +161,13 @@
         <div v-for="(target, index) in targets" :key="target.id" class="flex justify-between text-sm">
           <span class="text-gray-600 dark:text-gray-400">TP{{ index + 1 }} ({{ formatCurrency(target.price) }}):</span>
           <span class="font-medium text-primary-700 dark:text-primary-400">
-            {{ calculateTargetR(target.price) }}R
+            {{ calculateTargetR(target.price) }}
           </span>
         </div>
         <div v-if="targets.length > 1" class="flex justify-between text-sm pt-2 border-t border-primary-200 dark:border-primary-700 mt-2">
           <span class="text-gray-700 dark:text-gray-300 font-medium">Weighted Avg:</span>
           <span class="font-bold text-primary-700 dark:text-primary-400">
-            {{ calculateWeightedR() }}R
+            {{ calculateWeightedR() }}
           </span>
         </div>
       </div>
@@ -178,6 +178,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatR } from '@/utils/rFormat'
 
 const { formatCurrency, currencySymbol } = useCurrencyFormatter()
 
@@ -387,19 +388,21 @@ function setQuickTargets(preset) {
 }
 
 function calculateTargetR(price) {
-  if (!price || !props.stopLoss) return '-'
+  return formatR(targetRValue(price))
+}
+
+function targetRValue(price) {
+  if (!price || !props.stopLoss) return null
 
   const tp = parseFloat(price)
   const sl = parseFloat(props.stopLoss)
   const entry = entryPrice.value
 
   const risk = isLong.value ? entry - sl : sl - entry
-  if (risk <= 0) return '-'
+  if (risk <= 0) return null
 
   const reward = isLong.value ? tp - entry : entry - tp
-  const r = reward / risk
-
-  return r.toFixed(2)
+  return reward / risk
 }
 
 function calculateWeightedR() {
@@ -410,7 +413,7 @@ function calculateWeightedR() {
 
   for (const target of targets.value) {
     const qty = parseFloat(target.quantity) || 0
-    const rValue = parseFloat(calculateTargetR(target.price)) || 0
+    const rValue = targetRValue(target.price) || 0
 
     if (qty > 0 && rValue) {
       weightedSum += rValue * qty
@@ -419,7 +422,7 @@ function calculateWeightedR() {
   }
 
   if (totalWeight === 0) return '-'
-  return (weightedSum / totalWeight).toFixed(2)
+  return formatR(weightedSum / totalWeight)
 }
 
 </script>

@@ -64,7 +64,7 @@
           <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400">Correlation Coefficient</div>
             <div class="text-xl font-semibold" :class="getCorrelationClass(statistics.correlation)">
-              {{ statistics.correlation.toFixed(3) }}
+              {{ formatDecimal(statistics.correlation, { digits: 3 }) }}
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
               {{ getCorrelationStrength(statistics.correlation) }}
@@ -84,7 +84,7 @@
           <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400">Win Rate Impact</div>
             <div class="text-xl font-semibold" :class="pnlClass(statistics.winRateImpact)">
-              {{ statistics.winRateImpact > 0 ? '+' : '' }}{{ statistics.winRateImpact.toFixed(1) }}%
+              {{ formatDecimal(statistics.winRateImpact, { digits: 1, showSign: true }) }}%
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
               When {{ getMetricCondition(selectedMetric) }}
@@ -126,6 +126,7 @@ import { pnlClass } from '@/utils/metricTone'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
@@ -386,7 +387,7 @@ function generateInsights() {
   if (Math.abs(statistics.value.winRateImpact) > 10) {
     insights.value.push({
       type: statistics.value.winRateImpact > 0 ? 'positive' : 'warning',
-      message: `${getMetricCondition(metric)} shows ${Math.abs(statistics.value.winRateImpact).toFixed(1)}% ${statistics.value.winRateImpact > 0 ? 'higher' : 'lower'} win rate`,
+      message: `${getMetricCondition(metric)} shows ${formatPercent(statistics.value.winRateImpact, { abs: true })} ${statistics.value.winRateImpact > 0 ? 'higher' : 'lower'} win rate`,
       recommendation: statistics.value.winRateImpact > 0 ? 
         `Continue maintaining good ${getMetricLabel(metric)} habits` :
         `Improve ${getMetricLabel(metric)} to potentially increase win rate`
@@ -487,7 +488,7 @@ function updateChart() {
           callbacks: {
             label: function(context) {
               return [
-                `${getMetricLabel(metric)}: ${context.parsed.x.toFixed(1)} ${getMetricUnit(metric)}`,
+                `${getMetricLabel(metric)}: ${formatDecimal(context.parsed.x, { digits: 1 })} ${getMetricUnit(metric)}`,
                 `P&L: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y)}`
               ]
             }

@@ -33,7 +33,7 @@
               class="text-xl sm:text-2xl font-bold"
               :class="data.comparison.pnlGrowthPercent >= 0 ? 'text-green-400' : 'text-red-400'"
             >
-              {{ data.comparison.pnlGrowthPercent >= 0 ? '+' : '' }}{{ data.comparison.pnlGrowthPercent.toFixed(1) }}%
+              {{ formatPercent(data.comparison.pnlGrowthPercent, { showSign: true }) }}
             </span>
             <span class="text-white/60 ml-2">{{ data.comparison.pnlGrowthPercent >= 0 ? 'growth' : 'change' }}</span>
           </div>
@@ -66,7 +66,7 @@
               class="text-xl sm:text-2xl font-bold"
               :class="data.comparison.tradeGrowthPercent >= 0 ? 'text-green-400' : 'text-red-400'"
             >
-              {{ data.comparison.tradeGrowthPercent >= 0 ? '+' : '' }}{{ data.comparison.tradeGrowthPercent.toFixed(1) }}%
+              {{ formatPercent(data.comparison.tradeGrowthPercent, { showSign: true }) }}
             </span>
             <span class="text-white/60 ml-2">{{ data.comparison.tradeGrowthPercent >= 0 ? 'more active' : 'less active' }}</span>
           </div>
@@ -79,7 +79,7 @@
             class="text-xl font-bold"
             :class="data.comparison.winRateChange >= 0 ? 'text-green-400' : 'text-red-400'"
           >
-            {{ data.comparison.winRateChange >= 0 ? '+' : '' }}{{ data.comparison.winRateChange.toFixed(1) }}%
+            {{ formatPercent(data.comparison.winRateChange, { showSign: true }) }}
           </span>
         </div>
       </div>
@@ -93,6 +93,7 @@
 
 <script setup>
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatPercent } from '@/utils/formatters'
 
 defineProps({
   data: {

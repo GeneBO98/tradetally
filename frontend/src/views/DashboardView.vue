@@ -635,7 +635,7 @@
                       {{ formatSignedPositionAmount(getOptionPnL(position).unrealizedPnL, position) }}
                     </div>
                     <div class="text-xs font-medium" :class="[ getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400' ]">
-                      {{ getOptionPnL(position).unrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
+                      {{ formatDecimal(getOptionPnL(position).unrealizedPnLPercent, { digits: 1, showSign: true, nullValue: '0.0' }) }}%
                     </div>
                   </template>
                   <span v-else class="text-xs text-gray-500 dark:text-gray-400">Enter premium below</span>
@@ -647,7 +647,7 @@
                     {{ formatSignedPositionAmount(position.unrealizedPnL, position) }}
                   </div>
                   <div class="text-xs font-medium" :class="pnlClass(position.unrealizedPnLPercent)">
-                    {{ position.unrealizedPnLPercent > 0 ? '+' : '' }}{{ Number(position.unrealizedPnLPercent).toFixed(1) }}%
+                    {{ formatDecimal(position.unrealizedPnLPercent, { digits: 1, showSign: true }) }}%
                   </div>
                 </div>
               </div>
@@ -870,7 +870,7 @@
                           <div v-if="position.dayChangePercent !== undefined && position.dayChangePercent !== null" class="text-xs" :class="[
                             pnlClass(position.dayChangePercent)
                           ]" :title="position.dayChange !== undefined ? formatSignedPositionCurrency(position.dayChange, position) + ' today' : undefined">
-                            {{ position.dayChangePercent > 0 ? '+' : '' }}{{ Number(position.dayChangePercent).toFixed(1) }}%
+                            {{ formatDecimal(position.dayChangePercent, { digits: 1, showSign: true }) }}%
                           </div>
                           <div v-if="position.quoteSource === 'alpaca'" class="text-xs text-gray-500 dark:text-gray-400">via Alpaca</div>
                         </div>
@@ -901,7 +901,7 @@
                             {{ formatSignedPositionAmount(getOptionPnL(position).unrealizedPnL, position) }}
                           </div>
                           <div class="text-xs" :class="pnlClass(getOptionPnL(position).unrealizedPnLPercent)">
-                            {{ getOptionPnL(position).unrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
+                            {{ formatDecimal(getOptionPnL(position).unrealizedPnLPercent, { digits: 1, showSign: true, nullValue: '0.0' }) }}%
                           </div>
                         </div>
                         <span v-else class="text-xs text-gray-500 dark:text-gray-400">Enter premium</span>
@@ -912,7 +912,7 @@
                             {{ formatSignedPositionAmount(position.unrealizedPnL, position) }}
                           </div>
                           <div class="text-xs" :class="pnlClass(position.unrealizedPnLPercent)">
-                            {{ position.unrealizedPnLPercent > 0 ? '+' : '' }}{{ Number(position.unrealizedPnLPercent).toFixed(1) }}%
+                            {{ formatDecimal(position.unrealizedPnLPercent, { digits: 1, showSign: true }) }}%
                           </div>
                         </div>
                         <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
@@ -1011,7 +1011,7 @@
                         {{ totalUnrealizedPnLLabel }}
                       </div>
                       <div class="text-xs" :class="pnlClass(totalUnrealizedPnLPercent)">
-                        {{ totalUnrealizedPnLPercent > 0 ? '+' : '' }}{{ Number(totalUnrealizedPnLPercent).toFixed(1) }}%
+                        {{ formatDecimal(totalUnrealizedPnLPercent, { digits: 1, showSign: true }) }}%
                       </div>
                     </div>
                     <span v-else class="text-xs text-gray-500 dark:text-gray-400">-</span>
@@ -1691,6 +1691,7 @@ import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal } from '@/utils/formatters'
 import {
   normalizeTradeFiltersForSharedState,
   loadTradeFiltersFromStorage
@@ -1913,7 +1914,7 @@ const position_bars = computed(() => {
         in_profit: bar.in_profit,
         start_label: formatPositionCurrency(bar.low, position),
         end_label: formatPositionCurrency(bar.high, position),
-        caption: bar.at_high ? 'At 52w high' : bar.at_low ? 'At 52w low' : `${bar.below_high_pct.toFixed(1)}% below high`,
+        caption: bar.at_high ? 'At 52w high' : bar.at_low ? 'At 52w low' : `${formatDecimal(bar.below_high_pct, { digits: 1 })}% below high`,
         start_note: '',
         end_note: '',
         show_ends: false
@@ -2598,7 +2599,7 @@ const computedWinRate = computed(() => {
   const be = parseInt(summary.breakevenTrades) || 0
   const total = wins + losses + be
   if (total === 0) return '0'
-  return ((wins / total) * 100).toFixed(1)
+  return formatDecimal((wins / total) * 100, { digits: 1 })
 })
 
 const topTradesNetPnl = computed(() => {
@@ -2612,12 +2613,12 @@ const dashboardGrossPnl = computed(() => parseFloat(analytics.value?.summary?.to
 const dashboardAvgNetPnl = computed(() => parseFloat(analytics.value?.summary?.avgNetPnL ?? analytics.value?.summary?.avgPnL ?? 0) || 0)
 function formatNumber(num) {
   if (!num && num !== 0) return '0.00'
-  return parseFloat(num).toFixed(2)
+  return formatDecimal(parseFloat(num))
 }
 
 function formatPercent(num) {
   if (!num && num !== 0) return '0.0'
-  return parseFloat(num).toFixed(1)
+  return formatDecimal(parseFloat(num), { digits: 1 })
 }
 
 function formatDate(dateStr) {

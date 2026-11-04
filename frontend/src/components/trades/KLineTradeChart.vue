@@ -126,6 +126,7 @@ import {
   formatSignedChartPercent,
 } from '@/utils/chartPnlMeasurement'
 import { clipBandToPane } from '@/utils/chartPositionBands'
+import { formatDecimal } from '@/utils/formatters'
 
 const props = defineProps({
   chartData: {
@@ -836,7 +837,7 @@ function executionEvents() {
         ? (execution.entry_price ?? execution.entryPrice)
         : (execution.exit_price ?? execution.exitPrice))
     )
-    const priceLabel = !isOption && Number.isFinite(price) ? ` @ ${price.toFixed(pricePrecision())}` : ''
+    const priceLabel = !isOption && Number.isFinite(price) ? ` @ ${formatDecimal(price, { digits: pricePrecision() })}` : ''
     const label = (kind === 'entry'
       ? (String(trade.side).toLowerCase() === 'short' ? `SHORT${quantity}` : `BUY${quantity}`)
       : (String(trade.side).toLowerCase() === 'short' ? `COVER${quantity}` : `SELL${quantity}`)) + priceLabel
@@ -850,8 +851,8 @@ function executionEvents() {
   const exitTimestamp = parseExecutionTimestamp(trade.exitTime ?? trade.exitDate)
   const entryPrice = Number(trade.entryPrice ?? trade.entry_price)
   const exitPrice = Number(trade.exitPrice ?? trade.exit_price)
-  const entryPriceLabel = !isOption && Number.isFinite(entryPrice) ? ` @ ${entryPrice.toFixed(pricePrecision())}` : ''
-  const exitPriceLabel = !isOption && Number.isFinite(exitPrice) ? ` @ ${exitPrice.toFixed(pricePrecision())}` : ''
+  const entryPriceLabel = !isOption && Number.isFinite(entryPrice) ? ` @ ${formatDecimal(entryPrice, { digits: pricePrecision() })}` : ''
+  const exitPriceLabel = !isOption && Number.isFinite(exitPrice) ? ` @ ${formatDecimal(exitPrice, { digits: pricePrecision() })}` : ''
   if (entryTimestamp !== null) {
     events.push({
       kind: 'entry',

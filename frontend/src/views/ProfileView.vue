@@ -1530,6 +1530,7 @@ import { useProAccess } from "@/composables/useProAccess";
 import NotificationPreferences from "@/components/profile/NotificationPreferences.vue";
 import PriceAlertWebhookManager from "@/components/price-alerts/PriceAlertWebhookManager.vue";
 import api from "@/services/api";
+import { formatDecimal } from "@/utils/formatters";
 import { TIMEZONE_OPTIONS } from "@/utils/timezone";
 import BaseSelect from "@/components/common/BaseSelect.vue";
 
@@ -1821,8 +1822,8 @@ const avatarDisplayUrl = computed(
 function formatBytes(bytes) {
     if (!bytes && bytes !== 0) return '';
     if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes < 1024 * 1024) return `${formatDecimal(bytes / 1024, { digits: 1 })} KB`;
+    return `${formatDecimal(bytes / (1024 * 1024), { digits: 1 })} MB`;
 }
 
 function triggerAvatarFilePicker() {

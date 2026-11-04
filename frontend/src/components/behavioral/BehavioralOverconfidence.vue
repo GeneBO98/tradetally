@@ -110,10 +110,8 @@
                                     class="text-2xl font-bold text-red-900 dark:text-red-200"
                                 >
                                     {{
-                                        overconfidenceData.analysis.statistics?.avgPositionIncrease?.toFixed(
-                                            1,
-                                        ) || 0
-                                    }}%
+                                        formatPercent(overconfidenceData.analysis.statistics?.avgPositionIncrease ?? 0)
+                                    }}
                                 </p>
                                 <p
                                     class="text-xs text-red-700 dark:text-red-400"
@@ -169,10 +167,8 @@
                                     class="text-2xl font-bold text-primary-900 dark:text-primary-200"
                                 >
                                     {{
-                                        overconfidenceData.analysis.statistics?.successRate?.toFixed(
-                                            1,
-                                        ) || 0
-                                    }}%
+                                        formatPercent(overconfidenceData.analysis.statistics?.successRate ?? 0)
+                                    }}
                                 </p>
                                 <p
                                     class="text-xs text-primary-700 dark:text-primary-400"
@@ -220,9 +216,7 @@
                                         class="text-xl font-bold text-primary-900 dark:text-primary-100"
                                     >
                                         {{
-                                            overconfidenceData.analysis.winStreakAnalysis.avgStreakLength?.toFixed(
-                                                1,
-                                            ) || 0
+                                            formatDecimal(overconfidenceData.analysis.winStreakAnalysis.avgStreakLength ?? 0, { digits: 1 })
                                         }}
                                         trades
                                     </p>
@@ -237,10 +231,8 @@
                                         class="text-xl font-bold text-primary-900 dark:text-primary-100"
                                     >
                                         {{
-                                            overconfidenceData.analysis.winStreakAnalysis.avgPositionGrowth?.toFixed(
-                                                1,
-                                            ) || 0
-                                        }}%
+                                            formatPercent(overconfidenceData.analysis.winStreakAnalysis.avgPositionGrowth ?? 0)
+                                        }}
                                     </p>
                                     <p
                                         class="mt-1 text-xs text-primary-700 dark:text-primary-300"
@@ -374,10 +366,8 @@
                                             >Position increased by
                                             <span class="font-bold"
                                                 >{{
-                                                    event.positionSizeIncrease?.toFixed(
-                                                        1,
-                                                    ) || 0
-                                                }}%</span
+                                                    formatPercent(event.positionSizeIncrease ?? 0)
+                                                }}</span
                                             >
                                             (from {{ usd(( event.baselinePositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}
                                             baseline to {{ usd(( event.peakPositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}
@@ -709,10 +699,8 @@
                                                 "
                                                 >a
                                                 {{
-                                                    event.positionSizeIncrease.toFixed(
-                                                        1,
-                                                    )
-                                                }}% larger position size</span
+                                                    formatPercent(event.positionSizeIncrease)
+                                                }} larger position size</span
                                             >
                                             <span v-else
                                                 >risky trading decisions</span
@@ -743,10 +731,8 @@
                                                 "
                                                 >the
                                                 {{
-                                                    event.positionSizeIncrease.toFixed(
-                                                        1,
-                                                    )
-                                                }}% larger position size</span
+                                                    formatPercent(event.positionSizeIncrease)
+                                                }} larger position size</span
                                             >
                                             <span v-else
                                                 >the elevated confidence</span
@@ -973,7 +959,7 @@
                                                                 .outcomeAnalysis
                                                                 .stopLossAnalysis
                                                                 .recommendedStopLoss
-                                                                ? `$${event.outcomeAnalysis.stopLossAnalysis.recommendedStopLoss.toFixed(2)}`
+                                                                ? usd(event.outcomeAnalysis.stopLossAnalysis.recommendedStopLoss)
                                                                 : "N/A"
                                                         }}
                                                     </p>
@@ -1277,7 +1263,7 @@
                                                                         ? "+"
                                                                         : ""
                                                                 }}{{
-                                                                    (
+                                                                    formatPercent(
                                                                         ((parseFloat(
                                                                             trade.position_size,
                                                                         ) -
@@ -1296,12 +1282,9 @@
                                                                                         1
                                                                                 ]
                                                                                     .position_size,
-                                                                            )) *
-                                                                        100
-                                                                    ).toFixed(
-                                                                        0,
+                                                                            )) * 100
                                                                     )
-                                                                }}%
+                                                                }}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -1377,6 +1360,7 @@ import { CheckIcon } from "@heroicons/vue/24/outline";
 import MdiIcon from "@/components/MdiIcon.vue";
 import { formatRiskBasisLabel } from "@/utils/behavioralFormatters";
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { formatDecimal, formatPercent } from '@/utils/formatters'
 import {
     mdiTrendingUp,
     mdiClose,

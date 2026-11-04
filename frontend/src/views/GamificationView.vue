@@ -1019,6 +1019,7 @@ import {
 } from "@/composables/usePriceAlertNotifications";
 import { useAuthStore } from "@/stores/auth";
 import { useUiPreferencesStore } from "@/stores/uiPreferences";
+import { formatDecimal, formatPercent } from "@/utils/formatters";
 import {
     mdiTrophy,
     mdiChartLine,
@@ -1581,7 +1582,7 @@ export default {
             if (typeof pct !== "number" || isNaN(pct)) return "";
             if (pct === 0) return "0%";
             if (pct < 0.1) return "<0.1%";
-            if (pct < 10) return `${pct.toFixed(1)}%`;
+            if (pct < 10) return formatPercent(pct, { digits: 1 });
             return `${Math.round(pct)}%`;
         };
 
@@ -1598,7 +1599,7 @@ export default {
 
             // Consistency score
             if (key.includes("consistent")) {
-                return `${parseFloat(value).toFixed(2)}`;
+                return formatDecimal(parseFloat(value), { digits: 2 });
             }
 
             // Legacy formats
