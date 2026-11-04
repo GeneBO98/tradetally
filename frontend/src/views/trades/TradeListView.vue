@@ -97,9 +97,9 @@
           <div>
             <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">Win Rate</div>
             <div class="text-lg font-medium text-gray-900 dark:text-white">
-              {{ tradesStore.winRate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+              {{ Number(tradesStore.winRate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
             </div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ tradesStore.winRateExcludingBreakeven }}% excl. BE</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ Number(tradesStore.winRateExcludingBreakeven).toFixed(1) }}% excl. BE</div>
           </div>
         </div>
 
@@ -146,9 +146,9 @@
             <div class="text-right">
               <div class="text-sm text-gray-500 dark:text-gray-400">Win Rate</div>
               <div class="text-lg font-medium text-gray-900 dark:text-white">
-                {{ tradesStore.winRate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+                {{ Number(tradesStore.winRate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
               </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">{{ tradesStore.winRateExcludingBreakeven }}% excl. BE</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ Number(tradesStore.winRateExcludingBreakeven).toFixed(1) }}% excl. BE</div>
             </div>
             <!-- Fullwidth Toggle -->
             <button

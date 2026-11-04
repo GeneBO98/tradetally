@@ -16,10 +16,10 @@
           Win Rate<span v-if="overview.position_grouping" class="ml-1 normal-case text-primary-700 dark:text-primary-400">· whole trade</span>
         </dt>
         <dd class="mt-1 text-lg lg:text-xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-          {{ overview.win_rate }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+          {{ Number(overview.win_rate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
         </dd>
         <dd v-if="overview.breakeven_trades > 0" class="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
-          {{ overview.win_rate_excluding_breakeven }}% excl. BE
+          {{ Number(overview.win_rate_excluding_breakeven).toFixed(1) }}% excl. BE
         </dd>
       </div>
 
