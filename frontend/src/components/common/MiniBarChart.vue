@@ -66,7 +66,7 @@ const props = defineProps({
   },
   positiveColor: {
     type: String,
-    default: '#16a34a'
+    default: '#15803d'
   },
   negativeColor: {
     type: String,

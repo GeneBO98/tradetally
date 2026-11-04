@@ -213,7 +213,7 @@ function createChart() {
         {
           label: 'Interest',
           data: months.map(entry => entry.interest),
-          backgroundColor: '#16a34a',
+          backgroundColor: '#15803d',
           stack: 'income'
         },
         {

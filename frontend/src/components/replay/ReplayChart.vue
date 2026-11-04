@@ -168,11 +168,11 @@ function createChart() {
   // Futures ticks (0.25, 0.1, 1/32...) drive the price-scale increments
   const tickSize = Number(props.trade?.tick_size)
   const seriesOptions = {
-    upColor: '#16a34a',
+    upColor: '#15803d',
     downColor: '#ef4444',
-    borderUpColor: '#16a34a',
+    borderUpColor: '#15803d',
     borderDownColor: '#ef4444',
-    wickUpColor: '#16a34a',
+    wickUpColor: '#15803d',
     wickDownColor: '#ef4444'
   }
   if (Number.isFinite(tickSize) && tickSize > 0) {
@@ -208,7 +208,7 @@ function createChart() {
   if (props.trade && props.trade.take_profit != null && nearData(Number(props.trade.take_profit))) {
     candleSeries.createPriceLine({
       price: Number(props.trade.take_profit),
-      color: '#16a34a',
+      color: '#15803d',
       lineWidth: 1,
       lineStyle: LightweightCharts.LineStyle.Dashed,
       axisLabelVisible: true,
@@ -298,7 +298,7 @@ function buildMarkers(visibleBars) {
     return {
       time: anchor.time,
       position: fill.action === 'buy' ? 'belowBar' : 'aboveBar',
-      color: fill.action === 'buy' ? '#16a34a' : '#ef4444',
+      color: fill.action === 'buy' ? '#15803d' : '#ef4444',
       shape: fill.action === 'buy' ? 'arrowUp' : 'arrowDown',
       text: `${fill.action === 'buy' ? 'BUY' : 'SELL'} ${fill.quantity} @ ${currencySymbol.value}${formatPrice(fill.price)}`,
       size: 2

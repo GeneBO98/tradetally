@@ -640,7 +640,7 @@ function renderScatter() {
           label: 'Winners in-trade',
           data: winners.map(toPoint).filter(validPoint),
           backgroundColor: 'rgba(74, 222, 128, 0.65)',
-          borderColor: 'rgba(22, 163, 74, 0.8)',
+          borderColor: 'rgba(21, 128, 61, 0.8)',
           pointRadius: 5,
           pointHoverRadius: 7
         },

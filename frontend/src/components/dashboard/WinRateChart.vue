@@ -39,7 +39,7 @@ function renderChart() {
   //   ≥60%      green  — solid winning day
   const barColorPair = pct => {
     const v = parseFloat(pct) || 0
-    if (v >= 60) return { fill: 'rgba(22, 163, 74, 0.7)',  border: '#16a34a' }  // green-600
+    if (v >= 60) return { fill: 'rgba(21, 128, 61, 0.7)',  border: '#15803d' }  // green-600
     if (v >= 50) return { fill: 'rgba(234, 179, 8, 0.7)',  border: '#eab308' }  // yellow-500
     if (v >= 40) return { fill: 'rgba(240, 129, 42, 0.7)', border: '#F0812A' }  // primary orange
     return         { fill: 'rgba(220, 38, 38, 0.7)',  border: '#dc2626' }       // red-600

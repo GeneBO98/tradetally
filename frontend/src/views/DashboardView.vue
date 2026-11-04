@@ -634,7 +634,7 @@
                     ]">
                       {{ formatSignedPositionAmount(getOptionPnL(position).unrealizedPnL, position) }}
                     </div>
-                    <div class="text-xs font-medium" :class="[ getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500' ]">
+                    <div class="text-xs font-medium" :class="[ getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400' ]">
                       {{ getOptionPnL(position).unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
                     </div>
                   </template>
@@ -646,8 +646,8 @@
                   ]">
                     {{ formatSignedPositionAmount(position.unrealizedPnL, position) }}
                   </div>
-                  <div class="text-xs font-medium" :class="[ position.unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500' ]">
-                    {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
+                  <div class="text-xs font-medium" :class="pnlClass(position.unrealizedPnLPercent)">
+                    {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ Number(position.unrealizedPnLPercent).toFixed(1) }}%
                   </div>
                 </div>
               </div>
@@ -870,7 +870,7 @@
                           <div v-if="position.dayChangePercent !== undefined && position.dayChangePercent !== null" class="text-xs" :class="[
                             pnlClass(position.dayChangePercent)
                           ]" :title="position.dayChange !== undefined ? formatSignedPositionCurrency(position.dayChange, position) + ' today' : undefined">
-                            {{ position.dayChangePercent >= 0 ? '+' : '' }}{{ formatNumber(position.dayChangePercent) }}%
+                            {{ position.dayChangePercent >= 0 ? '+' : '' }}{{ Number(position.dayChangePercent).toFixed(1) }}%
                           </div>
                           <div v-if="position.quoteSource === 'alpaca'" class="text-xs text-gray-400">via Alpaca</div>
                         </div>
@@ -912,7 +912,7 @@
                             {{ formatSignedPositionAmount(position.unrealizedPnL, position) }}
                           </div>
                           <div class="text-xs" :class="pnlClass(position.unrealizedPnLPercent)">
-                            {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
+                            {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ Number(position.unrealizedPnLPercent).toFixed(1) }}%
                           </div>
                         </div>
                         <span v-else class="text-xs text-gray-400">-</span>
@@ -986,7 +986,7 @@
               </tbody>
               <tfoot class="border-t-2 border-gray-300 dark:border-gray-600 text-sm whitespace-nowrap tabular-nums">
                 <tr>
-                  <td colspan="5" class="px-3 py-3 text-right font-semibold text-gray-900 dark:text-white">
+                  <td colspan="5" class="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white">
                     Total
                     <span
                       v-if="hasMixedCurrencies"

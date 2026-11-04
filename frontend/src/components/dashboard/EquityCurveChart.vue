@@ -39,9 +39,9 @@ function renderChart() {
   if (dailyData.length === 0) return
 
   const pnlValues = dailyData.map(d => parseFloat(d.cumulative_pnl) || 0)
-  const positiveColor = 'rgba(22, 163, 74, 1)'
+  const positiveColor = 'rgba(21, 128, 61, 1)'
   const negativeColor = 'rgba(220, 38, 38, 1)'
-  const positiveFill = 'rgba(22, 163, 74, 0.12)'
+  const positiveFill = 'rgba(21, 128, 61, 0.12)'
   const negativeFill = 'rgba(220, 38, 38, 0.12)'
 
   try {

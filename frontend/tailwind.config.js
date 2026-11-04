@@ -23,7 +23,7 @@ export default {
           900: '#7a3616',
           950: '#431c0b',
         },
-        success: '#16a34a', // green-600, the win green used in text and charts
+        success: '#15803d', // green-700, the win green used in text and charts
         danger: '#dc2626',  // red-600
         warning: '#ca8a04', // yellow-600
       }

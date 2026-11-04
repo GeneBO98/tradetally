@@ -86,8 +86,8 @@
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">R Left on Table</div>
             <template v-if="summary.trades_with_target > 0">
-              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-gray-900 dark:text-white' : summary.r_left_on_table < 0 ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
-                {{ formatR(summary.r_left_on_table) }}
+              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-red-600 dark:text-red-400' : summary.r_left_on_table < 0 ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+                {{ formatR(summary.r_left_on_table).replace('+', '') }}
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
                 {{ summary.trades_with_target }} with targets
@@ -106,7 +106,7 @@
           <!-- Win Rate -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Win Rate</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-gray-900 dark:text-white">
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="winRateClass(summary.win_rate)">
               {{ Number(summary.win_rate).toFixed(1) }}%
             </div>
             <div v-if="summary.break_even_trades > 0" class="text-xs text-gray-500 dark:text-gray-400 truncate shrink-0">
@@ -162,7 +162,7 @@
 </template>
 
 <script setup>
-import { pnlClass } from '@/utils/metricTone'
+import { pnlClass, winRateClass } from '@/utils/metricTone'
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'

@@ -277,7 +277,7 @@
                             {{ formatCurrency(investmentsStore.portfolioOverview.totalReturn) }}
                         </p>
                         <p
-                            :class="[ 'text-xs mt-2', portfolioOverviewReturn >= 0 ? 'text-green-500' : 'text-red-500', ]"
+                            :class="[ 'text-xs mt-2', portfolioOverviewReturn >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400', ]"
                         >
                             {{ formatPercent(investmentsStore.portfolioOverview.totalReturnPercent) }}
                         </p>

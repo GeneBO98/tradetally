@@ -64,7 +64,7 @@
                                     affected by outliers and may provide a more
                                     representative view of typical performance.
                                 </p>
-                                <p class="mt-1 text-sm text-primary-700 dark:text-primary-400 font-medium">
+                                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
                                     Note: Changes take effect immediately
                                     and will update labels throughout the
                                     application.

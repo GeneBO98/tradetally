@@ -90,7 +90,7 @@
           </div>
           <div>
             <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">Win Rate</div>
-            <div class="text-lg font-medium text-gray-900 dark:text-white">
+            <div class="text-lg font-medium" :class="winRateClass(tradesStore.winRate)">
               {{ Number(tradesStore.winRate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ Number(tradesStore.winRateExcludingBreakeven).toFixed(1) }}% excl. BE</div>
@@ -133,7 +133,7 @@
           <div class="flex items-center gap-6">
             <div class="text-right">
               <div class="text-sm text-gray-500 dark:text-gray-400">Win Rate</div>
-              <div class="text-lg font-medium text-gray-900 dark:text-white">
+              <div class="text-lg font-medium" :class="winRateClass(tradesStore.winRate)">
                 {{ Number(tradesStore.winRate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400">{{ Number(tradesStore.winRateExcludingBreakeven).toFixed(1) }}% excl. BE</div>
@@ -1149,7 +1149,7 @@
 </template>
 
 <script setup>
-import { pnlClass } from '@/utils/metricTone'
+import { pnlClass, winRateClass } from '@/utils/metricTone'
 import { onMounted, onUnmounted, computed, watch, ref, nextTick, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'

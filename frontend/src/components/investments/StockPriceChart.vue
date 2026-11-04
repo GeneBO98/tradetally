@@ -170,11 +170,11 @@ function createChart(candles) {
     })
 
     candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
-      upColor: '#16a34a',
+      upColor: '#15803d',
       downColor: '#ef4444',
-      borderUpColor: '#16a34a',
+      borderUpColor: '#15803d',
       borderDownColor: '#ef4444',
-      wickUpColor: '#16a34a',
+      wickUpColor: '#15803d',
       wickDownColor: '#ef4444',
     })
 

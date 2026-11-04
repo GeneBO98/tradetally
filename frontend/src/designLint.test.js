@@ -141,7 +141,7 @@ describe('design system consistency', () => {
 
   it('keeps the win green and loss red tokens in tailwind.config.js', () => {
     const cfg = readFileSync(join(ROOT, '..', 'tailwind.config.js'), 'utf8')
-    expect(cfg).toMatch(/success: '#16a34a'/)
+    expect(cfg).toMatch(/success: '#15803d'/)
     expect(cfg).not.toMatch(/#10b981|#f59e0b/i)
   })
 

@@ -4,7 +4,8 @@
  */
 export const GAIN = 'text-green-700 dark:text-green-400'
 export const LOSS = 'text-red-600 dark:text-red-400'
-export const FLAT = 'text-gray-900 dark:text-white'
+// Zero / no-direction values are muted so they never read as a result.
+export const FLAT = 'text-gray-500 dark:text-gray-400'
 
 export function pnlClass(value) {
   const n = Number(value)

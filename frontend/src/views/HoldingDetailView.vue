@@ -162,7 +162,7 @@
                     </p>
                     <p
                         v-if="holding.unrealizedPnLPercent !== undefined"
-                        :class="[ 'text-xs', holding.unrealizedPnL >= 0 ? 'text-green-500' : 'text-red-500', ]"
+                        :class="[ 'text-xs', holding.unrealizedPnL >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400', ]"
                     >
                         {{ holding.unrealizedPnL >= 0 ? "+" : ""
                         }}{{ holding.unrealizedPnLPercent.toFixed(1) }}%

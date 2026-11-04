@@ -19,7 +19,7 @@
            which fits even in very narrow cards. -->
       <div class="flex flex-col gap-1 text-xs text-gray-500 dark:text-gray-400 shrink-0">
         <div class="flex items-center gap-1.5">
-          <span class="heatmap-cell" style="background-color: #16a34a" />
+          <span class="heatmap-cell" style="background-color: #15803d" />
           <span>Win</span>
         </div>
         <div class="flex items-center gap-1.5">
@@ -135,7 +135,7 @@ const breakevenDays = computed(() => stats.value.be)
 // breakeven days. No magnitude-based gradient — the heatmap is a yes/no
 // readout of win/loss day, not a heatmap of P&L size.
 function colorFor(pnl) {
-  if (pnl > 0) return '#16a34a' // green-600
+  if (pnl > 0) return '#15803d' // green-600
   if (pnl < 0) return '#dc2626' // red-600
   return 'rgb(229, 231, 235)'   // gray-200, breakeven
 }

@@ -295,7 +295,7 @@ const radius = gaugeW / 2 - arcStrokeWidth
 
 const trackColor = computed(() => 'rgba(156, 163, 175, 0.25)')
 const arcColor = computed(() => {
-  if (winRate.value >= 60) return '#16a34a'
+  if (winRate.value >= 60) return '#15803d'
   if (winRate.value >= 45) return '#F0812A'
   return '#dc2626'
 })

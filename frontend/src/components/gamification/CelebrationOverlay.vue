@@ -1260,7 +1260,7 @@ onBeforeUnmount(() => {
 .rarity-icon-legendary   { background-color: rgb(254 240 200); color: rgb(228 106 22); }
 
 .dark .rarity-icon-common    { background-color: rgba(100, 116, 139, 0.2); color: rgb(148 163 184); }
-.dark .rarity-icon-uncommon  { background-color: rgba(22, 163, 74, 0.2);  color: rgb(74 222 128); }
+.dark .rarity-icon-uncommon  { background-color: rgba(21, 128, 61, 0.2);  color: rgb(74 222 128); }
 .dark .rarity-icon-rare      { background-color: rgba(8, 145, 178, 0.2);  color: rgb(103 232 249); }
 .dark .rarity-icon-epic      { background-color: rgba(124, 58, 237, 0.2); color: rgb(196 181 253); }
 .dark .rarity-icon-legendary { background-color: rgba(228, 106, 22, 0.2); color: rgb(250 176 91); }

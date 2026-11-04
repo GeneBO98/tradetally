@@ -104,6 +104,12 @@
     min-height: 44px; /* Ensures proper touch target size on mobile */
     font-size: 16px; /* Prevents iOS zoom on input focus */
   }
+  /* Desktop fields sit on the 14px UI scale; phones keep 16px for iOS. */
+  @media (min-width: 640px) {
+    .input {
+      font-size: 0.875rem;
+    }
+  }
   
   /* Compact field for inline editors, table cells and dense calculators.
      Pair with `.input`: `input input-sm`. Phones keep 16px to avoid iOS
@@ -208,11 +214,11 @@
      elevation. BaseModal (components/common) is the preferred wrapper;
      hand-rolled dialogs must at least use these classes. */
   .modal-overlay {
-    @apply fixed inset-0 z-50 bg-gray-900/50 dark:bg-gray-950/50;
+    @apply fixed inset-0 z-50 bg-gray-900/50 dark:bg-gray-950/60;
   }
   /* Backdrop variant for the "wrapper + separate backdrop div" pattern. */
   .modal-backdrop {
-    @apply fixed inset-0 bg-gray-900/50 dark:bg-gray-950/50 transition-opacity;
+    @apply fixed inset-0 bg-gray-900/50 dark:bg-gray-950/60 transition-opacity;
   }
   .modal-panel {
     @apply relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-500/60 dark:shadow-2xl;
@@ -528,7 +534,7 @@
 
   /* Orange glow on hero P&L number in dark mode (and subtle in light). */
   .hero-glow-positive {
-    text-shadow: 0 0 24px rgba(22, 163, 74, 0.25);
+    text-shadow: 0 0 24px rgba(21, 128, 61, 0.25);
   }
   .dark .hero-glow-positive {
     text-shadow: 0 0 32px rgba(34, 197, 94, 0.45);
@@ -547,14 +553,14 @@
     width: 6px;
     height: 6px;
     border-radius: 9999px;
-    background-color: #16a34a;
+    background-color: #15803d;
   }
   .pulse-dot::after {
     content: '';
     position: absolute;
     inset: -3px;
     border-radius: 9999px;
-    background-color: rgba(22, 163, 74, 0.5);
+    background-color: rgba(21, 128, 61, 0.5);
     animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 

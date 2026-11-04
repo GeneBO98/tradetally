@@ -181,7 +181,7 @@ const COLORS = {
   textPrimary: '#f4f4f5',
   textSecondary: '#9ca3af',
   textMuted: '#6b7280',
-  win: '#16a34a',
+  win: '#15803d',
   loss: '#ef4444',
   divider: '#262d36'
 }

@@ -43,7 +43,7 @@ function renderChart() {
       labels: ['Wins', 'Losses', 'Breakeven'],
       datasets: [{
         data: [wins, losses, breakeven],
-        backgroundColor: ['#16a34a', '#ef4444', '#9ca3af'],
+        backgroundColor: ['#15803d', '#ef4444', '#9ca3af'],
         hoverBackgroundColor: ['#34d399', '#f87171', '#b0b5bf'],
         borderWidth: 0,
         hoverOffset: 6,

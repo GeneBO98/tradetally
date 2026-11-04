@@ -78,6 +78,7 @@ Chart.defaults.elements.point.radius = 2
 Chart.defaults.elements.point.hoverRadius = 5
 Chart.defaults.plugins.legend.labels.boxWidth = 12
 Chart.defaults.plugins.legend.labels.boxHeight = 12
+Chart.defaults.plugins.legend.labels.usePointStyle = true
 Chart.defaults.scale.ticks.maxRotation = 0
 Chart.defaults.scale.ticks.autoSkipPadding = 12
 // Room for axis titles and the last tick label so cards never clip them.

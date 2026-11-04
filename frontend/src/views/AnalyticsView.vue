@@ -1994,6 +1994,7 @@ function createDrawdownChart() {
           }
         },
         y: {
+          suggestedMax: 0,
           title: {
             display: true,
             text: yAxisLabel

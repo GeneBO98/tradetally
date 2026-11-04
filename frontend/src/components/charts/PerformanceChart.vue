@@ -63,7 +63,7 @@ function createChart() {
           // the cumulative line draws on top.
           type: 'bar',
           order: 2,
-          backgroundColor: ctx => (ctx.parsed?.y ?? ctx.raw ?? 0) < 0 ? 'rgba(220, 38, 38, 0.85)' : 'rgba(22, 163, 74, 0.85)',
+          backgroundColor: ctx => (ctx.parsed?.y ?? ctx.raw ?? 0) < 0 ? 'rgba(220, 38, 38, 0.85)' : 'rgba(21, 128, 61, 0.85)',
           borderWidth: 0,
           borderRadius: 2,
           yAxisID: 'y'
