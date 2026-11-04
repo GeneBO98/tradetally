@@ -110,6 +110,14 @@
     @apply bg-primary-600 dark:bg-primary-500;
   }
 
+  /* Row inside a menu / listbox / popover. */
+  .menu-item {
+    @apply flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:text-gray-300 dark:hover:bg-gray-700 dark:focus:bg-gray-700;
+  }
+  .menu-item-active {
+    @apply bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300;
+  }
+
   /* Bordered square icon button for toolbars (filters, settings, view toggles). */
   .btn-icon-outline {
     @apply btn-icon h-11 w-11 border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700;

@@ -14,28 +14,28 @@
           <!-- View Toggle -->
           <div class="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
             <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1 min-w-max">
-              <button
+              <button class="btn-link"
                 @click="currentView = 'list'"
                 :class="[ 'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center', currentView === 'list' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
               >
                 <ListBulletIcon class="w-4 h-4 mr-1" />
                 List
               </button>
-              <button
+              <button class="btn-link"
                 @click="currentView = 'calendar'"
                 :class="[ 'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center', currentView === 'calendar' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
               >
                 <CalendarDaysIcon class="w-4 h-4 mr-1" />
                 Calendar
               </button>
-              <button
+              <button class="btn-link"
                 @click="currentView = 'templates'"
                 :class="[ 'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center', currentView === 'templates' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
               >
                 <DocumentTextIcon class="w-4 h-4 mr-1" />
                 Templates
               </button>
-              <button
+              <button class="btn-link"
                 @click="currentView = 'analysis'"
                 :class="[ 'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center', currentView === 'analysis' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
               >

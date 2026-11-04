@@ -70,14 +70,14 @@
         >
           <button
             type="button"
-            class="block w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700"
+            class="menu-item"
             @click="copyImageFromMenu"
           >
             Copy image
           </button>
           <button
             type="button"
-            class="block w-full px-4 py-2.5 text-left text-sm"
+            class="menu-item"
             :class="isPublic ? 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700' : 'cursor-not-allowed text-gray-400 dark:text-gray-600'"
             :disabled="!isPublic"
             :title="isPublic ? '' : 'Make the trade public first'"

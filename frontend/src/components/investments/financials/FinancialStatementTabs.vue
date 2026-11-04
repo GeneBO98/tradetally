@@ -9,13 +9,13 @@
         <div class="flex items-center space-x-2">
           <span class="text-sm text-gray-500 dark:text-gray-400">Period:</span>
           <div class="inline-flex rounded-md shadow-sm">
-            <button
+            <button class="btn-link"
               @click="frequency = 'annual'"
               :class="[ 'px-3 py-1 text-sm font-medium rounded-l-md border', frequency === 'annual' ? 'bg-primary-700 text-white border-primary-600' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600' ]"
             >
               Annual
             </button>
-            <button
+            <button class="btn-link"
               @click="frequency = 'quarterly'"
               :class="[ 'px-3 py-1 text-sm font-medium rounded-r-md border-t border-b border-r', frequency === 'quarterly' ? 'bg-primary-700 text-white border-primary-600' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600' ]"
             >

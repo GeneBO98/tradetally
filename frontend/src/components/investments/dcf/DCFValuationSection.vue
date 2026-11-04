@@ -10,7 +10,7 @@
           <h2 class="heading-card">DCF Valuation Calculator</h2>
           <p class="text-sm text-gray-500 dark:text-gray-400">Calculate intrinsic value using Discounted Cash Flow</p>
         </div>
-        <button class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+        <button class="btn-icon">
           <svg
             class="w-5 h-5 transition-transform"
             :class="{ 'rotate-180': expanded }"

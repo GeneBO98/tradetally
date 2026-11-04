@@ -57,7 +57,7 @@
             <li v-for="item in list.items" :key="item.symbol">
               <button
                 type="button"
-                class="w-full px-5 py-2.5 flex items-center gap-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                class="menu-item"
                 @click="emit('select', item.symbol)"
               >
                 <StockLogo :symbol="item.symbol" :logo-url="item.logo" size-class="w-8 h-8" />

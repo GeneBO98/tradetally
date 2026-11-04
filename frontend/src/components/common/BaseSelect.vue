@@ -51,7 +51,7 @@
             v-if="placeholder"
             type="button"
             @click="selectClear"
-            class="flex items-center w-full px-3 py-2 text-sm text-left"
+            class="menu-item"
             :class="!selectedOption && !hasValue ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'"
           >
             {{ placeholder }}
@@ -67,7 +67,7 @@
               type="button"
               :disabled="opt.disabled"
               @click="select(opt.value)"
-              class="flex items-center justify-between w-full px-3 py-2 text-sm text-left"
+              class="menu-item justify-between"
               :class="rowClass(opt)"
             >
               <span class="truncate">{{ opt.label }}</span>

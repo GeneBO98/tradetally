@@ -379,7 +379,7 @@
                             >
                                 View all achievements →
                             </button>
-                            <button
+                            <button class="btn-link"
                                 @click="checkForNewAchievements"
                                 :disabled="checkingAchievements"
                                 :class="[ 'px-3 py-1 rounded text-xs font-medium transition-colors flex items-center', checkingAchievements ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed' : 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-800', ]"
@@ -533,7 +533,7 @@
                                     />
                                     My Rankings
                                 </h3>
-                                <button
+                                <button class="btn-link"
                                     @click="showFilters = !showFilters"
                                     :class="[ 'px-3 py-1 rounded text-sm font-medium transition-colors flex items-center', showFilters ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600', ]"
                                 >

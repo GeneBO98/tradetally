@@ -43,11 +43,11 @@
         </button>
 
         <!-- Year Navigation -->
-        <button @click="changeYear(-1)" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+        <button @click="changeYear(-1)" class="btn-icon">
           <ChevronLeftIcon class="h-5 w-5" />
         </button>
         <span class="text-lg font-medium text-gray-900 dark:text-white">{{ currentYear }}</span>
-        <button @click="changeYear(1)" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+        <button @click="changeYear(1)" class="btn-icon">
           <ChevronRightIcon class="h-5 w-5" />
         </button>
       </div>
@@ -73,13 +73,13 @@
           <div class="card-body">
             <div class="mb-6 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div class="flex items-center space-x-2">
-                <button @click="changeMonth(-1)" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title="Previous month">
+                <button @click="changeMonth(-1)" class="btn-icon" title="Previous month">
                   <ChevronLeftIcon class="h-5 w-5" />
                 </button>
                 <h2 class="heading-section min-w-[180px] text-center">
                   {{ format(expandedMonth, 'MMMM yyyy') }}
                 </h2>
-                <button @click="changeMonth(1)" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title="Next month">
+                <button @click="changeMonth(1)" class="btn-icon" title="Next month">
                   <ChevronRightIcon class="h-5 w-5" />
                 </button>
               </div>

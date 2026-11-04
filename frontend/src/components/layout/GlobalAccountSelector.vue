@@ -47,7 +47,7 @@
           <!-- All Accounts Option -->
           <button
             @click="handleClearAccount"
-            class="w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            class="menu-item justify-between"
             :class="!isFiltered ? 'text-primary-700 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
             role="menuitem"
           >
@@ -58,7 +58,7 @@
           <!-- Unsorted Option (trades without account) -->
           <button
             @click="handleSelectUnsorted"
-            class="w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            class="menu-item justify-between"
             :class="selectedAccount === UNSORTED_ACCOUNT ? 'text-primary-700 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
             role="menuitem"
           >
@@ -85,7 +85,7 @@
               v-for="account in accounts"
               :key="account.value"
               @click="handleSelectAccount(account.value)"
-              class="w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              class="menu-item justify-between"
               :class="selectedAccount === account.value ? 'text-primary-700 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
               role="menuitem"
             >

@@ -55,7 +55,7 @@
           <!-- Connection header -->
           <button
             type="button"
-            class="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60"
+            class="menu-item"
             @click="toggleConnection(connection.id)"
           >
             <div

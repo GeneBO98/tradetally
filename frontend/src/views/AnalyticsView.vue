@@ -52,7 +52,7 @@
                   Show performance in terms of risk units instead of dollar amounts
                 </p>
               </div>
-              <button
+              <button class="btn-link"
                 @click="rValueMode = !rValueMode"
                 :class="[ rValueMode ? 'switch-on' : '', 'switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2' ]"
                 type="button"

@@ -8,13 +8,13 @@
       <div class="flex items-center space-x-2">
         <!-- Mode Toggle -->
         <div class="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
-          <button
+          <button class="btn-link"
             @click="setMode('auto')"
             :class="[ 'px-2 py-1 text-xs font-medium rounded-md transition-colors', mode === 'auto' ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
           >
             Auto (API)
           </button>
-          <button
+          <button class="btn-link"
             @click="setMode('manual')"
             :class="[ 'px-2 py-1 text-xs font-medium rounded-md transition-colors', mode === 'manual' ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' ]"
           >

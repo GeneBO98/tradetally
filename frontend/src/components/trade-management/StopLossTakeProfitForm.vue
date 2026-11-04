@@ -78,14 +78,14 @@
         <!-- Take Profit Mode Toggle -->
         <div class="flex items-center space-x-4 mb-2">
           <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Take Profit Mode:</span>
-          <button
+          <button class="btn-link"
             type="button"
             @click="useMultipleTargets = false"
             :class="[ 'px-3 py-1 text-sm rounded', !useMultipleTargets ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400' ]"
           >
             Single
           </button>
-          <button
+          <button class="btn-link"
             type="button"
             @click="useMultipleTargets = true"
             :class="[ 'px-3 py-1 text-sm rounded', useMultipleTargets ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400' ]"
@@ -137,7 +137,7 @@
             Setting this enables Management R calculation to measure trade execution quality.
           </p>
           <div class="flex space-x-3">
-            <button
+            <button class="btn-link"
               type="button"
               @click="targetHitFirst = targetHitFirst === 'take_profit' ? '' : 'take_profit'"
               :class="[
@@ -149,7 +149,7 @@
             >
               TP Hit First
             </button>
-            <button
+            <button class="btn-link"
               type="button"
               @click="targetHitFirst = targetHitFirst === 'stop_loss' ? '' : 'stop_loss'"
               :class="[

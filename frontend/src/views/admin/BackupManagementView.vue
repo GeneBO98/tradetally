@@ -103,7 +103,7 @@
                                     site data
                                 </p>
                             </div>
-                            <button
+                            <button class="btn-link"
                                 @click="toggleBackups"
                                 :disabled="savingSettings"
                                 type="button"

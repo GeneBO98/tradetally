@@ -42,7 +42,7 @@
       </router-link>
       <button
         @click="closeDrawer"
-        class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 lg:hidden dark:hover:bg-gray-800 dark:hover:text-gray-300"
+        class="btn-icon lg:hidden"
         aria-label="Close menu"
       >
         <XMarkIcon class="h-5 w-5" />
@@ -393,7 +393,7 @@
       </button>
       <button
         @click="toggleCollapsed"
-        class="hidden rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 lg:inline-flex dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+        class="btn-icon hidden lg:inline-flex"
         :aria-label="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
         :title="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
       >

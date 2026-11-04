@@ -150,7 +150,7 @@
               </span>
               <button
                 @click="removeTakeProfitTarget(index)"
-                class="p-0.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 ml-auto"
+                class="btn-icon ml-auto hover:!text-red-600 dark:hover:!text-red-400"
                 title="Remove target"
               >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

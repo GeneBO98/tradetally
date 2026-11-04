@@ -98,7 +98,7 @@
                                         </p>
                                     </div>
                                     <div class="flex-shrink-0 pt-0.5">
-                                        <button
+                                        <button class="btn-link"
                                             type="button"
                                             @click="
                                                 analyticsForm.analyticsPositionGrouping =
@@ -141,7 +141,7 @@
                                         </p>
                                     </div>
                                     <div class="flex-shrink-0 pt-0.5">
-                                        <button
+                                        <button class="btn-link"
                                             type="button"
                                             @click="
                                                 analyticsForm.edgeReportEnabled =
@@ -375,7 +375,7 @@
                                         </p>
                                     </div>
                                     <div class="flex-shrink-0 pt-0.5">
-                                        <button
+                                        <button class="btn-link"
                                             type="button"
                                             @click="
                                                 analyticsForm.autoCloseExpiredOptions =
@@ -728,7 +728,7 @@
                                     </p>
                                 </div>
                                 <div class="ml-4 flex-shrink-0">
-                                    <button
+                                    <button class="btn-link"
                                         type="button"
                                         @click="
                                             privacyForm.publicProfile =

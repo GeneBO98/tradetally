@@ -33,13 +33,13 @@
         <!-- Tabs -->
         <div class="border-b border-gray-200 dark:border-gray-700 mb-6">
             <nav class="-mb-px flex space-x-8">
-                <button
+                <button class="btn-link"
                     @click="activeTab = 'screener'"
                     :class="[ 'tab', activeTab === 'screener' ? 'tab-active' : 'tab-inactive', ]"
                 >
                     Stock Screener
                 </button>
-                <button
+                <button class="btn-link"
                     @click="activeTab = 'holdings'"
                     :class="[ 'tab', activeTab === 'holdings' ? 'tab-active' : 'tab-inactive', ]"
                 >
@@ -51,13 +51,13 @@
                         {{ investmentsStore.holdingCount }}
                     </span>
                 </button>
-                <button
+                <button class="btn-link"
                     @click="activeTab = 'scanner'"
                     :class="[ 'tab', activeTab === 'scanner' ? 'tab-active' : 'tab-inactive', ]"
                 >
                     Stock Scanner
                 </button>
-                <button
+                <button class="btn-link"
                     @click="activeTab = 'income'"
                     :class="[ 'tab', activeTab === 'income' ? 'tab-active' : 'tab-inactive', ]"
                 >
@@ -176,7 +176,7 @@
                     >
                         Recent Searches
                     </h2>
-                    <button
+                    <button class="btn-link"
                         @click="showFavoritesOnly = !showFavoritesOnly"
                         :class="[ 'text-sm px-3 py-1 rounded-md', showFavoritesOnly ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700', ]"
                     >

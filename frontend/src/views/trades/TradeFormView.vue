@@ -1005,7 +1005,7 @@
           <button
             type="button"
             @click="showStrategy = !showStrategy"
-            class="flex items-center justify-between w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800"
+            class="menu-item justify-between"
           >
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Strategy</span>
             <svg
@@ -1052,7 +1052,7 @@
           <button
             type="button"
             @click="showSetup = !showSetup"
-            class="flex items-center justify-between w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800"
+            class="menu-item justify-between"
           >
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Setup</span>
             <svg
@@ -1119,7 +1119,7 @@
           <button
             type="button"
             @click="showTags = !showTags"
-            class="flex items-center justify-between w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800"
+            class="menu-item justify-between"
           >
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Tags</span>
             <svg
@@ -1142,7 +1142,7 @@
           <button
             type="button"
             @click="showNotes = !showNotes"
-            class="flex items-center justify-between w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800"
+            class="menu-item justify-between"
           >
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Notes</span>
             <svg
@@ -1182,7 +1182,7 @@
           <button
             type="button"
             @click="showCharts = !showCharts"
-            class="flex items-center justify-between w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800"
+            class="menu-item justify-between"
           >
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Charts & Images</span>
             <svg

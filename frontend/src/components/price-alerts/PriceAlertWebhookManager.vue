@@ -6,7 +6,7 @@
         <button
             type="button"
             @click="expanded = !expanded"
-            class="w-full flex items-center justify-between gap-3 px-4 py-3 text-left focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-inset rounded-lg"
+            class="menu-item justify-between"
             :aria-expanded="expanded"
             aria-controls="webhook-destinations-panel"
         >
