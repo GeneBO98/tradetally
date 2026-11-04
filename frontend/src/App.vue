@@ -88,7 +88,7 @@
           <button
             @click="registerPasskey"
             :disabled="passkeyRegistering"
-            class="btn-primary disabled:opacity-50"
+            class="btn-primary"
           >
             <span v-if="passkeyRegistering">Setting up...</span>
             <span v-else>Add passkey</span>

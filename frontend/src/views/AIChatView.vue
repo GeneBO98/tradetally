@@ -154,7 +154,7 @@
           <!-- Memory note proposed by the assistant; stored only when confirmed -->
           <div
             v-if="aiStore.pendingMemoryNote"
-            class="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-primary-200 bg-primary-50 px-3 py-2 dark:border-primary-800 dark:bg-primary-900/20"
+            class="callout-info mb-3 flex flex-wrap items-center gap-3"
           >
             <div class="min-w-0 flex-1">
               <p class="text-xs font-medium text-primary-700 dark:text-primary-300">Remember this for future conversations?</p>

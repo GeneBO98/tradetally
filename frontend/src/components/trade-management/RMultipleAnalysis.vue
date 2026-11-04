@@ -13,7 +13,7 @@
         <!-- Actual R -->
         <div class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 rounded-lg" :class="getActualRClass">
           <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">Actual R (Net)</div>
-          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate" :class="pnlClass(analysis.actual_r)">
+          <div class="stat-value truncate" :class="pnlClass(analysis.actual_r)">
             {{ formatR(analysis.actual_r) }}
           </div>
           <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 truncate shrink-0">
@@ -27,7 +27,7 @@
             Target R (Net)
             <span v-if="showWeightedAverageHint" class="text-xs font-normal">(weighted avg)</span>
           </div>
-          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate text-primary-700 dark:text-primary-400">
+          <div class="stat-value truncate text-primary-700 dark:text-primary-400">
             {{ formatR(effectiveTargetR) }}
           </div>
           <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 truncate shrink-0">
@@ -49,7 +49,7 @@
           <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">
             Management Impact
           </div>
-          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate" :class="getManagementRTextClass">
+          <div class="stat-value truncate" :class="getManagementRTextClass">
             {{ formatR(analysis.management_r) }}
           </div>
           <div v-if="analysis.management_r !== 0" class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 truncate shrink-0">
@@ -61,7 +61,7 @@
           <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">
             {{ effectiveRLost > 0 ? 'R Left on Table' : (effectiveRLost === 0 ? 'Target Hit' : 'R Exceeded') }}
           </div>
-          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate" :class="getRLostTextClass">
+          <div class="stat-value truncate" :class="getRLostTextClass">
             {{ formatR(Math.abs(effectiveRLost)) }}
           </div>
           <div class="text-xs sm:text-sm truncate shrink-0" :class="effectiveRLost === 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-600 dark:text-gray-400'" v-if="getRLostDescription">

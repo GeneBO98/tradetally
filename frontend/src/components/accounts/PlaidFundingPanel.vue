@@ -11,7 +11,7 @@
       <!-- Connect buttons -->
       <div class="grid grid-cols-2 gap-2">
         <button
-          class="btn-primary btn-sm gap-1.5 disabled:opacity-60"
+          class="btn-primary btn-sm gap-1.5"
           :disabled="busyTarget === 'bank'"
           @click="openPlaidLink('bank')"
         >
@@ -21,7 +21,7 @@
           {{ busyTarget === 'bank' ? 'Connecting…' : 'Bank' }}
         </button>
         <button
-          class="btn-secondary gap-1.5 disabled:opacity-60 dark:text-gray-200 btn-sm"
+          class="btn-secondary gap-1.5 dark:text-gray-200 btn-sm"
           :disabled="busyTarget === 'investment'"
           @click="openPlaidLink('investment')"
         >
@@ -33,7 +33,7 @@
       </div>
 
       <!-- Error -->
-      <div v-if="store.error" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+      <div v-if="store.error" class="callout-danger text-xs">
         {{ store.error }}
       </div>
 
@@ -71,7 +71,7 @@
                 <div class="truncate text-sm font-medium text-gray-900 dark:text-white">
                   {{ connection.institutionName || 'Plaid Connection' }}
                 </div>
-                <span class="badge bg-gray-100 uppercase tracking-wide text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                <span class="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                   {{ connection.targetType }}
                 </span>
                 <span
@@ -82,7 +82,7 @@
                 </span>
                 <span
                   v-if="needsReconnect(connection)"
-                  class="badge bg-yellow-100 uppercase tracking-wide text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
+                  class="badge bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
                 >
                   Reconnect needed
                 </span>
@@ -123,7 +123,7 @@
             <!-- Action bar -->
             <div class="flex flex-wrap items-center gap-1.5 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
               <button
-                class="btn-secondary btn-sm gap-1 disabled:opacity-60"
+                class="btn-secondary btn-sm gap-1"
                 :disabled="isSyncing(connection.id)"
                 @click="triggerSync(connection.id)"
               >
@@ -223,7 +223,7 @@
                     </div>
                   </div>
                   <button
-                    class="btn-primary btn-sm text-xs disabled:opacity-60"
+                    class="btn-primary btn-sm text-xs"
                     :disabled="!selectedAccountIds[plaidAccount.id] || linkingAccountId === plaidAccount.id"
                     @click="linkExistingAccount(plaidAccount)"
                   >
@@ -231,7 +231,7 @@
                   </button>
                   <button
                     v-if="!plaidAccount.linkedAccountId"
-                    class="btn-secondary btn-sm disabled:opacity-60"
+                    class="btn-secondary btn-sm"
                     :disabled="linkingAccountId === plaidAccount.id"
                     @click="createAndLinkAccount(plaidAccount)"
                   >

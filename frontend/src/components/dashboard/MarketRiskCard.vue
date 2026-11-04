@@ -60,7 +60,7 @@
             </div>
             <div class="mt-1 flex items-center gap-1.5 min-w-0">
               <span
-                class="badge uppercase"
+                class="badge"
                 :class="badgeClasses(indicator.status)"
               >
                 {{ indicator.status_label }}

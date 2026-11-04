@@ -23,7 +23,7 @@ const isResolved = computed(() => isResolvedCusip(props.symbol))
 
 <style scoped>
 .cusip-resolved {
-  color: #059669; /* Green to indicate resolution */
+  color: #15803d; /* Green to indicate resolution */
   font-weight: 600;
   transition: all 0.3s ease;
 }

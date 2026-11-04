@@ -1207,7 +1207,7 @@
                                 :disabled="
                                     twoFactorLoading || !verificationCode
                                 "
-                                class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="btn-primary"
                             >
                                 <span v-if="twoFactorLoading">Enabling...</span>
                                 <span v-else>Enable 2FA</span>
@@ -1318,7 +1318,7 @@
                                     !disable2FAForm.password ||
                                     !disable2FAForm.token
                                 "
-                                class="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="btn-danger"
                             >
                                 <span v-if="twoFactorLoading"
                                     >Disabling...</span
@@ -1619,7 +1619,7 @@
                                     deleteAccountLoading ||
                                     !deleteAccountForm.password
                                 "
-                                class="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="btn-danger"
                             >
                                 <span v-if="deleteAccountLoading"
                                     >Deleting...</span

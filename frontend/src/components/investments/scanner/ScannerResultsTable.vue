@@ -67,7 +67,7 @@
             @click="viewStock(stock.symbol)"
             class="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
           >
-            <td class="px-4 py-3 whitespace-nowrap">
+            <td class="whitespace-nowrap px-4 py-3">
               <div class="flex items-center gap-2">
                 <StockLogo
                   :symbol="stock.symbol"
@@ -79,17 +79,17 @@
                 </span>
               </div>
             </td>
-            <td class="px-4 py-3 whitespace-nowrap hidden sm:table-cell">
+            <td class="whitespace-nowrap hidden sm:table-cell px-4 py-3">
               <span class="text-sm text-gray-900 dark:text-white truncate max-w-[200px] block">
                 {{ stock.companyName || '-' }}
               </span>
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-right">
+            <td class="whitespace-nowrap text-right px-4 py-3">
               <span class="text-sm text-gray-900 dark:text-white">
                 {{ formatPrice(stock.currentPrice) }}
               </span>
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-center">
+            <td class="whitespace-nowrap text-center px-4 py-3">
               <span
                 :class="[ 'inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium', getPillarsPassedClass(stock.pillarsPassed) ]"
               >
@@ -100,7 +100,7 @@
             <td
               v-for="pillar in 8"
               :key="pillar"
-              class="px-2 py-3 text-center hidden lg:table-cell"
+              class="text-center hidden lg:table-cell px-4 py-3"
             >
               <span
                 v-if="stock.pillars[pillar]?.pass"
@@ -133,7 +133,7 @@
         <button
           @click="goToPage(pagination.page - 1)"
           :disabled="pagination.page <= 1"
-          class="btn-secondary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          class="btn-secondary btn-sm"
         >
           Previous
         </button>

@@ -5,7 +5,7 @@
 
       <span class="hidden sm:inline-block sm:h-screen sm:align-middle" aria-hidden="true">&#8203;</span>
 
-      <div class="modal-panel inline-block w-full max-w-4xl transform overflow-hidden px-4 pb-4 pt-5 text-left align-bottom transition-all sm:my-8 sm:p-6 sm:align-middle">
+      <div class="modal-panel w-full p-6 max-w-4xl">
         <div class="flex items-start justify-between gap-4">
           <div>
             <h3 id="manual-review-title" class="modal-title">
@@ -140,7 +140,7 @@
           </button>
           <button
             type="button"
-            class="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            class="btn-primary w-full sm:w-auto"
             :disabled="loading || items.length === 0"
             @click="submit"
           >

@@ -18,18 +18,18 @@
       <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
         <!-- Operating Activities -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Operating Activities
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Operating Cash Flow
           </td>
           <td
             v-for="(period, index) in data"
             :key="period.year + '-ocf'"
-            class="px-4 py-3 text-sm text-right whitespace-nowrap"
+            class="text-sm text-right whitespace-nowrap px-4 py-3"
           >
             <div :class="getCashFlowClass(period.operatingCashFlow)">
               {{ formatLargeNumber(period.operatingCashFlow) }}
@@ -42,18 +42,18 @@
 
         <!-- Investing Activities -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Investing Activities
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Capital Expenditures
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-capex'"
-            class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400 whitespace-nowrap"
+            class="text-sm text-right text-red-600 dark:text-red-400 whitespace-nowrap px-4 py-3"
           >
             {{ formatCapex(period.capitalExpenditures) }}
           </td>
@@ -61,18 +61,18 @@
 
         <!-- Financing Activities -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Financing Activities
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Dividends Paid
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-dividends'"
-            class="px-4 py-3 text-sm text-right whitespace-nowrap"
+            class="text-sm text-right whitespace-nowrap px-4 py-3"
             :class="period.dividendsPaid ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'"
           >
             {{ formatDividends(period.dividendsPaid) }}
@@ -81,18 +81,18 @@
 
         <!-- Free Cash Flow -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Free Cash Flow
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Free Cash Flow
           </td>
           <td
             v-for="(period, index) in data"
             :key="period.year + '-fcf'"
-            class="px-4 py-3 text-sm text-right whitespace-nowrap"
+            class="text-sm text-right whitespace-nowrap px-4 py-3"
           >
             <div :class="getCashFlowClass(period.freeCashFlow)" class="font-medium">
               {{ formatLargeNumber(period.freeCashFlow) }}
@@ -103,13 +103,13 @@
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 pl-8">
+          <td class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 pl-8 px-4 py-3">
             FCF Margin
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-fcfmargin'"
-            class="px-4 py-3 text-sm text-right text-gray-600 dark:text-gray-400 whitespace-nowrap"
+            class="text-sm text-right text-gray-600 dark:text-gray-400 whitespace-nowrap px-4 py-3"
           >
             {{ formatFcfMargin(period) }}
           </td>
@@ -117,18 +117,18 @@
 
         <!-- Cash Flow Quality -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Cash Flow Quality
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             CapEx to OCF Ratio
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-capexratio'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatCapexRatio(period) }}
           </td>

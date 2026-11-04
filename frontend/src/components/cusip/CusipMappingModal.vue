@@ -8,7 +8,7 @@
       ></div>
 
       <!-- Modal -->
-      <div role="dialog" aria-modal="true" class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+      <div role="dialog" aria-modal="true" class="modal-panel w-full p-6 max-w-lg">
         <form @submit.prevent="saveMapping">
           <!-- Header -->
           <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
@@ -112,7 +112,7 @@
             <button
               type="submit"
               :disabled="!isFormValid || saving"
-              class="btn-primary w-full sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+              class="btn-primary w-full sm:ml-3 sm:w-auto"
             >
               <span v-if="saving" class="flex items-center">
                 <div class="spinner h-4 w-4 spinner-light mr-2"></div>

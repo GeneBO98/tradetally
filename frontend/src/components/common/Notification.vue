@@ -10,7 +10,7 @@
     >
       <div role="dialog" aria-modal="true"
         v-if="notification"
-        class="modal-panel fixed bottom-4 right-4 z-[70] max-w-sm w-full pointer-events-auto overflow-hidden"
+        class="modal-panel fixed bottom-4 right-4 z-[70] pointer-events-auto w-full p-6 max-w-sm"
       >
         <div class="p-4">
           <div class="flex items-start">

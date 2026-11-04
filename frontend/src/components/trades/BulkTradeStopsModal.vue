@@ -23,8 +23,8 @@
                 :aria-label="`New stop for ${row.symbol}`" placeholder="Keep current" />
             </td>
             <td class="px-3 py-2">
-              <span v-if="previewById[row.id]">{{ previewById[row.id].r_value == null ? 'Open' : `${Number(previewById[row.id].r_value).toFixed(2)}R` }}</span>
-              <span v-else>{{ (row.r_value ?? row.rValue) == null ? '—' : `${Number(row.r_value ?? row.rValue).toFixed(2)}R` }}</span>
+              <span v-if="previewById[row.id]">{{ previewById[row.id].r_value == null ? 'Open' : `${Number(previewById[row.id].r_value).toFixed(1)}R` }}</span>
+              <span v-else>{{ (row.r_value ?? row.rValue) == null ? '—' : `${Number(row.r_value ?? row.rValue).toFixed(1)}R` }}</span>
               <span v-if="previewById[row.id]" class="block text-xs text-gray-500 dark:text-gray-400">
                 {{ previewById[row.id].r_value == null ? 'Risk' : 'R = net P&L ÷ risk' }}
                 {{ Number(previewById[row.id].risk_amount).toFixed(2) }}

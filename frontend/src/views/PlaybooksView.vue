@@ -139,12 +139,12 @@
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-800 text-sm text-gray-700 dark:text-gray-300">
                   <tr v-for="row in analytics.playbooks" :key="row.id">
-                    <td class="py-3 pr-4 font-medium text-gray-900 dark:text-white">{{ row.name }}</td>
-                    <td class="py-3 pr-4">{{ row.reviewed_trade_count }}</td>
-                    <td class="py-3 pr-4">{{ Number(row.win_rate || 0).toFixed(1) }}%</td>
-                    <td class="py-3 pr-4">{{ Number(row.profit_factor || 0).toFixed(2) }}</td>
-                    <td class="py-3 pr-4">{{ Number(row.avg_r || 0).toFixed(2) }}R</td>
-                    <td class="py-3">{{ Number(row.adherence_average || 0).toFixed(2) }}</td>
+                    <td class="pr-4 font-medium text-gray-900 dark:text-white px-4 py-3">{{ row.name }}</td>
+                    <td class="pr-4 px-4 py-3">{{ row.reviewed_trade_count }}</td>
+                    <td class="pr-4 px-4 py-3">{{ Number(row.win_rate || 0).toFixed(1) }}%</td>
+                    <td class="pr-4 px-4 py-3">{{ Number(row.profit_factor || 0).toFixed(2) }}</td>
+                    <td class="pr-4 px-4 py-3">{{ Number(row.avg_r || 0).toFixed(2) }}R</td>
+                    <td class="px-4 py-3">{{ Number(row.adherence_average || 0).toFixed(2) }}</td>
                   </tr>
                 </tbody>
               </table>

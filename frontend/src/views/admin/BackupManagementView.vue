@@ -198,7 +198,7 @@
                             @click="createManualBackup"
                             :disabled="creatingBackup"
                             type="button"
-                            class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                            class="btn-primary"
                         >
                             <svg
                                 v-if="creatingBackup"
@@ -319,11 +319,11 @@
                                     class="hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
                                     <td
-                                        class="px-3 py-3 text-sm text-gray-900 dark:text-white"
+                                        class="text-sm text-gray-900 dark:text-white px-4 py-3"
                                     >
                                         {{ backup.filename }}
                                     </td>
-                                    <td class="px-3 py-3 whitespace-nowrap">
+                                    <td class="whitespace-nowrap px-4 py-3">
                                         <span
                                             :class="[
                                                 backup.backupType === 'manual'
@@ -336,11 +336,11 @@
                                         </span>
                                     </td>
                                     <td
-                                        class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400"
+                                        class="text-sm text-gray-500 dark:text-gray-400 px-4 py-3"
                                     >
                                         {{ formatFileSize(backup.fileSize) }}
                                     </td>
-                                    <td class="px-3 py-3 whitespace-nowrap">
+                                    <td class="whitespace-nowrap px-4 py-3">
                                         <span
                                             :class="[
                                                 backup.status === 'completed'
@@ -355,12 +355,12 @@
                                         </span>
                                     </td>
                                     <td
-                                        class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400"
+                                        class="text-sm text-gray-500 dark:text-gray-400 px-4 py-3"
                                     >
                                         {{ formatDate(backup.createdAt) }}
                                     </td>
                                     <td
-                                        class="px-3 py-3 text-right text-sm font-medium space-x-2"
+                                        class="text-right text-sm font-medium space-x-2 px-4 py-3"
                                     >
                                         <button
                                             v-if="backup.status === 'completed'"
@@ -500,7 +500,7 @@
                             @click="cleanupOldBackups"
                             :disabled="cleaningUp"
                             type="button"
-                            class="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                            class="btn-secondary"
                         >
                             <svg
                                 v-if="cleaningUp"
@@ -549,7 +549,7 @@
 
             <!-- Modal panel -->
             <div
-                class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6"
+                class="modal-panel w-full p-6 max-w-lg"
             >
                 <div class="sm:flex sm:items-start">
                     <div
@@ -738,7 +738,7 @@
                         @click="executeRestore"
                         :disabled="restoring"
                         type="button"
-                        class="btn-danger w-full justify-center sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="btn-danger w-full justify-center sm:ml-3 sm:w-auto sm:text-sm"
                     >
                         <svg
                             v-if="restoring"
@@ -766,7 +766,7 @@
                         @click="cancelRestore"
                         :disabled="restoring"
                         type="button"
-                        class="btn-secondary mt-3 w-full sm:mt-0 sm:w-auto disabled:opacity-50"
+                        class="btn-secondary mt-3 w-full sm:mt-0 sm:w-auto"
                     >
                         Cancel
                     </button>

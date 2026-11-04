@@ -501,7 +501,7 @@
         <button
           @click="changePage(pagination.page - 1)"
           :disabled="pagination.page <= 1"
-          class="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+          class="btn-secondary"
         >
           Previous
         </button>
@@ -513,7 +513,7 @@
         <button
           @click="changePage(pagination.page + 1)"
           :disabled="pagination.page >= pagination.pages"
-          class="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+          class="btn-secondary"
         >
           Next
         </button>

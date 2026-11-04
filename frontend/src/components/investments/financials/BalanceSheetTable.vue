@@ -18,30 +18,30 @@
       <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
         <!-- Assets Section -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Assets
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Total Assets
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-assets'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatLargeNumber(period.totalAssets) }}
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Cash & Equivalents
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-cash'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatLargeNumber(period.cashAndEquivalents) }}
           </td>
@@ -49,54 +49,54 @@
 
         <!-- Liabilities Section -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Liabilities
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Total Liabilities
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-liabilities'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatLargeNumber(period.totalLiabilities) }}
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Long-Term Debt
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-ltdebt'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatLargeNumber(period.longTermDebt) }}
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Short-Term Debt
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-stdebt'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatLargeNumber(period.shortTermDebt) }}
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Total Debt
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-totaldebt'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatLargeNumber(period.totalDebt) }}
           </td>
@@ -104,30 +104,30 @@
 
         <!-- Equity Section -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Equity
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Total Equity
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-equity'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatLargeNumber(period.totalEquity) }}
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Shares Outstanding
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-shares'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatShares(period.sharesOutstanding) }}
           </td>
@@ -135,30 +135,30 @@
 
         <!-- Key Ratios Section -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Key Ratios
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Debt-to-Equity Ratio
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-de'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatRatio(period.totalDebt, period.totalEquity) }}
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Book Value per Share
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-bvps'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatCurrency(period.totalEquity / period.sharesOutstanding, { currency }) }}
           </td>

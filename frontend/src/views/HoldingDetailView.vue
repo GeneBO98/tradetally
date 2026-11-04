@@ -252,7 +252,7 @@
                             >
                                 <tr v-for="lot in lots" :key="lot.id">
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"
+                                        class="whitespace-nowrap text-sm text-gray-900 dark:text-white px-4 py-3"
                                     >
                                         {{ formatDate(lot.purchaseDate) }}
                                         <span
@@ -271,27 +271,27 @@
                                         </div>
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 dark:text-white"
+                                        class="whitespace-nowrap text-sm text-right text-gray-900 dark:text-white px-4 py-3"
                                     >
                                         {{ formatNumber(lot.shares) }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 dark:text-white"
+                                        class="whitespace-nowrap text-sm text-right text-gray-900 dark:text-white px-4 py-3"
                                     >
                                         {{ formatCurrency(lot.costPerShare) }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 dark:text-white"
+                                        class="whitespace-nowrap text-sm text-right text-gray-900 dark:text-white px-4 py-3"
                                     >
                                         {{ formatCurrency(lot.totalCost) }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 dark:text-white"
+                                        class="whitespace-nowrap text-sm text-right text-gray-900 dark:text-white px-4 py-3"
                                     >
                                         {{ formatCurrency(lot.currentValue) }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-right"
+                                        class="whitespace-nowrap text-sm text-right px-4 py-3"
                                         :class="
                                             pnlClass(lot.gainLoss)
                                         "
@@ -304,7 +304,7 @@
                                         >
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-right"
+                                        class="whitespace-nowrap text-sm text-right px-4 py-3"
                                     >
                                         <button
                                             v-if="lot.source !== 'plaid'"
@@ -331,7 +331,7 @@
                                 <tr v-if="lots.length === 0">
                                     <td
                                         colspan="7"
-                                        class="px-6 py-8 text-center text-gray-500 dark:text-gray-400"
+                                        class="text-center text-gray-500 dark:text-gray-400 px-4 py-3"
                                     >
                                         No purchase lots recorded. Add shares to
                                         track your cost basis.
@@ -425,17 +425,17 @@
                                     :key="dividend.id"
                                 >
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"
+                                        class="whitespace-nowrap text-sm text-gray-900 dark:text-white px-4 py-3"
                                     >
                                         {{ formatDate(dividend.paymentDate) }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-right text-green-700 dark:text-green-400 font-medium"
+                                        class="whitespace-nowrap text-sm text-right text-green-700 dark:text-green-400 font-medium px-4 py-3"
                                     >
                                         {{ formatCurrency(dividend.amount) }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-400"
+                                        class="whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-400 px-4 py-3"
                                     >
                                         {{
                                             dividend.perShare
@@ -446,12 +446,12 @@
                                         }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 capitalize"
+                                        class="whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 capitalize px-4 py-3"
                                     >
                                         {{ dividend.dividendType || "regular" }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate"
+                                        class="text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate px-4 py-3"
                                     >
                                         {{ dividend.notes || "-" }}
                                     </td>
@@ -459,7 +459,7 @@
                                 <tr v-if="dividends.length === 0">
                                     <td
                                         colspan="5"
-                                        class="px-6 py-8 text-center text-gray-500 dark:text-gray-400"
+                                        class="text-center text-gray-500 dark:text-gray-400 px-4 py-3"
                                     >
                                         No dividends recorded yet.
                                     </td>

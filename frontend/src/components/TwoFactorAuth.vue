@@ -60,7 +60,7 @@
                 <button
                     type="submit"
                     :disabled="loading || code.length !== 6"
-                    class="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="btn-primary flex-1"
                 >
                     <span v-if="loading">Verifying...</span>
                     <span v-else>Verify</span>

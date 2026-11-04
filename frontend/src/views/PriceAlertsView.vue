@@ -221,19 +221,19 @@
                     >
                         <tr v-for="alert in filteredAlerts" :key="alert.id">
                             <td
-                                class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100"
+                                class="whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100 px-4 py-3"
                             >
                                 {{ alert.symbol }}
                             </td>
                             <td
-                                class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100"
+                                class="whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 px-4 py-3"
                             >
                                 <span class="capitalize">{{
                                     alert.alert_type.replace("_", " ")
                                 }}</span>
                             </td>
                             <td
-                                class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100"
+                                class="whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 px-4 py-3"
                             >
                                 <span v-if="alert.target_price">{{
                                     formatCurrency(alert.target_price)
@@ -243,7 +243,7 @@
                                 >
                             </td>
                             <td
-                                class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100"
+                                class="whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 px-4 py-3"
                             >
                                 {{
                                     alert.current_price
@@ -251,7 +251,7 @@
                                         : "N/A"
                                 }}
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
+                            <td class="whitespace-nowrap px-4 py-3">
                                 <span
                                     v-if="
                                         alert.is_active && !alert.triggered_at
@@ -284,7 +284,7 @@
                                 </span>
                             </td>
                             <td
-                                class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400"
+                                class="whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 px-4 py-3"
                             >
                                 <div class="flex space-x-1">
                                     <MdiIcon
@@ -299,7 +299,7 @@
                                         :icon="mdiBell"
                                         :size="16"
                                         title="Browser enabled"
-                                        classes="text-green-500"
+                                        classes="text-green-700 dark:text-green-400"
                                     />
                                     <MdiIcon
                                         v-if="alert.repeat_enabled"
@@ -311,12 +311,12 @@
                                 </div>
                             </td>
                             <td
-                                class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400"
+                                class="whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 px-4 py-3"
                             >
                                 {{ formatDate(alert.created_at) }}
                             </td>
                             <td
-                                class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2"
+                                class="whitespace-nowrap text-sm font-medium space-x-2 px-4 py-3"
                             >
                                 <button
                                     @click="editAlert(alert)"
@@ -526,7 +526,7 @@
                             <button
                                 type="submit"
                                 :disabled="saving"
-                                class="btn-primary disabled:opacity-50"
+                                class="btn-primary"
                             >
                                 {{
                                     saving

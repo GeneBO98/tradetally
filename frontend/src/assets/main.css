@@ -35,7 +35,7 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200;
+    @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
     min-height: 44px; /* Ensures proper touch target size on mobile */
   }
   
@@ -322,6 +322,10 @@
     @apply pointer-events-none inline-block h-5 w-5 translate-x-0 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out;
   }
 
+  /* ---- Stacking scale -----------------------------------------------
+     popovers z-40, dialogs z-50, menus inside dialogs z-[60], toasts
+     z-[70], full-screen viewers z-[100]. Nothing else sets a z-index. */
+
   /* ---- Tables -------------------------------------------------------
      Header row: a faint tint in light mode, and in dark mode a recessed
      band instead of a lighter gray-700 stripe across the card. */
@@ -429,6 +433,12 @@
   .heading-card {
     @apply text-base font-semibold text-gray-900 dark:text-white;
     @apply sm:text-lg;
+  }
+
+  /* Hero / stat tile value: one size for every big number in the app. */
+  .stat-value {
+    @apply text-xl font-semibold text-mono-num tracking-tight;
+    @apply sm:text-2xl;
   }
 
   /* Sub-heading inside a card or dialog (group labels, list section titles). */

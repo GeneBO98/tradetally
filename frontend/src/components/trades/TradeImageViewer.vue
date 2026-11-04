@@ -16,7 +16,7 @@
           type="button"
           :disabled="!image_url || image_failed"
           :aria-pressed="actual_size"
-          class="btn-ghost btn-sm disabled:opacity-50"
+          class="btn-ghost btn-sm"
           @click="actual_size = !actual_size"
         >
           {{ actual_size ? 'Fit to screen' : 'Actual size' }}

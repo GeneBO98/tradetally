@@ -17,7 +17,7 @@
                    deterministic data. -->
               <span
                 v-if="current?.ai_enhanced"
-                class="badge uppercase tracking-wider bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
+                class="badge bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
                 title="Refined with your configured AI provider"
               >
                 <MdiIcon :icon="mdiAutoFix" :size="10" />

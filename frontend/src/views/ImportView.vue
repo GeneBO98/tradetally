@@ -210,7 +210,7 @@
                 </p>
               </div>
 
-              <div v-if="isAnalyzingFile" class="mt-4 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-300">
+              <div v-if="isAnalyzingFile" class="callout-info mt-4">
                 Analyzing headers and estimating trade count...
               </div>
 
@@ -1142,7 +1142,7 @@
         v-if="!hasUsedTrial && (!trialInfo || !trialInfo.active)"
         type="button"
         :disabled="startingTrial"
-        class="btn w-full justify-center bg-green-600 text-white hover:bg-green-700 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        class="btn w-full justify-center bg-green-600 text-white hover:bg-green-700 focus:ring-green-500"
         @click="startTrial"
       >
         <span v-if="startingTrial" class="spinner spinner-xs spinner-current inline-block mr-2"></span>

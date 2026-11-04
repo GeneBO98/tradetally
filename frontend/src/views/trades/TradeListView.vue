@@ -402,7 +402,7 @@
               <div class="flex items-center space-x-2">
                 <div class="flex space-x-1">
                   <div v-for="i in 10" :key="i" class="w-2 h-2 rounded-full"
-                    :class="i <= trade.confidence ? 'bg-primary-500' : 'bg-gray-300 dark:bg-gray-600'">
+                    :class="i <= trade.confidence ? 'switch-on' : ''">
                   </div>
                 </div>
                 <span class="text-sm font-medium text-gray-900 dark:text-white">{{ trade.confidence }}/10</span>
@@ -521,7 +521,7 @@
                 />
               </td>
               <!-- Empty cell to align with column customizer -->
-              <td class="pl-0 pr-2 py-4"></td>
+              <td class="pl-0 pr-2 px-4 py-3"></td>
 
               <template v-for="column in tableColumns.filter(c => c.key !== 'checkbox')" :key="`${trade.id}-${column.key}`">
 
@@ -691,7 +691,7 @@
                   <div v-if="trade.confidence" class="flex items-center space-x-2">
                     <div class="flex space-x-1">
                       <div v-for="i in 5" :key="i" class="w-2 h-2 rounded-full"
-                        :class="i <= Math.ceil(trade.confidence / 2) ? 'bg-primary-500' : 'bg-gray-300 dark:bg-gray-600'">
+                        :class="i <= Math.ceil(trade.confidence / 2) ? 'switch-on' : ''">
                       </div>
                     </div>
                     <span class="text-sm text-gray-900 dark:text-white">{{ trade.confidence }}/10</span>
@@ -889,7 +889,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span v-if="trade.option_type"
-                        class="badge uppercase"
+                        class="badge"
                         :class="[
                           trade.option_type === 'call'
                             ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
@@ -984,14 +984,14 @@
             <button 
               @click="prevPage"
               :disabled="tradesStore.pagination.page === 1"
-              class="btn-secondary relative disabled:opacity-50 disabled:cursor-not-allowed"
+              class="btn-secondary relative"
             >
               Previous
             </button>
             <button 
               @click="nextPage"
               :disabled="tradesStore.pagination.page === tradesStore.pagination.totalPages"
-              class="btn-secondary ml-3 relative disabled:opacity-50 disabled:cursor-not-allowed"
+              class="btn-secondary ml-3 relative"
             >
               Next
             </button>
@@ -1118,7 +1118,7 @@
           <button
             @click="executeBulkAddTags"
             :disabled="bulkTagsToAdd.length === 0"
-            class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            class="btn-primary"
           >
             Add Tags
           </button>

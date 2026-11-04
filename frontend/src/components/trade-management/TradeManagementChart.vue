@@ -342,11 +342,11 @@ function createChart() {
 
   // Create candlestick series - using softer, more muted colors
   candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
-    upColor: '#059669',      // emerald-600
+    upColor: '#15803d',      // emerald-600
     downColor: '#dc2626',    // red-600
-    borderUpColor: '#059669',
+    borderUpColor: '#15803d',
     borderDownColor: '#dc2626',
-    wickUpColor: '#059669',
+    wickUpColor: '#15803d',
     wickDownColor: '#dc2626',
   })
 
@@ -456,7 +456,7 @@ function addTradeMarkers(candles) {
     markers.push({
       time: entryCandle.time,
       position: 'belowBar',
-      color: '#059669',  // emerald-600
+      color: '#15803d',  // emerald-600
       shape: 'arrowUp',
       text: `${isLong ? 'BUY' : 'SELL'} @ ${formatCurrency(entryPrice)}`,
       size: 2

@@ -24,7 +24,7 @@
           v-if="showMenu"
           ref="menuRef"
           :style="dropdownStyle"
-          class="modal-panel fixed w-full max-w-sm sm:w-96 z-[9999] flex flex-col overflow-hidden"
+          class="modal-panel fixed sm:w-96 z-[60] flex flex-col w-full p-6 max-w-sm"
         >
           <!-- Header (Fixed) -->
           <div class="p-4 flex-shrink-0 border-b border-gray-200 dark:border-gray-700">

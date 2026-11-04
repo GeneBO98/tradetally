@@ -154,7 +154,7 @@
           <button
             @click="currentPage = Math.max(1, currentPage - 1)"
             :disabled="currentPage === 1"
-            class="btn-secondary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            class="btn-secondary btn-sm"
           >
             Previous
           </button>
@@ -164,7 +164,7 @@
           <button
             @click="currentPage = Math.min(totalPages, currentPage + 1)"
             :disabled="currentPage === totalPages"
-            class="btn-secondary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            class="btn-secondary btn-sm"
           >
             Next
           </button>

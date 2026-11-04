@@ -170,7 +170,7 @@
             </thead>
             <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
               <tr v-for="condition in healthConditions" :key="condition.name">
-                <td class="px-6 py-4 whitespace-nowrap">
+                <td class="whitespace-nowrap px-4 py-3">
                   <div class="flex items-center">
                     <svg class="w-8 h-8 mr-3" :class="condition.iconColor" fill="currentColor" viewBox="0 0 24 24">
                       <path :d="condition.iconPath" />
@@ -185,10 +185,10 @@
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                <td class="whitespace-nowrap text-sm text-gray-900 dark:text-white px-4 py-3">
                   {{ condition.tradeCount }}
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap">
+                <td class="whitespace-nowrap px-4 py-3">
                   <div class="flex items-center">
                     <span class="text-sm font-medium" 
                           :class="condition.winRate >= 50 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
@@ -201,11 +201,11 @@
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-mono-num"
+                <td class="whitespace-nowrap text-sm text-mono-num px-4 py-3"
                     :class="pnlClass(condition.avgPnL)">
                   {{ formatSignedCurrency(condition.avgPnL) }}
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-mono-num font-semibold"
+                <td class="whitespace-nowrap text-sm text-mono-num font-semibold px-4 py-3"
                     :class="pnlClass(condition.totalPnL)">
                   {{ formatSignedCurrency(condition.totalPnL) }}
                 </td>
@@ -481,7 +481,7 @@ function calculateHealthConditions(trades) {
     {
       name: 'Low Stress',
       iconPath: 'M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20M10,9.5C10,10.3 9.3,11 8.5,11C7.7,11 7,10.3 7,9.5C7,8.7 7.7,8 8.5,8C9.3,8 10,8.7 10,9.5M17,9.5C17,10.3 16.3,11 15.5,11C14.7,11 14,10.3 14,9.5C14,8.7 14.7,8 15.5,8C16.3,8 17,8.7 17,9.5M12,17.5C10.07,17.5 8.5,16.5 7.5,15H16.5C15.5,16.5 13.93,17.5 12,17.5Z',
-      iconColor: 'text-green-500',
+      iconColor: 'text-green-700 dark:text-green-400',
       description: 'Stress < 30%',
       filter: t => {
         const stressLevel = getTradeHealthValue(t, 'stress_level')
@@ -491,7 +491,7 @@ function calculateHealthConditions(trades) {
     {
       name: 'High Stress',
       iconPath: 'M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20M10,9.5C10,10.3 9.3,11 8.5,11C7.7,11 7,10.3 7,9.5C7,8.7 7.7,8 8.5,8C9.3,8 10,8.7 10,9.5M15,13H9V14.5H15V13M17,9.5C17,10.3 16.3,11 15.5,11C14.7,11 14,10.3 14,9.5C14,8.7 14.7,8 15.5,8C16.3,8 17,8.7 17,9.5Z',
-      iconColor: 'text-red-500',
+      iconColor: 'text-red-600 dark:text-red-400',
       description: 'Stress > 60%',
       filter: t => {
         const stressLevel = getTradeHealthValue(t, 'stress_level')
@@ -501,7 +501,7 @@ function calculateHealthConditions(trades) {
     {
       name: 'Normal Heart Rate',
       iconPath: 'M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z',
-      iconColor: 'text-green-500',
+      iconColor: 'text-green-700 dark:text-green-400',
       description: '60-80 BPM',
       filter: t => {
         const heartRate = getTradeHealthValue(t, 'heart_rate')
@@ -511,7 +511,7 @@ function calculateHealthConditions(trades) {
     {
       name: 'Elevated Heart Rate',
       iconPath: 'M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z',
-      iconColor: 'text-red-500',
+      iconColor: 'text-red-600 dark:text-red-400',
       description: '> 80 BPM',
       filter: t => {
         const heartRate = getTradeHealthValue(t, 'heart_rate')

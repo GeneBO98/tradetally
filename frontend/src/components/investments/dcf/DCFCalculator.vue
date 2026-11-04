@@ -22,31 +22,31 @@
         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
           <!-- ROIC (display only) -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">ROIC</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.roic_1yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.roic_5yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.roic_10yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-400" colspan="3">-</td>
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">ROIC</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.roic_1yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.roic_5yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.roic_10yr) }}</td>
+            <td class="text-center text-gray-400 px-4 py-3" colspan="3">-</td>
           </tr>
           <!-- Revenue Growth -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Rev. Growth %</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.revenue_growth_1yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.revenue_growth_5yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.revenue_growth_10yr) }}</td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">Rev. Growth %</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.revenue_growth_1yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.revenue_growth_5yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.revenue_growth_10yr) }}</td>
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.revenue_growth_low" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.revenue_growth_medium" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.revenue_growth_high" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
@@ -55,23 +55,23 @@
           </tr>
           <!-- Profit Margin -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Profit Margin</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.profit_margin_1yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.profit_margin_5yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.profit_margin_10yr) }}</td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">Profit Margin</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.profit_margin_1yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.profit_margin_5yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.profit_margin_10yr) }}</td>
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.profit_margin_low" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.profit_margin_medium" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.profit_margin_high" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
@@ -80,31 +80,31 @@
           </tr>
           <!-- Gross Profit Margin (display only) -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Gross Profit Margin</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.gross_profit_margin_1yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.gross_profit_margin_5yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.gross_profit_margin_10yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-400" colspan="3">-</td>
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">Gross Profit Margin</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.gross_profit_margin_1yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.gross_profit_margin_5yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.gross_profit_margin_10yr) }}</td>
+            <td class="text-center text-gray-400 px-4 py-3" colspan="3">-</td>
           </tr>
           <!-- Free Cash Flow Margin -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Free Cash Flow Margin</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.fcf_margin_1yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.fcf_margin_5yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatPercent(metrics?.fcf_margin_10yr) }}</td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">Free Cash Flow Margin</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.fcf_margin_1yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.fcf_margin_5yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatPercent(metrics?.fcf_margin_10yr) }}</td>
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.fcf_margin_low" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.fcf_margin_medium" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.fcf_margin_high" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
@@ -113,23 +113,23 @@
           </tr>
           <!-- P/E -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">P/E</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pe_1yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pe_5yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pe_10yr) }}</td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">P/E</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatRatio(metrics?.pe_1yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatRatio(metrics?.pe_5yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatRatio(metrics?.pe_10yr) }}</td>
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.pe_low" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.pe_medium" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.pe_high" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
@@ -138,23 +138,23 @@
           </tr>
           <!-- P/FCF -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">P/FCF</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pfcf_1yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pfcf_5yr) }}</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pfcf_10yr) }}</td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">P/FCF</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatRatio(metrics?.pfcf_1yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatRatio(metrics?.pfcf_5yr) }}</td>
+            <td class="text-center text-gray-600 dark:text-gray-400 px-4 py-3">{{ formatRatio(metrics?.pfcf_10yr) }}</td>
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.pfcf_low" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.pfcf_medium" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.pfcf_high" class="input input-sm w-16 text-center" step="0.5" />
                 <span class="ml-1 text-gray-400 text-xs">x</span>
@@ -163,21 +163,21 @@
           </tr>
           <!-- Desired Annual Return -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Required Annual Return</td>
-            <td class="px-4 py-3 text-center text-gray-400" colspan="3">-</td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">Required Annual Return</td>
+            <td class="text-center text-gray-400 px-4 py-3" colspan="3">-</td>
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.desired_return_low" class="input input-sm w-16 text-center" step="1" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.desired_return_medium" class="input input-sm w-16 text-center" step="1" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
               </div>
             </td>
-            <td class="px-4 py-3 text-center">
+            <td class="text-center px-4 py-3">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.desired_return_high" class="input input-sm w-16 text-center" step="1" />
                 <span class="ml-1 text-gray-400 text-xs">%</span>
@@ -186,15 +186,15 @@
           </tr>
           <!-- Current Price Return -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Current Price Return</td>
-            <td class="px-4 py-3 text-center text-gray-400" colspan="3">-</td>
-            <td class="px-4 py-3 text-center font-medium text-red-600 dark:text-red-400">
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">Current Price Return</td>
+            <td class="text-center text-gray-400 px-4 py-3" colspan="3">-</td>
+            <td class="text-center font-medium text-red-600 dark:text-red-400 px-4 py-3">
               {{ formatPercent(results?.current_price_return_low) }}
             </td>
-            <td class="px-4 py-3 text-center font-medium text-yellow-600 dark:text-yellow-400">
+            <td class="text-center font-medium text-yellow-600 dark:text-yellow-400 px-4 py-3">
               {{ formatPercent(results?.current_price_return_medium) }}
             </td>
-            <td class="px-4 py-3 text-center font-medium text-green-700 dark:text-green-400">
+            <td class="text-center font-medium text-green-700 dark:text-green-400 px-4 py-3">
               {{ formatPercent(results?.current_price_return_high) }}
             </td>
           </tr>
@@ -242,7 +242,7 @@
 
     <div
       v-if="scenarioWarnings.length"
-      class="mb-6 rounded border border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 text-sm text-yellow-900 dark:text-yellow-200"
+      class="callout-warning mb-6"
     >
       <p class="font-medium mb-2">Scenario assumptions need review</p>
       <ul class="space-y-1">
@@ -281,7 +281,7 @@
     <!-- Disclaimer (shown below results) -->
     <div
       v-if="results"
-      class="mb-6 rounded border border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 text-sm text-yellow-900 dark:text-yellow-200"
+      class="callout-warning mb-6"
     >
       <p class="font-medium mb-1">Disclaimer — not financial advice</p>
       <p>

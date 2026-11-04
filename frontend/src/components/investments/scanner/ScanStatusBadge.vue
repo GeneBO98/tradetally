@@ -57,7 +57,7 @@
       v-if="isAdmin && scanStatus?.status !== 'running'"
       @click="triggerScan"
       :disabled="triggering"
-      class="btn-ghost btn-sm ml-4 disabled:opacity-50"
+      class="btn-ghost btn-sm ml-4"
     >
       {{ triggering ? 'Starting...' : 'Trigger Scan' }}
     </button>

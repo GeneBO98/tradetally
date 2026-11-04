@@ -79,7 +79,7 @@
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         
         <div role="dialog" aria-modal="true"
-          class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6"
+          class="modal-panel w-full p-6 max-w-lg"
           @click.stop
         >
           <div class="sm:flex sm:items-start">

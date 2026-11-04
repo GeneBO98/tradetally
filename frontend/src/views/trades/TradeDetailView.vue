@@ -201,7 +201,7 @@
                   <button
                     v-if="isProUser"
                     @click="continueStoredAIAnalysis(analysis)"
-                    class="btn-ghost btn-sm gap-1 disabled:opacity-60"
+                    class="btn-ghost btn-sm gap-1"
                     :disabled="aiStore.generating"
                     title="Ask follow-up questions on this analysis"
                   >
@@ -209,7 +209,7 @@
                   </button>
                   <button
                     @click="deleteStoredAIAnalysis(analysis)"
-                    class="btn-ghost btn-sm gap-1 disabled:opacity-60"
+                    class="btn-ghost btn-sm gap-1"
                     :disabled="deletingStoredAIAnalysisId === analysis.id"
                     title="Delete stored AI analysis"
                   >
@@ -459,7 +459,7 @@
                     <div class="flex items-center space-x-3">
                       <div class="flex space-x-1">
                         <div v-for="i in 10" :key="i" class="w-2 h-2 rounded-full"
-                          :class="i <= trade.confidence ? 'bg-primary-500' : 'bg-gray-300 dark:bg-gray-600'">
+                          :class="i <= trade.confidence ? 'switch-on' : ''">
                         </div>
                       </div>
                       <span class="text-sm font-medium text-gray-900 dark:text-white">{{ trade.confidence }}/10</span>
@@ -486,7 +486,7 @@
                       <button
                         @click="calculateQuality"
                         :disabled="calculatingQuality"
-                        class="btn-primary btn-sm disabled:opacity-50"
+                        class="btn-primary btn-sm"
                       >
                         {{ calculatingQuality ? 'Calculating...' : 'Calculate Setup Quality' }}
                       </button>
@@ -767,7 +767,7 @@
                         <button
                           @click="saveTradeReview('adherence')"
                           :disabled="savingAdherenceReview || selectedAdherencePlaybook?.isActive === false"
-                          class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                          class="btn-primary w-full"
                         >
                           {{ savingAdherenceReview ? 'Saving...' : 'Save Playbook Review' }}
                         </button>
@@ -924,7 +924,7 @@
                         <button
                           @click="saveTradeReview('manual_grading')"
                           :disabled="savingManualGradingReview || selectedManualGradingProfile?.isActive === false"
-                          class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                          class="btn-primary w-full"
                         >
                           {{ savingManualGradingReview ? 'Saving...' : 'Save Manual Grade' }}
                         </button>
@@ -991,7 +991,7 @@
                     <button
                       @click="splitSelectedTrades"
                       :disabled="splittingTrade || selectedExecutions.size === 0 || selectedExecutions.size === entryExecutionIndices.length"
-                      class="btn-primary btn-sm disabled:opacity-50"
+                      class="btn-primary btn-sm"
                     >
                       <svg v-if="splittingTrade" class="animate-spin -ml-0.5 mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -1057,7 +1057,7 @@
                   <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
                     <tr v-for="(execution, index) in processedExecutions" :key="index"
                         class="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                      <td v-if="splitMode" class="px-3 py-4 whitespace-nowrap">
+                      <td v-if="splitMode" class="whitespace-nowrap px-4 py-3">
                         <input
                           v-if="isEntryExecution(execution)"
                           type="checkbox"
@@ -1067,7 +1067,7 @@
                         />
                         <span v-else class="block h-4 w-4"></span>
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap">
+                      <td class="whitespace-nowrap px-4 py-3">
                         <span class="badge"
                               :class="[
                                 (execution.action || execution.side || '').toLowerCase() === 'buy' || (execution.action || execution.side || '').toLowerCase() === 'long'
@@ -1079,16 +1079,16 @@
                           {{ ((execution.action || execution.side) || 'N/A').toUpperCase() }}
                         </span>
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num text-gray-900 dark:text-white">
+                      <td class="whitespace-nowrap text-sm text-mono-num text-gray-900 dark:text-white px-4 py-3">
                         {{ formatQuantity(execution.quantity) }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num text-gray-900 dark:text-white">
+                      <td class="whitespace-nowrap text-sm text-mono-num text-gray-900 dark:text-white px-4 py-3">
                         {{ execution.entryPrice !== null && execution.entryPrice !== undefined ? formatTradePrice(execution, 'entry_price') : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num text-gray-900 dark:text-white">
+                      <td class="whitespace-nowrap text-sm text-mono-num text-gray-900 dark:text-white px-4 py-3">
                         {{ execution.exitPrice !== null && execution.exitPrice !== undefined ? formatTradePrice(execution, 'exit_price') : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num"
+                      <td class="whitespace-nowrap text-sm text-mono-num px-4 py-3"
                           :class="[
                             execution.grossPnl > 0
                               ? 'text-green-700 dark:text-green-400'
@@ -1098,7 +1098,7 @@
                           ]">
                         {{ execution.grossPnl !== undefined && execution.grossPnl !== null ? formatTradeCurrency(execution.grossPnl) : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num"
+                      <td class="whitespace-nowrap text-sm text-mono-num px-4 py-3"
                           :class="[
                             execution.netPnl > 0
                               ? 'text-green-700 dark:text-green-400'
@@ -1108,7 +1108,7 @@
                           ]">
                         {{ execution.netPnl !== undefined && execution.netPnl !== null ? formatTradeCurrency(execution.netPnl) : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num"
+                      <td class="whitespace-nowrap text-sm text-mono-num px-4 py-3"
                           :class="[
                             execution.commission < 0
                               ? 'text-green-700 dark:text-green-400'
@@ -1118,13 +1118,13 @@
                           ]">
                         {{ execution.commission ? formatTradeSignedCurrency(-execution.commission) : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm text-mono-num text-gray-600 dark:text-gray-400">
+                      <td class="whitespace-nowrap text-sm text-mono-num text-gray-600 dark:text-gray-400 px-4 py-3">
                         {{ execution.fees ? formatTradeCurrency(execution.fees) : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
+                      <td class="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400 px-4 py-3">
                         {{ execution.entryTime ? formatDateTime(execution.entryTime) : '-' }}
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
+                      <td class="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400 px-4 py-3">
                         {{ execution.exitTime ? formatDateTime(execution.exitTime) : '-' }}
                       </td>
                     </tr>
@@ -1443,7 +1443,7 @@
                             <button
                               @click="saveEditComment(comment.id)"
                               :disabled="submittingComment || !editCommentText.trim()"
-                              class="btn-primary btn-sm disabled:opacity-50"
+                              class="btn-primary btn-sm"
                             >
                               Save
                             </button>

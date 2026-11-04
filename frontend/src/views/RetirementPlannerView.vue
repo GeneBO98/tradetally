@@ -911,11 +911,11 @@
                     @keydown.enter.prevent="selectedScenarioKey = scenario.key"
                     @keydown.space.prevent="selectedScenarioKey = scenario.key"
                   >
-                    <td class="whitespace-nowrap px-5 py-4">
+                    <td class="whitespace-nowrap px-4 py-3">
                       <div class="flex items-center gap-3">
                         <span
                           class="h-2.5 w-2.5 rounded-full"
-                          :class="scenario.key === selectedScenarioKey ? 'bg-primary-600' : 'bg-gray-300 dark:bg-gray-600'"
+                          :class="scenario.key === selectedScenarioKey ? 'switch-on' : ''"
                         ></span>
                         <div>
                           <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ scenario.label }}</p>
@@ -925,10 +925,10 @@
                         </div>
                       </div>
                     </td>
-                    <td class="whitespace-nowrap px-5 py-4 text-right text-sm font-medium text-gray-700 dark:text-gray-200">
+                    <td class="whitespace-nowrap text-right text-sm font-medium text-gray-700 dark:text-gray-200 px-4 py-3">
                       {{ formatPercent(scenario.annual_return_percent) }}
                     </td>
-                    <td class="whitespace-nowrap px-5 py-4 text-right">
+                    <td class="whitespace-nowrap text-right px-4 py-3">
                       <p class="text-sm font-medium text-gray-700 dark:text-gray-200">
                         {{ formatPercent(scenario.inflation_rate_percent) }}
                       </p>
@@ -936,10 +936,10 @@
                         {{ scenario.source === "historical" ? "Historical CPI-U" : "Your estimate" }}
                       </p>
                     </td>
-                    <td class="whitespace-nowrap px-5 py-4 text-right text-sm font-semibold text-gray-900 dark:text-white">
+                    <td class="whitespace-nowrap text-right text-sm font-semibold text-gray-900 dark:text-white px-4 py-3">
                       {{ formatCurrency(scenario.projected_balance_at_retirement, { compact: true }) }}
                     </td>
-                    <td class="whitespace-nowrap px-5 py-4 text-right text-sm font-semibold" :class="scenario.is_on_track ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'">
+                    <td class="whitespace-nowrap text-right text-sm font-semibold px-4 py-3" :class="scenario.is_on_track ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'">
                       {{ scenario.is_on_track ? "On track" : "Shortfall" }}
                     </td>
                   </tr>

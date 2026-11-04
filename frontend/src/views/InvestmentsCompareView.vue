@@ -81,11 +81,11 @@
             </thead>
             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               <tr v-for="metric in comparisonMetricRows" :key="metric.key">
-                <td class="px-4 py-2 text-gray-700 dark:text-gray-300">{{ metric.label }}</td>
+                <td class="text-gray-700 dark:text-gray-300 px-4 py-3">{{ metric.label }}</td>
                 <td
                   v-for="account in selectedAccountValues"
                   :key="account"
-                  class="px-4 py-2 text-right"
+                  class="text-right px-4 py-3"
                 >
                   <span
                     class="font-medium"
@@ -103,7 +103,7 @@
                 </td>
                 <td
                   v-if="isPairCompare"
-                  class="px-4 py-2 text-right font-medium"
+                  class="text-right font-medium px-4 py-3"
                   :class="metric.pairDeltaClass()"
                 >
                   {{ metric.formatPairDelta() }}
@@ -183,18 +183,18 @@
                   </thead>
                   <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     <tr v-for="position in perAccountData[account].rebalance.positions" :key="position.symbol">
-                      <td class="px-2 py-1.5 font-medium text-gray-900 dark:text-white">{{ position.symbol }}</td>
-                      <td class="px-2 py-1.5 text-right text-gray-900 dark:text-gray-100">
+                      <td class="font-medium text-gray-900 dark:text-white px-4 py-3">{{ position.symbol }}</td>
+                      <td class="text-right text-gray-900 dark:text-gray-100 px-4 py-3">
                         {{ position.currentValue === null ? '—' : formatCurrency(position.currentValue) }}
                       </td>
-                      <td class="px-2 py-1.5 text-right text-gray-900 dark:text-gray-100">
+                      <td class="text-right text-gray-900 dark:text-gray-100 px-4 py-3">
                         {{ position.actualAllocationPercent === null || position.actualAllocationPercent === undefined ? '—' : formatPercent(position.actualAllocationPercent, false) }}
                       </td>
-                      <td class="px-2 py-1.5 text-right text-gray-900 dark:text-gray-100">
+                      <td class="text-right text-gray-900 dark:text-gray-100 px-4 py-3">
                         {{ position.targetAllocationPercent === null || position.targetAllocationPercent === undefined ? '—' : formatPercent(position.targetAllocationPercent, false) }}
                       </td>
                       <td
-                        class="px-2 py-1.5 text-right"
+                        class="text-right px-4 py-3"
                         :class="driftColorClass(position.driftPercent)"
                       >
                         {{ position.driftPercent === null || position.driftPercent === undefined ? '—' : formatPercent(position.driftPercent) }}

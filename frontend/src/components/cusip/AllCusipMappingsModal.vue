@@ -11,7 +11,7 @@
 
             <!-- Modal -->
             <div role="dialog" aria-modal="true"
-                class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-6xl sm:w-full"
+                class="modal-panel w-full p-6 max-w-6xl"
             >
                 <!-- Header -->
                 <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6">
@@ -176,14 +176,14 @@
                                         :key="mapping.cusip"
                                         class="hover:bg-gray-50 dark:hover:bg-gray-700"
                                     >
-                                        <td class="px-4 py-4 whitespace-nowrap">
+                                        <td class="whitespace-nowrap px-4 py-3">
                                             <code
                                                 class="text-sm font-mono text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded"
                                             >
                                                 {{ mapping.cusip }}
                                             </code>
                                         </td>
-                                        <td class="px-4 py-4 whitespace-nowrap">
+                                        <td class="whitespace-nowrap px-4 py-3">
                                             <div
                                                 v-if="mapping.ticker"
                                                 class="flex items-center"
@@ -223,7 +223,7 @@
                                                 </button>
                                             </div>
                                         </td>
-                                        <td class="px-4 py-4 whitespace-nowrap">
+                                        <td class="whitespace-nowrap px-4 py-3">
                                             <div
                                                 class="text-sm text-gray-900 dark:text-white"
                                             >
@@ -233,7 +233,7 @@
                                                 }}
                                             </div>
                                         </td>
-                                        <td class="px-4 py-4 whitespace-nowrap">
+                                        <td class="whitespace-nowrap px-4 py-3">
                                             <span
                                                 v-if="mapping.resolution_source"
                                                 class="badge"
@@ -252,7 +252,7 @@
                                                 >-</span
                                             >
                                         </td>
-                                        <td class="px-4 py-4 whitespace-nowrap">
+                                        <td class="whitespace-nowrap px-4 py-3">
                                             <div
                                                 class="flex items-center text-sm"
                                             >
@@ -274,7 +274,7 @@
                                             </div>
                                         </td>
                                         <td
-                                            class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium"
+                                            class="whitespace-nowrap text-right text-sm font-medium px-4 py-3"
                                         >
                                             <div
                                                 class="flex items-center space-x-2"

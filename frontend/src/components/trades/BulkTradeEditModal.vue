@@ -55,7 +55,7 @@
       </fieldset>
     </div>
 
-    <div v-if="changedFields.length" class="mt-5 rounded-md border border-primary-200 bg-primary-50 px-4 py-3 dark:border-primary-800 dark:bg-primary-900/20" aria-live="polite">
+    <div v-if="changedFields.length" class="callout-info mt-5" aria-live="polite">
       <p class="text-sm font-medium text-primary-800 dark:text-primary-200">Changes to apply</p>
       <ul class="mt-1 space-y-1 text-sm text-primary-700 dark:text-primary-300">
         <li v-for="change in changedFields" :key="change.key">
@@ -65,7 +65,7 @@
     </div>
 
     <p v-if="loadingOptions" class="mt-4 text-sm text-gray-500 dark:text-gray-400">Loading choices...</p>
-    <div v-if="error" class="mt-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300" role="alert">
+    <div v-if="error" class="callout-danger mt-4" role="alert">
       {{ error }}
     </div>
 

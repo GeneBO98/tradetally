@@ -769,7 +769,7 @@
       <div class="min-h-[1.25rem]">
         <div
           v-if="filters.importId"
-          class="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-sm text-primary-800 dark:bg-primary-900/20 dark:text-primary-300"
+          class="callout-info inline-flex items-center gap-2"
         >
           <span>Showing trades from this import only</span>
           <button

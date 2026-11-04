@@ -98,17 +98,17 @@
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                   <tr v-for="group in visibleGroups" :key="group.id">
-                    <td class="px-3 py-4">
+                    <td class="px-4 py-3">
                       <div class="flex items-center gap-2">
                         <span class="h-3 w-3 rounded-full" :style="{ backgroundColor: group.color }"></span>
                         <span class="font-medium text-gray-900 dark:text-white">{{ group.name }}</span>
                         <span v-if="group.archived_at" class="badge-neutral">Archived</span>
                       </div>
                     </td>
-                    <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ group.trade_count }}</td>
-                    <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ winRate(group) }}</td>
-                    <td class="px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ formatCurrency(Number(group.allocated_commission) + Number(group.allocated_fees)) }}</td>
-                    <td class="px-3 py-4 text-right text-sm font-semibold" :class="pnlClass(Number(group.allocated_pnl))">{{ formatCurrency(Number(group.allocated_pnl)) }}</td>
+                    <td class="text-right text-sm text-gray-700 dark:text-gray-300 px-4 py-3">{{ group.trade_count }}</td>
+                    <td class="text-right text-sm text-gray-700 dark:text-gray-300 px-4 py-3">{{ winRate(group) }}</td>
+                    <td class="text-right text-sm text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatCurrency(Number(group.allocated_commission) + Number(group.allocated_fees)) }}</td>
+                    <td class="text-right text-sm font-semibold px-4 py-3" :class="pnlClass(Number(group.allocated_pnl))">{{ formatCurrency(Number(group.allocated_pnl)) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -131,9 +131,9 @@
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                   <tr v-for="row in monthlyRows" :key="row.month">
-                    <td class="whitespace-nowrap px-3 py-4 text-sm font-medium text-gray-900 dark:text-white">{{ formatMonth(row.month) }}</td>
-                    <td v-for="group in visibleGroups" :key="group.id" class="whitespace-nowrap px-3 py-4 text-right text-sm text-gray-700 dark:text-gray-300">{{ formatCurrency(row.values[group.id] || 0) }}</td>
-                    <td class="whitespace-nowrap px-3 py-4 text-right text-sm font-semibold" :class="pnlClass(row.total)">{{ formatCurrency(row.total) }}</td>
+                    <td class="whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white px-4 py-3">{{ formatMonth(row.month) }}</td>
+                    <td v-for="group in visibleGroups" :key="group.id" class="whitespace-nowrap text-right text-sm text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatCurrency(row.values[group.id] || 0) }}</td>
+                    <td class="whitespace-nowrap text-right text-sm font-semibold px-4 py-3" :class="pnlClass(row.total)">{{ formatCurrency(row.total) }}</td>
                   </tr>
                 </tbody>
               </table>

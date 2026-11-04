@@ -92,7 +92,7 @@
                 All entries, exits, commissions, fees, and P&amp;L follow this same proportional split. This version does not perform tax-lot or beneficiary accounting.
               </p>
 
-              <div v-if="error" class="mt-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ error }}</div>
+              <div v-if="error" class="callout-danger mt-4">{{ error }}</div>
             </template>
           </template>
         </div>

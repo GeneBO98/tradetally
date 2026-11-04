@@ -382,7 +382,7 @@
                                     :key="month.month"
                                     :class="month.trades.total === 0 ? 'opacity-40' : 'hover:bg-gray-50 dark:hover:bg-gray-700'"
                                 >
-                                    <td class="px-6 py-4 whitespace-nowrap">
+                                    <td class="whitespace-nowrap px-4 py-3">
                                         <span
                                             class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200"
                                         >
@@ -390,12 +390,12 @@
                                         </span>
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-gray-900 dark:text-white"
+                                        class="whitespace-nowrap text-center text-sm font-medium text-gray-900 dark:text-white px-4 py-3"
                                     >
                                         {{ month.trades.total || "-" }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-center"
+                                        class="whitespace-nowrap text-center px-4 py-3"
                                     >
                                         <span
                                             v-if="month.trades.wins > 0"
@@ -408,7 +408,7 @@
                                         >
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-center"
+                                        class="whitespace-nowrap text-center px-4 py-3"
                                     >
                                         <span
                                             v-if="month.trades.losses > 0"
@@ -421,7 +421,7 @@
                                         >
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-center"
+                                        class="whitespace-nowrap text-center px-4 py-3"
                                     >
                                         <span
                                             v-if="month.trades.breakeven > 0"
@@ -434,7 +434,7 @@
                                         >
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-center"
+                                        class="whitespace-nowrap text-center px-4 py-3"
                                     >
                                         <div
                                             v-if="month.trades.total > 0"
@@ -469,7 +469,7 @@
                                     </td>
                                     <td
                                         v-if="!showRValue"
-                                        class="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold"
+                                        class="whitespace-nowrap text-right text-sm font-semibold px-4 py-3"
                                         :class="month.trades.total > 0 ? getPnLClass(month.pnl.total) : 'text-gray-400'"
                                     >
                                         {{
@@ -482,7 +482,7 @@
                                     </td>
                                     <td
                                         v-if="!showRValue"
-                                        class="px-6 py-4 whitespace-nowrap text-right text-sm"
+                                        class="whitespace-nowrap text-right text-sm px-4 py-3"
                                         :class="month.trades.total > 0 ? getPnLClass(month.pnl.average) : 'text-gray-400'"
                                     >
                                         {{
@@ -495,7 +495,7 @@
                                     </td>
                                     <td
                                         v-if="!showRValue"
-                                        class="px-6 py-4 whitespace-nowrap text-right text-sm text-success"
+                                        class="whitespace-nowrap text-right text-sm text-success px-4 py-3"
                                     >
                                         {{
                                             month.trades.wins > 0
@@ -507,7 +507,7 @@
                                     </td>
                                     <td
                                         v-if="!showRValue"
-                                        class="px-6 py-4 whitespace-nowrap text-right text-sm text-danger"
+                                        class="whitespace-nowrap text-right text-sm text-danger px-4 py-3"
                                     >
                                         {{
                                             month.trades.losses > 0
@@ -518,7 +518,7 @@
                                         }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-primary-700"
+                                        class="whitespace-nowrap text-center text-sm font-medium text-primary-700 px-4 py-3"
                                     >
                                         {{
                                             month.metrics.avgRValue !== 0
@@ -530,7 +530,7 @@
                                         }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-center text-sm font-semibold"
+                                        class="whitespace-nowrap text-center text-sm font-semibold px-4 py-3"
                                         :class="month.trades.total > 0 ? getRValueClass( month.metrics.totalRValue, ) : 'text-gray-400'"
                                     >
                                         {{
@@ -544,7 +544,7 @@
                                         }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 whitespace-nowrap text-center"
+                                        class="whitespace-nowrap text-center px-4 py-3"
                                     >
                                         <span
                                             v-if="month.metrics.tradingDays > 0"
@@ -901,7 +901,7 @@ const createPnLChart = () => {
                     callbacks: {
                         label: (context) =>
                             showRValue.value
-                                ? `R-Value: ${context.raw.toFixed(2)}R`
+                                ? `R-Value: ${context.raw.toFixed(1)}R`
                                 : `P&L: ${formatCurrency(context.raw)}`,
                     },
                 },

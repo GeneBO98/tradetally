@@ -140,7 +140,7 @@
                       :class="expandedDate === row.date ? 'bg-gray-50 dark:bg-gray-800' : ''"
                       @click="toggleDayDetail(row.date)"
                     >
-                      <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap">
+                      <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap px-4 py-3">
                         <div class="flex items-center gap-2">
                           <svg
                             class="h-4 w-4 text-gray-400 transition-transform"
@@ -152,25 +152,25 @@
                           {{ formatDate(row.date) }}
                         </div>
                       </td>
-                      <td class="px-4 py-3 text-sm text-right text-green-700 dark:text-green-400 whitespace-nowrap">
+                      <td class="text-sm text-right text-green-700 dark:text-green-400 whitespace-nowrap px-4 py-3">
                         <span v-if="row.inflow > 0">{{ formatSignedCurrency(row.inflow) }}</span>
                         <span v-else class="text-gray-400">-</span>
                       </td>
-                      <td class="px-4 py-3 text-sm text-right text-red-600 dark:text-red-400 whitespace-nowrap">
+                      <td class="text-sm text-right text-red-600 dark:text-red-400 whitespace-nowrap px-4 py-3">
                         <span v-if="row.outflow > 0">{{ formatSignedCurrency(-row.outflow) }}</span>
                         <span v-else class="text-gray-400">-</span>
                       </td>
-                      <td class="px-4 py-3 text-sm text-right font-medium whitespace-nowrap" :class="pnlClass(row.net)">
+                      <td class="text-sm text-right font-medium whitespace-nowrap px-4 py-3" :class="pnlClass(row.net)">
                         {{ formatSignedCurrency(row.net) }}
                       </td>
-                      <td class="px-4 py-3 text-sm text-right font-semibold text-gray-900 dark:text-white whitespace-nowrap">
+                      <td class="text-sm text-right font-semibold text-gray-900 dark:text-white whitespace-nowrap px-4 py-3">
                         {{ formatCurrency(row.balance) }}
                       </td>
                     </tr>
 
                     <!-- Expanded day detail -->
                     <tr v-if="expandedDate === row.date" class="bg-gray-50 dark:bg-gray-800/40">
-                      <td colspan="5" class="px-4 pb-4 pt-1">
+                      <td colspan="5" class="pb-4 pt-1 px-4 py-3">
                         <div v-if="dayActivityLoading && !expandedActivity" class="py-2 text-sm text-gray-500 dark:text-gray-400">
                           Loading details…
                         </div>
@@ -236,7 +236,7 @@
                                     <span v-if="tx.description" class="truncate text-gray-500 dark:text-gray-400">{{ tx.description }}</span>
                                     <span
                                       v-if="tx.sourceType === 'plaid'"
-                                      class="badge bg-primary-100 uppercase text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                                      class="badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
                                     >
                                       Plaid
                                     </span>

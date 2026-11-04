@@ -1278,7 +1278,7 @@
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         <div class="modal-backdrop" aria-hidden="true" @click="closePublicProfileModal"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-        <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div class="modal-panel w-full p-6 max-w-lg">
           <div class="sm:flex sm:items-start">
             <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-primary-100 dark:bg-primary-900/20 sm:mx-0 sm:h-10 sm:w-10">
               <svg class="h-6 w-6 text-primary-700 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1324,7 +1324,7 @@
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         <div class="modal-backdrop" aria-hidden="true" @click="showSaveFuturesTemplateModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-        <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div class="modal-panel w-full p-6 max-w-lg">
           <div>
             <h3 class="modal-title" id="modal-title">
               Save Futures Template
@@ -1349,7 +1349,7 @@
               type="button"
               :disabled="!newFuturesTemplateName.trim() || savingTemplate"
               @click="saveFuturesTemplate"
-              class="btn-primary w-full sm:w-auto disabled:opacity-50"
+              class="btn-primary w-full sm:w-auto"
             >
               {{ savingTemplate ? 'Saving...' : 'Save Template' }}
             </button>
@@ -1370,7 +1370,7 @@
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         <div class="modal-backdrop" aria-hidden="true" @click="showSaveOptionsTemplateModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-        <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div class="modal-panel w-full p-6 max-w-lg">
           <div>
             <h3 class="modal-title" id="modal-title">
               Save Options Template
@@ -1395,7 +1395,7 @@
               type="button"
               :disabled="!newOptionsTemplateName.trim() || savingTemplate"
               @click="saveOptionsTemplate"
-              class="btn-primary w-full sm:w-auto disabled:opacity-50"
+              class="btn-primary w-full sm:w-auto"
             >
               {{ savingTemplate ? 'Saving...' : 'Save Template' }}
             </button>
@@ -1416,7 +1416,7 @@
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         <div class="modal-backdrop" aria-hidden="true" @click="showManageFuturesTemplatesModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-        <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div class="modal-panel w-full p-6 max-w-lg">
           <div>
             <h3 class="modal-title mb-4">
               Manage Futures Templates
@@ -1465,7 +1465,7 @@
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         <div class="modal-backdrop" aria-hidden="true" @click="showManageOptionsTemplatesModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-        <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div class="modal-panel w-full p-6 max-w-lg">
           <div>
             <h3 class="modal-title mb-4">
               Manage Options Templates

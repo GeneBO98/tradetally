@@ -26,7 +26,7 @@
       <button
         @click="refreshAnalytics"
         :disabled="loading"
-        class="btn-secondary btn-sm disabled:opacity-50"
+        class="btn-secondary btn-sm"
       >
         <span :class="{ 'animate-spin': loading }">[PROCESS]</span>
         <span class="ml-2">Refresh</span>

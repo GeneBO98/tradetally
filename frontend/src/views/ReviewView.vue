@@ -93,7 +93,7 @@
           <button
             type="submit"
             :disabled="submitting"
-            class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            class="btn-primary"
           >
             <span v-if="submitting">Submitting...</span>
             <span v-else>Submit Review</span>

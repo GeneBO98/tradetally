@@ -6,7 +6,7 @@
         <button
           @click="refreshNews"
           :disabled="loading"
-          class="btn-secondary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          class="btn-secondary btn-sm"
         >
           <svg
             class="w-4 h-4 mr-1.5"

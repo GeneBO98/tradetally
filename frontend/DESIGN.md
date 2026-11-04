@@ -20,7 +20,10 @@ the rules that can be checked mechanically.
 | Loading ring | `spinner spinner-{xs,sm,md,lg}` (+ `spinner-light` on dark fills) |
 | Notice | `callout-info`, `callout-success`, `callout-warning`, `callout-danger` (never a hand-tinted `bg-*-50` div) |
 | Metric colour | `pnlClass`, `winRateClass`, `profitFactorClass` from `utils/metricTone.js`; percentages one decimal, R one decimal |
-| Numbers | tables get tabular figures automatically; use `text-mono-num` for stat tiles |
+| Numbers | tables get tabular figures automatically; big numbers use `stat-value`; percentages and R are one decimal (`formatPercent`, `formatR`) |
+| Table cells | `px-4 py-3` standard, `px-3 py-2` compact; nothing else |
+| Disabled | `.btn` handles it (opacity 50, not-allowed cursor); never add `disabled:opacity-*` |
+| Stacking | popover z-40, dialog z-50, menu-in-dialog z-[60], toast z-[70], viewer z-[100] |
 
 Colour rules
 

@@ -28,21 +28,21 @@
           </thead>
           <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
             <tr v-for="strategy in stats" :key="strategy.strategy">
-              <td class="px-6 py-4 whitespace-nowrap">
+              <td class="whitespace-nowrap px-4 py-3">
                 <span class="badge-primary">
                   {{ strategy.strategy }}
                 </span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-white">
+              <td class="whitespace-nowrap text-right text-sm text-gray-900 dark:text-white px-4 py-3">
                 {{ strategy.total_trades }}
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+              <td class="whitespace-nowrap text-right text-sm px-4 py-3">
                 <span v-if="(Number(strategy.breakeven_trades) || 0) > 0" class="px-2 py-0.5 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 text-xs rounded-full">
                   {{ strategy.breakeven_trades }}
                 </span>
                 <span v-else class="text-gray-400">-</span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-white">
+              <td class="whitespace-nowrap text-right text-sm text-gray-900 dark:text-white px-4 py-3">
                 <div class="flex flex-col">
                   <span>{{ winRateInclBE(strategy) }}%<span v-if="(Number(strategy.breakeven_trades) || 0) > 0" class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span></span>
                   <span v-if="(Number(strategy.breakeven_trades) || 0) > 0" class="text-xs text-gray-500 dark:text-gray-400">
@@ -50,13 +50,13 @@
                   </span>
                 </div>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-right text-sm" :class="[
+              <td class="whitespace-nowrap text-right text-sm px-4 py-3" :class="[
                 (rValueMode ? strategy.total_r_value : pnlClass(strategy.total_pnl))
               ]">
                 <span v-if="rValueMode">{{ formatNumber(strategy.total_r_value) }}R</span>
                 <span v-else>{{ formatCurrency(strategy.total_pnl) }}</span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-right text-sm" :class="[
+              <td class="whitespace-nowrap text-right text-sm px-4 py-3" :class="[
                 (rValueMode ? strategy.avg_r_value : pnlClass(strategy.avg_pnl))
               ]">
                 <span v-if="rValueMode">{{ formatNumber(strategy.avg_r_value) }}R</span>

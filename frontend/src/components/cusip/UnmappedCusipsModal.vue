@@ -8,7 +8,7 @@
       ></div>
 
       <!-- Modal -->
-      <div role="dialog" aria-modal="true" class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+      <div role="dialog" aria-modal="true" class="modal-panel w-full p-6 max-w-4xl">
         <!-- Header -->
         <div class="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6">
           <div class="flex items-center justify-between">
@@ -60,7 +60,7 @@
                 <button
                   @click="autoRemapAll"
                   :disabled="remapping"
-                  class="btn-primary ml-3 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="btn-primary ml-3 flex-shrink-0"
                 >
                   <span v-if="remapping" class="flex items-center">
                     <div class="spinner h-3 w-3 spinner-light mr-1"></div>
@@ -152,7 +152,7 @@
                           <button
                             @click="saveQuickMapping"
                             :disabled="!quickMapping.ticker || savingMapping"
-                            class="btn-primary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            class="btn-primary btn-sm"
                           >
                             <span v-if="savingMapping" class="flex items-center">
                               <div class="spinner h-3 w-3 spinner-light mr-1"></div>

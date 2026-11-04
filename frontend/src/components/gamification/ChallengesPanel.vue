@@ -89,7 +89,7 @@
                 v-else-if="!challenge.user_status"
                 @click="join(challenge)"
                 :disabled="joiningId === challenge.id"
-                class="btn-primary disabled:opacity-60"
+                class="btn-primary"
               >
                 {{ joiningId === challenge.id ? 'Joining...' : 'Join' }}
               </button>

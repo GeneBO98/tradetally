@@ -5,7 +5,7 @@
       <div class="modal-backdrop" aria-hidden="true" @click="$emit('close')"></div>
 
       <!-- Modal panel -->
-      <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
+      <div class="modal-panel w-full p-6 max-w-2xl">
         <div>
           <!-- Success/Warning Icon -->
           <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full" :class="iconBgClass">

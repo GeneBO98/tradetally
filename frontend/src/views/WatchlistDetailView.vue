@@ -113,7 +113,7 @@
                         class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"
                     >
                         <tr v-for="item in watchlist.items" :key="item.id">
-                            <td class="px-6 py-4 whitespace-nowrap">
+                            <td class="whitespace-nowrap px-4 py-3">
                                 <div class="flex items-center gap-3">
                                     <StockLogo
                                         :symbol="item.symbol"
@@ -133,7 +133,7 @@
                                 </div>
                             </td>
                             <td
-                                class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100"
+                                class="whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 px-4 py-3"
                             >
                                 {{
                                     item.current_price
@@ -141,7 +141,7 @@
                                         : "N/A"
                                 }}
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <td class="whitespace-nowrap text-sm px-4 py-3">
                                 <span
                                     v-if="item.price_change !== null"
                                     :class="priceChangeClass(item.price_change)"
@@ -154,7 +154,7 @@
                                     >N/A</span
                                 >
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <td class="whitespace-nowrap text-sm px-4 py-3">
                                 <span
                                     v-if="item.percent_change !== null"
                                     :class="priceChangeClass(item.percent_change)"
@@ -170,12 +170,12 @@
                                 >
                             </td>
                             <td
-                                class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400"
+                                class="whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 px-4 py-3"
                             >
                                 {{ formatDate(item.added_at) }}
                             </td>
                             <td
-                                class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2"
+                                class="whitespace-nowrap text-sm font-medium space-x-2 px-4 py-3"
                             >
                                 <button
                                     @click="createPriceAlert(item.symbol)"
@@ -771,7 +771,7 @@
                             <button
                                 type="submit"
                                 :disabled="adding"
-                                class="btn-primary disabled:opacity-50"
+                                class="btn-primary"
                             >
                                 {{ adding ? "Adding..." : "Add Symbol" }}
                             </button>
@@ -821,7 +821,7 @@
                             <button
                                 type="submit"
                                 :disabled="updating"
-                                class="btn-primary disabled:opacity-50"
+                                class="btn-primary"
                             >
                                 {{ updating ? "Updating..." : "Update Notes" }}
                             </button>

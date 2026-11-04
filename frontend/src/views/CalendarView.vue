@@ -218,7 +218,7 @@
     <!-- Day Trades Modal -->
     <div v-if="selectedDay" class="modal-overlay overflow-y-auto">
       <div role="dialog" aria-modal="true"
-        class="modal-panel mx-auto p-6 transition-all duration-300"
+        class="modal-panel mx-auto p-6 duration-300 w-full p-6"
         :class="isModalExpanded ? 'top-4 w-full max-w-6xl h-[calc(100vh-2rem)]' : 'top-20 w-full max-w-2xl'">
         <div class="h-full flex flex-col">
           <div class="flex justify-between items-center mb-4">

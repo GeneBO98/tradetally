@@ -1010,14 +1010,14 @@
                                 <button
                                     @click="$emit('prev-page')"
                                     :disabled="!pagination.hasPreviousPage"
-                                    class="btn-secondary relative disabled:opacity-50 disabled:cursor-not-allowed"
+                                    class="btn-secondary relative"
                                 >
                                     Previous
                                 </button>
                                 <button
                                     @click="$emit('next-page')"
                                     :disabled="!pagination.hasNextPage"
-                                    class="btn-secondary relative ml-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    class="btn-secondary relative ml-3"
                                 >
                                     Next
                                 </button>

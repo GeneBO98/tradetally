@@ -37,7 +37,7 @@
           <div v-if="reorderable" class="flex flex-col flex-shrink-0 ml-1">
             <button
               type="button"
-              class="btn-icon p-0.5 disabled:opacity-30"
+              class="btn-icon p-0.5"
               :disabled="index === 0"
               title="Move up"
               @click="$emit('move', { name: item.name, direction: 'up' })"
@@ -48,7 +48,7 @@
             </button>
             <button
               type="button"
-              class="btn-icon p-0.5 disabled:opacity-30"
+              class="btn-icon p-0.5"
               :disabled="index === items.length - 1"
               title="Move down"
               @click="$emit('move', { name: item.name, direction: 'down' })"

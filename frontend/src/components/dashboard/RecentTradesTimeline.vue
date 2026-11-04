@@ -50,7 +50,7 @@
               <div class="flex items-center gap-1.5">
                 <span class="font-medium text-sm text-gray-900 dark:text-white truncate">{{ trade.symbol }}</span>
                 <span
-                  class="badge uppercase tracking-wide"
+                  class="badge"
                   :class="sideClass(trade.side)"
                 >
                   {{ trade.side }}

@@ -43,7 +43,7 @@
                   {{ profile.label || profile.account_identifier }}
                 </h2>
                 <span
-                  class="badge uppercase"
+                  class="badge"
                   :class="stateBadgeClass(profile.status?.state)"
                 >{{ stateLabel(profile.status?.state) }}</span>
               </div>

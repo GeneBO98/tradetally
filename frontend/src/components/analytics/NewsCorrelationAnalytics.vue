@@ -11,7 +11,7 @@
       <button
         @click="refreshAnalytics"
         :disabled="loading"
-        class="btn-secondary btn-sm disabled:opacity-50"
+        class="btn-secondary btn-sm"
       >
         <MdiIcon :icon="refreshIcon" :size="16" :class="{ 'animate-spin': loading }" class="mr-2" />
         Refresh
@@ -211,10 +211,10 @@
                   class="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
                   @click="showPerformerDetails(performer)"
                 >
-                  <td class="px-4 py-4 whitespace-nowrap font-medium text-gray-900 dark:text-white">
+                  <td class="whitespace-nowrap font-medium text-gray-900 dark:text-white px-4 py-3">
                     {{ performer.symbol }}
                   </td>
-                  <td class="px-4 py-4 whitespace-nowrap">
+                  <td class="whitespace-nowrap px-4 py-3">
                     <span 
                       class="badge"
                       :class="{
@@ -226,7 +226,7 @@
                       {{ performer.news_sentiment }}
                     </span>
                   </td>
-                  <td class="px-4 py-4 whitespace-nowrap">
+                  <td class="whitespace-nowrap px-4 py-3">
                     <span 
                       class="badge"
                       :class="performer.side === 'long' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'"
@@ -234,16 +234,16 @@
                       {{ performer.side }}
                     </span>
                   </td>
-                  <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                  <td class="whitespace-nowrap text-sm text-gray-900 dark:text-white px-4 py-3">
                     {{ performer.trade_count }}
                   </td>
-                  <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                  <td class="whitespace-nowrap text-sm text-gray-900 dark:text-white px-4 py-3">
                     {{ performer.win_rate }}%
                   </td>
-                  <td class="px-4 py-4 whitespace-nowrap text-sm font-medium" :class="pnlClass(performer.total_pnl)">
+                  <td class="whitespace-nowrap text-sm font-medium px-4 py-3" :class="pnlClass(performer.total_pnl)">
                     {{ formatCurrency(performer.total_pnl) }}
                   </td>
-                  <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                  <td class="whitespace-nowrap text-sm text-gray-900 dark:text-white px-4 py-3">
                     {{ performer.avg_return_pct }}%
                   </td>
                 </tr>

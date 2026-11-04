@@ -10,7 +10,7 @@
           </p>
           <div
             v-if="selectedAccount"
-            class="mt-2 inline-flex max-w-full items-center rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+            class="callout-info mt-2 inline-flex max-w-full items-center text-xs font-medium"
           >
             Viewing: <span class="ml-1 truncate">{{ selectedAccountLabel }}</span>
           </div>
@@ -806,7 +806,7 @@
                 <template v-for="position in displayedOpenTrades" :key="getOpenPositionKey(position)">
                   <!-- Position Summary Row -->
                   <tr :class="position.trades.length > 1 ? 'bg-gray-50 dark:bg-gray-800/50' : ''">
-                    <td class="px-3 py-3">
+                    <td class="px-3 py-2">
                       <div class="flex items-center gap-2.5">
                         <StockLogo
                           :symbol="position.symbol"
@@ -823,7 +823,7 @@
                         </div>
                       </div>
                     </td>
-                    <td class="px-3 py-3">
+                    <td class="px-3 py-2">
                       <span class="badge"
                         :class="[
                           position.side === 'long'
@@ -835,7 +835,7 @@
                         {{ position.side === 'neutral' ? 'hedged' : position.side }}
                       </span>
                     </td>
-                    <td class="px-3 py-3 text-right text-gray-900 dark:text-white">
+                    <td class="text-right text-gray-900 dark:text-white px-3 py-2">
                       {{ position.totalQuantity === 0 ? 'Hedged' : (position.totalQuantity || 0).toLocaleString() }}
                       <div
                         v-if="Number(position.totalSharesTraded) && Number(position.totalSharesTraded) !== Number(position.totalQuantity)"
@@ -844,10 +844,10 @@
                         {{ Number(position.totalSharesTraded).toLocaleString() }} traded
                       </div>
                     </td>
-                    <td class="px-3 py-3 text-right text-gray-900 dark:text-white">
+                    <td class="text-right text-gray-900 dark:text-white px-3 py-2">
                       {{ formatPositionPrice(position.avgPrice, position) }}
                     </td>
-                    <td class="px-3 py-3 text-right">
+                    <td class="text-right px-3 py-2">
                       <!-- Option: manual premium input -->
                       <template v-if="position.requires_manual_price">
                         <div class="flex items-center justify-end space-x-1">
@@ -877,10 +877,10 @@
                         <span v-else class="text-xs text-gray-400">-</span>
                       </template>
                     </td>
-                    <td v-if="open_positions_view === 'basic'" class="px-3 py-3 text-right text-gray-900 dark:text-white" :title="nativeAmountTitle(position.totalCost, position)">
+                    <td v-if="open_positions_view === 'basic'" class="text-right text-gray-900 dark:text-white px-3 py-2" :title="nativeAmountTitle(position.totalCost, position)">
                       {{ formatPositionAmount(position.totalCost, position) }}
                     </td>
-                    <td class="px-3 py-3 text-right">
+                    <td class="text-right px-3 py-2">
                       <template v-if="position.requires_manual_price">
                         <span v-if="getOptionPnL(position).currentValue !== null" class="text-gray-900 dark:text-white" :title="nativeAmountTitle(getOptionPnL(position).currentValue, position)">
                           {{ formatPositionAmount(getOptionPnL(position).currentValue, position) }}
@@ -894,7 +894,7 @@
                         <span v-else class="text-xs text-gray-400">-</span>
                       </template>
                     </td>
-                    <td class="px-3 py-3 text-right">
+                    <td class="text-right px-3 py-2">
                       <template v-if="position.requires_manual_price">
                         <div v-if="getOptionPnL(position).unrealizedPnL !== null" :title="nativeAmountTitle(getOptionPnL(position).unrealizedPnL, position)">
                           <div class="font-semibold" :class="pnlClass(getOptionPnL(position).unrealizedPnL)">
@@ -918,7 +918,7 @@
                         <span v-else class="text-xs text-gray-400">-</span>
                       </template>
                     </td>
-                    <td class="px-3 py-3 text-right">
+                    <td class="text-right px-3 py-2">
                       <span
                         v-if="daily_position_pnl(position) !== null"
                         class="font-semibold"
@@ -929,14 +929,14 @@
                       </span>
                       <span v-else class="text-xs text-gray-400">-</span>
                     </td>
-                    <td v-if="open_positions_view !== 'basic'" class="px-3 py-3 pl-6 min-w-[220px] w-[260px]">
+                    <td v-if="open_positions_view !== 'basic'" class="pl-6 min-w-[220px] w-[260px] px-3 py-2">
                       <PositionRangeBar
                         v-if="position_bars[getOpenPositionKey(position)]"
                         v-bind="bar_props(position)"
                       />
                       <span v-else class="text-xs text-gray-400">{{ position_bar_empty_text(position) }}</span>
                     </td>
-                    <td class="px-3 py-3 text-right">
+                    <td class="text-right px-3 py-2">
                       <router-link
                         v-if="position.trades.length === 1"
                         :to="`/trades/${position.trades[0].id}`"
@@ -986,7 +986,7 @@
               </tbody>
               <tfoot class="border-t-2 border-gray-300 dark:border-gray-600 text-sm whitespace-nowrap tabular-nums">
                 <tr>
-                  <td colspan="5" class="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white">
+                  <td colspan="5" class="text-left font-semibold text-gray-900 dark:text-white px-3 py-2">
                     Total
                     <span
                       v-if="hasMixedCurrencies"
@@ -998,14 +998,14 @@
                       ({{ accountCurrency }}<template v-if="totalsArePartial">, partial</template>)
                     </span>
                   </td>
-                  <td v-if="open_positions_view === 'basic'" class="px-3 py-3 text-right font-semibold text-gray-900 dark:text-white">
+                  <td v-if="open_positions_view === 'basic'" class="text-right font-semibold text-gray-900 dark:text-white px-3 py-2">
                     {{ totalOpenCostLabel }}
                   </td>
-                  <td class="px-3 py-3 text-right font-semibold text-gray-900 dark:text-white">
+                  <td class="text-right font-semibold text-gray-900 dark:text-white px-3 py-2">
                     <span v-if="totalCurrentValueLabel">{{ totalCurrentValueLabel }}</span>
                     <span v-else class="text-xs text-gray-400">-</span>
                   </td>
-                  <td class="px-3 py-3 text-right">
+                  <td class="text-right px-3 py-2">
                     <div v-if="totalUnrealizedPnLAccount !== null">
                       <div class="font-semibold" :class="pnlClass(totalUnrealizedPnLAccount)">
                         {{ totalUnrealizedPnLLabel }}
@@ -1016,15 +1016,15 @@
                     </div>
                     <span v-else class="text-xs text-gray-400">-</span>
                   </td>
-                  <td class="px-3 py-3 text-right">
+                  <td class="text-right px-3 py-2">
                     <span v-if="total_daily_pnl !== null" class="font-semibold" :class="pnlClass(total_daily_pnl)">
                       {{ formatSignedCurrency(total_daily_pnl, { currency: accountCurrency }) }}
                     </span>
                     <span v-else class="text-xs text-gray-400">-</span>
                     <div v-if="daily_pnl_partial && total_daily_pnl !== null" class="text-xs text-gray-500 dark:text-gray-400">Partial</div>
                   </td>
-                  <td v-if="open_positions_view !== 'basic'" class="px-3 py-3"></td>
-                  <td class="px-3 py-3"></td>
+                  <td v-if="open_positions_view !== 'basic'" class="px-3 py-2"></td>
+                  <td class="px-3 py-2"></td>
                 </tr>
               </tfoot>
             </table>

@@ -136,7 +136,7 @@
                 class="hover:bg-gray-50 dark:hover:bg-gray-700"
               >
                 <!-- Partial Label -->
-                <td class="px-4 py-3 whitespace-nowrap">
+                <td class="whitespace-nowrap px-4 py-3">
                   <div class="flex items-center gap-2">
                     <span class="badge bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200">
                       {{ partial.label }}
@@ -151,52 +151,52 @@
                 </td>
 
                 <!-- Eligible Trades -->
-                <td class="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 dark:text-white">
+                <td class="whitespace-nowrap text-center text-sm text-gray-900 dark:text-white px-4 py-3">
                   {{ partial.eligible_trades }}
                 </td>
 
                 <!-- Absolute Hit Rate -->
-                <td class="px-4 py-3 whitespace-nowrap text-center text-sm font-medium" :class="hitRateColor(partial.absolute_hit_rate)">
+                <td class="whitespace-nowrap text-center text-sm font-medium px-4 py-3" :class="hitRateColor(partial.absolute_hit_rate)">
                   {{ partial.absolute_hit_rate }}%
                 </td>
 
                 <!-- Conditional Hit Rate -->
-                <td class="px-4 py-3 whitespace-nowrap text-center text-sm" :class="partial.conditional_hit_rate !== null ? hitRateColor(partial.conditional_hit_rate) : 'text-gray-400 dark:text-gray-500'">
+                <td class="whitespace-nowrap text-center text-sm px-4 py-3" :class="partial.conditional_hit_rate !== null ? hitRateColor(partial.conditional_hit_rate) : 'text-gray-400 dark:text-gray-500'">
                   {{ partial.conditional_hit_rate !== null ? partial.conditional_hit_rate + '%' : '--' }}
                 </td>
 
                 <!-- Profitable Count -->
-                <td class="px-4 py-3 whitespace-nowrap text-center text-sm text-green-700 dark:text-green-400">
+                <td class="whitespace-nowrap text-center text-sm text-green-700 dark:text-green-400 px-4 py-3">
                   {{ partial.profitable_count }}
                 </td>
 
                 <!-- BE/Scratch Count -->
-                <td class="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-600 dark:text-gray-400">
+                <td class="whitespace-nowrap text-center text-sm text-gray-600 dark:text-gray-400 px-4 py-3">
                   {{ partial.be_scratch_count }}
                 </td>
 
                 <!-- Loss Count -->
-                <td class="px-4 py-3 whitespace-nowrap text-center text-sm text-red-600 dark:text-red-400">
+                <td class="whitespace-nowrap text-center text-sm text-red-600 dark:text-red-400 px-4 py-3">
                   {{ partial.loss_count }}
                 </td>
 
                 <!-- Avg Exit Pts (all) -->
-                <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-medium" :class="ptsColor(partial.avg_exit_pts)">
+                <td class="whitespace-nowrap text-right text-sm font-medium px-4 py-3" :class="ptsColor(partial.avg_exit_pts)">
                   {{ formatPts(partial.avg_exit_pts) }}
                 </td>
 
                 <!-- Avg Exit Pts (profitable) -->
-                <td class="px-4 py-3 whitespace-nowrap text-right text-sm" :class="partial.avg_exit_pts_profitable !== null ? 'text-green-700 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
+                <td class="whitespace-nowrap text-right text-sm px-4 py-3" :class="partial.avg_exit_pts_profitable !== null ? 'text-green-700 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
                   {{ partial.avg_exit_pts_profitable !== null ? formatPts(partial.avg_exit_pts_profitable) : '--' }}
                 </td>
 
                 <!-- Avg R -->
-                <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-medium" :class="partial.avg_r_at_exit !== null ? ptsColor(partial.avg_r_at_exit) : 'text-gray-400 dark:text-gray-500'">
+                <td class="whitespace-nowrap text-right text-sm font-medium px-4 py-3" :class="partial.avg_r_at_exit !== null ? ptsColor(partial.avg_r_at_exit) : 'text-gray-400 dark:text-gray-500'">
                   {{ partial.avg_r_at_exit !== null ? formatR(partial.avg_r_at_exit) : '--' }}
                 </td>
 
                 <!-- Avg SL -->
-                <td class="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-900 dark:text-white">
+                <td class="whitespace-nowrap text-right text-sm text-gray-900 dark:text-white px-4 py-3">
                   {{ partial.avg_sl_pts !== null ? formatPts(partial.avg_sl_pts) : '--' }}
                 </td>
               </tr>
@@ -305,7 +305,7 @@ const formatPts = (value) => {
 const formatR = (value) => {
   if (value === null || value === undefined) return '--'
   const sign = value >= 0 ? '+' : ''
-  return `${sign}${value.toFixed(2)}R`
+  return `${sign}${value.toFixed(1)}R`
 }
 
 watch(selectedAccount, () => {

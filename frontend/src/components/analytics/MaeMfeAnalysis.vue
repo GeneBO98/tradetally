@@ -391,7 +391,7 @@ function formatPoints(val) {
 
 function formatValue(val) {
   if (val == null) return '—'
-  if (displayMode.value === 'r') return `${val.toFixed(2)}R`
+  if (displayMode.value === 'r') return `${val.toFixed(1)}R`
   if (displayMode.value === 'points') return formatPoints(val)
   return formatCurrency(val)
 }

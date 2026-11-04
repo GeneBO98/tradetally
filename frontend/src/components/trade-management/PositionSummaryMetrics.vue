@@ -111,8 +111,8 @@
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
               <tr v-for="leg in trade.legs" :key="leg.id">
-                <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{{ leg.symbol }}</td>
-                <td class="py-2 pr-4">
+                <td class="pr-4 font-medium text-gray-900 dark:text-white whitespace-nowrap px-4 py-3">{{ leg.symbol }}</td>
+                <td class="pr-4 px-4 py-3">
                   <span
                     :class="[
                       'text-xs px-2 py-0.5 rounded-full',
@@ -124,16 +124,16 @@
                     {{ leg.side }}
                   </span>
                 </td>
-                <td class="py-2 pr-4 text-right text-gray-900 dark:text-white">{{ formatQuantity(leg.quantity) }}</td>
-                <td class="py-2 pr-4 text-right text-gray-900 dark:text-white">{{ formatCurrency(leg.entry_price) }}</td>
-                <td class="py-2 pr-4 text-right text-gray-900 dark:text-white">{{ formatCurrency(leg.exit_price) }}</td>
-                <td class="py-2 pr-4 text-right" :class="leg.stop_loss ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'">
+                <td class="pr-4 text-right text-gray-900 dark:text-white px-4 py-3">{{ formatQuantity(leg.quantity) }}</td>
+                <td class="pr-4 text-right text-gray-900 dark:text-white px-4 py-3">{{ formatCurrency(leg.entry_price) }}</td>
+                <td class="pr-4 text-right text-gray-900 dark:text-white px-4 py-3">{{ formatCurrency(leg.exit_price) }}</td>
+                <td class="pr-4 text-right px-4 py-3" :class="leg.stop_loss ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'">
                   {{ leg.stop_loss ? formatCurrency(leg.stop_loss) : 'Not set' }}
                 </td>
-                <td class="py-2 pr-4 text-right font-medium" :class="pnlClass(parseFloat(leg.pnl))">
+                <td class="pr-4 text-right font-medium px-4 py-3" :class="pnlClass(parseFloat(leg.pnl))">
                   {{ formatCurrency(leg.pnl) }}
                 </td>
-                <td class="py-2 pr-4 text-right">
+                <td class="pr-4 text-right px-4 py-3">
                   <span v-if="leg.included_in_analysis" :class="pnlClass(leg.actual_r)">
                     {{ formatR(leg.actual_r) }}
                   </span>
@@ -141,7 +141,7 @@
                     Excluded
                   </span>
                 </td>
-                <td class="py-2 text-right">
+                <td class="text-right px-4 py-3">
                   <router-link
                     :to="{ name: 'trade-detail', params: { id: leg.id } }"
                     class="text-xs text-primary-700 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300"

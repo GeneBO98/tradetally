@@ -235,7 +235,7 @@
                             :key="mapping.id"
                             class="hover:bg-gray-50 dark:hover:bg-gray-700"
                         >
-                            <td class="px-6 py-4 whitespace-nowrap">
+                            <td class="whitespace-nowrap px-4 py-3">
                                 <div>
                                     <div class="flex items-center">
                                         <code
@@ -254,7 +254,7 @@
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
+                            <td class="whitespace-nowrap px-4 py-3">
                                 <div
                                     class="text-sm text-gray-900 dark:text-white"
                                 >
@@ -264,7 +264,7 @@
                                     }}
                                 </div>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
+                            <td class="whitespace-nowrap px-4 py-3">
                                 <div class="space-y-1">
                                     <span
                                         class="badge"
@@ -304,7 +304,7 @@
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
+                            <td class="whitespace-nowrap px-4 py-3">
                                 <div class="space-y-1">
                                     <div
                                         v-if="mapping.used_in_trades"
@@ -324,7 +324,7 @@
                                 </div>
                             </td>
                             <td
-                                class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"
+                                class="whitespace-nowrap text-right text-sm font-medium px-4 py-3"
                             >
                                 <div class="flex items-center space-x-2">
                                     <button

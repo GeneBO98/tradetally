@@ -85,7 +85,7 @@
                         <button
                             @click="analyzeHistoricalTrades"
                             :disabled="loadingHistorical"
-                            class="btn-primary w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed flex"
+                            class="btn-primary w-full sm:w-auto flex"
                         >
                             <svg
                                 class="w-4 h-4 mr-2 flex-shrink-0"
@@ -810,7 +810,7 @@
                                         Trades Analyzed
                                     </p>
                                     <p
-                                        class="text-xl font-semibold text-gray-900 dark:text-white text-mono-num"
+                                        class="stat-value text-gray-900 dark:text-white text-mono-num"
                                     >
                                         {{ topMissedTrades.totalAnalyzed }}
                                     </p>
@@ -822,7 +822,7 @@
                                         Trades Exited Too Early
                                     </p>
                                     <p
-                                        class="text-xl font-semibold text-gray-900 dark:text-white text-mono-num"
+                                        class="stat-value text-gray-900 dark:text-white text-mono-num"
                                     >
                                         {{
                                             topMissedTrades.totalEligibleTrades
@@ -836,7 +836,7 @@
                                         Total Missed Profit
                                     </p>
                                     <p
-                                        class="text-xl font-semibold text-gray-900 dark:text-white text-mono-num"
+                                        class="stat-value text-gray-900 dark:text-white text-mono-num"
                                     >
                                         ${{
                                             topMissedTrades.totalMissedProfit.toFixed(
@@ -852,7 +852,7 @@
                                         Avg Missed %
                                     </p>
                                     <p
-                                        class="text-xl font-semibold text-gray-900 dark:text-white text-mono-num"
+                                        class="stat-value text-gray-900 dark:text-white text-mono-num"
                                     >
                                         {{
                                             topMissedTrades.avgMissedOpportunityPercent.toFixed(

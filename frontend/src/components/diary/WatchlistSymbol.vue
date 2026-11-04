@@ -8,7 +8,7 @@
       <button
         @click="handleAddToWatchlist"
         :disabled="addingToWatchlist"
-        class="btn-icon p-0.5 disabled:opacity-50"
+        class="btn-icon p-0.5"
         title="Add to main watchlist"
       >
         <PlusCircleIcon class="w-3.5 h-3.5" />

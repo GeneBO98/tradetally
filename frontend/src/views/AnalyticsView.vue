@@ -624,7 +624,7 @@
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
 
         <div role="dialog" aria-modal="true"
-          class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6"
+          class="modal-panel w-full p-6 max-w-2xl"
           @click.stop
         >
           <div class="flex items-center justify-between mb-6">
@@ -1459,7 +1459,7 @@ function createPerformanceByPriceChart() {
               const index = context.dataIndex
               const tradeCount = performanceByPriceCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
+                return `Total R-Multiple: ${context.parsed.x.toFixed(1)}R (${tradeCount} trades)`
               }
               return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
@@ -1544,7 +1544,7 @@ function createPerformanceByVolumeChart() {
               const index = context.dataIndex
               const tradeCount = performanceByVolumeCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
+                return `Total R-Multiple: ${context.parsed.x.toFixed(1)}R (${tradeCount} trades)`
               }
               return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
@@ -1629,7 +1629,7 @@ function createPerformanceByPositionSizeChart() {
               const index = context.dataIndex
               const tradeCount = performanceByPositionSizeCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
+                return `Total R-Multiple: ${context.parsed.x.toFixed(1)}R (${tradeCount} trades)`
               }
               return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
@@ -1721,7 +1721,7 @@ function createDayOfWeekChart() {
           callbacks: {
             label: function(context) {
               if (rValueMode.value) {
-                return `R-Multiple: ${context.parsed.x.toFixed(2)}R`
+                return `R-Multiple: ${context.parsed.x.toFixed(1)}R`
               }
               return `P&L: ${formatCurrency(context.parsed.x)}`
             }
@@ -1818,7 +1818,7 @@ function createPerformanceByHoldTimeChart() {
               const index = context.dataIndex
               const tradeCount = performanceByHoldTimeCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
+                return `Total R-Multiple: ${context.parsed.x.toFixed(1)}R (${tradeCount} trades)`
               }
               return `Total P&L: ${formatCurrency(context.parsed.x)} (${tradeCount} trades)`
             }
@@ -2015,7 +2015,7 @@ function createDrawdownChart() {
           callbacks: {
             label: function(context) {
               if (rValueMode.value) {
-                return `Drawdown: ${context.parsed.y.toFixed(2)}R`
+                return `Drawdown: ${context.parsed.y.toFixed(1)}R`
               }
               return `Drawdown: ${formatCurrency(context.parsed.y)}`
             },

@@ -141,7 +141,7 @@
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                 <tr v-for="session in sessions" :key="session.id">
-                  <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                  <td class="text-sm font-medium text-gray-900 dark:text-white px-4 py-3">
                     {{ session.symbol }}
                     <span
                       v-if="session.instrument_type === 'future'"
@@ -150,17 +150,17 @@
                       FUT
                     </span>
                   </td>
-                  <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{{ formatSessionDate(session.session_date) }}</td>
-                  <td class="px-4 py-3 text-sm text-right tabular-nums" :class="pnlClass(session.total_pnl)">
+                  <td class="text-sm text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatSessionDate(session.session_date) }}</td>
+                  <td class="text-sm text-right tabular-nums px-4 py-3" :class="pnlClass(session.total_pnl)">
                     {{ formatSignedCurrency(session.total_pnl) }}
                   </td>
-                  <td class="px-4 py-3 text-sm text-right tabular-nums text-gray-700 dark:text-gray-300">
+                  <td class="text-sm text-right tabular-nums text-gray-700 dark:text-gray-300 px-4 py-3">
                     {{ session.round_trips }}
                     <span class="text-gray-500 dark:text-gray-400">({{ session.wins }}W / {{ session.losses }}L)</span>
                   </td>
-                  <td class="px-4 py-3 text-sm text-right tabular-nums text-gray-700 dark:text-gray-300">{{ winRateLabel(session) }}</td>
-                  <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ formatSavedAt(session.created_at) }}</td>
-                  <td class="px-4 py-3 text-sm text-right whitespace-nowrap">
+                  <td class="text-sm text-right tabular-nums text-gray-700 dark:text-gray-300 px-4 py-3">{{ winRateLabel(session) }}</td>
+                  <td class="text-sm text-gray-500 dark:text-gray-400 px-4 py-3">{{ formatSavedAt(session.created_at) }}</td>
+                  <td class="text-sm text-right whitespace-nowrap px-4 py-3">
                     <button @click="reviewSession(session)" class="btn-secondary mr-2 btn-sm">
                       Review
                     </button>
@@ -259,7 +259,7 @@
               <button
                 @click="placeOrder('buy')"
                 :disabled="!canTrade"
-                class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                class="btn-primary"
                 title="Buy (B)"
               >
                 Buy
@@ -267,7 +267,7 @@
               <button
                 @click="placeOrder('sell')"
                 :disabled="!canTrade"
-                class="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
+                class="btn-danger"
                 title="Sell / Short (S)"
               >
                 Sell
@@ -275,7 +275,7 @@
               <button
                 @click="flattenPosition"
                 :disabled="!canTrade || stats.position === 0"
-                class="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                class="btn-secondary"
                 title="Flatten (F)"
               >
                 Flatten
@@ -328,7 +328,7 @@
             <button
               @click="saveSession"
               :disabled="fills.length === 0 || saving"
-              class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              class="btn-primary"
             >
               <span v-if="saving">Saving...</span>
               <span v-else>{{ stats.position !== 0 ? 'Flatten & Save' : 'Save Session' }}</span>

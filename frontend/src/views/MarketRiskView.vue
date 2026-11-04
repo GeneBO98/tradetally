@@ -49,7 +49,7 @@
           <div class="flex items-center justify-between gap-2">
             <h2 class="heading-sub">{{ indicator.name }}</h2>
             <span
-              class="badge uppercase"
+              class="badge"
               :class="badgeClasses(indicator.status)"
             >
               {{ indicator.status_label }}

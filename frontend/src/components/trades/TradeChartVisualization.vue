@@ -60,7 +60,7 @@
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Configure a supported market-data provider to enable trade charts.</p>
       </div>
 
-      <div v-else-if="error" class="rounded-lg border border-red-200 bg-red-50 px-5 py-10 text-center dark:border-red-800 dark:bg-red-900/20">
+      <div v-else-if="error" class="callout-danger py-10 text-center">
         <p class="font-medium text-red-700 dark:text-red-300">{{ error }}</p>
         <button
           type="button"

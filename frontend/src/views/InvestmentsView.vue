@@ -454,7 +454,7 @@
                                 v-if="dirtyTargetSymbols.length > 0"
                                 @click="saveAllTargetAllocations"
                                 :disabled="targetSaving"
-                                class="btn-primary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="btn-primary btn-sm"
                             >
                                 {{ targetSaving ? "Saving…" : `Save all (${dirtyTargetSymbols.length})` }}
                             </button>
@@ -464,7 +464,7 @@
                          warn when the entered targets don't already sum to 100%. -->
                     <div
                         v-if="targetsNeedNormalizing"
-                        class="mx-6 mt-4 rounded-md border border-yellow-200 dark:border-yellow-900/40 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3"
+                        class="callout-warning mx-6 mt-4"
                     >
                         <div class="flex items-start justify-between gap-3">
                             <p class="text-sm font-medium text-yellow-800 dark:text-yellow-300">
@@ -577,7 +577,7 @@
                                     v-for="position in rebalanceRows"
                                     :key="position.symbol"
                                 >
-                                    <td class="px-6 py-4 align-top">
+                                    <td class="align-top px-4 py-3">
                                         <div class="flex items-center gap-3">
                                             <StockLogo
                                                 :symbol="position.symbol"
@@ -601,7 +601,7 @@
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
+                                    <td class="text-right text-sm text-gray-900 dark:text-gray-100 px-4 py-3">
                                         <div class="flex items-center justify-end gap-1.5">
                                             <div
                                                 v-if="position.priceStale && pricesUpdating"
@@ -614,10 +614,10 @@
                                             {{ formatCurrency(position.averageCostBasis) }} avg
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
+                                    <td class="text-right text-sm text-gray-900 dark:text-gray-100 px-4 py-3">
                                         {{ formatPercent(position.actualAllocationPercent, false) }}
                                     </td>
-                                    <td class="px-6 py-4 text-right text-sm">
+                                    <td class="text-right text-sm px-4 py-3">
                                         <div class="flex flex-col items-end gap-1">
                                             <input
                                                 v-model="targetAllocationDrafts[position.symbol]"
@@ -642,7 +642,7 @@
                                             </button>
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4 text-right text-sm">
+                                    <td class="text-right text-sm px-4 py-3">
                                         <div v-if="position.driftPercent !== null">
                                             <span
                                                 :class="
@@ -659,7 +659,7 @@
                                         </div>
                                         <span v-else class="text-gray-400">Target not set</span>
                                     </td>
-                                    <td class="px-6 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
+                                    <td class="text-right text-sm text-gray-900 dark:text-gray-100 px-4 py-3">
                                         <span v-if="position.shareDelta !== null">
                                             {{ position.action === "buy" ? "+" : "" }}{{ formatNumber(position.shareDelta) }}
                                         </span>
@@ -681,7 +681,7 @@
                                         </span>
                                         <span v-else class="text-gray-400">N/A</span>
                                     </td>
-                                    <td class="px-6 py-4 text-right text-sm space-x-3">
+                                    <td class="text-right text-sm space-x-3 px-4 py-3">
                                         <button
                                             @click="openPortfolioPosition(position)"
                                             class="btn-link"

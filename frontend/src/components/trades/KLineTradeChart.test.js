@@ -234,12 +234,12 @@ describe('KLineTradeChart', () => {
       expect.objectContaining({
         type: 'rect',
         attrs: { x: 100, y: 100, width: 200, height: 100 },
-        styles: expect.objectContaining({ borderColor: '#059669' }),
+        styles: expect.objectContaining({ borderColor: '#15803d' }),
       }),
       expect.objectContaining({
         type: 'text',
         attrs: expect.objectContaining({ text: '+$125.00 (+5.00% trade return)' }),
-        styles: expect.objectContaining({ backgroundColor: '#059669' }),
+        styles: expect.objectContaining({ backgroundColor: '#15803d' }),
       }),
     ])
   })
@@ -430,7 +430,7 @@ describe('KLineTradeChart', () => {
         { timestamp: 1_700_000_000_000, value: 107 },
         { timestamp: 1_700_086_400_000, value: 107 },
       ],
-      extendData: { color: '#059669' },
+      extendData: { color: '#15803d' },
     })
 
     wrapper.unmount()

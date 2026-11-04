@@ -130,7 +130,7 @@
         <div class="flex items-center gap-1.5">
           <button
             type="button"
-            class="btn-primary btn-sm gap-1 disabled:opacity-50"
+            class="btn-primary btn-sm gap-1"
             :disabled="bulkBusy"
             @click="requestSelectedAction('approve')"
           >
@@ -138,7 +138,7 @@
           </button>
           <button
             type="button"
-            class="btn-danger btn-sm gap-1 disabled:opacity-50"
+            class="btn-danger btn-sm gap-1"
             :disabled="bulkBusy"
             @click="requestSelectedAction('reject')"
           >
@@ -191,7 +191,7 @@
               </div>
               <span
                 v-if="statusLabel(item)"
-                class="badge uppercase tracking-wide"
+                class="badge"
                 :class="statusClass(item)"
               >
                 {{ statusLabel(item) }}
@@ -264,7 +264,7 @@
           <button
             v-else-if="canRevert(item)"
             type="button"
-            class="btn-secondary btn-sm gap-1 disabled:opacity-40"
+            class="btn-secondary btn-sm gap-1"
             :disabled="actingId === item.id"
             title="Revert decision and return to pending"
             @click.stop="requestAction(item, 'revert')"
@@ -346,7 +346,7 @@
       <div class="flex items-center gap-1.5">
         <button
           type="button"
-          class="btn-secondary btn-sm gap-1 disabled:opacity-40"
+          class="btn-secondary btn-sm gap-1"
           :disabled="currentPage <= 1"
           @click="goToPage(currentPage - 1)"
         >
@@ -357,7 +357,7 @@
         </span>
         <button
           type="button"
-          class="btn-secondary btn-sm gap-1 disabled:opacity-40"
+          class="btn-secondary btn-sm gap-1"
           :disabled="currentPage >= totalPages"
           @click="goToPage(currentPage + 1)"
         >
@@ -374,7 +374,7 @@
       class="modal-overlay flex items-center justify-center px-4"
       @click.self="closeConfirm"
     >
-      <div role="dialog" aria-modal="true" class="modal-panel w-full max-w-md overflow-hidden">
+      <div role="dialog" aria-modal="true" class="modal-panel w-full p-6 max-w-md">
         <div class="border-b border-gray-200 px-5 py-4 dark:border-gray-700">
           <h3 class="heading-card">
             {{ actionTitle }}

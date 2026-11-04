@@ -55,7 +55,7 @@
           <!-- Total Actual R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Actual R (Net)</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="pnlClass(summary.total_actual_r)">
+            <div class="stat-value" :class="pnlClass(summary.total_actual_r)">
               {{ formatR(summary.total_actual_r) }}
             </div>
           </div>
@@ -63,7 +63,7 @@
           <!-- Total Potential R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Target R (Net)</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-gray-900 dark:text-white">
+            <div class="stat-value text-gray-900 dark:text-white">
               {{ formatR(summary.total_potential_r) }}
             </div>
           </div>
@@ -71,7 +71,7 @@
           <!-- Management R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Management R</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="getManagementRColor(summary.total_management_r)">
+            <div class="stat-value" :class="getManagementRColor(summary.total_management_r)">
               {{ formatR(summary.total_management_r || 0) }}
             </div>
             <div v-if="summary.trades_with_management_r > 0" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
@@ -86,7 +86,7 @@
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">R Left on Table</div>
             <template v-if="summary.trades_with_target > 0">
-              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-red-600 dark:text-red-400' : summary.r_left_on_table < 0 ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+              <div class="stat-value" :class="summary.r_left_on_table > 0 ? 'text-red-600 dark:text-red-400' : summary.r_left_on_table < 0 ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
                 {{ formatR(summary.r_left_on_table).replace('+', '') }}
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
@@ -94,7 +94,7 @@
               </div>
             </template>
             <template v-else>
-              <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-gray-400 dark:text-gray-500">
+              <div class="stat-value text-gray-400 dark:text-gray-500">
                 N/A
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0" title="Needs a defined take-profit target; not available for most derivatives">
@@ -106,7 +106,7 @@
           <!-- Win Rate -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Win Rate</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="winRateClass(summary.win_rate)">
+            <div class="stat-value" :class="winRateClass(summary.win_rate)">
               {{ Number(summary.win_rate).toFixed(1) }}%
             </div>
             <div v-if="summary.break_even_trades > 0" class="text-xs text-gray-500 dark:text-gray-400 truncate shrink-0">
@@ -260,7 +260,7 @@ function createChart() {
     {
       label: 'Actual R (Net)',
       data: actualData,
-      borderColor: '#059669', // emerald-600 - softer green
+      borderColor: '#15803d', // emerald-600 - softer green
       backgroundColor: 'rgba(5, 150, 105, 0.08)',
       fill: true,
       tension: 0.2,

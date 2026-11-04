@@ -118,7 +118,7 @@
                                 <button
                                     @click="testWebhook(webhook)"
                                     :disabled="testingWebhookId === webhook.id"
-                                    class="btn-icon disabled:opacity-50"
+                                    class="btn-icon"
                                     :title="testingWebhookId === webhook.id ? 'Testing...' : 'Send test delivery'"
                                 >
                                     <MdiIcon :icon="mdiSend" :size="16" />
@@ -293,7 +293,7 @@
                             <button
                                 type="submit"
                                 :disabled="saving"
-                                class="btn-primary disabled:opacity-50"
+                                class="btn-primary"
                             >
                                 {{ saving ? "Saving..." : editingWebhook ? "Update" : "Create" }}
                             </button>

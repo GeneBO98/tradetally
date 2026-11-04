@@ -48,7 +48,7 @@
           <button
             type="submit"
             :disabled="authStore.loading"
-            class="btn-primary group relative w-full flex disabled:opacity-50"
+            class="btn-primary group relative w-full flex"
           >
             <span v-if="authStore.loading">Sending...</span>
             <span v-else>Send reset link</span>

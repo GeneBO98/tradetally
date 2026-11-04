@@ -145,6 +145,33 @@ describe('design system consistency', () => {
     expect(cfg).not.toMatch(/#10b981|#f59e0b/i)
   })
 
+  it('keeps chart and effect colours on the one win green and the yellow warning ramp', () => {
+    const re = /#(?:059669|10b981|16a34a|d97706|f59e0b)\b/i
+    const vue = offenders(f => !PRESENTATION(f.path) && re.test(f.text))
+    const js = readdirSync(join(ROOT, 'lib')).filter(n => n.endsWith('.js')).filter(n => re.test(readFileSync(join(ROOT, 'lib', n), 'utf8')))
+    expect(vue).toEqual([])
+    expect(js).toEqual([])
+  })
+
+  it('leaves disabled styling to the shared .btn rule', () => {
+    const bad = offenders(f => classStrings(f.text).some(c => /\bbtn(?:-\w+)?\b/.test(c) && /\bdisabled:opacity-\d+/.test(c)))
+    expect(bad).toEqual([])
+  })
+
+  it('uses two table body densities: px-4 py-3 (standard) or px-3 py-2 (compact)', () => {
+    const bad = offenders(f => [...f.text.matchAll(/<td\b[^>]*?\sclass="([^"]*)"/g)].some(m => {
+      const t = m[1].split(/\s+/)
+      const px = t.filter(x => /^px-/.test(x)).join(' '), py = t.filter(x => /^py-/.test(x)).join(' ')
+      if (!px && !py) return false
+      return !((px === 'px-4' && py === 'py-3') || (px === 'px-3' && py === 'py-2') || (px === '' && py === 'py-2') || (px === '' && py === 'py-3'))
+    }))
+    expect(bad).toEqual([])
+  })
+
+  it('does not reinvent the dialog panel with the legacy align-bottom recipe', () => {
+    expect(offenders(f => /modal-panel[^"]*\balign-bottom\b|\balign-bottom\b[^"]*modal-panel/.test(f.text))).toEqual([])
+  })
+
   it('does not redefine shared primitives in scoped styles', () => {
     const re = /<style[^>]*>[\s\S]*?(?:^|\s)\.(?:input|btn(?:-primary|-secondary)?|card|badge|modal-panel)\s*\{/m
     expect(offenders(f => re.test(f.text))).toEqual([])

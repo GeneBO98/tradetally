@@ -104,7 +104,7 @@
             @click="connection.connectionStatus === 'expired' ? emit('reconnect', connection) : emit('sync', connection)"
             :disabled="syncing || syncDisabled"
             :title="syncDisabled ? 'Broker sync is a Pro feature' : ''"
-            class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed btn-sm"
+            class="btn-primary btn-sm"
           >
             <span v-if="syncing" class="flex items-center">
               <div class="spinner spinner-xs spinner-light mr-2"></div>
@@ -117,7 +117,7 @@
         <!-- Error Message -->
         <div
           v-if="connection.lastErrorMessage && ['error', 'expired'].includes(connection.connectionStatus)"
-          class="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded text-sm text-red-700 dark:text-red-300"
+          class="callout-danger mt-2"
         >
           {{ connection.lastErrorMessage }}
         </div>

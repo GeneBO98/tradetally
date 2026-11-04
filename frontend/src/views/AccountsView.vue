@@ -339,7 +339,7 @@
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         <div class="modal-backdrop" @click="showArchiveModal = false"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-        <div class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+        <div class="modal-panel w-full p-6 max-w-lg">
           <div class="px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
             <h3 id="archive-modal-title" class="modal-title">
               {{ accountToArchive?.isArchived ? 'Restore account' : 'Archive account' }}
@@ -358,7 +358,7 @@
               type="button"
               @click="updateArchiveState"
               :disabled="saving"
-              class="btn-primary w-full sm:ml-3 sm:w-auto disabled:opacity-50"
+              class="btn-primary w-full sm:ml-3 sm:w-auto"
             >
               {{ saving ? 'Saving...' : (accountToArchive?.isArchived ? 'Restore' : 'Archive') }}
             </button>
@@ -379,7 +379,7 @@
       <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         <div class="modal-backdrop" @click="closeDeleteModal()"></div>
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-        <div class="modal-panel inline-block align-bottom text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+        <div class="modal-panel w-full p-6 max-w-lg">
           <div class="bg-white dark:bg-gray-900 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
             <div class="sm:flex sm:items-start">
               <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900 sm:mx-0 sm:h-10 sm:w-10">
@@ -416,7 +416,7 @@
               type="button"
               @click="deleteAccount"
               :disabled="deleting"
-              class="btn-danger w-full justify-center sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+              class="btn-danger w-full justify-center sm:ml-3 sm:w-auto sm:text-sm"
             >
               {{ deleting ? 'Deleting...' : (deleteTrades ? 'Delete Account and Trades' : 'Delete Account') }}
             </button>

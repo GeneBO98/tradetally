@@ -10,7 +10,7 @@
             <!-- Modal -->
             <div class="flex min-h-full items-center justify-center p-4">
                 <div role="dialog" aria-modal="true"
-                    class="modal-panel w-full max-w-2xl transform overflow-hidden p-6 text-left transition-all"
+                    class="modal-panel p-6 w-full p-6 max-w-2xl"
                     @click.stop
                 >
                     <!-- Title -->
@@ -163,7 +163,7 @@
                                                     submitting ||
                                                     !editCommentText.trim()
                                                 "
-                                                class="btn-primary btn-sm disabled:opacity-50"
+                                                class="btn-primary btn-sm"
                                             >
                                                 Save
                                             </button>
@@ -203,7 +203,7 @@
                                 <button
                                     type="submit"
                                     :disabled="submitting || !newComment.trim()"
-                                    class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                                    class="btn-primary"
                                 >
                                     <span v-if="submitting">Posting...</span>
                                     <span v-else>Post Comment</span>

@@ -39,7 +39,7 @@
     <div>
       <dt class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">R Multiple</dt>
       <dd class="font-medium tabular-nums" :class="stats.r_multiple !== null ? pnlClass(stats.r_multiple) : 'text-gray-500 dark:text-gray-400'">
-        {{ stats.r_multiple !== null ? `${stats.r_multiple >= 0 ? '+' : ''}${stats.r_multiple.toFixed(2)}R` : 'No stop set' }}
+        {{ stats.r_multiple !== null ? `${stats.r_multiple >= 0 ? '+' : ''}${stats.r_multiple.toFixed(1)}R` : 'No stop set' }}
       </dd>
     </div>
   </div>

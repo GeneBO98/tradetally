@@ -222,7 +222,7 @@ function registerPnlOverlay() {
 
       const is_profit = measurement.dollar_pnl > 0
       const is_loss = measurement.dollar_pnl < 0
-      const color = is_profit ? '#059669' : (is_loss ? '#dc2626' : '#6b7280')
+      const color = is_profit ? '#15803d' : (is_loss ? '#dc2626' : '#6b7280')
       const fill_color = is_profit
         ? 'rgba(5, 150, 105, 0.12)'
         : (is_loss ? 'rgba(220, 38, 38, 0.12)' : 'rgba(107, 114, 128, 0.12)')
@@ -301,7 +301,7 @@ function registerExecutionOverlay() {
 
       const data = overlay.extendData || {}
       const isEntry = data.kind === 'entry'
-      const color = data.price_mismatch ? '#d97706' : (isEntry ? '#059669' : '#dc2626')
+      const color = data.price_mismatch ? '#ca8a04' : (isEntry ? '#15803d' : '#dc2626')
       const stackIndex = Math.max(0, Number(data.stack_index) || 0)
       const direction = isEntry ? 1 : -1
       const laneOffset = stackIndex * 24
@@ -428,7 +428,7 @@ function registerPositionOverlay() {
           styles: {
             style: 'stroke_fill',
             color: 'rgba(5, 150, 105, 0.14)',
-            borderColor: '#059669',
+            borderColor: '#15803d',
             borderSize: 1,
             borderStyle: 'solid',
           },
@@ -600,13 +600,13 @@ function chartStyles() {
     },
     candle: {
       bar: {
-        upColor: '#059669',
+        upColor: '#15803d',
         downColor: '#dc2626',
         noChangeColor: '#6b7280',
-        upBorderColor: '#059669',
+        upBorderColor: '#15803d',
         downBorderColor: '#dc2626',
         noChangeBorderColor: '#6b7280',
-        upWickColor: '#059669',
+        upWickColor: '#15803d',
         downWickColor: '#dc2626',
         noChangeWickColor: '#6b7280',
       },
@@ -983,7 +983,7 @@ function addActualExitLine(position) {
   const losing = Number.isFinite(pnl)
     ? pnl < 0
     : (position.side === 'long' ? exitPrice < position.entry_price : exitPrice > position.entry_price)
-  const color = profitable ? '#059669' : (losing ? '#dc2626' : '#6b7280')
+  const color = profitable ? '#15803d' : (losing ? '#dc2626' : '#6b7280')
 
   chart.createOverlay({
     name: EXIT_OVERLAY,

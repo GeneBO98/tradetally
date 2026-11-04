@@ -20,28 +20,28 @@
         </thead>
         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">ROIC</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.roic_1yr) }}</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.roic_5yr) }}</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.roic_10yr) }}</td>
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">ROIC</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.roic_1yr) }}</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.roic_5yr) }}</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.roic_10yr) }}</td>
           </tr>
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Revenue Growth</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.revenue_growth_1yr) }}</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.revenue_growth_5yr) }}</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.revenue_growth_10yr) }}</td>
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">Revenue Growth</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.revenue_growth_1yr) }}</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.revenue_growth_5yr) }}</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.revenue_growth_10yr) }}</td>
           </tr>
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">Profit Margin</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.profit_margin_1yr) }}</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.profit_margin_5yr) }}</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.profit_margin_10yr) }}</td>
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">Profit Margin</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.profit_margin_1yr) }}</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.profit_margin_5yr) }}</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.profit_margin_10yr) }}</td>
           </tr>
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-            <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">FCF Margin</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.fcf_margin_1yr) }}</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.fcf_margin_5yr) }}</td>
-            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatPercent(metrics.fcf_margin_10yr) }}</td>
+            <td class="text-gray-900 dark:text-white font-medium px-4 py-3">FCF Margin</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.fcf_margin_1yr) }}</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.fcf_margin_5yr) }}</td>
+            <td class="text-right text-gray-700 dark:text-gray-300 px-4 py-3">{{ formatPercent(metrics.fcf_margin_10yr) }}</td>
           </tr>
         </tbody>
       </table>

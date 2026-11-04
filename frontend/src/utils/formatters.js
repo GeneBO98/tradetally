@@ -18,7 +18,7 @@
  */
 export function formatPercent(value, options = {}) {
   const {
-    digits = 2,
+    digits = 1,
     showSign = false,
     abs = false,
     multiplier = 1,

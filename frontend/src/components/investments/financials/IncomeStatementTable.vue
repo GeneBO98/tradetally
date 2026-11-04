@@ -18,18 +18,18 @@
       <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
         <!-- Revenue Section -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Revenue
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Total Revenue
           </td>
           <td
             v-for="(period, index) in data"
             :key="period.year + '-revenue'"
-            class="px-4 py-3 text-sm text-right whitespace-nowrap"
+            class="text-sm text-right whitespace-nowrap px-4 py-3"
           >
             <div class="text-gray-700 dark:text-gray-300">{{ formatLargeNumber(period.revenue) }}</div>
             <div v-if="index < data.length - 1" :class="getGrowthClass(period.revenue, data[index + 1]?.revenue)" class="text-xs">
@@ -38,25 +38,25 @@
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Gross Profit
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-gross'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatLargeNumber(period.grossProfit) }}
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 pl-8">
+          <td class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 pl-8 px-4 py-3">
             Gross Margin
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-grossmargin'"
-            class="px-4 py-3 text-sm text-right text-gray-600 dark:text-gray-400 whitespace-nowrap"
+            class="text-sm text-right text-gray-600 dark:text-gray-400 whitespace-nowrap px-4 py-3"
           >
             {{ formatPercent(period.grossProfit, period.revenue) }}
           </td>
@@ -64,54 +64,54 @@
 
         <!-- Operating Section -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Operating
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Operating Income
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-operating'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatLargeNumber(period.operatingIncome) }}
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 pl-8">
+          <td class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 pl-8 px-4 py-3">
             Operating Margin
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-opmargin'"
-            class="px-4 py-3 text-sm text-right text-gray-600 dark:text-gray-400 whitespace-nowrap"
+            class="text-sm text-right text-gray-600 dark:text-gray-400 whitespace-nowrap px-4 py-3"
           >
             {{ formatPercent(period.operatingIncome, period.revenue) }}
           </td>
         </tr>
         <tr v-if="hasEbitData">
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             EBIT
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-ebit'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatLargeNumber(period.ebit) }}
           </td>
         </tr>
         <tr v-if="hasEbitdaData">
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             EBITDA
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-ebitda'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatLargeNumber(period.ebitda) }}
           </td>
@@ -119,18 +119,18 @@
 
         <!-- Net Income Section -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Net Income
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             Net Income
           </td>
           <td
             v-for="(period, index) in data"
             :key="period.year + '-netincome'"
-            class="px-4 py-3 text-sm text-right whitespace-nowrap"
+            class="text-sm text-right whitespace-nowrap px-4 py-3"
           >
             <div :class="period.netIncome >= 0 ? 'text-gray-700 dark:text-gray-300' : 'text-red-600 dark:text-red-400'">
               {{ formatLargeNumber(period.netIncome) }}
@@ -141,13 +141,13 @@
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 pl-8">
+          <td class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 pl-8 px-4 py-3">
             Net Profit Margin
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-netmargin'"
-            class="px-4 py-3 text-sm text-right text-gray-600 dark:text-gray-400 whitespace-nowrap"
+            class="text-sm text-right text-gray-600 dark:text-gray-400 whitespace-nowrap px-4 py-3"
           >
             {{ formatPercent(period.netIncome, period.revenue) }}
           </td>
@@ -155,31 +155,31 @@
 
         <!-- Per Share Section -->
         <tr class="bg-gray-100 dark:bg-gray-700/50">
-          <td colspan="100" class="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
+          <td colspan="100" class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase px-4 py-3">
             Per Share Data
           </td>
         </tr>
         <tr>
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             EPS (Basic)
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-eps'"
-            class="px-4 py-3 text-sm text-right whitespace-nowrap"
+            class="text-sm text-right whitespace-nowrap px-4 py-3"
             :class="getEpsValue(period) >= 0 ? 'text-gray-700 dark:text-gray-300' : 'text-red-600 dark:text-red-400'"
           >
             {{ formatCurrency(getEpsValue(period), { currency }) }}
           </td>
         </tr>
         <tr v-if="hasEpsDiluted">
-          <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800">
+          <td class="text-sm text-gray-900 dark:text-white whitespace-nowrap sticky left-0 bg-white dark:bg-gray-800 px-4 py-3">
             EPS (Diluted)
           </td>
           <td
             v-for="period in data"
             :key="period.year + '-epsdiluted'"
-            class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap"
+            class="text-sm text-right text-gray-700 dark:text-gray-300 whitespace-nowrap px-4 py-3"
           >
             {{ formatCurrency(period.epsDiluted, { currency }) }}
           </td>

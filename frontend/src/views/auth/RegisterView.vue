@@ -108,7 +108,7 @@
           <button
             type="submit"
             :disabled="authStore.loading"
-            class="btn-primary group relative w-full flex disabled:opacity-50"
+            class="btn-primary group relative w-full flex"
           >
             <span v-if="authStore.loading">Creating account...</span>
             <span v-else>Create account</span>

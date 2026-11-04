@@ -44,7 +44,7 @@
           <p class="rounded-md bg-gray-50 px-4 py-3 text-sm leading-relaxed text-gray-600 dark:bg-gray-900/40 dark:text-gray-300">
             Existing allocations on the selected trades will be replaced. Trades, tags, and broker data are not modified.
           </p>
-          <div v-if="error" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ error }}</div>
+          <div v-if="error" class="callout-danger">{{ error }}</div>
         </div>
 
         <footer class="flex justify-end gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700">

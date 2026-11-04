@@ -5,7 +5,7 @@
       <div class="modal-backdrop" aria-hidden="true" @click="$emit('close')"></div>
 
       <!-- Modal panel -->
-      <div class="modal-panel inline-block align-bottom px-4 pt-5 pb-4 text-left overflow-hidden transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full sm:p-6">
+      <div class="modal-panel w-full p-6 max-w-3xl">
         <div class="absolute top-0 right-0 pt-4 pr-4">
           <button
             type="button"
@@ -166,7 +166,7 @@
             <button
               type="submit"
               :disabled="loading || !isFormValid"
-              class="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50 sm:col-start-2"
+              class="btn-primary w-full sm:col-start-2"
             >
               <span v-if="loading">Saving...</span>
               <span v-else-if="!isFormValid">{{ unmatchedRequiredLabel }}</span>

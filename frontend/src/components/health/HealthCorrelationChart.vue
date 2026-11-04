@@ -73,7 +73,7 @@
           
           <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400">Average P&L Impact</div>
-            <div class="text-xl font-semibold text-mono-num" :class="pnlClass(statistics.avgImpact)">
+            <div class="stat-value text-mono-num" :class="pnlClass(statistics.avgImpact)">
               {{ formatSignedCurrency(statistics.avgImpact) }}
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -546,7 +546,7 @@ function getMetricCondition(metric) {
 function getCorrelationClass(correlation) {
   const abs = Math.abs(correlation)
   if (abs > 0.7) return correlation > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-  if (abs > 0.4) return correlation > 0 ? 'text-green-500' : 'text-yellow-500'
+  if (abs > 0.4) return correlation > 0 ? 'text-green-700 dark:text-green-400' : 'text-yellow-500'
   return 'text-gray-600'
 }
 

@@ -15,7 +15,7 @@
                 <button
                     @click="exportUsersToCSV"
                     :disabled="loading || users.length === 0"
-                    class="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="btn-secondary"
                 >
                     Export CSV
                 </button>
@@ -160,7 +160,7 @@
                                 class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                             >
                                 <!-- User -->
-                                <td class="px-4 py-3 whitespace-nowrap">
+                                <td class="whitespace-nowrap px-4 py-3">
                                     <div class="flex items-center gap-3">
                                         <div class="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full bg-primary-600">
                                             <img v-if="user.avatar_url" class="h-full w-full object-cover" :src="user.avatar_url" :alt="user.username" />
@@ -176,7 +176,7 @@
                                 </td>
 
                                 <!-- Role / Tier -->
-                                <td class="px-4 py-3 whitespace-nowrap">
+                                <td class="whitespace-nowrap px-4 py-3">
                                     <div class="flex items-center gap-2">
                                         <div class="w-20 text-xs">
                                             <BaseSelect
@@ -227,30 +227,30 @@
                                 </td>
 
                                 <!-- Last Active -->
-                                <td class="px-4 py-3 whitespace-nowrap">
+                                <td class="whitespace-nowrap px-4 py-3">
                                     <p class="text-sm text-gray-900 dark:text-white">{{ formatRelativeTime(user.last_active_at) }}</p>
                                     <p class="text-xs text-gray-500 dark:text-gray-400">Joined {{ formatDate(user.created_at) }}</p>
                                 </td>
 
                                 <!-- Imports -->
-                                <td class="px-4 py-3 text-right whitespace-nowrap">
+                                <td class="text-right whitespace-nowrap px-4 py-3">
                                     <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatNumber(user.import_count) }}</p>
                                     <p class="text-xs text-gray-500 dark:text-gray-400">{{ formatNumber(user.trades_imported_count) }} rows</p>
                                 </td>
 
                                 <!-- Trades -->
-                                <td class="px-4 py-3 text-right whitespace-nowrap">
+                                <td class="text-right whitespace-nowrap px-4 py-3">
                                     <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ formatNumber(user.trade_count) }}</p>
                                 </td>
 
                                 <!-- Actions -->
-                                <td class="px-4 py-3 text-right whitespace-nowrap">
+                                <td class="text-right whitespace-nowrap px-4 py-3">
                                     <div class="flex justify-end gap-1">
                                         <button
                                             v-if="!user.is_verified"
                                             @click="verifyUser(user)"
                                             :disabled="isUpdating"
-                                            class="btn-ghost btn-sm disabled:opacity-50"
+                                            class="btn-ghost btn-sm"
                                         >
                                             Verify
                                         </button>
@@ -281,14 +281,14 @@
                                         <button
                                             @click="openTierModal(user)"
                                             :disabled="isUpdating"
-                                            class="btn-ghost btn-sm disabled:opacity-50"
+                                            class="btn-ghost btn-sm"
                                         >
                                             Tier
                                         </button>
                                         <button
                                             @click="confirmDeleteUser(user)"
                                             :disabled="isUpdating || user.id === currentUserId || (user.role === 'admin' && adminCount <= 1)"
-                                            class="btn-ghost btn-sm disabled:opacity-50"
+                                            class="btn-ghost btn-sm"
                                         >
                                             Delete
                                         </button>
@@ -297,7 +297,7 @@
                             </tr>
 
                             <tr v-if="users.length === 0">
-                                <td colspan="7" class="px-4 py-12 text-center">
+                                <td colspan="7" class="text-center px-4 py-3">
                                     <p class="text-base font-medium text-gray-700 dark:text-gray-200">No users match the current filters.</p>
                                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Reset the filter set or broaden the date range.</p>
                                 </td>
@@ -313,7 +313,7 @@
                         <button
                             @click="prevPage"
                             :disabled="currentPage === 1"
-                            class="btn-secondary btn-sm px-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            class="btn-secondary btn-sm px-3 text-sm"
                         >
                             Prev
                         </button>
@@ -330,7 +330,7 @@
                         <button
                             @click="nextPage"
                             :disabled="currentPage === totalPages"
-                            class="btn-secondary btn-sm px-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            class="btn-secondary btn-sm px-3 text-sm"
                         >
                             Next
                         </button>
@@ -354,7 +354,7 @@
             </p>
             <div class="mt-5 flex justify-end gap-3">
                 <button @click="showDeleteConfirm = false" class="btn-secondary">Cancel</button>
-                <button @click="deleteUser" :disabled="isUpdating" class="btn-danger disabled:opacity-50 disabled:cursor-not-allowed">
+                <button @click="deleteUser" :disabled="isUpdating" class="btn-danger">
                     {{ isUpdating ? "Deleting..." : "Delete User" }}
                 </button>
             </div>
@@ -425,7 +425,7 @@
                             />
                             <input v-model="overrideExpiry" type="date" class="input" />
                             <input v-model="overrideReason" type="text" placeholder="Reason for override" class="input" />
-                            <button @click="setTierOverride" :disabled="isUpdating" class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed">
+                            <button @click="setTierOverride" :disabled="isUpdating" class="btn-primary w-full">
                                 Set Override
                             </button>
                         </div>
@@ -435,7 +435,7 @@
                         <div class="card card-body">
                             <p class="text-sm font-semibold text-gray-900 dark:text-white">Trial access</p>
                             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Grant a 14-day Pro trial with a dated override.</p>
-                            <button @click="grant14DayTrial" :disabled="isUpdating" class="btn-primary mt-3 w-full disabled:opacity-50 disabled:cursor-not-allowed">
+                            <button @click="grant14DayTrial" :disabled="isUpdating" class="btn-primary mt-3 w-full">
                                 Grant Trial
                             </button>
                         </div>
@@ -443,7 +443,7 @@
                         <div v-if="tierInfo.override" class="rounded-lg border border-red-200 dark:border-red-700 p-4">
                             <p class="text-sm font-semibold text-gray-900 dark:text-white">Remove override</p>
                             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Revert the user to their base tier rules.</p>
-                            <button @click="removeTierOverride" :disabled="isUpdating" class="btn-danger mt-3 w-full disabled:opacity-50 disabled:cursor-not-allowed">
+                            <button @click="removeTierOverride" :disabled="isUpdating" class="btn-danger mt-3 w-full">
                                 Remove Override
                             </button>
                         </div>

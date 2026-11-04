@@ -10,7 +10,7 @@
                     <p class="mt-1 max-w-2xl text-sm text-gray-600 dark:text-gray-400">See when entries clustered around losses and compare that activity with your own recent sessions.</p>
                 </div>
                 <div v-if="timeline && timeline.session_date" class="flex items-center gap-2 text-sm">
-                    <button type="button" class="btn-secondary btn-sm disabled:opacity-40" :disabled="!previousDate" aria-label="Previous active session" @click="$emit('date-change', previousDate)">Previous</button>
+                    <button type="button" class="btn-secondary btn-sm" :disabled="!previousDate" aria-label="Previous active session" @click="$emit('date-change', previousDate)">Previous</button>
                     <div class="relative" @keydown.esc="calendarOpen = false">
                         <button
                             type="button"
@@ -26,9 +26,9 @@
                         </button>
                         <div v-if="calendarOpen" class="popover absolute right-0 z-20 mt-2 w-72 p-3" role="dialog" aria-label="Choose a session date" @click.stop>
                             <div class="mb-3 flex items-center justify-between">
-                                <button type="button" class="btn-icon disabled:cursor-not-allowed disabled:opacity-30" :disabled="!canMoveToPreviousMonth" aria-label="Previous month" @click="moveMonth(-1)"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 0 1-.02 1.06L9.832 9l2.938 2.71a.75.75 0 1 1-1.04 1.08l-3.49-3.25a.75.75 0 0 1 0-1.08l3.49-3.25a.75.75 0 0 1 1.06.02Z" clip-rule="evenodd" /></svg></button>
+                                <button type="button" class="btn-icon" :disabled="!canMoveToPreviousMonth" aria-label="Previous month" @click="moveMonth(-1)"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 0 1-.02 1.06L9.832 9l2.938 2.71a.75.75 0 1 1-1.04 1.08l-3.49-3.25a.75.75 0 0 1 0-1.08l3.49-3.25a.75.75 0 0 1 1.06.02Z" clip-rule="evenodd" /></svg></button>
                                 <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ calendarMonthLabel }}</div>
-                                <button type="button" class="btn-icon disabled:cursor-not-allowed disabled:opacity-30" :disabled="!canMoveToNextMonth" aria-label="Next month" @click="moveMonth(1)"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L10.168 11 7.23 8.29a.75.75 0 1 1 1.04-1.08l3.49 3.25a.75.75 0 0 1 0 1.08l-3.49 3.25a.75.75 0 0 1-1.06-.02Z" clip-rule="evenodd" /></svg></button>
+                                <button type="button" class="btn-icon" :disabled="!canMoveToNextMonth" aria-label="Next month" @click="moveMonth(1)"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L10.168 11 7.23 8.29a.75.75 0 1 1 1.04-1.08l3.49 3.25a.75.75 0 0 1 0 1.08l-3.49 3.25a.75.75 0 0 1-1.06-.02Z" clip-rule="evenodd" /></svg></button>
                             </div>
                             <div class="mb-1 grid grid-cols-7 text-center text-[0.65rem] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500"><span v-for="day in weekdays" :key="day">{{ day }}</span></div>
                             <div class="grid grid-cols-7 gap-1" role="grid">
@@ -37,7 +37,7 @@
                             <p class="mt-3 border-t border-gray-100 pt-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">Dots mark sessions with entries. Amber dots mark higher-than-typical activity after a loss.</p>
                         </div>
                     </div>
-                    <button type="button" class="btn-secondary btn-sm disabled:opacity-40" :disabled="!nextDate" aria-label="Next active session" @click="$emit('date-change', nextDate)">Next</button>
+                    <button type="button" class="btn-secondary btn-sm" :disabled="!nextDate" aria-label="Next active session" @click="$emit('date-change', nextDate)">Next</button>
                 </div>
             </div>
 

@@ -93,22 +93,22 @@
               </thead>
               <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 <tr v-for="entry in income.bySymbol" :key="entry.symbol">
-                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                  <td class="whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white px-4 py-3">
                     {{ entry.symbol }}
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 dark:text-gray-100">
+                  <td class="whitespace-nowrap text-sm text-right text-gray-900 dark:text-gray-100 px-4 py-3">
                     {{ entry.dividends ? formatCurrency(entry.dividends) : '—' }}
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 dark:text-gray-100">
+                  <td class="whitespace-nowrap text-sm text-right text-gray-900 dark:text-gray-100 px-4 py-3">
                     {{ entry.interest ? formatCurrency(entry.interest) : '—' }}
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 dark:text-gray-100">
+                  <td class="whitespace-nowrap text-sm text-right text-gray-900 dark:text-gray-100 px-4 py-3">
                     {{ entry.fees ? formatCurrency(entry.fees) : '—' }}
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 dark:text-gray-100">
+                  <td class="whitespace-nowrap text-sm text-right text-gray-900 dark:text-gray-100 px-4 py-3">
                     {{ entry.transactionCount }}
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-400">
+                  <td class="whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-400 px-4 py-3">
                     {{ formatDate(entry.lastDate) }}
                   </td>
                 </tr>

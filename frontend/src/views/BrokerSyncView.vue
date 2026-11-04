@@ -322,13 +322,13 @@
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                 <tr v-for="log in store.syncLogs" :key="log.id">
-                  <td class="px-4 py-3 whitespace-nowrap">
+                  <td class="whitespace-nowrap px-4 py-3">
                     <span class="font-medium text-gray-900 dark:text-white uppercase">{{ log.brokerType }}</span>
                   </td>
-                  <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400 capitalize">
+                  <td class="whitespace-nowrap text-gray-500 dark:text-gray-400 capitalize px-4 py-3">
                     {{ log.syncType }}
                   </td>
-                  <td class="px-4 py-3 whitespace-nowrap">
+                  <td class="whitespace-nowrap px-4 py-3">
                     <span
                       class="badge"
                       :class="getStatusClass(log)"
@@ -349,16 +349,16 @@
                       </ul>
                     </details>
                   </td>
-                  <td class="px-4 py-3 whitespace-nowrap text-gray-900 dark:text-white">
+                  <td class="whitespace-nowrap text-gray-900 dark:text-white px-4 py-3">
                     {{ log.tradesImported || 0 }}
                     <span v-if="log.syncDetails?.excluded_trade_count" class="block text-xs text-gray-500 dark:text-gray-400">
                       {{ log.syncDetails.excluded_trade_count }} excluded by you
                     </span>
                   </td>
-                  <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                  <td class="whitespace-nowrap text-gray-500 dark:text-gray-400 px-4 py-3">
                     {{ log.duplicatesDetected || 0 }}
                   </td>
-                  <td class="px-4 py-3 whitespace-nowrap">
+                  <td class="whitespace-nowrap px-4 py-3">
                     <button
                       v-if="manualReviewItemsFromSyncLog(log).length > 0"
                       type="button"
@@ -369,7 +369,7 @@
                     </button>
                     <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
                   </td>
-                  <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                  <td class="whitespace-nowrap text-gray-500 dark:text-gray-400 px-4 py-3">
                     {{ formatDate(log.startedAt) }}
                   </td>
                 </tr>
