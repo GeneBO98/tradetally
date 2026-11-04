@@ -258,7 +258,7 @@
                 <p v-if="authStore.user?.email" class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
                   {{ authStore.user.email }}
                 </p>
-                <p v-if="authStore.user?.username" class="mt-1.5 truncate text-[11px] text-gray-400 dark:text-gray-500">
+                <p v-if="authStore.user?.username" class="mt-1.5 truncate text-[11px] text-gray-500 dark:text-gray-400">
                   @{{ authStore.user.username }}
                 </p>
               </div>

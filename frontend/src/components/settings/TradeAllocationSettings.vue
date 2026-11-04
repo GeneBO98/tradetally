@@ -29,7 +29,7 @@
         </div>
         <button
           type="button"
-          class="switch focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2"
+          class="switch"
           :class="enabled ? 'switch-on' : ''"
           role="switch"
           :aria-checked="enabled"

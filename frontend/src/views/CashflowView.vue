@@ -304,7 +304,7 @@
 
             <div v-if="accounts.length === 0" class="text-center py-4">
               <p class="text-gray-500 dark:text-gray-400">No accounts configured</p>
-              <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Create an account to start tracking cashflow
               </p>
             </div>

@@ -44,36 +44,13 @@
     <!-- Total P/L Summary for Filtered Results (moved to top) -->
     <div v-if="tradesStore.trades.length > 0" class="mb-6">
       <div class="card p-4">
-        <!-- Mobile Layout: Stack vertically -->
-        <div class="block sm:hidden space-y-4">
-          <div class="flex items-start justify-between">
-            <div class="flex-1">
-              <h3 class="text-label mb-2">
-                P&L Summary ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
-              </h3>
-              <div class="space-y-1">
-                <div class="text-xs text-gray-500 dark:text-gray-400">Gross</div>
-                <div class="stat-value" :class="[
-                pnlClass(tradesStore.totalGrossPnL)
-                ]">
-                  {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
-                </div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">Net</div>
-                <div class="stat-value" :class="[
-                pnlClass(tradesStore.totalNetPnL)
-                ]">
-                  {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
-                </div>
-                <template v-if="isUnrealizedColumnVisible">
-                  <div class="text-xs text-gray-500 dark:text-gray-400">Unrealized</div>
-                  <div class="text-sm font-medium tabular-nums" :class="[
-                  pnlClass(totalUnrealizedPnl)
-                  ]">
-                    {{ formatSignedCurrency(totalUnrealizedPnl) }}
-                  </div>
-                </template>
-              </div>
-            </div>
+        <!-- Mobile Layout: a two-column metric grid so the first trade
+             stays close to the top of the screen. -->
+        <div class="sm:hidden">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-label">
+              P&L Summary ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
+            </h3>
             <!-- Fullwidth Toggle (Mobile) -->
             <button
               @click="toggleFullWidth"
@@ -88,13 +65,33 @@
               </svg>
             </button>
           </div>
-          <div>
-            <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">Win Rate</div>
-            <div class="stat-value" :class="winRateClass(tradesStore.winRate)">
-              {{ Number(tradesStore.winRate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div>
+              <dt class="text-xs text-gray-500 dark:text-gray-400">Gross</dt>
+              <dd class="stat-value stat-value-sm" :class="pnlClass(tradesStore.totalGrossPnL)">
+                {{ formatSignedCurrency(tradesStore.totalGrossPnL) }}
+              </dd>
             </div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ Number(tradesStore.winRateExcludingBreakeven).toFixed(1) }}% excl. BE</div>
-          </div>
+            <div>
+              <dt class="text-xs text-gray-500 dark:text-gray-400">Net</dt>
+              <dd class="stat-value stat-value-sm" :class="pnlClass(tradesStore.totalNetPnL)">
+                {{ formatSignedCurrency(tradesStore.totalNetPnL) }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-gray-500 dark:text-gray-400">Win Rate</dt>
+              <dd class="stat-value stat-value-sm" :class="winRateClass(tradesStore.winRate)">
+                {{ Number(tradesStore.winRate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
+              </dd>
+              <dd class="text-xs text-gray-500 dark:text-gray-400">{{ Number(tradesStore.winRateExcludingBreakeven).toFixed(1) }}% excl. BE</dd>
+            </div>
+            <div v-if="isUnrealizedColumnVisible">
+              <dt class="text-xs text-gray-500 dark:text-gray-400">Unrealized</dt>
+              <dd class="stat-value stat-value-sm" :class="pnlClass(totalUnrealizedPnl)">
+                {{ formatSignedCurrency(totalUnrealizedPnl) }}
+              </dd>
+            </div>
+          </dl>
         </div>
 
         <!-- Desktop Layout: Side by side -->
@@ -402,14 +399,7 @@
           <div v-if="trade.confidence" class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
             <div class="flex items-center justify-between">
               <div class="text-xs text-gray-500 dark:text-gray-400">Confidence</div>
-              <div class="flex items-center space-x-2">
-                <div class="flex space-x-1">
-                  <div v-for="i in 10" :key="i" class="dot"
-                    :class="i <= trade.confidence ? 'dot-on' : ''">
-                  </div>
-                </div>
-                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ trade.confidence }}/10</span>
-              </div>
+              <ConfidenceMeter :value="Number(trade.confidence)" />
             </div>
           </div>
 
@@ -691,14 +681,7 @@
                 <td v-else-if="column.visible && column.key === 'confidence'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div v-if="trade.confidence" class="flex items-center space-x-2">
-                    <div class="flex space-x-1">
-                      <div v-for="i in 5" :key="i" class="w-2 h-2 rounded-full"
-                        :class="i <= Math.ceil(trade.confidence / 2) ? 'switch-on' : ''">
-                      </div>
-                    </div>
-                    <span class="text-sm text-gray-900 dark:text-white">{{ trade.confidence }}/10</span>
-                  </div>
+                  <ConfidenceMeter v-if="trade.confidence" :value="Number(trade.confidence)" compact />
                   <div v-else class="text-sm text-gray-500 dark:text-gray-400">-</div>
                 </td>
 
@@ -1169,6 +1152,7 @@ const BulkTradeEditModal = defineAsyncComponent(() => import('@/components/trade
 const BulkTradeStopsModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeStopsModal.vue'))
 const BulkTradeChartsModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeChartsModal.vue'))
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
+import ConfidenceMeter from '@/components/common/ConfidenceMeter.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
 import ColumnCustomizer from '@/components/trades/ColumnCustomizer.vue'
 import TagManagement from '@/components/trades/TagManagement.vue'

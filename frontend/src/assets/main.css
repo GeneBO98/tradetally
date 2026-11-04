@@ -482,6 +482,12 @@
     @apply text-xl font-semibold text-mono-num tracking-tight;
     @apply sm:text-2xl;
   }
+  /* Compact tile value for dense stat rows (six-up summaries, split tiles).
+     Metric roles are `stat-value` (standard) and `stat-value-sm`; do not add
+     text-size utilities next to either. */
+  .stat-value-sm {
+    @apply text-lg sm:text-xl;
+  }
 
   /* Sub-heading inside a card or dialog (group labels, list section titles). */
   .heading-sub {

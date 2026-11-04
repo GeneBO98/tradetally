@@ -98,13 +98,12 @@
                                         </p>
                                     </div>
                                     <div class="flex-shrink-0 pt-0.5">
-                                        <button class="btn-link"
-                                            type="button"
+                                        <button                                             type="button"
                                             @click="
                                                 analyticsForm.analyticsPositionGrouping =
                                                     !analyticsForm.analyticsPositionGrouping
                                             "
-                                            :class="[ analyticsForm.analyticsPositionGrouping ? 'switch-on' : '', 'switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
+                                            :class="[ analyticsForm.analyticsPositionGrouping ? 'switch-on' : '', 'switch', ]"
                                             role="switch"
                                             :aria-checked="
                                                 analyticsForm.analyticsPositionGrouping
@@ -141,13 +140,12 @@
                                         </p>
                                     </div>
                                     <div class="flex-shrink-0 pt-0.5">
-                                        <button class="btn-link"
-                                            type="button"
+                                        <button                                             type="button"
                                             @click="
                                                 analyticsForm.edgeReportEnabled =
                                                     !analyticsForm.edgeReportEnabled
                                             "
-                                            :class="[ analyticsForm.edgeReportEnabled ? 'switch-on' : '', 'switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
+                                            :class="[ analyticsForm.edgeReportEnabled ? 'switch-on' : '', 'switch', ]"
                                             role="switch"
                                             :aria-checked="
                                                 analyticsForm.edgeReportEnabled
@@ -375,13 +373,12 @@
                                         </p>
                                     </div>
                                     <div class="flex-shrink-0 pt-0.5">
-                                        <button class="btn-link"
-                                            type="button"
+                                        <button                                             type="button"
                                             @click="
                                                 analyticsForm.autoCloseExpiredOptions =
                                                     !analyticsForm.autoCloseExpiredOptions
                                             "
-                                            :class="[ analyticsForm.autoCloseExpiredOptions ? 'switch-on' : '', 'switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
+                                            :class="[ analyticsForm.autoCloseExpiredOptions ? 'switch-on' : '', 'switch', ]"
                                             role="switch"
                                             :aria-checked="
                                                 analyticsForm.autoCloseExpiredOptions
@@ -728,13 +725,12 @@
                                     </p>
                                 </div>
                                 <div class="ml-4 flex-shrink-0">
-                                    <button class="btn-link"
-                                        type="button"
+                                    <button                                         type="button"
                                         @click="
                                             privacyForm.publicProfile =
                                                 !privacyForm.publicProfile
                                         "
-                                        :class="[ privacyForm.publicProfile ? 'switch-on' : '', 'switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2', ]"
+                                        :class="[ privacyForm.publicProfile ? 'switch-on' : '', 'switch', ]"
                                         role="switch"
                                         :aria-checked="
                                             privacyForm.publicProfile

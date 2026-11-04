@@ -95,15 +95,13 @@ function renderChart() {
             beginAtZero: false,
             grid: { color: 'rgba(156, 163, 175, 0.08)' },
             ticks: {
-              font: { size: 11 },
-              callback: v => props.currencySymbol + Number(v).toLocaleString()
+                            callback: v => props.currencySymbol + Number(v).toLocaleString()
             }
           },
           x: {
             grid: { display: false },
             ticks: {
-              font: { size: 11 },
-              maxRotation: 0,
+                            maxRotation: 0,
               autoSkipPadding: 24
             }
           }

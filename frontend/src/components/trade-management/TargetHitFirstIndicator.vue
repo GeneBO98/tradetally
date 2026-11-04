@@ -159,10 +159,10 @@
         >
           Analyze with API
         </button>
-        <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
           Requires Alpha Vantage API access
         </p>
-        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
           Or switch to "Manual" mode to set manually
         </p>
       </div>
@@ -175,7 +175,7 @@
           </span>
           <span class="text-xs text-gray-500 dark:text-gray-400">(Manual)</span>
         </div>
-        <p class="text-xs text-gray-400 dark:text-gray-500">
+        <p class="text-xs text-gray-500 dark:text-gray-400">
           Manual value set. Switch to "Manual" mode to change.
         </p>
       </div>

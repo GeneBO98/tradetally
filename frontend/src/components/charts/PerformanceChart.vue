@@ -26,6 +26,30 @@ const props = defineProps({
 const chartCanvas = ref(null)
 let chart = null
 
+// Put zero at the same height on both value axes so a daily bar and the
+// cumulative line share one baseline instead of two unrelated scales.
+// Returns [{ min, max }, { min, max }] with 5% headroom.
+function alignedRanges(a, b) {
+  const range = values => {
+    const nums = values.filter(v => Number.isFinite(v))
+    return { max: Math.max(0, ...nums), min: Math.min(0, ...nums) }
+  }
+  const span = r => r.max - r.min
+  const A = range(a)
+  const B = range(b)
+  if (!span(A) || !span(B)) return [{ min: undefined, max: undefined }, { min: undefined, max: undefined }]
+  const frac = Math.max(A.max / span(A), B.max / span(B)) // share of the axis above zero
+  const fit = r => {
+    let out
+    if (frac >= 1) out = { min: 0, max: r.max }
+    else if (frac <= 0) out = { min: r.min, max: 0 }
+    else if (r.max / span(r) < frac) out = { min: r.min, max: (frac / (1 - frac)) * -r.min }
+    else out = { min: -((1 - frac) / frac) * r.max, max: r.max }
+    return { min: out.min * 1.05, max: out.max * 1.05 }
+  }
+  return [fit(A), fit(B)]
+}
+
 function createChart() {
   if (chart) {
     chart.destroy()
@@ -37,7 +61,10 @@ function createChart() {
 
   const ctx = chartCanvas.value.getContext('2d')
 
-  const labels = props.data.map(d => format(new Date(d.period), 'MMM dd'))
+  // Show the year once the series crosses a year boundary.
+  const periods = props.data.map(d => new Date(d.period))
+  const spansYears = periods.length > 1 && periods[0].getFullYear() !== periods[periods.length - 1].getFullYear()
+  const labels = periods.map(d => format(d, spansYears ? "MMM dd ''yy" : 'MMM dd'))
 
   // Use R-value data if in R-value mode, otherwise use P&L data
   const dailyData = props.rValueMode
@@ -50,6 +77,7 @@ function createChart() {
 
   const dailyLabel = props.rValueMode ? 'Daily R-Multiple' : 'Daily P&L'
   const cumulativeLabel = props.rValueMode ? 'Cumulative R-Multiple' : 'Cumulative P&L'
+  const [yRange, y1Range] = alignedRanges(dailyData, cumulativeData)
 
   chart = new Chart(ctx, {
     type: 'line',
@@ -106,6 +134,9 @@ function createChart() {
           type: 'linear',
           display: true,
           position: 'left',
+          min: yRange.min,
+          max: yRange.max,
+          title: { display: true, text: dailyLabel, color: textColor },
           ticks: {
             color: textColor
           },
@@ -117,6 +148,9 @@ function createChart() {
           type: 'linear',
           display: true,
           position: 'right',
+          min: y1Range.min,
+          max: y1Range.max,
+          title: { display: true, text: cumulativeLabel, color: textColor },
           ticks: {
             color: textColor
           },

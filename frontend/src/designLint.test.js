@@ -199,6 +199,41 @@ describe('design system consistency', () => {
     expect(bad).toEqual([])
   })
 
+  it('routes P&L and R values through pnlClass instead of binding the number as a class', () => {
+    const raw = /^\(?\s*[\w$.]+\.(?:pnl|pnl_percent|total_r_value|avg_r_value|r_value)\s*(?:\?\?|\)|$)/
+    const branch = /(?<!pnlClass\([^()]*)\?\s*[\w$.]+\.(?:pnl|pnl_percent|total_r_value|avg_r_value|r_value)\s*:/
+    const bad = offenders(f => [...f.text.matchAll(/:class="([^"]*)"/g)].some(m => raw.test(m[1]) || branch.test(m[1])))
+    expect(bad).toEqual([])
+  })
+
+  it('does not resize metric and heading roles with text-size utilities', () => {
+    const size = /\btext-(?:xs|sm|base|lg|xl|\dxl)\b/
+    const bad = offenders(f => classStrings(f.text).some(c =>
+      (/\bstat-value\b/.test(c) || /\bheading-(?:page|section|card|sub)\b/.test(c)) && size.test(c)
+    ))
+    expect(bad).toEqual([])
+  })
+
+  it('keeps helper paragraphs readable (gray-500 light / gray-400 dark at minimum)', () => {
+    expect(offenders(f => /<p\b[^>]*class="[^"]*text-gray-400 dark:text-gray-500/.test(f.text))).toEqual([])
+  })
+
+  it('does not combine btn-link with the switch primitive', () => {
+    expect(offenders(f => /class="btn-link"[^>]{0,500}?'switch\b/.test(f.text))).toEqual([])
+  })
+
+  it('keeps chart text at the 12px default', () => {
+    expect(offenders(f => /font:\s*\{\s*size:\s*(?:[1-9]|1[01])\s*[,}]/.test(f.text))).toEqual([])
+  })
+
+  it('lets table-head own the header background', () => {
+    expect(offenders(f => /<thead class="table-head">\s*<tr class="[^"]*\bbg-/.test(f.text))).toEqual([])
+  })
+
+  it('uses the stacking scale instead of inline z-index', () => {
+    expect(offenders(f => /style="[^"]*z-index/.test(f.text))).toEqual([])
+  })
+
   it('gives every loading ring the shared .spinner class', () => {
     const bad = offenders(f => classStrings(f.text).some(c =>
       /\banimate-spin\b/.test(c) && /\brounded-full\b/.test(c) && /\bborder/.test(c) && !/\bspinner\b/.test(c)

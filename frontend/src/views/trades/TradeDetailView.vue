@@ -35,12 +35,13 @@
             </p>
           </div>
         </div>
-        <!-- Phones: a two-column grid so no action sits alone on a full-width row;
-             the primary action spans both columns. -->
-        <div v-if="isOwner" class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3 sm:justify-end">
+        <!-- Phones: one row (Analyze, Edit, More); the secondary actions move
+             into the More menu so the trade itself stays above the fold.
+             From sm up every action is inline. -->
+        <div v-if="isOwner" class="grid grid-cols-[1fr_auto_auto] gap-2 sm:flex sm:flex-wrap sm:gap-3 sm:justify-end">
           <button
             @click="toggleAIPanel"
-            class="btn-primary col-span-2 sm:col-auto inline-flex items-center justify-center gap-2"
+            class="btn-primary inline-flex items-center justify-center gap-2"
           >
             <SparklesIcon class="h-4 w-4" />
             <span>{{ showAIPanel ? 'Hide Analysis' : 'Analyze Trade' }}</span>
@@ -49,39 +50,75 @@
               class="badge bg-white/20"
             >Pro</span>
           </button>
-          <button
-            v-if="trade.entry_price !== null && trade.entry_price !== undefined"
-            @click="showShareCard = true"
-            class="btn-secondary inline-flex items-center gap-2"
-          >
-            <ShareIcon class="h-4 w-4" />
-            <span>Share</span>
-          </button>
-          <router-link
-            :to="`/replay/${trade.id}`"
-            class="btn-secondary inline-flex items-center gap-2"
-          >
-            <PlayIcon class="h-4 w-4" />
-            <span>Replay</span>
-          </router-link>
-          <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-secondary">
-            Manage
-          </router-link>
-          <button
-            v-if="allocationEnabled"
-            type="button"
-            class="btn-secondary inline-flex items-center gap-2"
-            @click="showAllocationModal = true"
-          >
-            <ChartPieIcon class="h-4 w-4" />
-            Allocate
-          </button>
-          <router-link :to="{ path: `/trades/${trade.id}/edit`, query: { from: 'trade-detail' } }" class="btn-secondary">
+          <div class="hidden sm:contents">
+            <button
+              v-if="trade.entry_price !== null && trade.entry_price !== undefined"
+              @click="showShareCard = true"
+              class="btn-secondary inline-flex items-center gap-2"
+            >
+              <ShareIcon class="h-4 w-4" />
+              <span>Share</span>
+            </button>
+            <router-link
+              :to="`/replay/${trade.id}`"
+              class="btn-secondary inline-flex items-center gap-2"
+            >
+              <PlayIcon class="h-4 w-4" />
+              <span>Replay</span>
+            </router-link>
+            <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-secondary">
+              Manage
+            </router-link>
+            <button
+              v-if="allocationEnabled"
+              type="button"
+              class="btn-secondary inline-flex items-center gap-2"
+              @click="showAllocationModal = true"
+            >
+              <ChartPieIcon class="h-4 w-4" />
+              Allocate
+            </button>
+          </div>
+          <router-link :to="{ path: `/trades/${trade.id}/edit`, query: { from: 'trade-detail' } }" class="btn-secondary justify-center">
             Edit
           </router-link>
-          <button @click="deleteTrade" class="btn-danger-outline justify-center">
+          <button @click="deleteTrade" class="btn-danger-outline hidden sm:inline-flex justify-center">
             Delete
           </button>
+          <div ref="moreActionsRef" class="relative sm:hidden">
+            <button
+              type="button"
+              class="btn-icon-outline"
+              aria-label="More actions"
+              :aria-expanded="showMoreActions"
+              @click="showMoreActions = !showMoreActions"
+            >
+              <EllipsisHorizontalIcon class="h-5 w-5" />
+            </button>
+            <template v-if="showMoreActions">
+              <div class="dropdown-menu absolute right-0 z-40 mt-1 w-44">
+                <button
+                  v-if="trade.entry_price !== null && trade.entry_price !== undefined"
+                  type="button"
+                  class="menu-item"
+                  @click="showShareCard = true; showMoreActions = false"
+                >Share</button>
+                <router-link :to="`/replay/${trade.id}`" class="menu-item">Replay</router-link>
+                <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="menu-item">Manage</router-link>
+                <button
+                  v-if="allocationEnabled"
+                  type="button"
+                  class="menu-item"
+                  @click="showAllocationModal = true; showMoreActions = false"
+                >Allocate</button>
+                <button
+                  type="button"
+                  class="menu-item text-red-600 dark:text-red-400"
+                  @click="showMoreActions = false; deleteTrade()"
+                >Delete</button>
+              </div>
+            </template>
+          </div>
         </div>
       </div>
 
@@ -266,25 +303,17 @@
         />
       </div>
 
-      <!-- Incomplete Calculation Banner -->
-      <div v-if="hasIncompleteQuality" class="callout-warning">
-        <div class="flex">
-          <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-            </svg>
-          </div>
-          <div class="ml-3">
-            <h3 class="heading-sub text-yellow-800 dark:text-yellow-200">
-              Incomplete Calculation
-            </h3>
-            <div class="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
-              <p>
-                Some quality metrics could not be retrieved. This may be due to API rate limits, missing data, or future-dated trades. The quality grade shown is based on available metrics only.
-              </p>
-            </div>
-          </div>
+      <!-- Incomplete Calculation: one line, details on demand. -->
+      <div v-if="hasIncompleteQuality" class="callout-warning text-sm">
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <span class="font-medium text-yellow-800 dark:text-yellow-200">Quality grade is based on partial data.</span>
+          <button type="button" class="btn-link text-yellow-800 dark:text-yellow-200" :aria-expanded="showIncompleteDetails" @click="showIncompleteDetails = !showIncompleteDetails">
+            {{ showIncompleteDetails ? 'Hide details' : 'Details' }}
+          </button>
         </div>
+        <p v-if="showIncompleteDetails" class="mt-2 text-yellow-700 dark:text-yellow-300">
+          Some quality metrics could not be retrieved. This may be due to API rate limits, missing data, or future-dated trades. The quality grade shown is based on available metrics only.
+        </p>
       </div>
 
       <!-- Trade Details -->
@@ -456,14 +485,7 @@
                 <div v-if="trade.confidence">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Confidence Level</dt>
                   <dd class="mt-1">
-                    <div class="flex items-center space-x-3">
-                      <div class="flex space-x-1">
-                        <div v-for="i in 10" :key="i" class="dot"
-                          :class="i <= trade.confidence ? 'dot-on' : ''">
-                        </div>
-                      </div>
-                      <span class="text-sm font-medium text-gray-900 dark:text-white">{{ trade.confidence }}/10</span>
-                    </div>
+                    <ConfidenceMeter :value="Number(trade.confidence)" />
                   </dd>
                 </div>
                 <div class="sm:col-span-2">
@@ -1422,7 +1444,7 @@
                 <div v-if="trade.pnl_percent || openUnrealizedPnLPercent !== null">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">P&L %</dt>
                   <dd class="mt-1 text-lg font-semibold" :class="[
-                    (trade.exit_time ? trade.pnl_percent : pnlClass(openUnrealizedPnLPercent))
+                    pnlClass(trade.exit_time ? trade.pnl_percent : openUnrealizedPnLPercent)
                   ]">
                     <template v-if="trade.exit_time">{{ trade.pnl_percent > 0 ? '+' : '' }}{{ Number(trade.pnl_percent).toFixed(1) }}%</template>
                     <template v-else>{{ openUnrealizedPnLPercent > 0 ? '+' : '' }}{{ formatNumber(openUnrealizedPnLPercent) }}%</template>
@@ -1435,9 +1457,9 @@
                   </dd>
                 </div>
                 <div>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Value</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">
-                    {{ formatTradeCurrency(trade.entry_price * trade.quantity) }}
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Entry Value</dt>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white text-mono-num">
+                    {{ formatTradeCurrency(trade.entry_price * trade.quantity * tradeValueMultiplier) }}
                   </dd>
                 </div>
               </dl>
@@ -1563,13 +1585,14 @@
 
 <script setup>
 import { pnlClass } from '@/utils/metricTone'
-import { ref, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
-import { ChartPieIcon, DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon } from '@heroicons/vue/24/outline'
+import { ChartPieIcon, DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon, EllipsisHorizontalIcon } from '@heroicons/vue/24/outline'
+import ConfidenceMeter from '@/components/common/ConfidenceMeter.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { useTradePriceFormatter } from '@/composables/useTradePriceFormatter'
 import api from '@/services/api'
@@ -1703,6 +1726,33 @@ const symbolCompanyName = computed(() => {
 // True only for the trade's owner. Guests/other users viewing a public trade get
 // a read-only view: owner actions and owner-only data fetches are skipped.
 const isOwner = computed(() => !!authStore.user && !!trade.value && trade.value.user_id === authStore.user.id)
+const showMoreActions = ref(false)
+const showIncompleteDetails = ref(false)
+const moreActionsRef = ref(null)
+// Close the phone action menu on any click outside it or on Escape.
+function onMoreActionsPointer(event) {
+  if (!moreActionsRef.value?.contains(event.target)) showMoreActions.value = false
+}
+function onMoreActionsKey(event) {
+  if (event.key === 'Escape') showMoreActions.value = false
+}
+watch(showMoreActions, open => {
+  const method = open ? 'addEventListener' : 'removeEventListener'
+  document[method]('click', onMoreActionsPointer, true)
+  document[method]('keydown', onMoreActionsKey)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onMoreActionsPointer, true)
+  document.removeEventListener('keydown', onMoreActionsKey)
+})
+// Notional at entry: options carry contract_size, futures point_value.
+const tradeValueMultiplier = computed(() => {
+  const t = trade.value
+  if (!t) return 1
+  if (t.instrument_type === 'option' && Number(t.contract_size) > 0) return Number(t.contract_size)
+  if (t.instrument_type === 'future' && Number(t.point_value) > 0) return Number(t.point_value)
+  return 1
+})
 const allocationModalGroups = computed(() => {
   const byId = new Map(allocationGroups.value.map((group) => [group.id, group]))
   for (const allocation of tradeAllocations.value) {

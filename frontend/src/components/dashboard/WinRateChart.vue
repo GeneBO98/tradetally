@@ -97,8 +97,7 @@ function renderChart() {
           align: 'end',
           labels: {
             usePointStyle: true,
-            boxWidth: 8,
-            font: { size: 11 }
+            boxWidth: 8
           }
         },
         tooltip: {

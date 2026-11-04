@@ -41,74 +41,53 @@
             <TradeFilters :auto-apply-on-mount="false" @filter="handleFilter" />
           </div>
 
-          <!-- R-Value Mode Toggle -->
-          <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Display Charts in R-Multiples
-                </label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Show performance in terms of risk units instead of dollar amounts
-                </p>
-              </div>
-              <button class="btn-link"
-                @click="rValueMode = !rValueMode"
-                :class="[ rValueMode ? 'switch-on' : '', 'switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2' ]"
+          <!-- Toolbar: display mode on the left, layout and AI actions on the right. -->
+          <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-3 flex flex-wrap items-center justify-between gap-3">
+            <label class="inline-flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
+              <button
                 type="button"
+                role="switch"
+                :aria-checked="rValueMode"
+                :class="[ rValueMode ? 'switch-on' : '', 'switch' ]"
+                @click="rValueMode = !rValueMode"
               >
-                <span
-                  :class="[ rValueMode ? 'translate-x-5' : 'translate-x-0', 'switch-knob' ]"
-                />
+                <span :class="[ rValueMode ? 'translate-x-5' : 'translate-x-0', 'switch-knob' ]" />
               </button>
-            </div>
-          </div>
-
-          <!-- AI Recommendations and Chart Customization buttons -->
-          <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-            <div class="flex gap-2 flex-wrap">
+              <span>Show charts in R-multiples</span>
+            </label>
+            <div class="flex flex-wrap gap-2">
               <button
                 @click="toggleCustomization"
-                class="px-3 py-2 text-sm font-medium border rounded-md transition-colors"
-                :class="isCustomizing ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                :class="isCustomizing ? 'btn-tint btn-sm' : 'btn-secondary btn-sm'"
               >
-                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
                 {{ isCustomizing ? 'Done' : 'Reorder Charts' }}
-              </button>
-              <button
-                @click="showLayoutSettings = true"
-                class="btn-secondary"
-              >
-                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-                Show/Hide Charts
               </button>
               <button
                 v-if="isCustomizing"
                 @click="resetChartLayout"
-                class="btn-secondary"
+                class="btn-secondary btn-sm"
               >
                 Reset to Default
               </button>
+              <button
+                @click="showLayoutSettings = true"
+                class="btn-secondary btn-sm"
+              >
+                Show/Hide Charts
+              </button>
+              <button
+                @click="toggleAIPanel"
+                :class="showAIPanel ? 'btn-tint btn-sm' : 'btn-primary btn-sm'"
+              >
+                <SparklesIcon class="w-4 h-4 mr-1.5" />
+                <span>{{ showAIPanel ? 'Hide AI Assistant' : 'AI Assistant' }}</span>
+                <span
+                  v-if="showProLock"
+                  class="ml-2"
+                  :class="showAIPanel ? 'badge-primary' : 'badge bg-white/20'"
+                >Pro</span>
+              </button>
             </div>
-            <button
-              @click="toggleAIPanel"
-              class="px-3 py-2 text-sm font-medium border rounded-md transition-colors"
-              :class="showAIPanel ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700' : 'text-white bg-primary-700 border-transparent hover:bg-primary-800'"
-            >
-              <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
-              <span>{{ showAIPanel ? 'Hide AI Assistant' : 'AI Assistant' }}</span>
-              <span
-                v-if="showProLock"
-                class="badge ml-2 bg-white/20"
-              >Pro</span>
-            </button>
           </div>
         </div>
       </div>
@@ -739,7 +718,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import api from '@/services/api'
 import { parseTradeDate } from '@/utils/date'
-import { FunnelIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
+import { FunnelIcon, ChevronDownIcon, SparklesIcon } from '@heroicons/vue/24/outline'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'

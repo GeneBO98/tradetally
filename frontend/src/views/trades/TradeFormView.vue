@@ -585,7 +585,7 @@
 
           <div v-else class="text-center py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
             <p class="text-gray-500 dark:text-gray-400 mb-2">No executions added yet</p>
-            <p class="text-sm text-gray-400 dark:text-gray-500">Click "Add Execution" to add your first fill</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400">Click "Add Execution" to add your first fill</p>
           </div>
         </div>
 

@@ -268,7 +268,7 @@ function registerPnlOverlay() {
           styles: {
             style: 'fill',
             color: '#ffffff',
-            size: 11,
+            size: 12,
             weight: 600,
             backgroundColor: color,
             borderRadius: 4,
@@ -341,7 +341,7 @@ function registerExecutionOverlay() {
           styles: {
             style: 'fill',
             color: '#ffffff',
-            size: 10,
+            size: 12,
             weight: 600,
             backgroundColor: color,
             borderRadius: 3,

@@ -9,15 +9,9 @@
             </p>
         </div>
 
-        <!-- Loading State -->
-        <div v-if="loading" class="flex items-center justify-center h-64">
-            <div
-                class="spinner spinner-md"
-            ></div>
-            <span class="ml-2 text-gray-600 dark:text-gray-400"
-                >Loading tick data...</span
-            >
-        </div>
+        <!-- First load: a placeholder the size of the chart. Refreshes keep
+             the current chart on screen. -->
+        <div v-if="loading && !chartData" class="skeleton h-64" aria-busy="true"></div>
 
         <!-- Error State -->
         <div

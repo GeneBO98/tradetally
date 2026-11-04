@@ -51,13 +51,13 @@
                 </div>
               </td>
               <td class="whitespace-nowrap text-right text-sm px-4 py-3" :class="[
-                (rValueMode ? hour.total_r_value : pnlClass(hour.total_pnl))
+                pnlClass(rValueMode ? hour.total_r_value : hour.total_pnl)
               ]">
                 <span v-if="rValueMode">{{ formatNumber(hour.total_r_value) }}R</span>
                 <span v-else>{{ formatCurrency(hour.total_pnl) }}</span>
               </td>
               <td class="whitespace-nowrap text-right text-sm px-4 py-3" :class="[
-                (rValueMode ? hour.avg_r_value : pnlClass(hour.avg_pnl))
+                pnlClass(rValueMode ? hour.avg_r_value : hour.avg_pnl)
               ]">
                 <span v-if="rValueMode">{{ formatNumber(hour.avg_r_value) }}R</span>
                 <span v-else>{{ formatCurrency(hour.avg_pnl) }}</span>

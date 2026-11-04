@@ -70,7 +70,7 @@
                       {{ item.companyName || item.industry || '' }}
                     </span>
                   </div>
-                  <p class="text-xs text-gray-400 dark:text-gray-500 truncate">
+                  <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
                     {{ secondaryLine(list.key, item) }}
                   </p>
                 </div>

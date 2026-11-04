@@ -2,16 +2,16 @@
   <div class="mb-6">
     <h3 class="heading-card mb-3">Historical Performance</h3>
 
-    <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center py-8">
-      <div class="spinner spinner-md"></div>
+    <!-- First load: row placeholders; refreshes keep the current table. -->
+    <div v-if="loading && !metrics" class="space-y-2" aria-busy="true">
+      <div v-for="i in 5" :key="i" class="skeleton h-8"></div>
     </div>
 
     <!-- Metrics Table -->
     <div v-else-if="metrics" class="overflow-x-auto">
       <table class="min-w-full text-sm">
         <thead class="table-head">
-          <tr class="bg-gray-100 dark:bg-gray-700">
+          <tr>
             <th class="text-left table-th px-4 py-2">Metric</th>
             <th class="text-right table-th px-4 py-2">1 Year</th>
             <th class="text-right table-th px-4 py-2">5 Year Avg</th>

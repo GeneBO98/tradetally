@@ -170,7 +170,7 @@
             </div>
           </div>
 
-          <p class="mt-4 text-xs text-gray-400 dark:text-gray-500">
+          <p class="mt-4 text-xs text-gray-500 dark:text-gray-400">
             Computed from journaled daily closes. Intraday excursions between fills are not visible to the journal,
             so treat the meters as end-of-day accounting, not a live risk engine.
           </p>

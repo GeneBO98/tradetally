@@ -189,7 +189,7 @@
                               </span>
                             </div>
                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ source.trust_note }}</p>
-                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                               {{ source.domain || source.source_type }} · every {{ source.fetch_interval_minutes }} min
                             </p>
                           </div>

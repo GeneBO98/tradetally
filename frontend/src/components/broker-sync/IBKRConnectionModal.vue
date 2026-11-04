@@ -56,8 +56,7 @@
                   Automatically sync trades daily
                 </p>
               </div>
-              <button class="btn-link"
-                type="button"
+              <button                 type="button"
                 @click="form.autoSyncEnabled = !form.autoSyncEnabled"
                 :class="[ form.autoSyncEnabled ? 'switch-on' : '', 'switch' ]"
               >

@@ -1492,7 +1492,7 @@
                                             'enabled',
                                         )
                                     "
-                                    class="switch duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                                    class="switch"
                                     :class="settings.revengeTrading?.enabled ? 'switch-on' : ''"
                                 >
                                     <span

@@ -149,7 +149,7 @@
         </div>
       </section>
 
-      <p class="mt-8 text-xs text-gray-400 dark:text-gray-500 max-w-3xl">
+      <p class="mt-8 text-xs text-gray-500 dark:text-gray-400 max-w-3xl">
         Data sources: Federal Reserve Economic Data (FRED) and multpl.com. Values update daily; quarterly series
         (Buffett Indicator, Tobin's Q) update with each Z.1 flow of funds release. Nothing on this page is
         investment advice.

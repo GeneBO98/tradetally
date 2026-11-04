@@ -1198,7 +1198,7 @@
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Win
                     </dt>
-                    <dd class="stat-value mt-1 text-lg sm:text-xl text-green-700 dark:text-green-400 whitespace-nowrap">
+                    <dd class="stat-value stat-value-sm mt-1 text-green-700 dark:text-green-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.avgWin) }}
                     </dd>
                   </div>
@@ -1217,7 +1217,7 @@
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Loss
                     </dt>
-                    <dd class="stat-value mt-1 text-lg sm:text-xl text-red-600 dark:text-red-400 whitespace-nowrap">
+                    <dd class="stat-value stat-value-sm mt-1 text-red-600 dark:text-red-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.avgLoss, { abs: true }) }}
                     </dd>
                   </div>
@@ -1236,7 +1236,7 @@
                     <dt class="text-data-secondary truncate">
                       Best Trade
                     </dt>
-                    <dd class="stat-value mt-1 text-lg sm:text-xl text-green-700 dark:text-green-400 whitespace-nowrap">
+                    <dd class="stat-value stat-value-sm mt-1 text-green-700 dark:text-green-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.bestTrade) }}
                     </dd>
                   </div>
@@ -1255,7 +1255,7 @@
                     <dt class="text-data-secondary truncate">
                       Worst Trade
                     </dt>
-                    <dd class="stat-value mt-1 text-lg sm:text-xl text-red-600 dark:text-red-400 whitespace-nowrap">
+                    <dd class="stat-value stat-value-sm mt-1 text-red-600 dark:text-red-400 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.worstTrade) }}
                     </dd>
                   </div>

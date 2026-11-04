@@ -5,7 +5,7 @@
       <!-- Total P&L -->
       <div class="px-4 py-3.5">
         <dt class="text-label truncate">Total P&L</dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="pnlClass(overview.total_pnl)">
+        <dd class="stat-value stat-value-sm mt-1 whitespace-nowrap" :class="pnlClass(overview.total_pnl)">
           {{ formatSignedCurrency(overview.total_pnl) }}
         </dd>
       </div>
@@ -15,7 +15,7 @@
         <dt class="text-label truncate">
           Win Rate<span v-if="overview.position_grouping" class="ml-1 normal-case text-primary-700 dark:text-primary-400">· whole trade</span>
         </dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="winRateClass(overview.win_rate)">
+        <dd class="stat-value stat-value-sm mt-1 whitespace-nowrap" :class="winRateClass(overview.win_rate)">
           {{ Number(overview.win_rate).toFixed(1) }}%<span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">incl. BE</span>
         </dd>
         <dd v-if="overview.breakeven_trades > 0" class="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
@@ -26,13 +26,13 @@
       <!-- Total Trades -->
       <div class="px-4 py-3.5">
         <dt class="text-label truncate">Total Trades</dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">{{ overview.total_trades }}</dd>
+        <dd class="stat-value stat-value-sm mt-1 text-gray-900 dark:text-white whitespace-nowrap">{{ overview.total_trades }}</dd>
       </div>
 
       <!-- Average / Median Trade -->
       <div class="px-4 py-3.5">
         <dt class="text-label truncate">{{ calculationMethod }} Trade</dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="pnlClass(overview.avg_pnl)">
+        <dd class="stat-value stat-value-sm mt-1 whitespace-nowrap" :class="pnlClass(overview.avg_pnl)">
           {{ formatSignedCurrency(overview.avg_pnl) }}
         </dd>
       </div>
@@ -40,7 +40,7 @@
       <!-- Profit Factor -->
       <div class="px-4 py-3.5">
         <dt class="text-label truncate">Profit Factor</dt>
-        <dd class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="profitFactorClass(overview.profit_factor)">{{ overview.profit_factor ?? '0.00' }}</dd>
+        <dd class="stat-value stat-value-sm mt-1 whitespace-nowrap" :class="profitFactorClass(overview.profit_factor)">{{ overview.profit_factor ?? '0.00' }}</dd>
       </div>
 
       <!-- R-Multiple (click to toggle Average / Total) -->
@@ -54,10 +54,10 @@
           <span class="ml-1 normal-case text-gray-400">↻</span>
         </dt>
         <transition name="r-fade" mode="out-in">
-          <dd v-if="!rMultipleFlipped" key="avg" class="mt-1 text-lg lg:text-xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
+          <dd v-if="!rMultipleFlipped" key="avg" class="stat-value stat-value-sm mt-1 text-gray-900 dark:text-white whitespace-nowrap">
             {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(1) + 'R' : '0.0R' }}
           </dd>
-          <dd v-else key="total" class="mt-1 text-lg lg:text-xl font-semibold whitespace-nowrap" :class="(overview.total_r_value ?? pnlClass(0))">
+          <dd v-else key="total" class="stat-value stat-value-sm mt-1 whitespace-nowrap" :class="pnlClass(overview.total_r_value ?? 0)">
             {{ overview.total_r_value !== undefined && overview.total_r_value !== null ? Number(overview.total_r_value).toFixed(1) + 'R' : '0.0R' }}
           </dd>
         </transition>
@@ -65,30 +65,12 @@
     </dl>
   </div>
 
-  <!-- Equity Notice for K-Ratio -->
-  <div v-if="overview.k_ratio === '0.00'" class="card mt-6 mb-8">
-    <div class="card-body">
-      <div class="flex items-start space-x-3">
-        <div class="flex-shrink-0">
-          <svg class="w-5 h-5 text-primary-700 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <div>
-          <h4 class="heading-sub">K-Ratio Requires Account Equity Tracking</h4>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            To calculate your K-Ratio, you need to track your account equity over time. The K-Ratio requires at least 3 equity entries to calculate meaningful consistency metrics.
-          </p>
-          <div class="mt-2 flex flex-wrap gap-2">
-            <router-link to="/settings" class="btn-primary btn-sm">
-              Update Current Equity
-            </router-link>
-            <router-link to="/equity-history" class="btn-secondary btn-sm">
-              View Equity History
-            </router-link>
-          </div>
-        </div>
-      </div>
+  <!-- K-Ratio needs equity history: one compact notice under the stats, not a card of its own. -->
+  <div v-if="overview.k_ratio === '0.00'" class="callout-info mt-4 mb-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm">
+    <p>K-Ratio needs at least 3 account equity entries before it can be calculated.</p>
+    <div class="flex gap-4">
+      <router-link to="/settings" class="btn-link">Update equity</router-link>
+      <router-link to="/equity-history" class="btn-link">Equity history</router-link>
     </div>
   </div>
 </template>

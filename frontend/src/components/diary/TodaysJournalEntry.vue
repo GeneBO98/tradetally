@@ -146,18 +146,19 @@
       </div>
 
       <!-- No Entry State -->
-      <div v-if="!entry && !loading" class="text-center py-6">
-        <BookOpenIcon class="w-12 h-12 text-gray-400 mx-auto mb-3" />
-        <p class="text-gray-500 dark:text-gray-400 mb-4">
-          No journal entry for today yet. Start documenting your trading plan and market thoughts.
-        </p>
+      <!-- Compact prompt: the dashboard should not spend a tall empty state on a missing note. -->
+      <div v-if="!entry && !loading" class="flex flex-wrap items-center justify-between gap-3 py-1">
+        <div class="flex items-center gap-3 min-w-0">
+          <BookOpenIcon class="w-5 h-5 shrink-0 text-gray-400" />
+          <p class="text-sm text-gray-500 dark:text-gray-400">No journal entry for today yet.</p>
+        </div>
         <button
           @click="createTodaysEntry"
-          class="btn-primary"
+          class="btn-secondary btn-sm"
           :disabled="creating"
         >
-          <PlusIcon class="w-4 h-4 mr-2" />
-          {{ creating ? 'Creating...' : 'Create Today\'s Entry' }}
+          <PlusIcon class="w-4 h-4 mr-1" />
+          {{ creating ? 'Creating...' : 'Start today\'s entry' }}
         </button>
       </div>
 

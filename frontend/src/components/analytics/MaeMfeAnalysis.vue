@@ -55,7 +55,7 @@
               R-Multiples
             </button>
           </div>
-          <span v-if="!hasRValues || !canUsePoints" class="text-xs text-gray-400 dark:text-gray-500">
+          <span v-if="!hasRValues || !canUsePoints" class="text-xs text-gray-500 dark:text-gray-400">
             {{ !hasRValues && !canUsePoints ? 'R needs stop loss. Points need futures-only trades with qty and point value.' : !hasRValues ? 'R needs stop loss.' : 'Points need futures-only trades with qty and point value.' }}
           </span>
           <div class="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -150,7 +150,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
         <p class="text-gray-500 dark:text-gray-400 font-medium">No MAE/MFE data available</p>
-        <p class="text-xs text-gray-400 dark:text-gray-500 mt-2 max-w-sm mx-auto">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 max-w-sm mx-auto">
           Enter MAE and MFE values manually when logging trades, or they will be auto-calculated for closed trades if market data is available.
         </p>
       </div>
@@ -165,7 +165,7 @@
               <span v-else-if="displayStats.winners_avg_mae != null">{{ formatValue(displayStats.winners_avg_mae) }}</span>
               <span v-else class="text-gray-400">—</span>
             </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">MAE on winning trades</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">MAE on winning trades</p>
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400">MFE on losers</p>
@@ -174,7 +174,7 @@
               <span v-else-if="displayStats.losers_avg_mfe != null">{{ formatValue(displayStats.losers_avg_mfe) }}</span>
               <span v-else class="text-gray-400">—</span>
             </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">How far losers ran in your favor</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">How far losers ran in your favor</p>
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400" title="For trades with after-trade data, this uses after-trade MFE. Otherwise it uses in-trade MFE.">Avg profit left on table</p>
@@ -183,7 +183,7 @@
               <span v-else-if="displayStats.avg_profit_left != null">{{ formatValue(displayStats.avg_profit_left) }}</span>
               <span v-else class="text-gray-400">—</span>
             </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Best available MFE minus exit P&L (winners)</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Best available MFE minus exit P&L (winners)</p>
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400" title="Average realized P&L divided by best available MFE on winning trades. After-trade MFE is used when present.">Exit efficiency</p>
@@ -192,7 +192,7 @@
               <span v-else-if="exitEfficiency != null">{{ exitEfficiency.toFixed(1) }}%</span>
               <span v-else class="text-gray-400">—</span>
             </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Avg P&L / best MFE (winners)</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Avg P&L / best MFE (winners)</p>
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400" title="Additional favorable movement after the in-trade MFE peak, measured within the configured post-exit window.">After-trade continuation</p>
@@ -201,7 +201,7 @@
               <span v-else-if="displayStats.avg_post_exit_mfe_delta != null">{{ formatValue(displayStats.avg_post_exit_mfe_delta) }}</span>
               <span v-else class="text-gray-400">—</span>
             </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">After-trade MFE minus in-trade MFE</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">After-trade MFE minus in-trade MFE</p>
           </div>
           <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400" title="Potential profit between the actual exit and the best favorable move in the post-exit window.">Missed after exit</p>
@@ -210,7 +210,7 @@
               <span v-else-if="displayStats.avg_missed_after_exit != null">{{ formatValue(displayStats.avg_missed_after_exit) }}</span>
               <span v-else class="text-gray-400">—</span>
             </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ stats.trades_with_post_exit_data || 0 }} trades with after-trade data</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ stats.trades_with_post_exit_data || 0 }} trades with after-trade data</p>
           </div>
         </div>
 
@@ -228,7 +228,7 @@
           <div>
             <div class="flex items-center gap-2 mb-3">
               <h4 class="heading-sub">MFE vs. Result</h4>
-              <span class="text-xs text-gray-400 dark:text-gray-500">— primary points show after-trade continuation</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">— primary points show after-trade continuation</span>
             </div>
             <div class="h-72 relative">
               <canvas ref="scatterChart" class="absolute inset-0 w-full h-full"></canvas>
@@ -239,7 +239,7 @@
           <div>
             <div class="flex items-center gap-2 mb-3">
               <h4 class="heading-sub">MAE Distribution — Winners</h4>
-              <span class="text-xs text-gray-400 dark:text-gray-500">— calibrate your stop loss</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">— calibrate your stop loss</span>
             </div>
             <div class="h-72 relative">
               <canvas ref="histogramChart" class="absolute inset-0 w-full h-full"></canvas>
@@ -369,8 +369,8 @@ function formatAxisTick(value) {
 
 function axisScale(title) {
   const base = {
-    title: { display: true, text: `${title} (${unitLabel.value}${chartOptions.value.logScale ? ', log' : ''})`, color: Chart.defaults.color, font: { size: 11 } },
-    ticks: { color: Chart.defaults.color, font: { size: 10 } },
+    title: { display: true, text: `${title} (${unitLabel.value}${chartOptions.value.logScale ? ', log' : ''})`, color: Chart.defaults.color },
+    ticks: { color: Chart.defaults.color },
     grid: { color: 'rgba(107,114,128,0.1)' }
   }
   if (!chartOptions.value.logScale) return base
@@ -726,8 +726,7 @@ function renderScatter() {
           labels: {
             color: Chart.defaults.color,
             boxWidth: 10,
-            font: { size: 11 },
-            filter(item, data) {
+                        filter(item, data) {
               return data.datasets.findIndex(dataset => dataset.label === item.text) === item.datasetIndex
             }
           }
@@ -818,13 +817,13 @@ function renderHistogram() {
       },
       scales: {
         x: {
-          title: { display: true, text: `MAE (${unitLabel.value}${chartOptions.value.logScale ? ', log bins' : ''})`, color: Chart.defaults.color, font: { size: 11 } },
-          ticks: { color: Chart.defaults.color, font: { size: 9 }, maxRotation: 30 },
+          title: { display: true, text: `MAE (${unitLabel.value}${chartOptions.value.logScale ? ', log bins' : ''})`, color: Chart.defaults.color },
+          ticks: { color: Chart.defaults.color, maxRotation: 30 },
           grid: { display: false }
         },
         y: {
-          title: { display: true, text: 'Trades', color: Chart.defaults.color, font: { size: 11 } },
-          ticks: { color: Chart.defaults.color, font: { size: 10 }, stepSize: 1 },
+          title: { display: true, text: 'Trades', color: Chart.defaults.color },
+          ticks: { color: Chart.defaults.color, stepSize: 1 },
           grid: { color: 'rgba(107,114,128,0.1)' }
         }
       }

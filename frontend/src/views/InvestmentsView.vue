@@ -384,42 +384,42 @@
                                         <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
                                             {{ formatPercent(investmentsStore.portfolioPerformance.metrics.totalReturnPercent) }}
                                         </p>
-                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Total gain/loss for the selected period</p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Total gain/loss for the selected period</p>
                                     </div>
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
                                         <p class="text-label">Sharpe Ratio</p>
                                         <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
                                             {{ formatMetric(investmentsStore.portfolioPerformance.metrics.sharpeRatio, 3) }}
                                         </p>
-                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Return per unit of risk. Above 1 is good, above 2 is excellent</p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Return per unit of risk. Above 1 is good, above 2 is excellent</p>
                                     </div>
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
                                         <p class="text-label">Beta</p>
                                         <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
                                             {{ formatMetric(investmentsStore.portfolioPerformance.metrics.beta, 3) }}
                                         </p>
-                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Sensitivity to {{ benchmarkSymbol }}. 1 = moves with market, &lt;1 = less volatile</p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Sensitivity to {{ benchmarkSymbol }}. 1 = moves with market, &lt;1 = less volatile</p>
                                     </div>
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
                                         <p class="text-label">Alpha</p>
                                         <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
                                             {{ formatPercent(investmentsStore.portfolioPerformance.metrics.alphaPercent) }}
                                         </p>
-                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Excess return vs {{ benchmarkSymbol }} after adjusting for market risk</p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Excess return vs {{ benchmarkSymbol }} after adjusting for market risk</p>
                                     </div>
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
                                         <p class="text-label">Volatility</p>
                                         <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
                                             {{ formatPercent(investmentsStore.portfolioPerformance.metrics.volatilityPercent) }}
                                         </p>
-                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Annualized price swing. Higher means larger day-to-day moves</p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Annualized price swing. Higher means larger day-to-day moves</p>
                                     </div>
                                     <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
                                         <p class="text-label">Max Drawdown</p>
                                         <p class="text-lg font-semibold text-red-600 dark:text-red-400 mt-1">
                                             {{ formatPercent(-Math.abs(investmentsStore.portfolioPerformance.metrics.maxDrawdownPercent || 0)) }}
                                         </p>
-                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Largest peak-to-trough decline during the period</p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Largest peak-to-trough decline during the period</p>
                                     </div>
                                 </div>
                             </div>

@@ -28,8 +28,7 @@
         v-if="open"
         :data-base-select-panel="uid"
         :style="panelStyle"
-        class="dropdown-menu max-h-72 overflow-hidden focus:outline-none flex flex-col focus-visible:ring-2 focus-visible:ring-primary-500"
-        style="z-index: 9999"
+        class="dropdown-menu z-[60] max-h-72 overflow-hidden focus:outline-none flex flex-col focus-visible:ring-2 focus-visible:ring-primary-500"
       >
         <!-- Search (auto-shown for longer lists) -->
         <div v-if="showSearch" class="p-2 border-b border-gray-200 dark:border-gray-600">

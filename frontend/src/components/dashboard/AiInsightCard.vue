@@ -80,7 +80,7 @@
 
       <!-- Loaded state — current insight -->
       <div v-else-if="current" class="mt-3">
-        <h4 class="heading-card sm:text-lg leading-snug">
+        <h4 class="heading-card leading-snug">
           {{ current.headline }}
         </h4>
         <p class="mt-1.5 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">

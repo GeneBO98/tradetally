@@ -52,7 +52,7 @@
           <p v-if="pillar.threshold" class="text-xs text-gray-500 dark:text-gray-400">
             Threshold: {{ formatThreshold }}
           </p>
-          <p v-if="pillar.reason" class="text-xs text-gray-400 dark:text-gray-500">
+          <p v-if="pillar.reason" class="text-xs text-gray-500 dark:text-gray-400">
             {{ pillar.reason }}
           </p>
         </div>
@@ -83,7 +83,7 @@
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm">
             <thead class="table-head">
-              <tr class="bg-gray-100 dark:bg-gray-800">
+              <tr>
                 <th class="px-3 py-2 text-left table-th">Year</th>
                 <th class="px-3 py-2 text-right table-th">Price</th>
                 <th class="px-3 py-2 text-right table-th">EPS</th>
@@ -108,7 +108,7 @@
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm">
             <thead class="table-head">
-              <tr class="bg-gray-100 dark:bg-gray-800">
+              <tr>
                 <th class="px-3 py-2 text-left table-th">Year</th>
                 <th class="px-3 py-2 text-right table-th">Op. Income</th>
                 <th class="px-3 py-2 text-right table-th">Invested Capital</th>

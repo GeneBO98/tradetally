@@ -96,8 +96,7 @@
                                 Automatically sync trades on schedule
                             </p>
                         </div>
-                        <button class="btn-link"
-                            type="button"
+                        <button                             type="button"
                             @click="
                                 form.autoSyncEnabled = !form.autoSyncEnabled
                             "

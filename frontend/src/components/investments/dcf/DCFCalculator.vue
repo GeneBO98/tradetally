@@ -4,7 +4,7 @@
     <div class="overflow-x-auto mb-6">
       <table class="min-w-full text-sm">
         <thead class="table-head">
-          <tr class="bg-gray-100 dark:bg-gray-700">
+          <tr>
             <th class="text-left table-th px-4 py-2"></th>
             <th colspan="3" class="px-4 py-2 text-center border-b border-gray-200 dark:border-gray-600 table-th">Historical</th>
             <th colspan="3" class="px-4 py-2 text-center text-primary-700 dark:text-primary-400 border-b border-gray-200 dark:border-gray-600 table-th">My Assumptions</th>
