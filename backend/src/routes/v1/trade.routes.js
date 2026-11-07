@@ -6,6 +6,7 @@ const { authenticate } = require('../../middleware/auth');
 const { flexibleAuth, requireApiScope } = require('../../middleware/apiKeyAuth');
 const { idempotencyMiddleware } = require('../../middleware/idempotency');
 const { validate, schemas } = require('../../middleware/validation');
+const imageUpload = require('../../middleware/upload');
 
 /**
  * @swagger
@@ -406,5 +407,11 @@ router.delete('/:id/journal/:entryId', authenticate, tradeController.deleteJourn
 router.get('/:id', flexibleAuth, requireApiScope('trades:read'), tradeV1Controller.getTradeById);
 router.put('/:id', flexibleAuth, requireApiScope('trades:write'), validate(schemas.updateTrade), tradeV1Controller.updateTrade);
 router.delete('/:id', flexibleAuth, requireApiScope('trades:write'), tradeV1Controller.deleteTrade);
+
+// Share validation, compression, storage and ownership checks with web uploads.
+router.post('/:id/images', flexibleAuth, requireApiScope('trades:write'), imageUpload.array('images', 10), tradeController.uploadTradeImages);
+router.get('/:id/images/:image_id', flexibleAuth, requireApiScope('trades:read'), tradeController.getTradeImage);
+router.delete('/:id/images/:image_id', flexibleAuth, requireApiScope('trades:write'), tradeController.deleteTradeImage);
+router.post('/:id/charts', flexibleAuth, requireApiScope('trades:write'), tradeController.addTradeChart);
 
 module.exports = router;

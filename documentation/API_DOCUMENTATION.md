@@ -65,6 +65,81 @@ DELETE /api/api-keys/:keyId
 
 ## Trades API
 
+### Trade Images (v1)
+
+Upload chart screenshots directly to an existing trade with an API key:
+
+```bash
+curl -X POST "https://your-instance.example/api/v1/trades/TRADE_ID/images" \
+  -H "X-API-Key: $TRADETALLY_API_KEY" \
+  -F "images=@entry.png" \
+  -F "images=@exit.png"
+```
+
+`Authorization: Bearer <api_key>` is also accepted. Uploads and deletion require
+`trades:write`; downloads and trade retrieval require `trades:read`. JWT sessions
+continue to work. API keys follow the existing Pro/self-hosted access rules.
+
+Use the multipart field `images` once per file. The web upload limits also apply:
+1–10 JPEG, PNG or WebP files per request, at most 50 MiB per file, and dimensions
+up to 10000×10000 pixels. Images are compressed to WebP without resizing, stored
+as trade attachments, and displayed automatically in the web interface.
+
+Successful uploads return HTTP 200:
+
+```json
+{
+  "message": "Images processed successfully",
+  "images": [{
+    "id": "attachment-uuid",
+    "trade_id": "trade-uuid",
+    "file_url": "/api/trades/trade-uuid/images/stored-filename.webp",
+    "file_type": "image/webp",
+    "file_name": "entry.png",
+    "file_size": 24576,
+    "uploaded_at": "2026-11-07T12:00:00Z",
+    "original_size": 49152,
+    "compressed_size": 24576,
+    "compression_ratio": 50
+  }],
+  "total_images": 1,
+  "successful_uploads": 1
+}
+```
+
+- `GET /api/v1/trades/{id}` includes stored image references in `trade.attachments`.
+- Download the returned `file_url` with your API key header. The equivalent
+  `GET /api/v1/trades/{id}/images/{filename}` route also accepts API keys.
+- `DELETE /api/v1/trades/{id}/images/{attachment_id}` removes the attachment and
+  stored file. Use the attachment's `id`, rather than its filename.
+- Only the owner can upload or delete images. Private image downloads also
+  require ownership; existing public image URLs remain publicly viewable.
+
+With partial success, HTTP 200 includes both attachments and failed entries of
+the form `{ "filename": "bad.png", "error": "..." }`. Inspect
+`successful_uploads` and retry only failed images. If no images can be processed,
+HTTP 422 returns `error.code: "IMAGE_UPLOAD_FAILED"` and the failures in
+`error.details.images`. Missing files and unsupported types return 400; files
+over 50 MiB return 413. Repeating an upload creates new attachments; image uploads
+do not support `Idempotency-Key`.
+
+### Chart Links (v1)
+
+`POST /api/v1/trades/{id}/charts` accepts API keys with `trades:write`:
+
+```json
+{
+  "chart_url": "https://www.tradingview.com/x/example/",
+  "chart_title": "Entry setup"
+}
+```
+
+The URL must use HTTP or HTTPS, contain no embedded credentials, and be at most
+1000 characters. The optional title accepts at most 255 characters. HTTP 201
+returns `{ "message": "Chart added successfully", "chart": { ... } }` with
+snake_case chart fields. Call repeatedly to attach several links; fetching the
+trade returns them in `trade.charts`.
+
 ### Get All Trades
 ```
 GET /api/v2/trades
@@ -145,6 +220,45 @@ PUT /api/v2/trades/:id
 ```
 
 **Request Body:** (Same as create, all fields optional)
+
+### MAE/MFE units
+
+Trade creation and updates (including `/api/v1/trades` and bulk requests) accept
+`excursion_unit`: `dollars` (default), `points`, or `r`. It applies only to the
+excursion values supplied in that request: `mae`, `mfe`, `post_exit_mae`, and
+`post_exit_mfe`. Legacy `postExitMae` / `postExitMfe` names remain supported.
+
+- `dollars`: position-wide monetary amounts in the trade's stored currency.
+- `points`: price movement per share or contract. Monetary amount = points ×
+  quantity × instrument multiplier (futures point value, option contract size,
+  or 1 for shares).
+- `r`: excursion divided by positive risk to the current stop. Monetary amount =
+  R × stop distance × quantity × instrument multiplier. The stop must be below
+  entry for longs and above entry for shorts. Missing or invalid risk returns 400.
+
+For example, updating a 3-contract MES long entered at 6000 with a stop at 5998
+and a $5 point value:
+
+```json
+{
+  "excursion_unit": "r",
+  "mae": 0.5,
+  "mfe": 4,
+  "post_exit_mfe": 5
+}
+```
+
+This saves MAE 15, MFE 120, and after-trade MFE 150 in currency units. The same
+in-trade values can be entered as 1 and 8 points. Omitting an excursion preserves
+it on update; `null` clears it and zero is a recorded value. Unit selection does
+not change P&L or stored risk settings. Excursions measure price movement before
+commissions and fees, consistent with MAE/MFE analytics.
+
+Stored values and create/update responses remain monetary amounts. Trade list
+and detail responses additionally include `mae_points`, `mfe_points`, `mae_r`,
+`mfe_r`, and corresponding `post_exit_*_points` / `post_exit_*_r` values. These
+point and R values are independent of the selected display currency; unavailable
+values are `null`. Raw edit responses return the stored monetary values.
 
 ### Delete Trade
 ```

@@ -9,12 +9,12 @@ const storage = multer.memoryStorage();
 const fileFilter = (req, file, cb) => {
   // Check if file is an image
   if (!file.mimetype.startsWith('image/')) {
-    return cb(new Error('Only image files are allowed'), false);
+    return cb(Object.assign(new Error('Only image files are allowed'), { statusCode: 400 }), false);
   }
 
   // Check if format is supported
   if (!imageProcessor.isSupportedFormat(file.originalname)) {
-    return cb(new Error(`Unsupported image format. Supported formats: ${imageProcessor.supportedFormats.join(', ')}`), false);
+    return cb(Object.assign(new Error(`Unsupported image format. Supported formats: ${imageProcessor.supportedFormats.join(', ')}`), { statusCode: 400 }), false);
   }
 
   cb(null, true);

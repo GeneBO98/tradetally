@@ -1826,5 +1826,104 @@
         "gross_pnl": 5
       }
     }
+  ],
+  "excursion_unit_cases": [
+    {
+      "id": "multi_contract_future_long",
+      "trade": {
+        "symbol": "MESZ6",
+        "instrument_type": "future",
+        "point_value": 5,
+        "quantity": 3,
+        "side": "long",
+        "entry_price": 6000,
+        "stop_loss": 5998,
+        "exit_price": 6001,
+        "commission": 3,
+        "fees": 1
+      },
+      "dollars": 120,
+      "points": 8,
+      "r": 4
+    },
+    {
+      "id": "future_short",
+      "trade": {
+        "symbol": "ESZ6",
+        "instrument_type": "future",
+        "point_value": 50,
+        "quantity": 2,
+        "side": "short",
+        "entry_price": 6000,
+        "stop_loss": 6004,
+        "exit_price": 5999
+      },
+      "dollars": 800,
+      "points": 8,
+      "r": 2
+    },
+    {
+      "id": "stock_long",
+      "trade": {
+        "symbol": "AAPL",
+        "instrument_type": "stock",
+        "quantity": 10,
+        "side": "long",
+        "entry_price": 100,
+        "stop_loss": 98,
+        "exit_price": 101
+      },
+      "dollars": 60,
+      "points": 6,
+      "r": 3
+    },
+    {
+      "id": "short_option",
+      "trade": {
+        "symbol": "AAPL",
+        "instrument_type": "option",
+        "contract_size": 100,
+        "quantity": 2,
+        "side": "short",
+        "entry_price": 5,
+        "stop_loss": 6,
+        "exit_price": 4.5
+      },
+      "dollars": 400,
+      "points": 2,
+      "r": 2
+    },
+    {
+      "id": "custom_option_multiplier",
+      "trade": {
+        "symbol": "AAPL",
+        "instrument_type": "option",
+        "contract_size": 10,
+        "quantity": 2,
+        "side": "long",
+        "entry_price": 5,
+        "stop_loss": 4,
+        "exit_price": 5.5
+      },
+      "dollars": 40,
+      "points": 2,
+      "r": 2
+    },
+    {
+      "id": "zero_excursion",
+      "trade": {
+        "symbol": "MESZ6",
+        "instrument_type": "future",
+        "point_value": 5,
+        "quantity": 3,
+        "side": "long",
+        "entry_price": 6000,
+        "stop_loss": 5998,
+        "exit_price": 6000
+      },
+      "dollars": 0,
+      "points": 0,
+      "r": 0
+    }
   ]
 }

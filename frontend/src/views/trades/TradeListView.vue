@@ -283,6 +283,10 @@
           </div>
         </div>
 
+        <div class="flex justify-end mb-4">
+          <ExcursionUnitSelect />
+        </div>
+
         <!-- Mobile Column Customizer -->
         <div class="block md:hidden mb-4 flex justify-end">
           <ColumnCustomizer
@@ -846,14 +850,14 @@
                 <td v-else-if="column.visible && column.key === 'mae'"
                     :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <span v-if="trade.mae != null" class="text-sm text-mono-num text-red-600 dark:text-red-400">{{ formatExcursionValue(trade, trade.mae) }}</span>
+                  <span v-if="trade.mae != null" class="text-sm text-mono-num text-red-600 dark:text-red-400">{{ formatExcursionValue(trade, 'mae') }}</span>
                   <span v-else class="text-sm text-gray-400">—</span>
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'mfe'"
                     :class="[getCellPadding, 'text-right pr-4 whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <span v-if="trade.mfe != null" class="text-sm text-mono-num text-green-700 dark:text-green-400">{{ formatExcursionValue(trade, trade.mfe) }}</span>
+                  <span v-if="trade.mfe != null" class="text-sm text-mono-num text-green-700 dark:text-green-400">{{ formatExcursionValue(trade, 'mfe') }}</span>
                   <span v-else class="text-sm text-gray-400">—</span>
                 </td>
 
@@ -1135,6 +1139,8 @@
 </template>
 
 <script setup>
+import ExcursionUnitSelect from '@/components/trades/ExcursionUnitSelect.vue'
+import { useExcursionDisplay } from '@/composables/useExcursionDisplay'
 import { pnlClass, winRateClass } from '@/utils/metricTone'
 import { formatDecimal, formatPercent } from '@/utils/formatters'
 import { formatR } from '@/utils/rFormat'
@@ -1210,39 +1216,8 @@ function hasSymbolBadgeRow(trade) {
   return Boolean(getTradeSessionBadge(trade))
 }
 
-function formatExcursionValue(trade, value) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return '—'
-  if ((trade.instrument_type ?? trade.instrumentType) !== 'future') return formatCurrency(numeric)
-
-  const quantity = Math.abs(Number(trade.quantity) || 0)
-  const pointValue = Number(trade.point_value ?? trade.pointValue) || 0
-  if (quantity <= 0 || pointValue <= 0) return formatCurrency(numeric)
-
-  const scale = quantity * pointValue
-  const captured = getCapturedMoveDollars(trade, scale)
-  const legacyPointUnits = hasLegacyFuturesExcursionUnits(trade, captured, scale)
-  const points = legacyPointUnits ? numeric : numeric / scale
-  const dollars = legacyPointUnits ? numeric * scale : numeric
-  return `${formatDecimal(points)} pts (${formatCurrency(dollars)})`
-}
-
-function getCapturedMoveDollars(trade, scale) {
-  const entry = Number(trade.entry_price ?? trade.entryPrice)
-  const exit = Number(trade.exit_price ?? trade.exitPrice)
-  if (!Number.isFinite(entry) || !Number.isFinite(exit)) return null
-  const move = trade.side === 'short' ? entry - exit : exit - entry
-  return Math.max(0, move * scale)
-}
-
-function hasLegacyFuturesExcursionUnits(trade, captured, scale) {
-  if (!captured || captured <= 0 || scale <= 1) return false
-  const candidates = [
-    trade.mfe,
-    trade.post_exit_mfe ?? trade.postExitMfe
-  ].map(Number).filter(value => Number.isFinite(value) && value > 0)
-  return candidates.some(value => value < captured - 0.005 && value * scale >= captured - 0.005)
-}
+const { formatExcursionValue } = useExcursionDisplay((value, current_trade) =>
+  formatCurrency(value, { currency: getTradeCurrency(current_trade) }))
 
 // MDI icons
 const newspaperIcon = mdiNewspaper

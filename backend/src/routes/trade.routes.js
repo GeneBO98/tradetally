@@ -924,11 +924,11 @@ router.post('/:id/split', authenticate, tradeController.splitTrade);
 router.post('/:id/attachments', authenticate, upload.single('file'), tradeController.uploadAttachment);
 router.delete('/:id/attachments/:attachmentId', authenticate, tradeController.deleteAttachment);
 // Image-specific routes
-router.post('/:id/images', authenticate, imageUpload.array('images', 10), tradeController.uploadTradeImages);
-router.get('/:id/images/:filename', optionalAuth, tradeController.getTradeImage);
-router.delete('/:id/images/:attachmentId', authenticate, tradeController.deleteTradeImage);
+router.post('/:id/images', flexibleAuth, requireApiScope('trades:write'), imageUpload.array('images', 10), tradeController.uploadTradeImages);
+router.get('/:id/images/:filename', flexibleOptionalAuth, requireApiScope('trades:read'), tradeController.getTradeImage);
+router.delete('/:id/images/:attachmentId', flexibleAuth, requireApiScope('trades:write'), tradeController.deleteTradeImage);
 // Chart management routes
-router.post('/:id/charts', authenticate, tradeController.addTradeChart);
+router.post('/:id/charts', flexibleAuth, requireApiScope('trades:write'), tradeController.addTradeChart);
 router.delete('/:id/charts/:chartId', authenticate, tradeController.deleteTradeChart);
 router.post('/:id/comments', authenticate, tradeController.addComment);
 router.get('/:id/comments', optionalAuth, tradeController.getComments);

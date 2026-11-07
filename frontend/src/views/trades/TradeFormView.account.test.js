@@ -15,7 +15,7 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() })
 }))
 vi.mock('@/stores/trades', () => ({
-  useTradesStore: () => ({ fetchTrade: mocks.fetchTrade, updateTrade: mocks.updateTrade })
+  useTradesStore: () => ({ fetchTrade: mocks.fetchTrade, updateTrade: mocks.updateTrade, fetchTrades: vi.fn(), fetchAnalytics: vi.fn() })
 }))
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({ user: { timezone: 'UTC' } })
@@ -115,4 +115,33 @@ describe('manual trade account assignment', () => {
       mae: 0, mfe: fixture.trade.mfe, postExitMae: 0, postExitMfe: fixture.trade.post_exit_mfe
     }))
   })
+  it.each(contracts.excursion_unit_cases)('supports entry and unit switching for $id (issue 427)', async fixture => {
+    mocks.route.params = { id: 'trade-1' }
+    mocks.fetchTrade.mockResolvedValue({
+      ...fixture.trade, id: 'trade-1', mae: 0, mfe: fixture.dollars,
+      post_exit_mae: null, post_exit_mfe: fixture.dollars,
+      entry_time: '2026-10-15T14:00:00Z', exit_time: '2026-10-15T15:00:00Z', executions: []
+    })
+    await mountForm()
+    for (const [unit, expected] of [['r', fixture.r], ['points', fixture.points], ['dollars', fixture.dollars], ['r', fixture.r]]) {
+      await wrapper.get('#excursion_unit').setValue(unit)
+      expect(Number(wrapper.get('#mfe').element.value)).toBeCloseTo(expected, 8)
+      expect(Number(wrapper.get('#postExitMfe').element.value)).toBeCloseTo(expected, 8)
+      expect(wrapper.get('#postExitMae').element.value).toBe('')
+    }
+    await wrapper.get('#mfe').setValue(fixture.r + 1)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    const risk = fixture.trade.quantity * (fixture.trade.point_value || fixture.trade.contract_size || 1) * Math.abs(fixture.trade.entry_price - fixture.trade.stop_loss)
+    expect(mocks.updateTrade).toHaveBeenLastCalledWith('trade-1', expect.objectContaining({
+      mae: 0, mfe: fixture.dollars + risk, postExitMae: null, postExitMfe: fixture.dollars
+    }))
+  })
+
+  it('disables R entry until a stop defines positive risk', async () => {
+    mocks.route.params = { id: 'trade-1' }
+    await mountForm()
+    expect(wrapper.get('#excursion_unit option[value="r"]').element.disabled).toBe(true)
+  })
+
 })

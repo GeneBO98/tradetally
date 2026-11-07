@@ -91,3 +91,27 @@ describe('native quote prices with reporting-currency P&L (issue 418)', () => {
     });
   });
 });
+
+describe('excursion units with display currency (issue 427)', () => {
+  test.each(contracts.excursion_unit_cases)('$id preserves point and R values when amounts are converted', fixture => {
+    const row = { ...fixture.trade, original_currency: 'USD', mae: 0, mfe: fixture.dollars, post_exit_mfe: fixture.dollars };
+    attachNativeTradePrices(row);
+    const out = scaleMoneyInPayload({ trade: row }, 0.8);
+    expect(out.trade.mfe).toBeCloseTo(fixture.dollars * 0.8);
+    expect(out.trade.mfe_points).toBe(fixture.points);
+    expect(out.trade.mfe_r).toBe(fixture.r);
+    expect(out.trade.post_exit_mfe_points).toBe(fixture.points);
+    expect(out.trade.post_exit_mfe_r).toBe(fixture.r);
+  });
+
+  test('recovers original price points for an import converted to USD', () => {
+    const row = {
+      symbol: 'AAPL', side: 'long', quantity: 10, instrument_type: 'stock',
+      original_currency: 'EUR', exchange_rate: 1.2, original_entry_price_currency: 100,
+      entry_price: 120, stop_loss: 117.6, mfe: 72
+    };
+    attachNativeTradePrices(row);
+    expect(row.mfe_points).toBeCloseTo(6);
+    expect(row.mfe_r).toBeCloseTo(3);
+  });
+});

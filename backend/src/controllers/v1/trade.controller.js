@@ -207,8 +207,18 @@ const tradeV1Controller = {
         return sendV1ErrorFromLegacy(res, legacyResult, 'Failed to fetch trade');
       }
 
+      const trade = legacyResult.body?.trade || null;
+      if (trade && Array.isArray(trade.charts)) {
+        trade.charts = trade.charts.map(chart => ({
+          ...chart,
+          chart_url: chart.chart_url ?? chart.chartUrl,
+          chart_title: chart.chart_title ?? chart.chartTitle ?? null,
+          uploaded_at: chart.uploaded_at ?? chart.uploadedAt
+        }));
+      }
+
       return res.status(legacyResult.statusCode || 200).json({
-        trade: legacyResult.body?.trade || null
+        trade
       });
     } catch (error) {
       next(error);

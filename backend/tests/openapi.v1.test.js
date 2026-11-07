@@ -140,4 +140,18 @@ describe('v1 public OpenAPI contract', () => {
       expect(spec.components[section][name]).toBeDefined();
     });
   });
+
+  test('publishes image uploads, download/deletion, chart links and attachment schemas', () => {
+    const spec = buildV1OpenApiSpec('https://api.example.com');
+    const upload = spec.paths['/api/v1/trades/{id}/images'].post;
+    expect(upload.security).toContainEqual({ apiKeyAuth: [] });
+    expect(upload.requestBody.content['multipart/form-data'].schema.properties.images.maxItems).toBe(10);
+    expect(upload.responses[413]).toBeDefined();
+    expect(upload.responses[422]).toBeDefined();
+    expect(spec.paths['/api/v1/trades/{id}/images/{image_id}'].get).toBeDefined();
+    expect(spec.paths['/api/v1/trades/{id}/images/{image_id}'].delete).toBeDefined();
+    expect(spec.paths['/api/v1/trades/{id}/charts'].post.requestBody.content['application/json'].schema.required).toContain('chart_url');
+    expect(spec.components.schemas.Trade.properties.attachments.items.$ref).toBe('#/components/schemas/TradeAttachment');
+    expect(spec.components.schemas.Trade.properties.charts.items.$ref).toBe('#/components/schemas/TradeChart');
+  });
 });

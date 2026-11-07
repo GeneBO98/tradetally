@@ -610,6 +610,21 @@
 
           <div v-show="showAdditionalFields" class="grid grid-cols-1 gap-6 sm:grid-cols-2">
 
+          <div class="sm:col-span-2">
+            <label for="excursion_unit" class="label">MAE/MFE units</label>
+            <select id="excursion_unit" :value="active_excursion_unit" class="input sm:w-auto" @change="changeExcursionUnit">
+              <option value="dollars">{{ form.originalCurrency || 'USD' }}</option>
+              <option value="points" :disabled="!can_enter_points">Points</option>
+              <option value="r" :disabled="!can_enter_r">R multiples</option>
+            </select>
+            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              Points measure price movement per share or contract. R divides the excursion by risk to the current stop. Values are saved in the trade's currency.
+            </p>
+            <p v-if="!can_enter_r" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              To use R, set an entry price, positive quantity, and a stop below entry for longs or above entry for shorts.
+            </p>
+          </div>
+
           <div>
             <label for="mae" class="label">MAE (Max Adverse Excursion) {{ excursionUnitSuffix }}</label>
             <input
@@ -661,10 +676,6 @@
               :title="excursionInputTitle('Maximum favorable excursion from entry through the configured after-trade window')"
             />
           </div>
-
-          <p v-if="form.instrumentType === 'future'" class="sm:col-span-2 text-xs text-gray-500 dark:text-gray-400">
-            Futures excursion values are entered in points and saved as dollars using quantity × point value.
-          </p>
 
           <div>
             <label for="postExitWindowOverrideMinutes" class="label">After-Trade Window Override (minutes)</label>
@@ -1449,6 +1460,7 @@
 </template>
 
 <script setup>
+import { getExcursionScale, normalizeExcursionDollars, getExcursionFormSource } from '@/utils/excursionUnits'
 import { pnlClass } from '@/utils/metricTone'
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -1608,63 +1620,50 @@ const previousIsPublicValue = ref(false)
 
 const isEdit = computed(() => !!route.params.id)
 
-const isFutureForm = computed(() => form.value.instrumentType === 'future')
-const excursionUnitSuffix = computed(() => isFutureForm.value ? '(points)' : '($)')
+const excursion_unit = ref(null)
+const active_excursion_unit = computed(() => excursion_unit.value || (form.value.instrumentType === 'future' ? 'points' : 'dollars'))
+const excursionUnitSuffix = computed(() => ({ dollars: `(${form.value.originalCurrency || 'USD'})`, points: '(points)', r: '(R)' })[active_excursion_unit.value])
+const excursion_form_source = computed(() => getExcursionFormSource(form.value))
+const excursion_scale = computed(() => getExcursionScale(excursion_form_source.value, active_excursion_unit.value))
+const can_enter_points = computed(() => getExcursionScale(excursion_form_source.value, 'points') != null)
+const can_enter_r = computed(() => getExcursionScale(excursion_form_source.value, 'r') != null)
 
-function getExcursionStorageMultiplier(source = form.value) {
-  if ((source.instrumentType || source.instrument_type) !== 'future') return 1
-  const quantity = Math.abs(Number(source.quantity) || 0)
-  const pointValue = Number(source.pointValue ?? source.point_value) || 0
-  return quantity > 0 && pointValue > 0 ? quantity * pointValue : 1
-}
-
-function capturedMoveDollars(source) {
-  const entry = Number(source.entryPrice ?? source.entry_price)
-  const exit = Number(source.exitPrice ?? source.exit_price)
-  const quantity = Math.abs(Number(source.quantity) || 0)
-  if (!Number.isFinite(entry) || !Number.isFinite(exit) || quantity <= 0) return null
-
-  const side = source.side
-  const move = side === 'short' ? entry - exit : exit - entry
-  // The storage multiplier already includes quantity and point value.
-  return Math.max(0, move * getExcursionStorageMultiplier(source))
-}
-
-function hasLegacyFuturesExcursionUnits(source) {
-  if ((source.instrumentType || source.instrument_type) !== 'future') return false
-  const scale = getExcursionStorageMultiplier(source)
-  if (scale <= 1) return false
-
-  const captured = capturedMoveDollars(source)
-  if (!captured || captured <= 0) return false
-
-  const candidates = [source.mfe, source.postExitMfe ?? source.post_exit_mfe]
-    .map(Number)
-    .filter(value => Number.isFinite(value) && value > 0)
-
-  return candidates.some(value => value < captured - 0.005 && value * scale >= captured - 0.005)
+function changeExcursionUnit(event) {
+  const next_unit = event.target.value
+  const previous_scale = excursion_scale.value
+  const next_scale = getExcursionScale(excursion_form_source.value, next_unit)
+  const has_values = ['mae', 'mfe', 'postExitMae', 'postExitMfe'].some(field => form.value[field] != null && form.value[field] !== '')
+  if (next_scale == null || (previous_scale == null && has_values)) {
+    event.target.value = active_excursion_unit.value
+    return
+  }
+  for (const field of ['mae', 'mfe', 'postExitMae', 'postExitMfe']) {
+    const value = form.value[field]
+    if (value !== null && value !== undefined && value !== '') {
+      form.value[field] = Number(value) * previous_scale / next_scale
+    }
+  }
+  excursion_unit.value = next_unit
 }
 
 function dollarsToExcursionInput(value, source = form.value) {
-  if (value === null || value === undefined || value === '') return null
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return null
-  if (hasLegacyFuturesExcursionUnits(source)) return numeric
-  return (source.instrumentType || source.instrument_type) === 'future'
-    ? numeric / getExcursionStorageMultiplier(source)
-    : numeric
+  const dollars = normalizeExcursionDollars(value, source)
+  const scale = getExcursionScale(source, active_excursion_unit.value)
+  return dollars != null && scale != null ? dollars / scale : null
 }
 
-function excursionInputToDollars(value) {
+function excursionInputToDollars(value, source) {
   if (value === null || value === undefined || value === '') return null
   const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return null
-  return isFutureForm.value ? numeric * getExcursionStorageMultiplier() : numeric
+  const scale = getExcursionScale(source, active_excursion_unit.value)
+  if (!Number.isFinite(numeric) || scale == null) {
+    throw new Error('MAE/MFE conversion requires positive quantity and an instrument multiplier. R also requires a stop loss defining positive risk.')
+  }
+  return numeric * scale
 }
 
 function excursionInputTitle(baseText) {
-  if (!isFutureForm.value) return `${baseText}. Enter dollars.`
-  return `${baseText}. Enter futures points; TradeTally saves the dollar value using quantity × point value.`
+  return `${baseText}. Enter ${active_excursion_unit.value === 'r' ? 'R multiples of the current stop risk' : active_excursion_unit.value}.`
 }
 
 // Check if we have grouped executions (complete trades with entry/exit)
@@ -1989,7 +1988,9 @@ async function loadTrade() {
     // Create local reference for easier access
     const tradeData = trade.value
 
+    excursion_unit.value = tradeData.instrument_type === 'future' ? 'points' : 'dollars'
     const excursionSource = {
+      ...tradeData,
       instrument_type: tradeData.instrument_type || 'stock',
       side: tradeData.side,
       entry_price: tradeData.entry_price,
@@ -2554,6 +2555,10 @@ async function handleSubmit(opts = {}) {
     const finalEntryTime = hasExecutions ? calculatedEntryTime : toUTC(calculatedEntryTime)
     const finalExitTime = hasExecutions ? calculatedExitTime : (calculatedExitTime ? toUTC(calculatedExitTime) : null)
 
+    const excursion_source = {
+      ...form.value, entry_price: calculatedEntryPrice, quantity: calculatedQuantity,
+      side: derivedSide
+    }
     const tradeData = {
       symbol: form.value.symbol,
       side: derivedSide,
@@ -2566,10 +2571,10 @@ async function handleSubmit(opts = {}) {
       quantity: calculatedQuantity,
       commission: calculatedCommission,
       fees: calculatedFees,
-      mae: excursionInputToDollars(form.value.mae),
-      mfe: excursionInputToDollars(form.value.mfe),
-      postExitMae: excursionInputToDollars(form.value.postExitMae),
-      postExitMfe: excursionInputToDollars(form.value.postExitMfe),
+      mae: excursionInputToDollars(form.value.mae, excursion_source),
+      mfe: excursionInputToDollars(form.value.mfe, excursion_source),
+      postExitMae: excursionInputToDollars(form.value.postExitMae, excursion_source),
+      postExitMfe: excursionInputToDollars(form.value.postExitMfe, excursion_source),
       postExitWindowOverrideMinutes: form.value.postExitWindowOverrideMinutes ? parseInt(form.value.postExitWindowOverrideMinutes, 10) : null,
       confidence: parseInt(form.value.confidence) || 5,
       broker: form.value.broker || '',
@@ -2640,6 +2645,8 @@ async function handleSubmit(opts = {}) {
 
     if (isEdit.value) {
       await tradesStore.updateTrade(route.params.id, tradeData)
+      await tradesStore.fetchTrades()
+      await tradesStore.fetchAnalytics()
 
       // Add new values to lists if not already present
       if (tradeData.strategy && !strategiesList.value.includes(tradeData.strategy)) {
@@ -2694,6 +2701,8 @@ async function handleSubmit(opts = {}) {
         })
       }
       const newTrade = await tradesStore.createTrade(tradeData)
+      await tradesStore.fetchTrades()
+      await tradesStore.fetchAnalytics()
 
       // Add new values to lists if not already present
       if (tradeData.strategy && !strategiesList.value.includes(tradeData.strategy)) {

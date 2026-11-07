@@ -27,7 +27,7 @@
         <!-- Exit Price -->
         <div>
           <div class="text-label mb-1">Exit Price</div>
-          <div class="text-lg font-semibold" :class="pnlClass">
+          <div class="text-lg font-semibold" :class="trade_pnl_class">
             {{ formatCurrency(trade.exit_price) }}
           </div>
         </div>
@@ -222,10 +222,10 @@
         <!-- Actual P&L -->
         <div>
           <div class="text-label mb-1">Actual P&L</div>
-          <div class="text-lg font-semibold" :class="pnlClass">
+          <div class="text-lg font-semibold" :class="trade_pnl_class">
             {{ formatCurrency(analysis.actual_pl_amount) }}
           </div>
-          <div class="text-xs" :class="pnlClass">
+          <div class="text-xs" :class="trade_pnl_class">
             {{ formatPercent(trade.pnl_percent) }}
           </div>
         </div>
@@ -320,6 +320,7 @@
 
 <script setup>
 import { ref, computed, nextTick, watch } from 'vue'
+import { pnlClass } from '@/utils/metricTone'
 import { formatTradeDate } from '@/utils/date'
 import { formatDecimal, formatPercent as formatPercentBase, formatQuantity } from '@/utils/formatters'
 import { formatR } from '@/utils/rFormat'
@@ -632,7 +633,7 @@ async function saveTakeProfitTargets() {
 const stopLossInput = ref(null)
 const takeProfitInput = ref(null)
 
-const pnlClass = computed(() => {
+const trade_pnl_class = computed(() => {
   const pnl = parseFloat(props.trade.pnl)
   return pnlClass(pnl)
 })

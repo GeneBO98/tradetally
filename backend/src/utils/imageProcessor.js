@@ -1,6 +1,7 @@
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs').promises;
+const { randomUUID } = require('crypto');
 
 class ImageProcessor {
   constructor() {
@@ -89,7 +90,7 @@ class ImageProcessor {
       // Generate unique filename
       const timestamp = Date.now();
       const sanitizedOriginalName = path.parse(originalFilename).name.replace(/[^a-zA-Z0-9-_]/g, '');
-      const filename = `trade_${tradeId}_${timestamp}_${sanitizedOriginalName}.webp`;
+      const filename = `trade_${tradeId}_${timestamp}_${randomUUID()}_${sanitizedOriginalName}.webp`;
 
       return {
         buffer: processedBuffer,

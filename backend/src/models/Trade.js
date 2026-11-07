@@ -11,6 +11,7 @@ const OptionStrategyGroupingService = require('../services/optionStrategyGroupin
 const { getPublicTradeSqlColumns } = require('../utils/publicTrade');
 const BrokerTradeExclusions = require('../services/brokerTradeExclusions');
 const AppError = require('../utils/AppError');
+const { convertExcursionInputs } = require('../utils/excursionUnits');
 /**
  * Round a numeric value to fit database precision
  * DECIMAL(20, 8) allows up to 12 integer digits and 8 decimal places
@@ -654,6 +655,13 @@ class Trade {
       logger.info(`[TP TARGETS] Using ${aggregatedTakeProfitTargets.length} take profit targets (from ${hasExecutionTargets ? 'executions' : 'trade level'})`);
     }
 
+    const excursion_values = convertExcursionInputs(tradeData, {
+      symbol, side, entry_price: computedEntryPrice, stop_loss: finalStopLoss,
+      quantity: computedQuantity, instrument_type: instrumentType,
+      contract_size: contractSize, point_value: finalPointValue,
+      underlying_asset: finalUnderlyingAsset
+    });
+
     const query = `
       INSERT INTO trades (
         user_id, symbol, trade_date, entry_time, exit_time, entry_price, exit_price,
@@ -679,7 +687,7 @@ class Trade {
       roundToDbPrecision(computedCommission) || 0, roundToDbPrecision(entryCommission) || 0, roundToDbPrecision(exitCommission) || 0,
       roundToDbPrecision(computedFees) || 0, roundToDbPrecision(pnl), roundToDbPrecision(pnlPercent), notes, isPublic || false,
       broker, finalStrategy, setup, tags || [], JSON.stringify(annotatedExecutions),
-      roundToDbPrecision(mae), roundToDbPrecision(mfe), confidence || 5,
+      roundToDbPrecision(excursion_values.mae ?? mae), roundToDbPrecision(excursion_values.mfe ?? mfe), confidence || 5,
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
       instrumentType || 'stock', roundToDbPrecision(finalStrikePrice), cleanExpirationDate, finalOptionType,
@@ -697,8 +705,8 @@ class Trade {
       conid || null,
       manualTargetHitFirst || null,
       finalPostExitWindowOverrideMinutes,
-      roundToDbPrecision(finalPostExitMae),
-      roundToDbPrecision(finalPostExitMfe), broker_trade_id || null
+      roundToDbPrecision(excursion_values.post_exit_mae ?? excursion_values.postExitMae ?? finalPostExitMae),
+      roundToDbPrecision(excursion_values.post_exit_mfe ?? excursion_values.postExitMfe ?? finalPostExitMfe), broker_trade_id || null
     ];
 
     let createdTrade;
@@ -1300,6 +1308,13 @@ class Trade {
   }
 
   static async update(id, userId, updates, options = {}) {
+    // Accept the canonical API names without emitting duplicate SQL assignments.
+    for (const [field, legacy] of [['post_exit_mae', 'postExitMae'], ['post_exit_mfe', 'postExitMfe']]) {
+      if (updates[field] !== undefined) {
+        updates[legacy] = updates[field];
+        delete updates[field];
+      }
+    }
     // Round all numeric fields to fit database precision (DECIMAL(20,8))
     const numericFields = [
       'entryPrice', 'exitPrice', 'quantity', 'commission', 'entryCommission', 'exitCommission',
@@ -1851,6 +1866,18 @@ class Trade {
     console.log(`[TRADE UPDATE] Processing updates for trade ${id}:`, Object.keys(updates));
     if (updates.takeProfitTargets) {
       console.log(`[TRADE UPDATE] takeProfitTargets in updates:`, JSON.stringify(updates.takeProfitTargets));
+    }
+
+    // Convert after execution aggregation, using the effective updated position.
+    if (updates.excursion_unit !== undefined) {
+      const excursion_trade = { ...currentTrade };
+      for (const [key, value] of Object.entries(updates)) excursion_trade[toSnakeCase(key)] = value;
+      Object.assign(updates, convertExcursionInputs(updates, excursion_trade));
+      delete updates.excursion_unit;
+      // Conversion can produce values with more precision than the database.
+      for (const field of ['mae', 'mfe', 'post_exit_mae', 'post_exit_mfe', 'postExitMae', 'postExitMfe']) {
+        if (updates[field] !== undefined) updates[field] = roundToDbPrecision(updates[field]);
+      }
     }
 
     // Process all other fields

@@ -1,4 +1,5 @@
 const { tradeBaseCurrency } = require('./tradeFx');
+const { buildExcursionUnitValues } = require('./excursionUnits');
 
 const PRICE_FIELDS = {
   entry_price: 'entryPrice',
@@ -63,6 +64,7 @@ function attachNativeTradePrices(row) {
     return prices;
   };
 
+  Object.assign(row, buildExcursionUnitValues(row, native_rate));
   row.native_prices = snapshot(row);
   row.price_currency = price_currency;
   if (base !== original && price_currency === original) {

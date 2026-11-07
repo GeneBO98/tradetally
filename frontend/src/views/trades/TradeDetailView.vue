@@ -322,7 +322,10 @@
         <div class="lg:col-span-2 space-y-6">
           <div class="card">
             <div class="card-body">
-              <h3 class="heading-card mb-4">Trade Details</h3>
+              <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h3 class="heading-card">Trade Details</h3>
+                <ExcursionUnitSelect />
+              </div>
               <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6">
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Symbol</dt>
@@ -427,25 +430,25 @@
                 <div v-if="trade.mae !== null && trade.mae !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MAE</dt>
                   <dd class="mt-1 text-sm text-mono-num" :class="trade.mae !== null && trade.mae !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ trade.mae !== null && trade.mae !== undefined ? formatExcursionValue(trade.mae) : '—' }}
+                    {{ trade.mae !== null && trade.mae !== undefined ? formatExcursionValue(trade, 'mae') : '—' }}
                   </dd>
                 </div>
                 <div v-if="trade.mfe !== null && trade.mfe !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">MFE</dt>
                   <dd class="mt-1 text-sm text-mono-num" :class="trade.mfe !== null && trade.mfe !== undefined ? 'text-green-700 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ trade.mfe !== null && trade.mfe !== undefined ? formatExcursionValue(trade.mfe) : '—' }}
+                    {{ trade.mfe !== null && trade.mfe !== undefined ? formatExcursionValue(trade, 'mfe') : '—' }}
                   </dd>
                 </div>
                 <div v-if="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MAE</dt>
                   <dd class="mt-1 text-sm text-mono-num" :class="(trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ (trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? formatExcursionValue(trade.post_exit_mae ?? trade.postExitMae) : '—' }}
+                    {{ (trade.post_exit_mae ?? trade.postExitMae) !== null && (trade.post_exit_mae ?? trade.postExitMae) !== undefined ? formatExcursionValue(trade, 'post_exit_mae') : '—' }}
                   </dd>
                 </div>
                 <div v-if="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">After-Trade MFE</dt>
                   <dd class="mt-1 text-sm text-mono-num" :class="(trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? 'text-green-700 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'">
-                    {{ (trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? formatExcursionValue(trade.post_exit_mfe ?? trade.postExitMfe) : '—' }}
+                    {{ (trade.post_exit_mfe ?? trade.postExitMfe) !== null && (trade.post_exit_mfe ?? trade.postExitMfe) !== undefined ? formatExcursionValue(trade, 'post_exit_mfe') : '—' }}
                   </dd>
                 </div>
                 <div>
@@ -1567,6 +1570,8 @@
 </template>
 
 <script setup>
+import ExcursionUnitSelect from '@/components/trades/ExcursionUnitSelect.vue'
+import { useExcursionDisplay } from '@/composables/useExcursionDisplay'
 import { pnlClass } from '@/utils/metricTone'
 import { formatR } from '@/utils/rFormat'
 import { formatDecimal, formatPercent } from '@/utils/formatters'
@@ -1660,40 +1665,8 @@ function formatTargetPrice(target, index) {
   }, 'price')
 }
 
-function formatExcursionValue(value) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return '—'
-  const currentTrade = trade.value || {}
-  if ((currentTrade.instrument_type ?? currentTrade.instrumentType) !== 'future') return formatCurrency(numeric)
-
-  const quantity = Math.abs(Number(currentTrade.quantity) || 0)
-  const pointValue = Number(currentTrade.point_value ?? currentTrade.pointValue) || 0
-  if (quantity <= 0 || pointValue <= 0) return formatCurrency(numeric)
-
-  const scale = quantity * pointValue
-  const captured = getCapturedMoveDollars(currentTrade, scale)
-  const legacyPointUnits = hasLegacyFuturesExcursionUnits(currentTrade, captured, scale)
-  const points = legacyPointUnits ? numeric : numeric / scale
-  const dollars = legacyPointUnits ? numeric * scale : numeric
-  return `${formatDecimal(points)} pts (${formatCurrency(dollars)})`
-}
-
-function getCapturedMoveDollars(currentTrade, scale) {
-  const entry = Number(currentTrade.entry_price ?? currentTrade.entryPrice)
-  const exit = Number(currentTrade.exit_price ?? currentTrade.exitPrice)
-  if (!Number.isFinite(entry) || !Number.isFinite(exit)) return null
-  const move = currentTrade.side === 'short' ? entry - exit : exit - entry
-  return Math.max(0, move * scale)
-}
-
-function hasLegacyFuturesExcursionUnits(currentTrade, captured, scale) {
-  if (!captured || captured <= 0 || scale <= 1) return false
-  const candidates = [
-    currentTrade.mfe,
-    currentTrade.post_exit_mfe ?? currentTrade.postExitMfe
-  ].map(Number).filter(value => Number.isFinite(value) && value > 0)
-  return candidates.some(value => value < captured - 0.005 && value * scale >= captured - 0.005)
-}
+const { formatExcursionValue } = useExcursionDisplay((value, current_trade) =>
+  formatCurrency(value, { currency: getTradeCurrency() }))
 
 const loading = ref(true)
 const initialLoading = ref(true)

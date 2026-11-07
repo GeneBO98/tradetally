@@ -10,6 +10,8 @@ function getPublicCapabilities() {
     },
     data: {
       trade_crud: true,
+      trade_images: true,
+      trade_chart_links: true,
       user_profile: true,
       settings_management: true,
       bulk_operations: true
@@ -25,6 +27,8 @@ function getPublicCapabilities() {
 function getPublicFeatures() {
   return {
     trade_management: true,
+    trade_images: true,
+    trade_chart_links: true,
     bulk_trade_operations: true,
     user_profile_management: true,
     settings_management: true,
@@ -61,6 +65,9 @@ function getPublicEndpoints(baseUrl = '/api/v1') {
       retrieve: `${baseUrl}/trades/{id}`,
       update: `${baseUrl}/trades/{id}`,
       delete: `${baseUrl}/trades/{id}`,
+      upload_images: `${baseUrl}/trades/{id}/images`,
+      image: `${baseUrl}/trades/{id}/images/{image_id}`,
+      charts: `${baseUrl}/trades/{id}/charts`,
       bulkCreate: `${baseUrl}/trades/bulk`,
       bulkUpdate: `${baseUrl}/trades/bulk`,
       bulkDelete: `${baseUrl}/trades/bulk`,
@@ -755,6 +762,110 @@ function buildPaths(baseUrl) {
             }
           },
           401: unauthorized,
+          404: notFound
+        }
+      }
+    },
+    [endpoints.trades.upload_images]: {
+      post: {
+        tags: ['Trades'],
+        summary: 'Upload images to a trade',
+        description: 'Requires trades:write. Accepts 1-10 JPEG, PNG or WebP images, up to 50 MiB each and 10000x10000 pixels. Images are compressed to WebP without resizing and appear in trade.attachments. Partial success returns per-image errors; retry only failed images. Repeating an upload creates new attachments.',
+        security: tradeSecurity,
+        parameters: [requestIdHeaderRef, { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['images'],
+                properties: {
+                  images: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string', format: 'binary' } }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'At least one image stored; inspect each result for errors',
+            headers: standardResponseHeaders(),
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/TradeImageUploadResponse' } } }
+          },
+          400: badRequest,
+          401: unauthorized,
+          403: forbidden,
+          404: notFound,
+          413: errorResponse('#/components/schemas/ErrorEnvelope', 'Image exceeds 50 MiB'),
+          422: errorResponse('#/components/schemas/ErrorEnvelope', 'No images processed; error.details.images contains per-image failures')
+        }
+      }
+    },
+    [endpoints.trades.image]: {
+      get: {
+        tags: ['Trades'],
+        summary: 'Download a trade image',
+        description: 'Requires trades:read. Use the filename from an attachment file_url as image_id. Stored /api/trades/.../images/... URLs also accept API keys. Private images require ownership.',
+        security: tradeSecurity,
+        parameters: [
+          requestIdHeaderRef,
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'image_id', in: 'path', required: true, description: 'Stored image filename', schema: { type: 'string' } }
+        ],
+        responses: {
+          200: { description: 'Image bytes', content: { 'image/webp': { schema: { type: 'string', format: 'binary' } } } },
+          400: badRequest,
+          401: unauthorized,
+          403: forbidden,
+          404: notFound
+        }
+      },
+      delete: {
+        tags: ['Trades'],
+        summary: 'Delete a trade image',
+        description: 'Requires trades:write and ownership. Use the attachment UUID as image_id, not its filename.',
+        security: tradeSecurity,
+        parameters: [
+          requestIdHeaderRef,
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'image_id', in: 'path', required: true, description: 'Attachment UUID', schema: { type: 'string', format: 'uuid' } }
+        ],
+        responses: {
+          200: { description: 'Image deleted', content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string' } } } } } },
+          400: badRequest,
+          401: unauthorized,
+          403: forbidden,
+          404: notFound
+        }
+      }
+    },
+    [endpoints.trades.charts]: {
+      post: {
+        tags: ['Trades'],
+        summary: 'Attach a chart link to a trade',
+        description: 'Requires trades:write and ownership. Call repeatedly to attach multiple links. Links are returned in trade.charts.',
+        security: tradeSecurity,
+        parameters: [requestIdHeaderRef, { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object', required: ['chart_url'],
+                properties: {
+                  chart_url: { type: 'string', format: 'uri', maxLength: 1000, description: 'HTTP or HTTPS URL without embedded credentials' },
+                  chart_title: { type: 'string', maxLength: 255, nullable: true }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          201: { description: 'Chart link attached', content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string' }, chart: { $ref: '#/components/schemas/TradeChart' } } } } } },
+          400: badRequest,
+          401: unauthorized,
+          403: forbidden,
           404: notFound
         }
       }
@@ -1735,7 +1846,65 @@ function buildV1OpenApiSpec(origin = '') {
             notes: { type: 'string', nullable: true },
             stop_loss: { type: 'number', nullable: true },
             take_profit: { type: 'number', nullable: true },
-            r_value: { type: 'number', nullable: true }
+            r_value: { type: 'number', nullable: true },
+            mae: { type: 'number', nullable: true, description: 'Position-wide monetary excursion' },
+            mfe: { type: 'number', nullable: true, description: 'Position-wide monetary excursion' },
+            post_exit_mae: { type: 'number', nullable: true },
+            post_exit_mfe: { type: 'number', nullable: true },
+            mae_points: { type: 'number', nullable: true },
+            mfe_points: { type: 'number', nullable: true },
+            mae_r: { type: 'number', nullable: true, description: 'Excursion divided by positive risk to the current stop' },
+            mfe_r: { type: 'number', nullable: true },
+            post_exit_mae_points: { type: 'number', nullable: true },
+            post_exit_mfe_points: { type: 'number', nullable: true },
+            post_exit_mae_r: { type: 'number', nullable: true },
+            post_exit_mfe_r: { type: 'number', nullable: true },
+            attachments: { type: 'array', nullable: true, items: { $ref: '#/components/schemas/TradeAttachment' } },
+            charts: { type: 'array', nullable: true, items: { $ref: '#/components/schemas/TradeChart' } }
+          }
+        },
+        TradeAttachment: {
+          type: 'object',
+          required: ['id', 'file_url'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            trade_id: { type: 'string', format: 'uuid' },
+            file_url: { type: 'string', description: 'Relative URL; accepts X-API-Key or Bearer authentication' },
+            file_name: { type: 'string' },
+            file_type: { type: 'string', example: 'image/webp' },
+            file_size: { type: 'integer', description: 'Stored size in bytes' },
+            uploaded_at: { type: 'string', format: 'date-time' },
+            original_size: { type: 'integer', description: 'Upload responses only, in bytes' },
+            compressed_size: { type: 'integer', description: 'Upload responses only, in bytes' },
+            compression_ratio: { type: 'number', description: 'Upload responses only, percentage saved' }
+          }
+        },
+        TradeChart: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            trade_id: { type: 'string', format: 'uuid' },
+            chart_url: { type: 'string', format: 'uri' },
+            chart_title: { type: 'string', nullable: true },
+            uploaded_at: { type: 'string', format: 'date-time' }
+          }
+        },
+        TradeImageUploadResponse: {
+          type: 'object',
+          required: ['images', 'total_images', 'successful_uploads'],
+          properties: {
+            message: { type: 'string' },
+            total_images: { type: 'integer' },
+            successful_uploads: { type: 'integer' },
+            images: {
+              type: 'array',
+              items: {
+                oneOf: [
+                  { $ref: '#/components/schemas/TradeAttachment' },
+                  { type: 'object', required: ['filename', 'error'], properties: { filename: { type: 'string' }, error: { type: 'string' } } }
+                ]
+              }
+            }
           }
         },
         TradeWrite: {
@@ -1754,7 +1923,15 @@ function buildV1OpenApiSpec(origin = '') {
             notes: { type: 'string' },
             tags: { type: 'array', items: { type: 'string' } },
             strategy: { type: 'string' },
-            setup: { type: 'string' }
+            setup: { type: 'string' },
+            excursion_unit: {
+              type: 'string', enum: ['dollars', 'points', 'r'], default: 'dollars',
+              description: 'Units for supplied MAE/MFE fields only. Points use quantity times instrument multiplier; R also uses positive distance to the current stop. Stored values remain monetary amounts.'
+            },
+            mae: { type: 'number', nullable: true },
+            mfe: { type: 'number', nullable: true },
+            post_exit_mae: { type: 'number', nullable: true },
+            post_exit_mfe: { type: 'number', nullable: true }
           }
         },
         TradeListResponse: {

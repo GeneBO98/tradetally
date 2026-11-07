@@ -60,6 +60,23 @@ The fallback keeps trades whose stops have crossed entry from disappearing from 
 
 ---
 
+## MAE/MFE units (issue #427)
+
+Trade forms and the API can accept excursions in currency, points, or R.
+Excursions remain stored as position-wide monetary amounts. Points use
+`quantity × instrument multiplier`; R uses the same scale multiplied by the
+positive directional distance to the current stop. This matches the existing
+MAE/MFE analytics denominator. Excursions describe gross price movement, so
+commissions and fees are not subtracted from them. Actual R and Target R
+continue to use their existing net calculations.
+
+A missing stop, a breakeven stop, or a stop trailed past entry leaves excursion R
+unavailable; no historical or default dollar risk is substituted. Unit changes
+convert existing entries, and list/detail point and R values are derived before
+display-currency conversion.
+
+---
+
 ## Weighted Target R (Potential R)
 
 For trades with multiple take profit targets, calculate the weighted average of all target R values.

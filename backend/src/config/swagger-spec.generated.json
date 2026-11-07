@@ -133,6 +133,58 @@
               "completed"
             ],
             "description": "Enrichment status"
+          },
+          "mae": {
+            "type": "number",
+            "nullable": true,
+            "description": "Position excursion; supplied units follow excursion_unit and responses use monetary amounts"
+          },
+          "mfe": {
+            "type": "number",
+            "nullable": true,
+            "description": "Position excursion; supplied units follow excursion_unit and responses use monetary amounts"
+          },
+          "post_exit_mae": {
+            "type": "number",
+            "nullable": true,
+            "description": "Position excursion; supplied units follow excursion_unit and responses use monetary amounts"
+          },
+          "post_exit_mfe": {
+            "type": "number",
+            "nullable": true,
+            "description": "Position excursion; supplied units follow excursion_unit and responses use monetary amounts"
+          },
+          "mae_points": {
+            "type": "number",
+            "nullable": true
+          },
+          "mae_r": {
+            "type": "number",
+            "nullable": true
+          },
+          "mfe_points": {
+            "type": "number",
+            "nullable": true
+          },
+          "mfe_r": {
+            "type": "number",
+            "nullable": true
+          },
+          "post_exit_mae_points": {
+            "type": "number",
+            "nullable": true
+          },
+          "post_exit_mae_r": {
+            "type": "number",
+            "nullable": true
+          },
+          "post_exit_mfe_points": {
+            "type": "number",
+            "nullable": true
+          },
+          "post_exit_mfe_r": {
+            "type": "number",
+            "nullable": true
           }
         }
       },
@@ -324,6 +376,36 @@
             "type": "string",
             "description": "Trade setup",
             "example": "breakout"
+          },
+          "mae": {
+            "type": "number",
+            "nullable": true,
+            "description": "Position excursion; supplied units follow excursion_unit and responses use monetary amounts"
+          },
+          "mfe": {
+            "type": "number",
+            "nullable": true,
+            "description": "Position excursion; supplied units follow excursion_unit and responses use monetary amounts"
+          },
+          "post_exit_mae": {
+            "type": "number",
+            "nullable": true,
+            "description": "Position excursion; supplied units follow excursion_unit and responses use monetary amounts"
+          },
+          "post_exit_mfe": {
+            "type": "number",
+            "nullable": true,
+            "description": "Position excursion; supplied units follow excursion_unit and responses use monetary amounts"
+          },
+          "excursion_unit": {
+            "type": "string",
+            "enum": [
+              "dollars",
+              "points",
+              "r"
+            ],
+            "default": "dollars",
+            "description": "Units for supplied MAE/MFE fields. R requires positive risk to the current stop. Stored values remain monetary amounts."
           }
         }
       },

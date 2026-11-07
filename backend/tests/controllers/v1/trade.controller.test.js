@@ -63,6 +63,21 @@ describe('v1 trade controller', () => {
     symbol: 'AAPL', side: 'long', quantity: 10, entryPrice: 100, entryTime: '2026-02-01T10:00:00Z', ...overrides
   });
 
+  test('trade details keep attachment references and expose snake_case chart fields with legacy aliases intact', async () => {
+    const attachment = { id: 'image-1', file_url: '/api/trades/t1/images/chart.webp' };
+    const legacy_chart = { id: 'chart-1', chartUrl: 'https://example.com/chart', chartTitle: 'Setup', uploadedAt: '2026-11-07T12:00:00Z' };
+    tradeController.getTrade.mockImplementation((req, res) => res.json({ trade: { id: 't1', attachments: [attachment], charts: [legacy_chart] } }));
+    const res = createMockRes();
+    await tradeV1Controller.getTradeById({ params: { id: 't1' }, headers: {} }, res, jest.fn());
+    expect(res.json).toHaveBeenCalledWith({
+      trade: {
+        id: 't1', attachments: [attachment], charts: [{
+          ...legacy_chart, chart_url: legacy_chart.chartUrl, chart_title: 'Setup', uploaded_at: legacy_chart.uploadedAt
+        }]
+      }
+    });
+  });
+
   test('GET /api/v1/trades returns real rows with pagination envelope', async () => {
     tradeController.getUserTrades.mockImplementation((req, res) => {
       res.json({

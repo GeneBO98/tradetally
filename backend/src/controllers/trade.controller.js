@@ -25,7 +25,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const ChartService = require('../services/chartService');
 const axios = require('axios');
-const { sendV1NotImplemented } = require('../utils/apiResponse');
+const { isV1Request, sendV1Error, sendV1NotImplemented } = require('../utils/apiResponse');
 const { getUserTimezone } = require('../utils/timezone');
 const Playbook = require('../models/Playbook');
 const PlaybookAdherenceService = require('../services/playbookAdherence.service');
@@ -531,6 +531,15 @@ function publishTradeEvent(eventType, req, payload) {
     userId: req.user.id,
     requestId: req.requestId || req.headers?.['x-request-id'] || null
   });
+}
+
+// Media handlers are shared by the browser and the public v1 API.
+function sendTradeMediaError(req, res, status, message) {
+  if (isV1Request(req)) {
+    const code = status === 404 ? 'NOT_FOUND' : status === 403 ? 'FORBIDDEN' : 'BAD_REQUEST';
+    return sendV1Error(res, status, code, message);
+  }
+  return res.status(status).json({ error: message });
 }
 
 const tradeController = {
@@ -4711,11 +4720,11 @@ const tradeController = {
       // Verify trade belongs to user (findById also returns public trades — reject those)
       const trade = await Trade.findById(tradeId, req.user.id);
       if (!trade || trade.user_id !== req.user.id) {
-        return res.status(404).json({ error: 'Trade not found' });
+        return sendTradeMediaError(req, res, 404, 'Trade not found');
       }
 
       if (!req.files || req.files.length === 0) {
-        return res.status(400).json({ error: 'No images uploaded' });
+        return sendTradeMediaError(req, res, 400, 'No images uploaded');
       }
 
       const uploadsDir = path.join(__dirname, '../../uploads/trades');
@@ -4723,6 +4732,7 @@ const tradeController = {
 
       // Process each uploaded image
       for (const file of req.files) {
+        let saved_image;
         try {
           // Validate image
           await imageProcessor.validateImage(file.buffer);
@@ -4737,6 +4747,7 @@ const tradeController = {
 
           // Save to disk
           const savedImage = await imageProcessor.saveImage(processedImage, uploadsDir);
+          saved_image = savedImage;
 
           // Save to database
           const attachmentData = {
@@ -4748,7 +4759,12 @@ const tradeController = {
 
           const attachment = await Trade.addAttachment(tradeId, attachmentData);
           
-          processedImages.push({
+          processedImages.push(isV1Request(req) ? {
+            ...attachment,
+            original_size: savedImage.originalSize,
+            compressed_size: savedImage.size,
+            compression_ratio: savedImage.compressionRatio
+          } : {
             ...attachment,
             originalSize: savedImage.originalSize,
             compressedSize: savedImage.size,
@@ -4756,6 +4772,8 @@ const tradeController = {
           });
 
         } catch (error) {
+          // A failed DB insert must not leave an unreferenced file on disk.
+          if (saved_image) await imageProcessor.deleteImage(saved_image.filePath);
           console.error('Failed to process image %s:', file.originalname, error);
           processedImages.push({
             filename: file.originalname,
@@ -4764,11 +4782,29 @@ const tradeController = {
         }
       }
 
+      const successful_uploads = processedImages.filter(img => !img.error).length;
+      if (successful_uploads > 0) {
+        await AnalyticsCache.invalidate(req.user.id);
+        publishTradeEvent('trade.updated', req, { tradeId });
+      }
+
+      if (isV1Request(req)) {
+        if (successful_uploads === 0) {
+          return sendV1Error(res, 422, 'IMAGE_UPLOAD_FAILED', 'No images could be processed', { images: processedImages });
+        }
+        return res.json({
+          message: 'Images processed successfully',
+          images: processedImages,
+          total_images: processedImages.length,
+          successful_uploads
+        });
+      }
+
       res.json({
         message: 'Images processed successfully',
         images: processedImages,
         totalImages: processedImages.length,
-        successfulUploads: processedImages.filter(img => !img.error).length
+        successfulUploads: successful_uploads
       });
 
     } catch (error) {
@@ -4778,12 +4814,13 @@ const tradeController = {
 
   async getTradeImage(req, res, next) {
     try {
-      const { id: tradeId, filename } = req.params;
+      const tradeId = req.params.id;
+      const filename = req.params.image_id ?? req.params.filename;
 
       // Sanitize filename to prevent path traversal attacks
       const sanitizedFilename = path.basename(filename);
       if (sanitizedFilename !== filename || filename.includes('..')) {
-        return res.status(400).json({ error: 'Invalid filename' });
+        return sendTradeMediaError(req, res, 400, 'Invalid filename');
       }
 
       console.log('getTradeImage called:', {
@@ -4815,13 +4852,17 @@ const tradeController = {
         SELECT ta.*, t.is_public, t.user_id
         FROM trade_attachments ta
         JOIN trades t ON ta.trade_id = t.id
-        WHERE ta.trade_id = $1 AND ta.file_url LIKE $2
+        WHERE ta.trade_id = $1 AND ta.file_url IN ($2, $3)
       `;
 
-      const attachmentResult = await db.query(attachmentQuery, [tradeId, `%${sanitizedFilename}`]);
+      const attachmentResult = await db.query(attachmentQuery, [
+        tradeId,
+        `/api/trades/${tradeId}/images/${sanitizedFilename}`,
+        `/api/v1/trades/${tradeId}/images/${sanitizedFilename}`
+      ]);
 
       if (attachmentResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Image not found' });
+        return sendTradeMediaError(req, res, 404, 'Image not found');
       }
 
       const attachment = attachmentResult.rows[0];
@@ -4838,7 +4879,7 @@ const tradeController = {
           isPublic: attachment.is_public,
           hasUser: !!user
         });
-        return res.status(403).json({ error: 'Access denied' });
+        return sendTradeMediaError(req, res, 403, 'Access denied');
       }
 
       // Build and validate file path to prevent path traversal
@@ -4848,14 +4889,14 @@ const tradeController = {
 
       // Verify the resolved path is within the uploads directory
       if (!resolvedPath.startsWith(uploadsDir + path.sep) && resolvedPath !== uploadsDir) {
-        return res.status(400).json({ error: 'Invalid file path' });
+        return sendTradeMediaError(req, res, 400, 'Invalid file path');
       }
 
       // Check if file exists
       try {
         await fs.access(resolvedPath);
       } catch (error) {
-        return res.status(404).json({ error: 'Image file not found on disk' });
+        return sendTradeMediaError(req, res, 404, 'Image file not found on disk');
       }
 
       // Set appropriate headers
@@ -4877,24 +4918,25 @@ const tradeController = {
 
   async deleteTradeImage(req, res, next) {
     try {
-      const { id: tradeId, attachmentId } = req.params;
+      const tradeId = req.params.id;
+      const attachmentId = req.params.image_id ?? req.params.attachmentId;
       
       // Verify trade belongs to user
       const trade = await Trade.findById(tradeId, req.user.id);
-      if (!trade) {
-        return res.status(404).json({ error: 'Trade not found' });
+      if (!trade || trade.user_id !== req.user.id) {
+        return sendTradeMediaError(req, res, 404, 'Trade not found');
       }
 
       // Get attachment details before deletion
       const attachmentQuery = `
         SELECT ta.* FROM trade_attachments ta
         JOIN trades t ON ta.trade_id = t.id
-        WHERE ta.id = $1 AND t.user_id = $2
+        WHERE ta.id = $1 AND t.user_id = $2 AND ta.trade_id = $3
       `;
-      const attachmentResult = await db.query(attachmentQuery, [attachmentId, req.user.id]);
+      const attachmentResult = await db.query(attachmentQuery, [attachmentId, req.user.id, tradeId]);
       
       if (attachmentResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Image not found' });
+        return sendTradeMediaError(req, res, 404, 'Image not found');
       }
 
       const attachment = attachmentResult.rows[0];
@@ -4907,6 +4949,8 @@ const tradeController = {
       const filePath = path.join(__dirname, '../../uploads/trades', filename);
       await imageProcessor.deleteImage(filePath);
 
+      await AnalyticsCache.invalidate(req.user.id);
+      publishTradeEvent('trade.updated', req, { tradeId });
       res.json({ message: 'Image deleted successfully' });
 
     } catch (error) {
@@ -4918,11 +4962,12 @@ const tradeController = {
   async addTradeChart(req, res, next) {
     try {
       const tradeId = req.params.id;
-      const { chartUrl, chartTitle } = req.body;
+      const chartUrl = req.body?.chart_url ?? req.body?.chartUrl;
+      const chartTitle = req.body?.chart_title ?? req.body?.chartTitle;
 
       // Validate chart URL
       if (!chartUrl || typeof chartUrl !== 'string' || chartUrl.trim().length === 0) {
-        return res.status(400).json({ error: 'Chart URL is required' });
+        return sendTradeMediaError(req, res, 400, 'Chart URL is required');
       }
       // Same rules as the bulk chart endpoint: the link is rendered into an
       // href, so only http(s) without embedded credentials is accepted.
@@ -4930,13 +4975,16 @@ const tradeController = {
       try { parsedChartUrl = new URL(chartUrl.trim()); } catch (_) { /* rejected below */ }
       if (chartUrl.length > 1000 || !parsedChartUrl ||
           !['http:', 'https:'].includes(parsedChartUrl.protocol) || parsedChartUrl.username || parsedChartUrl.password) {
-        return res.status(400).json({ error: 'Enter a valid HTTP or HTTPS chart link' });
+        return sendTradeMediaError(req, res, 400, 'Enter a valid HTTP or HTTPS chart link');
+      }
+      if (chartTitle != null && (typeof chartTitle !== 'string' || chartTitle.length > 255)) {
+        return sendTradeMediaError(req, res, 400, 'Chart title must be a string of at most 255 characters');
       }
 
       // Verify trade belongs to user (findById also returns public trades — reject those)
       const trade = await Trade.findById(tradeId, req.user.id);
       if (!trade || trade.user_id !== req.user.id) {
-        return res.status(404).json({ error: 'Trade not found' });
+        return sendTradeMediaError(req, res, 404, 'Trade not found');
       }
 
       // Add chart to database
@@ -4946,9 +4994,11 @@ const tradeController = {
       };
 
       const chart = await Trade.addChart(tradeId, chartData);
+      await AnalyticsCache.invalidate(req.user.id);
+      publishTradeEvent('trade.updated', req, { tradeId });
 
       // Convert to camelCase for frontend consistency
-      const chartResponse = {
+      const chartResponse = isV1Request(req) ? chart : {
         id: chart.id,
         chartUrl: chart.chart_url,
         chartTitle: chart.chart_title,
