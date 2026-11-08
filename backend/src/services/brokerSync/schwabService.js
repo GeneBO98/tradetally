@@ -603,44 +603,6 @@ class SchwabService {
         });
       } else if (positionEffect === 'CLOSING') {
         // Match against open positions using FIFO
-        if (!openPositions[positionKey] || openPositions[positionKey].length === 0) {
-          // No matching open - position was opened before sync window
-          // Use Schwab's netAmount for P&L
-          rawTrades.push({
-            symbol,
-            side: tx.side,
-            quantity: tx.quantity,
-            entryPrice: null,
-            exitPrice: tx.price,
-            entryTime: null,
-            exitTime: tx.time,
-            tradeDate: tx.time.split('T')[0],
-            commission: tx.commission || 0,
-            fees: tx.fees || 0,
-            pnl: tx.netAmount || null,
-            broker: 'schwab',
-            instrumentType: tx.instrumentType,
-            optionType: tx.optionType,
-            strikePrice: tx.strikePrice,
-            expirationDate: tx.expirationDate,
-            underlyingSymbol: tx.underlyingSymbol,
-            matchingSymbol: tx.matchingSymbol,
-            cusip: tx.cusip,
-            accountIdentifier: tx.accountIdentifier,
-            roundTripId: 0, // No matching open - unique round-trip
-            executionData: [{
-              datetime: tx.time,
-              price: tx.price,
-              quantity: tx.quantity,
-              side: tx.side,
-              action: tx.side === 'long' ? 'sell' : 'buy',
-              type: 'exit',
-              orderId: tx.orderId
-            }]
-          });
-          continue;
-        }
-
         let remainingCloseQty = tx.quantity;
 
         while (remainingCloseQty > 0 && openPositions[positionKey] && openPositions[positionKey].length > 0) {
@@ -712,6 +674,50 @@ class SchwabService {
           if (openPos.qty <= 0) {
             openPositions[positionKey].shift();
           }
+        }
+
+        // Whatever the in-window lots could not absorb was opened before the
+        // sync window (or added by hand). It used to be dropped on the floor,
+        // so a 100-share sale against a 70-share synced lot lost 30 shares.
+        // Keep it as a closed trade with an unknown entry, prorating the
+        // exit-side costs and Schwab's net amount to the unmatched slice.
+        if (remainingCloseQty > 0) {
+          const share = tx.quantity > 0 ? remainingCloseQty / tx.quantity : 1;
+          // tx.side is the fill direction (a sell maps to 'short'); the trade
+          // records the position that fill closed, which is the opposite.
+          const closedSide = tx.side === 'short' ? 'long' : 'short';
+          rawTrades.push({
+            symbol,
+            side: closedSide,
+            quantity: remainingCloseQty,
+            entryPrice: null,
+            exitPrice: tx.price,
+            entryTime: null,
+            exitTime: tx.time,
+            tradeDate: tx.time.split('T')[0],
+            commission: (tx.commission || 0) * share,
+            fees: (tx.fees || 0) * share,
+            pnl: tx.netAmount != null ? tx.netAmount * share : null,
+            broker: 'schwab',
+            instrumentType: tx.instrumentType,
+            optionType: tx.optionType,
+            strikePrice: tx.strikePrice,
+            expirationDate: tx.expirationDate,
+            underlyingSymbol: tx.underlyingSymbol,
+            matchingSymbol: tx.matchingSymbol,
+            cusip: tx.cusip,
+            accountIdentifier: tx.accountIdentifier,
+            roundTripId: 0, // No matching open - unique round-trip
+            executionData: [{
+              datetime: tx.time,
+              price: tx.price,
+              quantity: remainingCloseQty,
+              side: tx.side,
+              action: closedSide === 'long' ? 'sell' : 'buy',
+              type: 'exit',
+              orderId: tx.orderId
+            }]
+          });
         }
       }
     }
