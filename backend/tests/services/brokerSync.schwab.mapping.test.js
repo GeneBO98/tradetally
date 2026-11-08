@@ -680,6 +680,68 @@ describe('Schwab parseTransactions (full payload -> trades)', () => {
     });
   });
 
+  test('a close larger than the in-window lots keeps the unmatched remainder as its own trade', () => {
+    // Regression: a 100-share sale against a 70-share synced lot matched 70
+    // and silently dropped the other 30 (opened before the sync window).
+    const trades = schwabService.parseTransactions([
+      schwabEquityTx({
+        orderId: 'mstr-buy-70',
+        time: '2026-01-05T15:49:00Z',
+        symbol: 'MSTR',
+        price: 166.57,
+        amount: 70,
+        positionEffect: 'OPENING',
+        netAmount: -11659.9,
+        feeItems: [{ feeType: 'SEC_FEE', cost: 0.1 }]
+      }),
+      schwabEquityTx({
+        orderId: 'mstr-sell-100',
+        time: '2026-11-04T12:39:00Z',
+        symbol: 'MSTR',
+        price: 136.71,
+        amount: -100,
+        positionEffect: 'CLOSING',
+        netAmount: 13671,
+        commissionCost: 1,
+        feeItems: [{ feeType: 'SEC_FEE', cost: 0.2 }]
+      })
+    ]);
+
+    expect(trades).toHaveLength(2);
+    const matched = trades.find(t => t.entryPrice !== null);
+    const remainder = trades.find(t => t.entryPrice === null);
+
+    expect(matched).toMatchObject({
+      symbol: 'MSTR',
+      quantity: 70,
+      entryPrice: 166.57,
+      exitPrice: 136.71,
+      exitTime: '2026-11-04T12:39:00Z'
+    });
+    expect(matched.commission).toBeCloseTo(0.7, 10); // 70% of the $1 exit commission
+    expect(matched.fees).toBeCloseTo(0.1 + 0.14, 10); // all entry fee + 70% of exit fee
+
+    expect(remainder).toMatchObject({
+      symbol: 'MSTR',
+      side: 'long',
+      quantity: 30,
+      entryPrice: null,
+      exitPrice: 136.71,
+      entryTime: null,
+      exitTime: '2026-11-04T12:39:00Z',
+      tradeDate: '2026-11-04'
+    });
+    expect(remainder.commission).toBeCloseTo(0.3, 10);
+    expect(remainder.fees).toBeCloseTo(0.06, 10);
+    expect(remainder.pnl).toBeCloseTo(13671 * 0.3, 6);
+    expect(remainder.executionData).toEqual([
+      expect.objectContaining({ type: 'exit', quantity: 30, action: 'sell', orderId: 'mstr-sell-100' })
+    ]);
+
+    // Nothing is left open: the 70-share lot was fully consumed.
+    expect(trades.filter(t => t.exitPrice === null)).toHaveLength(0);
+  });
+
   test('unclosed opening transaction maps to an open trade with null exit fields', () => {
     const trades = schwabService.parseTransactions([
       schwabEquityTx({
