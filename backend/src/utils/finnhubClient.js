@@ -8,7 +8,7 @@ const TierService = require('../services/tierService');
 const { validateAiProviderUrl, fetchAiProviderUrl } = require('./urlSecurity');
 const { FinnhubPriority, FinnhubRequestScheduler } = require('./finnhubScheduler');
 const finnhubPersistentCache = require('./finnhubCandleStore');
-const FinnhubUsageMetricsService = require('../services/finnhubUsageMetricsService');
+const FinnhubUsageRecorder = require('../services/finnhubUsageRecorder');
 const { getDateInTimezone, localToUTC } = require('./timezone');
 const { CRYPTO_SYMBOLS, CRYPTO_TO_COINGECKO } = require('./cryptoAssets');
 const { toFinnhubForexSymbol } = require('./forexSymbols');
@@ -70,7 +70,7 @@ class FinnhubClient {
       maxCallsPerMinute: this.maxCallsPerMinute,
       maxCallsPerSecond: this.maxCallsPerSecond,
       activeReservePerMinute: configuredReserve,
-      metricsRecorder: (event) => FinnhubUsageMetricsService.recordMinuteMetric(event)
+      metricsRecorder: (event) => FinnhubUsageRecorder.recordMinuteMetric(event)
     });
     this.callTimestamps = this.scheduler.callTimestamps;
     this.secondTimestamps = this.scheduler.secondTimestamps;

@@ -21,7 +21,7 @@ describe('finnhub client persistent caches', () => {
       getResponse: jest.fn(async () => null),
       setResponse: jest.fn(async () => undefined)
     }));
-    jest.doMock('../../src/services/finnhubUsageMetricsService', () => ({
+    jest.doMock('../../src/services/finnhubUsageRecorder', () => ({
       recordMinuteMetric: jest.fn(async () => undefined)
     }));
     jest.doMock('axios', () => ({ get: jest.fn() }));
@@ -42,7 +42,7 @@ describe('finnhub client persistent caches', () => {
     else process.env.FINNHUB_API_KEY = originalApiKey;
     jest.dontMock('../../src/utils/cache');
     jest.dontMock('../../src/utils/finnhubCandleStore');
-    jest.dontMock('../../src/services/finnhubUsageMetricsService');
+    jest.dontMock('../../src/services/finnhubUsageRecorder');
     jest.dontMock('axios');
     jest.dontMock('../../src/services/apiUsageService');
     jest.dontMock('../../src/services/tierService');
@@ -114,7 +114,7 @@ describe('finnhub client persistent caches', () => {
   });
 
   test('wires the usage metrics recorder into the request scheduler', async () => {
-    const metrics = require('../../src/services/finnhubUsageMetricsService');
+    const metrics = require('../../src/services/finnhubUsageRecorder');
     axios.get.mockResolvedValueOnce({ data: { name: 'Apple' } });
     const client = loadClient();
 

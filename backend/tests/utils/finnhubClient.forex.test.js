@@ -14,7 +14,7 @@ jest.mock('../../src/utils/finnhubCandleStore', () => ({
   getResponse: jest.fn(async () => null),
   setResponse: jest.fn(async () => undefined)
 }));
-jest.mock('../../src/services/finnhubUsageMetricsService', () => ({
+jest.mock('../../src/services/finnhubUsageRecorder', () => ({
   recordMinuteMetric: jest.fn(async () => undefined)
 }));
 

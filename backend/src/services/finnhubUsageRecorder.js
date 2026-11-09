@@ -32,7 +32,7 @@ function nonNegativeInt(value) {
   return Math.max(0, parseInt(value, 10) || 0);
 }
 
-class FinnhubUsageMetricsService {
+class FinnhubUsageRecorder {
   static isEnabled() {
     return process.env.FINNHUB_USAGE_METRICS_ENABLED !== 'false';
   }
@@ -182,8 +182,8 @@ class FinnhubUsageMetricsService {
   }
 }
 
-FinnhubUsageMetricsService._buffer = new Map();
-FinnhubUsageMetricsService._flushTimer = null;
-FinnhubUsageMetricsService._lastPruneAt = 0;
+FinnhubUsageRecorder._buffer = new Map();
+FinnhubUsageRecorder._flushTimer = null;
+FinnhubUsageRecorder._lastPruneAt = 0;
 
-module.exports = FinnhubUsageMetricsService;
+module.exports = FinnhubUsageRecorder;

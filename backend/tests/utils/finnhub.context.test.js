@@ -55,7 +55,7 @@ describe('finnhub request context', () => {
       getResponse: jest.fn(async () => null),
       setResponse: jest.fn(async () => undefined)
     }));
-    jest.doMock('../../src/services/finnhubUsageMetricsService', () => ({
+    jest.doMock('../../src/services/finnhubUsageRecorder', () => ({
       recordMinuteMetric: jest.fn(async () => undefined)
     }));
   });
@@ -78,7 +78,7 @@ describe('finnhub request context', () => {
     jest.dontMock('../../src/services/tierService');
     jest.dontMock('../../src/utils/aiService');
     jest.dontMock('../../src/utils/finnhubCandleStore');
-    jest.dontMock('../../src/services/finnhubUsageMetricsService');
+    jest.dontMock('../../src/services/finnhubUsageRecorder');
   });
 
   function loadFinnhubWithContextCapture() {
