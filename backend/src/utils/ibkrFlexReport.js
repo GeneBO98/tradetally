@@ -3,7 +3,7 @@ const { parse } = require('csv-parse/sync');
 
 const TRADE_HEADER_FIELDS = new Set([
   'buysell', 'datetime', 'tradeprice', 'ibcommission', 'tradeid', 'ibexecid',
-  'levelofdetail', 'transactiontype', 'orderid'
+  'levelofdetail', 'transactiontype', 'orderid', 'execid'
 ]);
 const OPEN_POSITION_HEADER_FIELDS = new Set([
   'position', 'positionquantity', 'openquantity', 'costbasisprice',
@@ -32,7 +32,7 @@ function parseCsvLine(line) {
 
 function classifyHeaders(headers, sectionName = '') {
   const normalizedSection = normalizeHeader(sectionName);
-  if (normalizedSection === 'trades' || normalizedSection === 'trade') return 'trades';
+  if (['trades', 'trade', 'tradeconfirm', 'tradeconfirms', 'tradeconfirmations', 'tradeconfirmation'].includes(normalizedSection)) return 'trades';
   if (normalizedSection === 'openpositions' || normalizedSection === 'openposition') return 'open_positions';
 
   const normalized = headers.map(normalizeHeader);
@@ -58,9 +58,9 @@ function canonicalTradeRecord(attributes) {
   };
 
   return {
-    Account: get('accountId', 'accountID'),
+    Account: get('accountId', 'accountID', 'clientAccountID', 'ClientAccountID'),
     AccountAlias: get('acctAlias'),
-    Currency: get('currency'),
+    Currency: get('currency', 'currencyPrimary'),
     AssetClass: get('assetCategory', 'assetClass'),
     Symbol: get('symbol'),
     Description: get('description'),
@@ -75,7 +75,7 @@ function canonicalTradeRecord(attributes) {
     Quantity: get('quantity'),
     TradePrice: get('tradePrice', 'price'),
     IBCommission: get('ibCommission', 'commission'),
-    IBCommissionCurrency: get('ibCommissionCurrency'),
+    IBCommissionCurrency: get('ibCommissionCurrency', 'commissionCurrency'),
     'Buy/Sell': get('buySell'),
     LevelOfDetail: get('levelOfDetail'),
     Code: get('notes', 'code'),
@@ -83,7 +83,7 @@ function canonicalTradeRecord(attributes) {
     OrderID: get('ibOrderID', 'orderID', 'orderId'),
     BrokerageOrderID: get('brokerageOrderID', 'brokerageOrderId', 'BrokerageOrderID'),
     TradeID: get('tradeID', 'tradeId'),
-    IBExecID: get('ibExecID', 'executionID', 'executionId'),
+    IBExecID: get('ibExecID', 'execID', 'execId', 'executionID', 'executionId'),
     ExtExecID: get('extExecID'),
     OpenCloseIndicator: get('openCloseIndicator'),
     FifoPnlRealized: get('fifoPnlRealized'),
@@ -101,9 +101,9 @@ function canonicalOpenPositionRecord(attributes) {
   };
 
   return {
-    Account: get('accountId', 'accountID'),
+    Account: get('accountId', 'accountID', 'clientAccountID', 'ClientAccountID'),
     AccountAlias: get('acctAlias'),
-    Currency: get('currency'),
+    Currency: get('currency', 'currencyPrimary'),
     AssetClass: get('assetCategory', 'assetClass'),
     Symbol: get('symbol'),
     Description: get('description'),
@@ -207,10 +207,10 @@ function decodeXmlReport(content) {
 
   const trade_records = [];
   const tradeHeaders = new Set();
-  $('Trades > Trade').each((_, element) => {
+  $('Trades > Trade, TradeConfirms > TradeConfirm, TradeConfirmations > TradeConfirm, TradeConfirmations > TradeConfirmation').each((_, element) => {
     const attributes = $(element).attr() || {};
     Object.keys(attributes).forEach(header => tradeHeaders.add(header));
-    trade_records.push(canonicalTradeRecord(attributes));
+    trade_records.push({ ...canonicalTradeRecord(attributes), ibkr_report_type: element.name === 'Trade' ? 'activity' : 'trade_confirmation' });
   });
 
   const open_position_records = [];
@@ -224,11 +224,12 @@ function decodeXmlReport(content) {
   return {
     recognized: true,
     format: 'xml',
+    report_type: $('TradeConfirms, TradeConfirmations').length > 0 ? 'trade_confirmation' : 'activity',
     statements,
     trade_records,
     open_position_records,
     sections: {
-      trades: $('Trades').length > 0,
+      trades: $('Trades, TradeConfirms, TradeConfirmations').length > 0,
       open_positions: $('OpenPositions').length > 0
     },
     row_counts: {
@@ -285,7 +286,10 @@ function decodeCsvReport(content) {
       const record = recordFromFields(headers, fields.slice(2));
       const discriminatorIndex = headers.findIndex(header => normalizeHeader(header) === 'datadiscriminator');
       if (active === 'trades' && discriminatorIndex >= 0 && normalizeHeader(fields[discriminatorIndex + 2]) !== 'order') continue;
-      if (active === 'trades') trade_records.push(record);
+      if (active === 'trades') {
+        record.ibkr_report_type = /tradeconfirm/.test(prefixedSection || '') || (headers.some(h => normalizeHeader(h) === 'commission') && !headers.some(h => normalizeHeader(h) === 'ibcommission')) ? 'trade_confirmation' : 'activity';
+        trade_records.push(record);
+      }
       if (active === 'open_positions') open_position_records.push(record);
       continue;
     }
@@ -307,7 +311,10 @@ function decodeCsvReport(content) {
 
     if (active && headers) {
       const record = recordFromFields(headers, fields);
-      if (active === 'trades') trade_records.push(record);
+      if (active === 'trades') {
+        record.ibkr_report_type = /tradeconfirm/.test(prefixedSection || '') || (headers.some(h => normalizeHeader(h) === 'commission') && !headers.some(h => normalizeHeader(h) === 'ibcommission')) ? 'trade_confirmation' : 'activity';
+        trade_records.push(record);
+      }
       if (active === 'open_positions') open_position_records.push(record);
     }
   }
@@ -315,6 +322,7 @@ function decodeCsvReport(content) {
   return {
     recognized: trade_records.length > 0 || open_position_records.length > 0 || Boolean(headers),
     format: 'csv',
+    report_type: trade_records[0]?.ibkr_report_type || (Array.from(tradeHeaders).some(h => normalizeHeader(h) === 'commission') ? 'trade_confirmation' : 'activity'),
     statements: [],
     trade_records,
     open_position_records,

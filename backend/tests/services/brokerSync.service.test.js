@@ -1528,3 +1528,47 @@ describe('isTransientSyncError', () => {
     expect(isTransientSyncError(null)).toBe(false);
   });
 });
+
+describe('IBKR confirmation reports', () => {
+  test('validates confirmation query type, execution IDs, and empty reports independently', () => {
+    const decoded = { recognized: true, report_type: 'trade_confirmation', sections: { trades: true },
+      section_headers: { trades: ['symbol', 'assetCategory', 'dateTime', 'quantity', 'price', 'buySell', 'levelOfDetail', 'accountId', 'execID'] } };
+    expect(ibkrService.validateReportSchema(decoded, 'trade_confirmation').valid).toBe(true);
+    expect(ibkrService.validateReportSchema(decoded, 'activity').valid).toBe(false);
+    expect(ibkrService.validateReportSchema({ ...decoded, section_headers: { trades: [] } }, 'trade_confirmation')).toMatchObject({ valid: true, warnings: [expect.stringContaining('no trade rows')] });
+    expect(ibkrService.validateReportSchema({ ...decoded, section_headers: { trades: decoded.section_headers.trades.filter(h => h !== 'execID') } }, 'trade_confirmation').valid).toBe(false);
+  });
+
+  test('resumes a pending report reference without generating another report', async () => {
+    const lock = jest.spyOn(ibkrService, 'withTokenOperation').mockImplementation((token, operation) => operation());
+    const request = jest.spyOn(ibkrService, 'requestFlexReport');
+    const fetch = jest.spyOn(ibkrService, 'fetchGeneratedReport').mockResolvedValue({ decoded: {
+      recognized: true, report_type: 'trade_confirmation', format: 'xml', trade_records: [],
+      sections: { trades: true }, section_headers: { trades: [] }
+    } });
+    const context = jest.spyOn(ibkrService, 'getExistingContext').mockResolvedValue({});
+    const importer = jest.spyOn(ibkrService, 'importTrades').mockResolvedValue({ imported: 0, updated: 0, duplicates: 0, excluded: 0, failed: 0 });
+    parseIBKRRecords.mockResolvedValue({ trades: [], diagnostics: { warnings: [] } });
+    try {
+      const result = await ibkrService.syncConfirmations({ id: 'connection', userId: 'owner', ibkrFlexToken: 'token',
+        ibkr_trade_confirmation_query_id: 'confirm', brokerMetadata: { ibkr_confirmation: { reference_code: 'SAVED-REF' } } });
+      expect(result).toMatchObject({ imported: 0, report_type: 'trade_confirmation' });
+      expect(request).not.toHaveBeenCalled();
+      expect(fetch).toHaveBeenCalledWith('SAVED-REF', 'token', expect.stringContaining('/GetStatement'));
+    } finally { lock.mockRestore(); request.mockRestore(); fetch.mockRestore(); context.mockRestore(); importer.mockRestore(); }
+  });
+
+  test('report unavailable is a warning instead of disabling a valid query', async () => {
+    const lock = jest.spyOn(ibkrService, 'withTokenOperation').mockImplementation((token, operation) => operation());
+    const request = jest.spyOn(ibkrService, 'requestFlexReport').mockRejectedValue(Object.assign(new Error('No report'), { errorCode: '1003' }));
+    try {
+      expect(await ibkrService.syncConfirmations({ ibkrFlexToken: 'token', ibkr_trade_confirmation_query_id: 'confirm' }))
+        .toMatchObject({ imported: 0, failed: 0, report_available: false, outcome: 'warning' });
+    } finally { lock.mockRestore(); request.mockRestore(); }
+  });
+});
+
+test('Activity date filtering keeps an update closing a position opened before the import floor', () => {
+  const update = { isUpdate: true, existingTradeId: 'overnight-position', tradeDate: '2026-11-05', exitTime: '2026-11-06T15:00:00Z' };
+  expect(ibkrService.filterByDateRange([update], '2026-11-06', '2026-11-06')).toEqual([update]);
+});

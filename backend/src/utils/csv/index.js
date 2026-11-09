@@ -43,7 +43,7 @@ function createDiagnostics(broker) {
 
 async function parseIBKRRecords(inputRecords, context = {}, broker = 'ibkr', providedDiagnostics = null) {
   const diagnostics = providedDiagnostics || createDiagnostics(broker);
-  const records = Array.isArray(inputRecords)
+  let records = Array.isArray(inputRecords)
     ? inputRecords.map(record => normalizeRecord(record))
     : [];
   diagnostics.totalRows = records.length;
@@ -59,6 +59,20 @@ async function parseIBKRRecords(inputRecords, context = {}, broker = 'ibkr', pro
     parserContext.hasAccountColumn = true;
   }
 
+  let reconciliation = null;
+  if (typeof parserContext.reconcile_ibkr_records === 'function') {
+    reconciliation = await parserContext.reconcile_ibkr_records(records, parserContext);
+    records = reconciliation.records;
+    Object.assign(parserContext, {
+      existingPositions: reconciliation.existingPositions,
+      existingExecutions: reconciliation.existingExecutions,
+      existingOpenPositions: reconciliation.existingOpenPositions
+    });
+    diagnostics.warnings.push(...reconciliation.warnings);
+    diagnostics.ibkr_updated = reconciliation.updated;
+    diagnostics.ibkr_duplicates = reconciliation.duplicates;
+    diagnostics.ibkr_excluded = reconciliation.excluded;
+  }
   const existingPositions = parserContext.existingPositions || {};
   const tradeGroupingSettings = parserContext.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
   const manualReviewItems = Array.isArray(parserContext.manualReviewItems) ? parserContext.manualReviewItems : [];
@@ -68,11 +82,37 @@ async function parseIBKRRecords(inputRecords, context = {}, broker = 'ibkr', pro
     manualReviewItems,
     diagnostics
   };
-  const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings, ibkrContext);
+  // Scope position lookup and duplicate detection to the source account before
+  // grouping contracts. The same Conid can be traded in several IBKR accounts.
+  const account_groups = new Map();
+  for (const record of records) {
+    const account_column = detectAccountColumn([record]);
+    const account = parserContext.selectedAccountId || (account_column ? extractAccountFromRecord(record, account_column) : null) || null;
+    if (!account_groups.has(account)) account_groups.set(account, []);
+    account_groups.get(account).push(record);
+  }
+  const result = [];
+  for (const [account, account_records] of account_groups) {
+    const scoped_positions = {};
+    const positions = parserContext.existingOpenPositions || Object.values(existingPositions);
+    for (const position of positions) {
+      if ((position.account_identifier ?? position.accountIdentifier ?? null) !== account) continue;
+      for (const [name, value] of Object.entries(existingPositions)) if (value.id === position.id) scoped_positions[name] = position;
+      if (position.conid) scoped_positions[`conid_${position.conid}`] = position;
+    }
+    const scoped_executions = Object.fromEntries(Object.entries(parserContext.existingExecutions || {}).map(([name, executions]) =>
+      [name, executions.filter(e => (e.account_identifier || null) === account)]));
+    result.push(...await parseIBKRTransactions(account_records, scoped_positions, tradeGroupingSettings, {
+      ...ibkrContext, existingExecutions: scoped_executions,
+      accountColumnName: detectAccountColumn(account_records),
+      ibkr_report_type: parserContext.ibkr_report_type || (broker === 'ibkr_trade_confirmation' ? 'trade_confirmation' : null)
+    }));
+  }
   // IBKR exports wall-clock timestamps without an offset. Their timezone is a
   // property of the report, and can differ from the user's display timezone.
   const reportTimezone = parserContext.sourceTimezone || parserContext.userTimezone || null;
   const wrapped = wrapResultWithDiagnostics(result, diagnostics, [], reportTimezone);
+  if (reconciliation) wrapped.ibkr_reconciliation = { updated: reconciliation.updated, duplicates: reconciliation.duplicates, excluded: reconciliation.excluded };
   return attachManualReviewDiagnostics(wrapped, diagnostics, manualReviewItems, reportTimezone);
 }
 
@@ -217,7 +257,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
       if (decoded.recognized) {
         diagnostics.report_format = decoded.format;
         diagnostics.open_position_rows = decoded.open_position_records.length;
-        return parseIBKRRecords(decoded.trade_records, context, broker, diagnostics);
+        return parseIBKRRecords(decoded.trade_records, { ...context, ibkr_report_type: decoded.report_type }, broker, diagnostics);
       }
     }
 
@@ -1588,7 +1628,7 @@ async function parseCSV(rawFileBuffer, broker = 'generic', context = {}) {
     primaryError = error;
   }
 
-  if (!primaryError && getParsedTradeCount(primaryResult) > 0) return primaryResult;
+  if (!primaryError && (getParsedTradeCount(primaryResult) > 0 || primaryResult?.ibkr_reconciliation)) return primaryResult;
   if (broker === 'auto' || broker === 'generic' || broker === 'custom' || context.customMapping) {
     if (primaryError) throw primaryError;
     return primaryResult;

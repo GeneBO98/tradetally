@@ -84,6 +84,12 @@
                         </p>
                     </div>
 
+                    <div v-if="connection.brokerType === 'ibkr'">
+                        <label for="settingsConfirmationQuery" class="label">Trade Confirmation Flex Query ID (optional)</label>
+                        <input id="settingsConfirmationQuery" v-model="form.ibkr_trade_confirmation_query_id" class="input" type="text" placeholder="For same-day fills" />
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Uses your saved Flex token. Auto-Sync checks confirmations every 15 minutes, separately from the Activity schedule below. Clear this field to stop confirmation imports.</p>
+                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Use Executions detail, intraday coverage, and the same account and date/time settings as your Activity query. <a class="text-primary-700 underline dark:text-primary-400" href="https://www.ibkrguides.com/clientportal/performanceandstatements/tradeflex.htm" target="_blank" rel="noopener noreferrer">IBKR setup guide</a></p>
+                    </div>
                     <!-- Auto-Sync Toggle -->
                     <div class="flex items-center justify-between">
                         <div>
@@ -380,6 +386,7 @@ function initialSyncStartDate(value) {
 
 const form = ref({
     accountLabel: props.connection.accountLabel || "",
+    ibkr_trade_confirmation_query_id: props.connection.ibkr_trade_confirmation_query_id || "",
     autoSyncEnabled: props.connection.autoSyncEnabled,
     syncFrequency: props.connection.syncFrequency,
     syncTime: props.connection.syncTime?.substring(0, 5) || "06:00",
@@ -400,6 +407,7 @@ watch(
     (newConnection) => {
         form.value = {
             accountLabel: newConnection.accountLabel || "",
+            ibkr_trade_confirmation_query_id: newConnection.ibkr_trade_confirmation_query_id || "",
             autoSyncEnabled: newConnection.autoSyncEnabled,
             syncFrequency: newConnection.syncFrequency,
             syncTime: newConnection.syncTime?.substring(0, 5) || "06:00",
@@ -502,6 +510,9 @@ function handleSave() {
         syncTime: form.value.syncTime + ":00",
         syncStartDate: form.value.syncStartDate,
     };
+    if (props.connection.brokerType === "ibkr" && (form.value.ibkr_trade_confirmation_query_id.trim() !== (props.connection.ibkr_trade_confirmation_query_id || '') || props.connection.brokerMetadata?.ibkr_confirmation?.suspended)) {
+        updates.ibkr_trade_confirmation_query_id = form.value.ibkr_trade_confirmation_query_id.trim() || null;
+    }
     if (props.connection.brokerType === "schwab") {
         updates.excluded_account_identifiers = form.value.excluded_account_identifiers;
     }

@@ -180,7 +180,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       const absQuantity = Math.abs(quantity);
       const price = parseNumeric(read('Price', 'TradePrice', 'Trade Price', 'T. Price', 'T.Price'), NaN);
       // IBKR commission: negative = fee paid, positive = rebate received.
-      const commission = -(parseNumeric(read('Commission', 'IBCommission', 'IB Commission', 'Comm/Fee', 'Execution fee') || 0, 0));
+      const commission = -(parseNumeric(read('Commission', 'IBCommission', 'IB Commission', 'Comm/Fee', 'Execution fee') || 0, 0)) || 0;
       const rawDateTime = read('DateTime', 'Date/Time', 'TradeDate', 'Trade Date', 'Date', 'Datum').toString();
       const dateTime = rawDateTime.replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
       const explicitAction = read('Buy/Sell', 'BuySell', 'Transaction Type', 'Action', 'Side');
@@ -282,8 +282,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       const accountIdentifier = context.selectedAccountId
         ? context.selectedAccountId
         : context.accountColumnName
-          ? extractAccountFromRecord(record, context.accountColumnName)
-          : null;
+          ? (extractAccountFromRecord(record, context.accountColumnName) || read('ClientAccountID', 'Account', 'AccountID') || null)
+          : (read('ClientAccountID', 'Account', 'AccountID') || null);
 
       // Extract Conid (Contract ID) for options grouping - this is the most reliable way to group
       // options trades for the same contract regardless of symbol parsing issues
@@ -306,6 +306,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         executionId,
         tradeId,
         currency,
+        ibkr_report_type: context.ibkr_report_type || read('ibkr_report_type') || (brokerTag === 'ibkr' && read('Commission') !== '' && read('IBCommission') === '' ? 'trade_confirmation' : 'activity'),
+        ibkr_commission: read('Commission', 'IBCommission', 'IB Commission') === '' ? null : commission,
         sourceIndex: rowIndex,
         date: tradeDate,
         datetime: entryTime,
@@ -350,8 +352,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
   };
 
   transactions.sort((a, b) => {
-    const keyA = a.conid || a.symbol;
-    const keyB = b.conid || b.symbol;
+    const keyA = `${a.accountIdentifier || ''}|${a.conid || a.symbol}`;
+    const keyB = `${b.accountIdentifier || ''}|${b.conid || b.symbol}`;
     if (keyA !== keyB) return keyA.localeCompare(keyB);
     const timeDiff = new Date(a.datetime) - new Date(b.datetime);
     if (timeDiff !== 0) return timeDiff;
@@ -372,7 +374,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
   const transactionsByGroupKey = {};
   for (const transaction of transactions) {
     // Use Conid as primary grouping key for options, fall back to symbol
-    const groupKey = transaction.conid || transaction.symbol;
+    const groupKey = `${transaction.accountIdentifier || ''}|${transaction.conid || transaction.symbol}`;
     if (!transactionsByGroupKey[groupKey]) {
       transactionsByGroupKey[groupKey] = [];
     }
@@ -516,7 +518,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       for (const exec of existingExecutions) {
         const execQty = Math.abs(parseFloat(exec.quantity) || 0);
         const execPrice = parseFloat(exec.price) || 0;
-        const execFees = parseFloat(exec.fees) || 0;
+        const execFees = (parseFloat(exec.fees) || 0) + (parseFloat(exec.commission) || 0);
         // Use exec.action to determine entry vs exit - quantity is always stored as absolute value
         const execAction = exec.action;
 
@@ -652,6 +654,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             order_id: transaction.orderId || null,
             brokerage_order_id: transaction.brokerage_order_id || null,
             execution_id: transaction.executionId || null,
+            ibkr_report_type: transaction.ibkr_report_type,
+            ibkr_commission: transaction.ibkr_commission,
+            account_identifier: transaction.accountIdentifier || null,
             trade_id: transaction.tradeId || null
           };
 
@@ -670,6 +675,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             commission: transaction.fees || 0,
             fees: 0,
             broker: brokerTag,
+            brokerConnectionId: context.brokerConnectionId || null,
             accountIdentifier: transaction.accountIdentifier,
             originalCurrency: transaction.currency,
             executions: [syntheticOpeningExecution, closingExecution],
@@ -727,6 +733,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             entryValue: 0,
             exitValue: 0,
             broker: brokerTag,
+            brokerConnectionId: context.brokerConnectionId || null,
             accountIdentifier: transaction.accountIdentifier,
             originalCurrency: transaction.currency
           };
@@ -753,6 +760,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           order_id: transaction.orderId || null,
           brokerage_order_id: transaction.brokerage_order_id || null,
           execution_id: transaction.executionId || null,
+            ibkr_report_type: transaction.ibkr_report_type,
+            ibkr_commission: transaction.ibkr_commission,
+            account_identifier: transaction.accountIdentifier || null,
           trade_id: transaction.tradeId || null,
           sourceIndex: transaction.sourceIndex
         };
@@ -881,9 +891,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         currentTrade.executions.forEach(exec => {
           if ((currentTrade.side === 'long' && exec.action === 'buy') ||
               (currentTrade.side === 'short' && exec.action === 'sell')) {
-            entryCommission += exec.fees;
+            entryCommission += (Number(exec.fees) || 0) + (Number(exec.commission) || 0);
           } else {
-            exitCommission += exec.fees;
+            exitCommission += (Number(exec.fees) || 0) + (Number(exec.commission) || 0);
           }
         });
         currentTrade.entryCommission = entryCommission;
@@ -957,7 +967,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       currentTrade.executions.forEach(exec => {
         if ((currentTrade.side === 'long' && exec.action === 'buy') ||
             (currentTrade.side === 'short' && exec.action === 'sell')) {
-          entryCommission += exec.fees || 0;
+          entryCommission += (Number(exec.fees) || 0) + (Number(exec.commission) || 0);
         }
       });
       currentTrade.entryCommission = entryCommission;

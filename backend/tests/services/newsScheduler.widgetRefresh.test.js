@@ -1,6 +1,6 @@
 jest.mock('../../src/services/newsService', () => ({
   getAllTrackedSymbols: jest.fn(),
-  fetchAndCacheAll: jest.fn(),
+  fetchAndCacheScheduled: jest.fn(),
   getUserIdsTrackingSymbols: jest.fn()
 }));
 
@@ -35,7 +35,7 @@ describe('NewsScheduler widget refresh', () => {
 
   test('sends one silent refresh to each user affected by changed news', async () => {
     NewsService.getAllTrackedSymbols.mockResolvedValue(['AAPL', 'MSFT']);
-    NewsService.fetchAndCacheAll.mockResolvedValue({
+    NewsService.fetchAndCacheScheduled.mockResolvedValue({
       fetched: 2,
       skipped: 0,
       errors: 0,

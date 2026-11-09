@@ -86,6 +86,21 @@ class BrokerSyncService {
       throw new Error('Connection not found');
     }
 
+    const report_type = connection.brokerType === 'ibkr'
+      ? (options.report_type || (syncType === 'manual' && connection.ibkr_trade_confirmation_query_id ? 'all' : 'activity'))
+      : 'activity';
+    if (report_type === 'all') {
+      const reports = [];
+      for (const selected_report of ['trade_confirmation', 'activity']) {
+        if (selected_report === 'trade_confirmation' && !connection.ibkr_trade_confirmation_query_id) continue;
+        try { reports.push(await this.syncConnectionUnlocked(connectionId, { ...options, report_type: selected_report })); }
+        catch (error) { reports.push({ success: false, report_type: selected_report, error: error.message }); }
+      }
+      const totals = Object.fromEntries(['imported', 'updated', 'duplicates', 'skipped', 'failed'].map(name => [name, reports.reduce((sum, report) => sum + (Number(report[name]) || 0), 0)]));
+      return { ...totals, success: reports.every(report => report.success), reports,
+        warnings: reports.flatMap(report => [...(report.warnings || []), ...(report.error ? [report.error] : [])]) };
+    }
+
     // Broker sync is a Pro feature. This is the single funnel for every sync
     // path (manual, scheduled, retry), so gating here covers them all.
     // - Scheduled syncs for a gated free user are skipped cleanly: no sync log,
@@ -96,7 +111,7 @@ class BrokerSyncService {
     const TierService = require('../tierService');
     const syncAccess = await TierService.canSyncBrokerConnection(connection.userId);
     if (!syncAccess.allowed) {
-      if (['scheduled', 'ibkr_timeout_retry'].includes(syncType)) {
+      if (['scheduled', 'ibkr_timeout_retry', 'ibkr_confirmation'].includes(syncType)) {
         console.log(`[BROKER-SYNC] Skipping scheduled sync for connection ${connectionId}: broker sync is Pro-only for this free user`);
         return { success: false, skippedForTier: true, reason: 'tier_pro_required', imported: 0, duplicates: 0 };
       }
@@ -131,6 +146,23 @@ class BrokerSyncService {
 
     try {
       let result;
+      if (connection.brokerType === 'ibkr' && report_type === 'trade_confirmation') {
+        result = await ibkrService.syncConfirmations(connection, { startDate, endDate, syncLogId: syncLog.id });
+        await BrokerConnection.updateConfirmationSync(connectionId, { success: true, report_available: result.report_available !== false });
+        const pending = await db.query(`SELECT COUNT(*)::int AS count FROM trades WHERE user_id = $1 AND ibkr_reconciliation_status = 'pending'`, [connection.userId]);
+        result.pending_reconciliation_count = pending.rows[0]?.count || 0;
+        await BrokerConnection.updateSyncLog(syncLog.id, 'completed', {
+          tradesImported: result.imported, tradesSkipped: result.skipped, tradesFailed: result.failed,
+          duplicatesDetected: result.duplicates, syncDetails: { report_type, updated_count: result.updated || 0,
+            pending_reconciliation_count: result.pending_reconciliation_count, warnings: result.warnings,
+            outcome: result.outcome, manual_review_items: result.manualReviewItems,
+            manual_review_count: result.manualReviewCount, report_formats: result.reportFormats }
+        });
+        publishInBackground('broker_sync.completed', { connectionId, brokerType: 'ibkr', syncLogId: syncLog.id,
+          syncType, status: 'completed', imported: result.imported, updated_count: result.updated,
+          report_type, warnings: result.warnings }, { source: 'brokerSync', userId: connection.userId });
+        return { ...result, success: true, syncLogId: syncLog.id };
+      }
 
       // Route to appropriate broker service
       switch (connection.brokerType) {
@@ -200,6 +232,10 @@ class BrokerSyncService {
           throw new Error(`Unknown broker type: ${connection.brokerType}`);
       }
 
+      if (connection.brokerType === 'ibkr' && connection.ibkr_trade_confirmation_query_id) {
+        const pending = await db.query("SELECT COUNT(*)::int AS count FROM trades WHERE user_id = $1 AND ibkr_reconciliation_status = 'pending'", [connection.userId]);
+        result.pending_reconciliation_count = pending.rows[0]?.count || 0;
+      }
       // Auto-close expired options after importing broker data
       const expiredClosed = await this.closeExpiredOptions(connection.userId);
       result.expiredClosed = expiredClosed;
@@ -211,6 +247,9 @@ class BrokerSyncService {
         tradesFailed: result.failed,
         duplicatesDetected: result.duplicates,
         syncDetails: {
+          report_type,
+          updated_count: result.updated || 0,
+          pending_reconciliation_count: result.pending_reconciliation_count || 0,
           warnings: result.warnings || [],
           warning_details: result.warningDetails || [],
           outcome: result.outcome || ((result.warnings || []).length > 0 ? 'warning' : 'success'),
@@ -312,6 +351,8 @@ class BrokerSyncService {
         syncType,
         status: 'completed',
         imported: result.imported + expiredClosed,
+        updated_count: result.updated || 0,
+        report_type,
         skipped: result.skipped || 0,
         failed: result.failed || 0,
         duplicates: result.duplicates || 0,
@@ -352,6 +393,7 @@ class BrokerSyncService {
       const errorDetails = {
         errorCode: error.errorCode || null,
         rawMessage: error.rawMessage || null,
+        report_type,
         transient,
         timestamp: new Date().toISOString()
       };
@@ -361,6 +403,20 @@ class BrokerSyncService {
         errorMessage: error.message,
         errorDetails
       });
+
+      if (connection.brokerType === 'ibkr' && report_type === 'trade_confirmation') {
+        error.transient = transient;
+        error.retry_count = Number(connection.brokerMetadata?.ibkr_confirmation?.retry_count || 0);
+        await BrokerConnection.updateConfirmationSync(connectionId, { error });
+        if (['1011', '1012', '1013', '1015'].includes(String(error.errorCode))) {
+          await BrokerReauthNotificationService.markRequired(connection, 'Interactive Brokers', {
+            message: error.message, instructions: ibkrService.IBKR_REAUTH_INSTRUCTIONS, reauthMode: 'credentials'
+          });
+        }
+        publishInBackground('broker_sync.completed', { connectionId, brokerType: 'ibkr', syncLogId: syncLog.id,
+          syncType, status: 'failed', report_type, error: error.message }, { source: 'brokerSync', userId: connection.userId });
+        return { success: false, syncLogId: syncLog.id, report_type, error: error.message };
+      }
 
       // Update connection failure status. Transient failures never count
       // toward the 'error' lockout; the model pushes the next automatic sync

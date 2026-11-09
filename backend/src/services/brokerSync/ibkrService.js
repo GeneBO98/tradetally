@@ -393,7 +393,7 @@ class IBKRService {
    * importer. Empty XML Trades sections are accepted because IBKR does not
    * emit field metadata until the section has data.
    */
-  validateReportSchema(decoded) {
+  validateReportSchema(decoded, report_type = 'activity') {
     if (!decoded?.recognized || !decoded.sections?.trades) {
       return {
         valid: false,
@@ -403,6 +403,9 @@ class IBKRService {
       };
     }
 
+    if (decoded.report_type && decoded.report_type !== report_type) {
+      return { valid: false, message: `Expected an IBKR ${report_type === 'activity' ? 'Activity' : 'Trade Confirmation'} Flex Query. Check that the two Query IDs have not been swapped.`, missingFields: [], warnings: [] };
+    }
     const headers = new Set((decoded.section_headers?.trades || []).map(normalizeHeader));
     const requiredGroups = [
       { label: 'Symbol', aliases: ['symbol'] },
@@ -411,7 +414,11 @@ class IBKRService {
       { label: 'Quantity', aliases: ['quantity'] },
       { label: 'Trade Price', aliases: ['tradeprice', 'price'] },
       { label: 'Buy/Sell', aliases: ['buysell', 'action', 'side'] },
-      { label: 'Level of Detail', aliases: ['levelofdetail'] }
+      { label: 'Level of Detail', aliases: ['levelofdetail'] },
+      ...(report_type === 'trade_confirmation' ? [
+        { label: 'Account ID', aliases: ['account', 'accountid', 'clientaccountid'] },
+        { label: 'Exec ID or Trade ID', aliases: ['execid', 'ibexecid', 'executionid', 'tradeid'] }
+      ] : [])
     ];
     const missingFields = headers.size === 0
       ? []
@@ -432,17 +439,17 @@ class IBKRService {
     if (headers.size === 0) {
       warnings.push('Trades is configured, but the generated report had no trade rows, so individual field selections could not be verified.');
     }
-    if (!decoded.sections.open_positions) {
+    if (report_type === 'activity' && !decoded.sections.open_positions) {
       warnings.push('Open Positions is not configured; execution trades will sync, but TradeTally cannot reconcile currently open stock positions from IBKR.');
     }
     return { valid: true, message: 'IBKR credentials and Flex Query schema validated successfully', missingFields: [], warnings };
   }
 
-  async validateCredentials(flexToken, queryId) {
-    return this.withTokenOperation(flexToken, () => this.validateCredentialsUnlocked(flexToken, queryId));
+  async validateCredentials(flexToken, queryId, report_type = 'activity') {
+    return this.withTokenOperation(flexToken, () => this.validateCredentialsUnlocked(flexToken, queryId, report_type));
   }
 
-  async validateCredentialsUnlocked(flexToken, queryId) {
+  async validateCredentialsUnlocked(flexToken, queryId, report_type = 'activity') {
     console.log('[IBKR] Validating credentials and generated report schema...');
 
     try {
@@ -457,7 +464,7 @@ class IBKRService {
         response.statementUrl
       );
       const decoded = envelope?.decoded || decodeIBKRFlexReport(envelope?.content || envelope);
-      const schema = this.validateReportSchema(decoded);
+      const schema = this.validateReportSchema(decoded, report_type);
       if (!schema.valid) return schema;
 
       console.log('[IBKR] Credentials and Flex Query schema validated successfully');
@@ -742,6 +749,89 @@ class IBKRService {
    * @param {object} options - Sync options
    * @returns {Promise<{imported: number, skipped: number, failed: number, duplicates: number}>}
    */
+  async syncConfirmations(connection, options = {}) {
+    if (!connection.ibkr_trade_confirmation_query_id) throw new Error('No Trade Confirmation Query ID is configured');
+    return this.withTokenOperation(connection.ibkrFlexToken, async () => {
+      const state = connection.brokerMetadata?.ibkr_confirmation || {};
+      let response;
+      try {
+        response = state.reference_code
+          ? { referenceCode: state.reference_code, statementUrl: `${FLEX_BASE_URL}/GetStatement` }
+          : await this.requestFlexReport(connection.ibkrFlexToken, connection.ibkr_trade_confirmation_query_id);
+        let envelope;
+        try {
+          envelope = await this.fetchGeneratedReport(response.referenceCode, connection.ibkrFlexToken, response.statementUrl);
+        } catch (error) {
+          if (error.errorCode !== '1017' || !state.reference_code) throw error;
+          response = await this.requestFlexReport(connection.ibkrFlexToken, connection.ibkr_trade_confirmation_query_id);
+          envelope = await this.fetchGeneratedReport(response.referenceCode, connection.ibkrFlexToken, response.statementUrl);
+        }
+        const decoded = envelope.decoded || decodeIBKRFlexReport(envelope.content || envelope);
+        const schema = this.validateReportSchema(decoded, 'trade_confirmation');
+        if (!schema.valid) {
+          const error = new Error(schema.message);
+          error.errorCode = 'INVALID_CONFIRMATION_SCHEMA';
+          throw error;
+        }
+        const timezone = await getUserTimezone(connection.userId);
+        const existingContext = await this.getExistingContext(connection.userId);
+        const parsed = await parseIBKRRecords(decoded.trade_records, {
+          ...existingContext, userId: connection.userId, userTimezone: timezone,
+          brokerConnectionId: connection.id, ibkr_report_type: 'trade_confirmation',
+          sync_start_date: options.startDate || connection.syncStartDate,
+          sync_end_date: options.endDate,
+          reconcile_ibkr_records: require('./ibkrReconciliation').reconcileImportRecords
+        }, 'ibkr');
+        const result = await this.importTrades(connection.userId, parsed.trades, existingContext);
+        result.updated += parsed.ibkr_reconciliation?.updated || 0;
+        result.duplicates += parsed.ibkr_reconciliation?.duplicates || 0;
+        result.excluded += parsed.ibkr_reconciliation?.excluded || 0;
+        result.warnings = parsed.diagnostics?.warnings || [];
+        result.manualReviewItems = parsed.manualReviewItems || [];
+        result.manualReviewCount = result.manualReviewItems.length;
+        result.report_type = 'trade_confirmation';
+        result.reportFormats = [decoded.format];
+        result.tradeRows = decoded.trade_records.length;
+        result.outcome = result.warnings.length || result.failed ? 'warning' : 'success';
+        return result;
+      } catch (error) {
+        if (String(error.errorCode) === '1003') {
+          return { imported: 0, updated: 0, skipped: 0, failed: 0, duplicates: 0, excluded: 0,
+            report_type: 'trade_confirmation', report_available: false, reportFormats: [], manualReviewItems: [], manualReviewCount: 0,
+            outcome: 'warning', warnings: ['IBKR has no Trade Confirmation report available yet. The next scheduled check will try again.'] };
+        }
+        error.ibkr_report_type = 'trade_confirmation';
+        error.reference_code = error.transient && response?.referenceCode ? response.referenceCode : null;
+        throw error;
+      }
+    });
+  }
+
+  async getSnapshotContext(user_id, end_date, timezone, parsed_trades = []) {
+    if (!end_date) return { existingPositions: {}, existingOpenPositions: [] };
+    const { localToUTC } = require('../../utils/timezone');
+    const boundary = localToUTC(`${shiftDateString(end_date, 1)}T00:00:00`, timezone);
+    const result = await db.query(`SELECT * FROM trades WHERE user_id = $1 AND lower(broker) IN ('ibkr', 'captrader')
+      AND entry_time < $2 AND executions IS NOT NULL`, [user_id, boundary]);
+    const source_rows = new Map(result.rows.map(row => [row.id, row]));
+    for (const [index, trade] of parsed_trades.entries()) {
+      const id = trade.existingTradeId || `parsed-${index}`;
+      source_rows.set(id, { ...trade, id, executions: trade.executions || trade.executionData || [],
+        instrument_type: trade.instrumentType, account_identifier: trade.accountIdentifier,
+        entry_time: trade.entryTime, entry_price: trade.entryPrice, strike_price: trade.strikePrice,
+        expiration_date: trade.expirationDate, option_type: trade.optionType });
+    }
+    const rows = [];
+    for (const row of source_rows.values()) {
+      const executions = (typeof row.executions === 'string' ? JSON.parse(row.executions) : row.executions || [])
+        .filter(e => new Date(e.datetime || e.entry_time || e.entryTime) < new Date(boundary));
+      const quantity = executions.reduce((sum, e) => sum + (e.action === 'sell' ? -1 : 1) * Math.abs(Number(e.quantity) || 0), 0);
+      if (Math.abs(quantity) < 0.000001) continue;
+      rows.push({ ...row, quantity: Math.abs(quantity), side: quantity < 0 ? 'short' : 'long', exit_price: null, exit_time: null, executions });
+    }
+    return require('./ibkrReconciliation').contextFromRows(rows);
+  }
+
   async syncTrades(connection, options = {}) {
     return this.withTokenOperation(
       connection.ibkrFlexToken,
@@ -986,7 +1076,11 @@ class IBKRService {
       // IBKR Flex DateTime values are wall-clock timestamps without an offset.
       // Match manual CSV imports by interpreting them in the user's timezone
       // before persisting them as UTC.
-      userTimezone
+      userTimezone,
+      ibkr_report_type: 'activity',
+      sync_start_date: startDate,
+      sync_end_date: endDate,
+      reconcile_ibkr_records: require('./ibkrReconciliation').reconcileImportRecords
     };
     const parseResult = await parseIBKRRecords(tradeRecords, parserContext, 'ibkr');
 
@@ -1001,9 +1095,14 @@ class IBKRService {
       console.warn(`[IBKR] ${manualReviewItems.length} sell-only stock execution(s) require manual review`);
     }
 
+    const needs_snapshot = Boolean(connection.ibkr_trade_confirmation_query_id) ||
+      Object.values(existingContext.existingExecutions || {}).some(executions => executions.some(e => e.ibkr_report_type === 'trade_confirmation'));
+    const snapshot_context = sawOpenPositionSection && openPositionRecords.length > 0 && needs_snapshot
+      ? await this.getSnapshotContext(connection.userId, latestRetrievedEndDate || windows[0]?.end_date, userTimezone, trades)
+      : existingContext;
     const openPositionResult = sawOpenPositionSection
-      ? this.extractOpenPositionTradesFromRecords(openPositionRecords, connection, existingContext, {
-        parsedTrades: trades,
+      ? this.extractOpenPositionTradesFromRecords(openPositionRecords, connection, snapshot_context, {
+        parsedTrades: needs_snapshot ? [] : trades,
         endDate: latestRetrievedEndDate || windows[0]?.end_date,
         sectionPresent: true
       })
@@ -1030,6 +1129,9 @@ class IBKRService {
 
     // Import trades
     const result = await this.importTrades(connection.userId, trades, existingContext);
+    result.updated += parseResult.ibkr_reconciliation?.updated || 0;
+    result.duplicates += parseResult.ibkr_reconciliation?.duplicates || 0;
+    result.excluded += parseResult.ibkr_reconciliation?.excluded || 0;
     result.warnings = [...warnings, ...parseWarnings, ...openPositionResult.warnings];
     result.warningDetails = [
       ...warningDetails,
@@ -1166,6 +1268,8 @@ class IBKRService {
                 entry_commission = $12,
                 exit_commission = $13,
                 r_value = CASE WHEN $14::boolean THEN $15 ELSE r_value END,
+                mae = NULL, mfe = NULL, post_exit_mae = NULL, post_exit_mfe = NULL,
+                quality_grade = NULL, quality_score = NULL, quality_metrics = NULL,
                 updated_at = NOW()
             WHERE id = $16 AND user_id = $17
           `;
@@ -1236,6 +1340,13 @@ class IBKRService {
       }
     }
 
+    if (updated > 0) {
+      for (const job_type of ['mae_recalc', 'quality_backfill']) {
+        await db.query(`INSERT INTO job_queue (type, data, priority, user_id, status, created_at)
+          SELECT $1::varchar(50), jsonb_build_object('userId', $2::text), 4, $2::uuid, 'pending', NOW()
+          WHERE NOT EXISTS (SELECT 1 FROM job_queue WHERE type = $1::varchar(50) AND user_id = $2::uuid AND status = 'pending')`, [job_type, userId]);
+      }
+    }
     try {
       await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'IBKR broker sync');
       await AnalyticsCache.invalidate(userId);
@@ -2011,6 +2122,9 @@ class IBKRService {
    */
   filterByDateRange(trades, startDate, endDate) {
     return trades.filter(trade => {
+      // Source executions were range-filtered before reconstruction. An update
+      // may close a position opened before that range and must keep its ID.
+      if (trade.isUpdate && trade.existingTradeId) return true;
       const tradeDate = new Date(trade.tradeDate || trade.entryTime);
 
       if (startDate && tradeDate < new Date(startDate)) {

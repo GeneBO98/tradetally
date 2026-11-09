@@ -37,23 +37,30 @@
               <li>Open <strong>Flex Web Service Configuration</strong> (gear icon), enable <strong>Flex Web Service Status</strong>, and save</li>
               <li>Set <strong>Should Expire After</strong> to <strong>1 Year</strong> — IBKR tokens expire after 6 hours by default, which breaks sync the same day</li>
               <li>Generate or copy your <strong>Current Token</strong></li>
+              <li>For same-day fills, create a separate <strong>Trade Confirmation Flex Query</strong> with <strong>Executions</strong> detail and intraday coverage. Include Account ID, Symbol, Asset Class, Conid, Exec ID, Trade ID, Date/Time, Buy/Sell, Quantity, Price, Commission, Currency and Multiplier. For options include Underlying Symbol, Strike, Expiry and Put/Call; include Brokerage Order ID for spreads.</li>
+              <li>Use matching date/time formats and reporting timezone for both queries. Keep the Activity Query ID and enter the second ID in its own field below.</li>
             </ol>
             <p class="mt-3 text-xs text-primary-700 dark:text-primary-400">
-              Note: IBKR updates Activity Flex data once daily after close of business, so new trades appear on the next sync after the following business day. For advisor or linked accounts, the token is only available from the master account.
+              Activity reports contain finalized data after overnight processing. An optional Trade Confirmation query imports same-day fills; commissions and P&amp;L remain preliminary until Activity reconciliation. Availability depends on IBKR. For linked accounts, obtain the token from the master account.
             </p>
             <p class="mt-2 text-xs text-primary-700 dark:text-primary-400">
-              <a href="https://www.interactivebrokers.com/campus/ibkr-api-page/flex-web-service/" target="_blank" class="underline">View IBKR's official Flex Web Service documentation</a> </p> </div> <!-- Error Message --> <div v-if="props.reconnecting" class="callout-warning mb-6"> Your Flex token no longer works. Generate a new token in IBKR (Performance &amp; Reports &gt; Flex Queries &gt; Flex Web Service Configuration), set "Should Expire After" to 1 Year, and paste it below. Your query ID, trades and sync settings are kept. </div> <div v-if="props.error" class="callout-danger mb-6"> <div class="flex"> <svg class="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"> <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /> </svg> <p class="ml-3 text-sm text-red-600 dark:text-red-300">{{ props.error }}</p> </div> </div> <form @submit.prevent="handleSubmit" class="space-y-4"> <div> <label for="accountLabel" class="label">Account Label</label> <input id="accountLabel" v-model="form.accountLabel" type="text" class="input" placeholder="e.g., Main Account, Paper Trading" /> <p class="mt-1 text-sm text-gray-500 dark:text-gray-400"> Optional name to identify this account </p> </div> <div> <label for="flexToken" class="label">Flex Token</label> <input id="flexToken" v-model="form.flexToken" type="password" class="input" placeholder="Enter your Flex Token" required /> </div> <div> <label for="flexQueryId" class="label">Flex Query ID</label> <input id="flexQueryId" v-model="form.flexQueryId" type="text" class="input" placeholder="e.g., 123456" :readonly="Boolean(props.reconnecting)" :class="{'opacity-70 cursor-not-allowed': props.reconnecting }"
+              <a href="https://www.interactivebrokers.com/docs/web-api/flex-web-service/using-flex-web-service/generate-the-report" target="_blank" class="underline">View IBKR's official Flex Web Service documentation</a> · <a href="https://www.ibkrguides.com/clientportal/performanceandstatements/tradeflex.htm" target="_blank" rel="noopener noreferrer" class="underline">Trade Confirmation query setup</a> </p> </div> <!-- Error Message --> <div v-if="props.reconnecting" class="callout-warning mb-6"> Your Flex token no longer works. Generate a new token in IBKR (Performance &amp; Reports &gt; Flex Queries &gt; Flex Web Service Configuration), set "Should Expire After" to 1 Year, and paste it below. Your query ID, trades and sync settings are kept. </div> <div v-if="props.error" class="callout-danger mb-6"> <div class="flex"> <svg class="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"> <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /> </svg> <p class="ml-3 text-sm text-red-600 dark:text-red-300">{{ props.error }}</p> </div> </div> <form @submit.prevent="handleSubmit" class="space-y-4"> <div> <label for="accountLabel" class="label">Account Label</label> <input id="accountLabel" v-model="form.accountLabel" type="text" class="input" placeholder="e.g., Main Account, Paper Trading" /> <p class="mt-1 text-sm text-gray-500 dark:text-gray-400"> Optional name to identify this account </p> </div> <div> <label for="flexToken" class="label">Flex Token</label> <input id="flexToken" v-model="form.flexToken" type="password" class="input" placeholder="Enter your Flex Token" required /> </div> <div> <label for="flexQueryId" class="label">Activity Flex Query ID</label> <input id="flexQueryId" v-model="form.flexQueryId" type="text" class="input" placeholder="e.g., 123456" :readonly="Boolean(props.reconnecting)" :class="{'opacity-70 cursor-not-allowed': props.reconnecting }"
                 required
               />
             </div>
 
+            <div>
+              <label for="confirmationQueryId" class="label">Trade Confirmation Flex Query ID (optional)</label>
+              <input id="confirmationQueryId" v-model="form.ibkr_trade_confirmation_query_id" type="text" class="input" placeholder="For same-day fills" />
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Uses the same Flex token. With Auto-Sync enabled, confirmations are checked every 15 minutes.</p>
+            </div>
             <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
               <div>
                 <label class="block text-sm font-medium text-gray-900 dark:text-white">
                   Auto-Sync
                 </label>
                 <p class="text-sm text-gray-500 dark:text-gray-400">
-                  Automatically sync trades daily
+                  Sync Activity on schedule and same-day fills every 15 minutes
                 </p>
               </div>
               <button                 type="button"
@@ -160,6 +167,7 @@ const form = ref({
   accountLabel: existing?.accountLabel || '',
   flexToken: '',
   flexQueryId: existing?.ibkrFlexQueryId || '',
+  ibkr_trade_confirmation_query_id: existing?.ibkr_trade_confirmation_query_id || '',
   autoSyncEnabled: existing ? existing.autoSyncEnabled !== false : true,
   syncFrequency: existing?.syncFrequency || 'daily',
   syncTime: existing?.syncTime ? String(existing.syncTime).slice(0, 5) : '06:00',
@@ -184,6 +192,7 @@ function handleSubmit() {
     accountLabel: form.value.accountLabel,
     flexToken: form.value.flexToken,
     flexQueryId: form.value.flexQueryId,
+    ibkr_trade_confirmation_query_id: form.value.ibkr_trade_confirmation_query_id.trim() || null,
     autoSyncEnabled: form.value.autoSyncEnabled,
     syncFrequency: form.value.syncFrequency,
     syncTime: form.value.syncTime + ':00',

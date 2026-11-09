@@ -11,11 +11,29 @@ const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const NewsNotificationService = require('./newsNotificationService');
 const TierService = require('./tierService');
+const MarketDataActivityService = require('./marketDataActivityService');
+const { isNewsPeakWindow } = require('../utils/usMarketSchedule');
 
 const LOG_PREFIX = '[NEWS-SERVICE]';
 
-// Cache staleness threshold (1 hour)
-const CACHE_MAX_AGE_MS = 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+
+// Cache staleness threshold for user-driven refreshes (1 hour)
+const CACHE_MAX_AGE_MS = HOUR_MS;
+
+// Scheduled refresh cadence. Hourly on weekdays 06:00-20:00 ET; overnight and
+// weekend headlines rarely matter to a dashboard nobody has open, so the
+// scheduler only revisits symbols every few hours then. Symbols whose
+// headlines did not change for QUIET_STREAK_THRESHOLD consecutive scheduled
+// fetches back off further until something new appears.
+const PEAK_REFRESH_MAX_AGE_MS = HOUR_MS;
+const OFF_PEAK_REFRESH_MAX_AGE_MS = 4 * HOUR_MS;
+const QUIET_REFRESH_MAX_AGE_MS = 6 * HOUR_MS;
+const QUIET_STREAK_THRESHOLD = 3;
+// The scheduler ticks hourly; without slack a symbol fetched a few seconds
+// into one tick would look fresh at the matching tick N hours later and slip
+// a full extra hour.
+const SCHEDULE_SLACK_MS = 5 * 60 * 1000;
 
 // Delay between Finnhub API calls to respect rate limits (300ms)
 const API_DELAY_MS = 300;
@@ -55,8 +73,9 @@ class NewsService {
 
   /**
    * Get all distinct symbols with open trades or in watchlists, limited to
-   * users who are currently Pro (news is a Pro feature). On self-hosted
-   * installs (billing disabled) every user counts as Pro.
+   * users who are currently Pro (news is a Pro feature) and recently active
+   * (see MarketDataActivityService). On self-hosted installs (billing
+   * disabled) every user counts as Pro and the activity filter is off.
    */
   static async getAllTrackedSymbols() {
     const query = `
@@ -73,12 +92,11 @@ class NewsService {
     `;
 
     const result = await db.query(query);
-    const proUserIds = new Set(
-      await TierService.filterProUserIds(result.rows.map(row => row.user_id))
-    );
+    const proUserIds = await TierService.filterProUserIds(result.rows.map(row => row.user_id));
+    const eligibleUserIds = new Set(await MarketDataActivityService.filterActiveUserIds(proUserIds));
     const symbols = new Set();
     for (const row of result.rows) {
-      if (proUserIds.has(String(row.user_id))) {
+      if (eligibleUserIds.has(String(row.user_id))) {
         symbols.add(row.symbol);
       }
     }
@@ -190,7 +208,7 @@ class NewsService {
   /**
    * Fetch and cache news for multiple symbols with rate limiting
    */
-  static async fetchAndCacheAll(symbols) {
+  static async fetchAndCacheAll(symbols, options = {}) {
     let fetched = 0;
     let skipped = 0;
     let errors = 0;
@@ -199,8 +217,9 @@ class NewsService {
 
     const normalized = normalizeSymbols(symbols);
 
-    for (const symbol of normalized) {
-      const outcome = await this.refreshSymbolIfStale(symbol);
+    for (let index = 0; index < normalized.length; index++) {
+      const symbol = normalized[index];
+      const outcome = await this.refreshSymbolIfStale(symbol, options);
       if (outcome.status === 'fetched') {
         fetched++;
         if (outcome.changed) changedSymbols.push(symbol);
@@ -211,8 +230,9 @@ class NewsService {
         failedSymbols.push(symbol);
       }
 
-      // Rate limit delay between API calls
-      if (normalized.indexOf(symbol) < normalized.length - 1) {
+      // Rate limit delay between API calls (cache hits made no provider call)
+      const calledProvider = outcome.status === 'fetched' || outcome.status === 'error';
+      if (calledProvider && index < normalized.length - 1) {
         await new Promise(resolve => setTimeout(resolve, API_DELAY_MS));
       }
     }
@@ -220,7 +240,82 @@ class NewsService {
     return { fetched, skipped, errors, total: normalized.length, changedSymbols, failedSymbols };
   }
 
-  static async refreshSymbolIfStale(symbol) {
+  /**
+   * Maximum cache age the scheduler tolerates for a symbol right now.
+   */
+  static getScheduledMaxAgeMs(unchangedStreak = 0, now = new Date()) {
+    const base = isNewsPeakWindow(now) ? PEAK_REFRESH_MAX_AGE_MS : OFF_PEAK_REFRESH_MAX_AGE_MS;
+    if ((parseInt(unchangedStreak, 10) || 0) >= QUIET_STREAK_THRESHOLD) {
+      return Math.max(base, QUIET_REFRESH_MAX_AGE_MS);
+    }
+    return base;
+  }
+
+  /**
+   * Split tracked symbols into those due for a scheduled refresh and those
+   * still fresh enough for the current time of day and headline activity.
+   * One query covers every symbol instead of a freshness probe per symbol.
+   */
+  static async planScheduledRefresh(symbols, now = new Date()) {
+    const normalized = normalizeSymbols(symbols);
+    if (normalized.length === 0) return { due: [], notDue: [] };
+
+    const result = await db.query(
+      `SELECT UPPER(symbol) AS symbol, fetched_at, COALESCE(unchanged_streak, 0) AS unchanged_streak
+         FROM dashboard_news_cache
+        WHERE UPPER(symbol) = ANY($1::text[])`,
+      [normalized]
+    );
+    const cacheBySymbol = new Map(result.rows.map(row => [row.symbol, row]));
+
+    const due = [];
+    const notDue = [];
+    for (const symbol of normalized) {
+      const row = cacheBySymbol.get(symbol);
+      const fetchedAt = row?.fetched_at ? new Date(row.fetched_at).getTime() : NaN;
+      if (!Number.isFinite(fetchedAt)) {
+        due.push(symbol);
+        continue;
+      }
+      const maxAgeMs = this.getScheduledMaxAgeMs(row.unchanged_streak, now);
+      if (now.getTime() - fetchedAt >= maxAgeMs - SCHEDULE_SLACK_MS) {
+        due.push(symbol);
+      } else {
+        notDue.push(symbol);
+      }
+    }
+    return { due, notDue };
+  }
+
+  /**
+   * Scheduler entry point: refresh only the symbols that are due, and track
+   * how many consecutive fetches returned unchanged headlines.
+   */
+  static async fetchAndCacheScheduled(symbols, now = new Date()) {
+    const { due, notDue } = await this.planScheduledRefresh(symbols, now);
+    const summary = await this.fetchAndCacheAll(due, { maxAgeMs: 0, recordStreak: true });
+    return {
+      ...summary,
+      skipped: summary.skipped + notDue.length,
+      total: summary.total + notDue.length,
+      notDue: notDue.length
+    };
+  }
+
+  static async recordUnchangedStreak(symbol, changed) {
+    try {
+      await db.query(
+        `UPDATE dashboard_news_cache
+            SET unchanged_streak = CASE WHEN $2::boolean THEN 0 ELSE COALESCE(unchanged_streak, 0) + 1 END
+          WHERE UPPER(symbol) = $1`,
+        [symbol, Boolean(changed)]
+      );
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Failed to record headline streak for ${symbol}:`, error.message);
+    }
+  }
+
+  static async refreshSymbolIfStale(symbol, { maxAgeMs = CACHE_MAX_AGE_MS, recordStreak = false } = {}) {
     const normalized = String(symbol || '').trim().toUpperCase();
     const existing = this._inFlightRefreshes.get(normalized);
     if (existing) {
@@ -232,13 +327,15 @@ class NewsService {
 
     const refresh = (async () => {
       try {
-        const cached = await db.query(
-          `SELECT fetched_at, news_items FROM dashboard_news_cache
-           WHERE UPPER(symbol) = $1
-             AND fetched_at > NOW() - ($2::bigint * INTERVAL '1 millisecond')`,
-          [normalized, CACHE_MAX_AGE_MS]
-        );
-        if (cached.rows.length > 0) return { status: 'skipped', changed: false };
+        if (maxAgeMs > 0) {
+          const cached = await db.query(
+            `SELECT fetched_at, news_items FROM dashboard_news_cache
+             WHERE UPPER(symbol) = $1
+               AND fetched_at > NOW() - ($2::bigint * INTERVAL '1 millisecond')`,
+            [normalized, maxAgeMs]
+          );
+          if (cached.rows.length > 0) return { status: 'skipped', changed: false };
+        }
 
         const previous = await db.query(
           'SELECT news_items FROM dashboard_news_cache WHERE UPPER(symbol) = $1 ORDER BY fetched_at DESC LIMIT 1',
@@ -247,10 +344,9 @@ class NewsService {
         const previousItems = previous.rows[0]?.news_items || [];
         const result = await this.fetchAndCacheSymbol(normalized);
         if (result === null) return { status: 'error', changed: false };
-        return {
-          status: 'fetched',
-          changed: this.newsChanged(previousItems, result)
-        };
+        const changed = this.newsChanged(previousItems, result);
+        if (recordStreak) await this.recordUnchangedStreak(normalized, changed);
+        return { status: 'fetched', changed };
       } catch (error) {
         console.error(`${LOG_PREFIX} Failed background refresh for ${normalized}:`, error.message);
         return { status: 'error', changed: false, error: error.message };
@@ -334,10 +430,22 @@ class NewsService {
     const uncachedSymbols = [];
 
     const cachedSymbolSet = new Set(cached.map(r => r.symbol));
+    const staleSymbols = [];
 
     for (const row of cached) {
       const items = Array.isArray(row.news_items) ? row.news_items : [];
       allNews.push(...items);
+      const fetchedAt = row.fetched_at ? new Date(row.fetched_at).getTime() : NaN;
+      if (!Number.isFinite(fetchedAt) || Date.now() - fetchedAt > CACHE_MAX_AGE_MS) {
+        staleSymbols.push(row.symbol);
+      }
+    }
+
+    // The scheduler skips inactive accounts and slows down off-hours, so a
+    // viewer can land on old headlines. Serve them now and refresh behind the
+    // response; the next load picks up the new items.
+    if (staleSymbols.length > 0 && finnhub.isConfigured()) {
+      this.requestBackgroundRefresh(staleSymbols, { reason: 'viewer_stale_cache' });
     }
 
     // Find symbols not in cache

@@ -49,3 +49,12 @@ describe('trading calculation display contracts', () => {
     expect(getTradeGrossPnl(trade)).toBeCloseTo(10, 8)
   })
 })
+
+describe('IBKR confirmation reconciliation display contract', () => {
+  it('includes preliminary P&L and displays finalized net/gross values', () => {
+    const { expected } = contracts.ibkr_confirmation_reconciliation
+    expect(getTradeNetPnl({ ...expected, ibkr_reconciliation_status: 'reconciled' })).toBe(98)
+    expect(getTradeGrossPnl(expected)).toBe(100)
+    expect(getTradeNetPnl({ ...expected, pnl: 100, commission: 0, ibkr_reconciliation_status: 'pending' })).toBe(100)
+  })
+})

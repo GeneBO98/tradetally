@@ -1,4 +1,68 @@
 {
+  "ibkr_confirmation_reconciliation": {
+    "executions": [
+      {
+        "execution_id": "E1",
+        "trade_id": "T1",
+        "action": "buy",
+        "quantity": 10,
+        "price": 100,
+        "datetime": "2026-11-06T09:30:00Z",
+        "commission": 0,
+        "fees": 0,
+        "ibkr_report_type": "trade_confirmation"
+      },
+      {
+        "execution_id": "E2",
+        "trade_id": "T2",
+        "action": "sell",
+        "quantity": 10,
+        "price": 110,
+        "datetime": "2026-11-06T10:30:00Z",
+        "commission": 0,
+        "fees": 0,
+        "ibkr_report_type": "trade_confirmation"
+      }
+    ],
+    "activity_records": [
+      {
+        "Account": "U1",
+        "Symbol": "AAPL",
+        "AssetClass": "STK",
+        "Conid": "265598",
+        "ExecID": "E1",
+        "TradeID": "T1",
+        "DateTime": "20261106;093000",
+        "Quantity": "10",
+        "TradePrice": "100",
+        "IBCommission": "-1",
+        "Buy/Sell": "BUY",
+        "LevelOfDetail": "EXECUTION",
+        "ibkr_report_type": "activity"
+      },
+      {
+        "Account": "U1",
+        "Symbol": "AAPL",
+        "AssetClass": "STK",
+        "Conid": "265598",
+        "ExecID": "E2",
+        "TradeID": "T2",
+        "DateTime": "20261106;103000",
+        "Quantity": "10",
+        "TradePrice": "110",
+        "IBCommission": "-1",
+        "Buy/Sell": "SELL",
+        "LevelOfDetail": "EXECUTION",
+        "ibkr_report_type": "activity"
+      }
+    ],
+    "expected": {
+      "pnl": 98,
+      "commission": 2,
+      "fees": 0,
+      "exit_time": "2026-11-06T10:30:00Z"
+    }
+  },
   "point_stop_cases": [
     { "symbol": "ESZ6", "instrument_type": "future", "side": "long", "entry_price": 6000, "quantity": 3, "expected_stop": 5998.5 },
     { "symbol": "NQZ6", "instrument_type": "future", "side": "short", "entry_price": 22000, "quantity": 1, "expected_stop": 22010 },

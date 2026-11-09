@@ -206,9 +206,16 @@ const brokerSyncController = {
         });
       }
 
+      const confirmation_id = req.body.ibkr_trade_confirmation_query_id;
+      if (confirmation_id) {
+        const confirmation_validation = await ibkrService.validateCredentials(flexToken, confirmation_id, 'trade_confirmation');
+        if (!confirmation_validation.valid) return res.status(400).json({ success: false, error: confirmation_validation.message });
+        validation.warnings = [...(validation.warnings || []), ...(confirmation_validation.warnings || [])];
+      }
       // Create or update connection (duplicate query IDs handled by DB unique constraint)
       const connection = await BrokerConnection.create(userId, {
         brokerType: 'ibkr',
+        ...(Object.prototype.hasOwnProperty.call(req.body, 'ibkr_trade_confirmation_query_id') ? { ibkr_trade_confirmation_query_id: confirmation_id || null } : {}),
         ibkrFlexToken: flexToken,
         ibkrFlexQueryId: flexQueryId,
         accountLabel: accountLabel || null,
@@ -222,6 +229,10 @@ const brokerSyncController = {
       // expired connection is the IBKR "reconnect" path, so clear the old
       // failure so the card and banner stop showing the stale token error.
       await BrokerConnection.updateStatus(connection.id, 'active', validation.message, true);
+      if (confirmation_id) {
+        await BrokerConnection.updateBrokerMetadata(connection.id, { ibkr_confirmation: {} });
+        await BrokerConnection.update(connection.id, { ibkr_next_confirmation_sync_at: new Date() });
+      }
 
       // Calculate next sync time if auto-sync enabled
       if (autoSyncEnabled && syncFrequency !== 'manual') {
@@ -777,9 +788,23 @@ const brokerSyncController = {
         });
       }
 
+      if (Object.prototype.hasOwnProperty.call(req.body, 'ibkr_trade_confirmation_query_id')) {
+        if (connection.brokerType !== 'ibkr') return res.status(400).json({ success: false, error: 'Confirmation queries are available for IBKR connections only' });
+        const confirmation_id = req.body.ibkr_trade_confirmation_query_id || null;
+        if (confirmation_id) {
+          const credentials = await BrokerConnection.findById(id, true);
+          const validation = await ibkrService.validateCredentials(credentials.ibkrFlexToken, confirmation_id, 'trade_confirmation');
+          if (!validation.valid) return res.status(400).json({ success: false, error: validation.message });
+        }
+      }
+
       // Update settings. syncStartDate and accountLabel may be explicitly null
       // (meaning "all time" / "clear label"), so only forward them when present.
       const updates = {};
+      if (Object.prototype.hasOwnProperty.call(req.body, 'ibkr_trade_confirmation_query_id')) {
+        updates.ibkr_trade_confirmation_query_id = req.body.ibkr_trade_confirmation_query_id || null;
+        updates.ibkr_next_confirmation_sync_at = req.body.ibkr_trade_confirmation_query_id ? new Date() : null;
+      }
       if (Object.prototype.hasOwnProperty.call(req.body, 'autoSyncEnabled')) {
         updates.autoSyncEnabled = autoSyncEnabled;
       }
@@ -797,6 +822,7 @@ const brokerSyncController = {
       }
       if (Object.keys(updates).length > 0) {
         await BrokerConnection.update(id, updates);
+        if (Object.prototype.hasOwnProperty.call(updates, 'ibkr_trade_confirmation_query_id')) await BrokerConnection.updateBrokerMetadata(id, { ibkr_confirmation: {} });
       }
 
       if (Object.prototype.hasOwnProperty.call(req.body, 'excluded_account_identifiers')) {
@@ -868,7 +894,7 @@ const brokerSyncController = {
     try {
       const userId = req.user.id;
       const { id } = req.params;
-      const { startDate, endDate } = req.body;
+      const { startDate, endDate, report_type } = req.body;
 
       // Verify ownership and get connection with credentials
       const connection = await BrokerConnection.findById(id, true);
@@ -895,6 +921,8 @@ const brokerSyncController = {
         });
       }
 
+      if (report_type && connection.brokerType !== 'ibkr') return res.status(400).json({ success: false, error: 'Report selection is available for IBKR only' });
+      if (report_type === 'trade_confirmation' && !connection.ibkr_trade_confirmation_query_id) return res.status(400).json({ success: false, error: 'Add a Trade Confirmation Query ID first' });
       console.log(`[BROKER-SYNC] Starting manual sync for connection ${id}`);
 
       // Use the broker sync service orchestrator which handles both IBKR and Schwab
@@ -904,7 +932,8 @@ const brokerSyncController = {
           const result = await brokerSyncService.syncConnection(id, {
             syncType: 'manual',
             startDate,
-            endDate
+            endDate,
+            report_type
           });
 
           console.log(`[BROKER-SYNC] Sync completed for connection ${id}: ${result.imported || 0} imported`);
@@ -1030,6 +1059,15 @@ const brokerSyncController = {
         }
       }
 
+      if (testResult.valid && connection.brokerType === 'ibkr' && connection.ibkr_trade_confirmation_query_id) {
+        const confirmation = await ibkrService.validateCredentials(connection.ibkrFlexToken, connection.ibkr_trade_confirmation_query_id, 'trade_confirmation');
+        if (!confirmation.valid) {
+          await BrokerConnection.updateConfirmationSync(id, { error: Object.assign(new Error(confirmation.message), { errorCode: confirmation.errorCode, transient: confirmation.transient }) });
+          return res.json({ success: false, message: `Activity query is valid. Trade Confirmation query: ${confirmation.message}`, warnings: confirmation.warnings || [] });
+        }
+        testResult.warnings = [...(testResult.warnings || []), ...(confirmation.warnings || [])];
+        await BrokerConnection.updateBrokerMetadata(id, { ibkr_confirmation: {} });
+      }
       if (testResult.valid) {
         await BrokerConnection.updateStatus(id, 'active', 'Connection test successful', true);
       } else {

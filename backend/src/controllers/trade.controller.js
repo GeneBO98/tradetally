@@ -2376,6 +2376,8 @@ const tradeController = {
             importId,
             userTimezone,
             sourceTimezone,
+            // This is the actual import worker, never the preview path.
+            reconcile_ibkr_records: accountMode === 'none' ? undefined : require('../services/brokerSync/ibkrReconciliation').reconcileImportRecords,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
               timeGapMinutes: userSettings.trade_grouping_time_gap_minutes ?? 60
@@ -2707,9 +2709,9 @@ const tradeController = {
             // Continue without applying fees
           }
 
-          let imported = 0;
+          let imported = parseResult.ibkr_reconciliation?.updated || 0;
           let failed = 0;
-          let duplicates = 0;
+          let duplicates = parseResult.ibkr_reconciliation?.duplicates || 0;
           const failedTrades = [];
 
           // Clear timeout since we're proceeding normally
@@ -2837,7 +2839,7 @@ const tradeController = {
 
                 // Omitting imported notes must not erase notes the user has
                 // already written on an existing trade.
-                if (!includeImportedNotes) {
+                if (!includeImportedNotes || ['ibkr', 'captrader'].includes(tradeData.broker)) {
                   delete cleanTradeData.notes;
                 }
 

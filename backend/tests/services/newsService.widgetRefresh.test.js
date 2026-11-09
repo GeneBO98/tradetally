@@ -16,16 +16,22 @@ jest.mock('../../src/services/tierService', () => ({
   filterProUserIds: jest.fn()
 }));
 
+jest.mock('../../src/services/marketDataActivityService', () => ({
+  filterActiveUserIds: jest.fn(async ids => ids)
+}));
+
 const db = require('../../src/config/database');
 const TierService = require('../../src/services/tierService');
 const finnhub = require('../../src/utils/finnhub');
 const NewsService = require('../../src/services/newsService');
 const NewsNotificationService = require('../../src/services/newsNotificationService');
+const MarketDataActivityService = require('../../src/services/marketDataActivityService');
 
 describe('NewsService widget refresh tracking', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     TierService.filterProUserIds.mockImplementation(async ids => [...new Set(ids.map(String))]);
+    MarketDataActivityService.filterActiveUserIds.mockImplementation(async ids => ids);
   });
 
   afterEach(async () => {
@@ -150,5 +156,107 @@ describe('NewsService widget refresh tracking', () => {
       errors: 1,
       failedSymbols: ['VOO']
     }));
+  });
+  test('skips symbols whose only trackers are inactive Pro users', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [
+        { symbol: 'NVDA', user_id: 'active-pro' },
+        { symbol: 'GME', user_id: 'dormant-pro' }
+      ]
+    });
+    TierService.filterProUserIds.mockResolvedValueOnce(['active-pro', 'dormant-pro']);
+    MarketDataActivityService.filterActiveUserIds.mockResolvedValueOnce(['active-pro']);
+
+    expect(await NewsService.getAllTrackedSymbols()).toEqual(['NVDA']);
+  });
+
+  describe('scheduled refresh cadence', () => {
+    // Monday 2026-11-09 10:00 ET and Sunday 2026-11-08 10:00 ET
+    const weekdayMorning = new Date('2026-11-09T15:00:00Z');
+    const sundayMorning = new Date('2026-11-08T15:00:00Z');
+    const ago = (now, minutes) => new Date(now.getTime() - minutes * 60 * 1000).toISOString();
+
+    test('refreshes hourly during the weekday news window', async () => {
+      db.query.mockResolvedValueOnce({
+        rows: [
+          { symbol: 'AAPL', fetched_at: ago(weekdayMorning, 61), unchanged_streak: 0 },
+          { symbol: 'MSFT', fetched_at: ago(weekdayMorning, 20), unchanged_streak: 0 }
+        ]
+      });
+
+      const plan = await NewsService.planScheduledRefresh(['AAPL', 'MSFT', 'TSLA'], weekdayMorning);
+
+      expect(plan.due.sort()).toEqual(['AAPL', 'TSLA']);
+      expect(plan.notDue).toEqual(['MSFT']);
+    });
+
+    test('waits four hours between refreshes on weekends and overnight', async () => {
+      db.query.mockResolvedValueOnce({
+        rows: [
+          { symbol: 'AAPL', fetched_at: ago(sundayMorning, 90), unchanged_streak: 0 },
+          { symbol: 'MSFT', fetched_at: ago(sundayMorning, 4 * 60), unchanged_streak: 0 }
+        ]
+      });
+
+      const plan = await NewsService.planScheduledRefresh(['AAPL', 'MSFT'], sundayMorning);
+
+      expect(plan.due).toEqual(['MSFT']);
+      expect(plan.notDue).toEqual(['AAPL']);
+    });
+
+    test('backs quiet symbols off to six hours even during the news window', async () => {
+      db.query.mockResolvedValueOnce({
+        rows: [
+          { symbol: 'AAPL', fetched_at: ago(weekdayMorning, 2 * 60), unchanged_streak: 3 },
+          { symbol: 'MSFT', fetched_at: ago(weekdayMorning, 2 * 60), unchanged_streak: 2 }
+        ]
+      });
+
+      const plan = await NewsService.planScheduledRefresh(['AAPL', 'MSFT'], weekdayMorning);
+
+      expect(plan.due).toEqual(['MSFT']);
+      expect(plan.notDue).toEqual(['AAPL']);
+    });
+
+    test('tolerates scheduler tick drift so a symbol is not pushed back a full hour', async () => {
+      db.query.mockResolvedValueOnce({
+        rows: [{ symbol: 'AAPL', fetched_at: ago(weekdayMorning, 59), unchanged_streak: 0 }]
+      });
+
+      const plan = await NewsService.planScheduledRefresh(['AAPL'], weekdayMorning);
+
+      expect(plan.due).toEqual(['AAPL']);
+    });
+
+    test('records the unchanged-headline streak after a scheduled fetch', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const items = [{ id: 7, datetime: now, headline: 'Same' }];
+      db.query
+        .mockResolvedValueOnce({ rows: [] }) // plan: nothing cached
+        .mockResolvedValueOnce({ rows: [{ news_items: items }] }) // previous items
+        .mockResolvedValueOnce({ rows: [] }) // upsert
+        .mockResolvedValueOnce({ rows: [] }); // streak update
+      finnhub.getCompanyNews.mockResolvedValueOnce(items);
+
+      const summary = await NewsService.fetchAndCacheScheduled(['AAPL'], weekdayMorning);
+
+      expect(summary).toEqual(expect.objectContaining({ fetched: 1, changedSymbols: [] }));
+      const streakCall = db.query.mock.calls.find(([sql]) => sql.includes('unchanged_streak = CASE'));
+      expect(streakCall[1]).toEqual(['AAPL', false]);
+    });
+  });
+
+  test('serves stale cached news immediately and refreshes it in the background', async () => {
+    const stale = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    db.query.mockResolvedValueOnce({
+      rows: [{ symbol: 'AAPL', news_items: [{ id: 1, datetime: 1, headline: 'Old' }], fetched_at: stale }]
+    });
+    const spy = jest.spyOn(NewsService, 'requestBackgroundRefresh').mockReturnValue({ enqueued: 1, deduplicated: 0 });
+
+    const news = await NewsService.getNewsForSymbols(['AAPL']);
+
+    expect(news).toEqual([{ id: 1, datetime: 1, headline: 'Old' }]);
+    expect(spy).toHaveBeenCalledWith(['AAPL'], { reason: 'viewer_stale_cache' });
+    spy.mockRestore();
   });
 });

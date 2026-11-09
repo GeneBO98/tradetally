@@ -321,6 +321,7 @@
               <div class="flex items-center space-x-2">
                 <div class="text-lg font-semibold text-gray-900 dark:text-white">
                   {{ trade.symbol }}
+                  <IBKRReconciliationStatus :status="trade.ibkr_reconciliation_status" />
                 </div>
                 <span class="badge"
                   :class="[
@@ -535,6 +536,7 @@
                       <div class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="trade.symbol">
                         {{ trade.symbol }}
                       </div>
+                      <IBKRReconciliationStatus :status="trade.ibkr_reconciliation_status" />
                       <div v-if="hasSymbolBadgeRow(trade)" class="mt-0.5 flex flex-wrap items-center gap-1">
                         <!-- Instrument type badge -->
                         <span v-if="getInstrumentType(trade) === 'option'"
@@ -1139,6 +1141,7 @@
 </template>
 
 <script setup>
+import IBKRReconciliationStatus from '@/components/trades/IBKRReconciliationStatus.vue'
 import ExcursionUnitSelect from '@/components/trades/ExcursionUnitSelect.vue'
 import { useExcursionDisplay } from '@/composables/useExcursionDisplay'
 import { pnlClass, winRateClass } from '@/utils/metricTone'

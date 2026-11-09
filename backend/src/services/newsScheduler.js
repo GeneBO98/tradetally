@@ -2,11 +2,12 @@
  * News Scheduler
  * Runs periodically to pre-fetch and cache company news for open positions
  *
- * Default schedule: Every hour
- * - Queries all distinct symbols with open trades
- * - Fetches news from Finnhub with rate-limit-respecting delays
+ * Ticks every hour:
+ * - Queries symbols with open trades or on watchlists for recently active Pro users
+ * - Refreshes a symbol only when it is due: hourly on weekdays 06:00-20:00 ET,
+ *   every 4 hours otherwise, and every 6 hours once its headlines have not
+ *   changed for 3 consecutive fetches (see NewsService.planScheduledRefresh)
  * - Stores results in dashboard_news_cache table
- * - Skips symbols already fetched within the last hour
  */
 
 const IntervalScheduler = require('./schedulers/IntervalScheduler');
@@ -68,7 +69,7 @@ class NewsScheduler extends IntervalScheduler {
       } else {
         console.log(`${logPrefix} Found ${symbols.length} tracked symbols (open positions + watchlists)`);
 
-        summary = await NewsService.fetchAndCacheAll(symbols);
+        summary = await NewsService.fetchAndCacheScheduled(symbols);
 
         const changedSymbols = summary.changedSymbols || [];
         if (changedSymbols.length > 0) {
@@ -100,7 +101,7 @@ class NewsScheduler extends IntervalScheduler {
       this.lastSummary = summary;
       await this.persistDiagnostic('success', succeededAt, summary);
 
-      console.log(`${logPrefix} News fetch complete - fetched: ${summary.fetched}, skipped (cached): ${summary.skipped}, errors: ${summary.errors}`);
+      console.log(`${logPrefix} News fetch complete - fetched: ${summary.fetched}, skipped (not due/cached): ${summary.skipped}, errors: ${summary.errors}`);
       return summary;
     } catch (error) {
       const failedAt = new Date();

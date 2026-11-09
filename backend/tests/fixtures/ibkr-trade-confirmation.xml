@@ -1,0 +1,10 @@
+<FlexQueryResponse queryName="Same-day fills" type="TC">
+  <FlexStatements count="1">
+    <FlexStatement accountId="U1" fromDate="20261106" toDate="20261106">
+      <TradeConfirms>
+        <TradeConfirm accountId="U1" assetCategory="STK" symbol="AAPL" conid="265598" currency="USD" dateTime="20261106;093000" quantity="4" price="100" commission="" buySell="BUY" execID="E1" tradeID="T1" orderID="O1" levelOfDetail="EXECUTION" />
+        <TradeConfirm accountId="U1" assetCategory="STK" symbol="AAPL" conid="265598" currency="USD" dateTime="20261106;093001" quantity="6" price="100" commission="0" buySell="BUY" execID="E2" tradeID="T2" orderID="O1" levelOfDetail="EXECUTION" />
+      </TradeConfirms>
+    </FlexStatement>
+  </FlexStatements>
+</FlexQueryResponse>

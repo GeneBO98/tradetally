@@ -2,6 +2,16 @@ const StockSplit = require('../models/StockSplit');
 const Trade = require('../models/Trade');
 const finnhub = require('../utils/finnhub');
 const db = require('../config/database');
+const MarketDataActivityService = require('./marketDataActivityService');
+const { FinnhubPriority } = require('../utils/finnhubScheduler');
+
+// Splits are rare and announced ahead of time, and every check looks back a
+// full year, so a weekly pass per symbol is enough to catch them.
+const CHECK_INTERVAL_HOURS = 7 * 24;
+
+// Each check waits in the provider queue (at maintenance priority, behind all
+// other work) instead of bouncing off it when capacity is momentarily taken.
+const SPLIT_CHECK_QUEUE_WAIT_MS = 5 * 60 * 1000;
 
 class StockSplitService {
   constructor() {
@@ -16,8 +26,9 @@ class StockSplitService {
     console.log('[StockSplitService] Starting stock split check...');
     
     try {
-      // Get symbols that need checking (haven't been checked in last 24 hours)
-      const symbolsToCheck = await StockSplit.getSymbolsToCheck(24);
+      // Open positions of recently active users that were not checked this week
+      const activeUserIds = await MarketDataActivityService.getActiveUserIdArray();
+      const symbolsToCheck = await StockSplit.getSymbolsToCheck(CHECK_INTERVAL_HOURS, activeUserIds);
       
       if (symbolsToCheck.length === 0) {
         console.log('[StockSplitService] No symbols need checking');
@@ -44,9 +55,9 @@ class StockSplitService {
           // Get splits from Finnhub
           const splits = await finnhub.getStockSplits(symbol, fromDate, toDate, {
             source: 'stock_split_service',
-            priority: 9,
+            priority: FinnhubPriority.BACKGROUND_MAINTENANCE,
             background: true,
-            maxQueueWaitMs: 0
+            maxQueueWaitMs: SPLIT_CHECK_QUEUE_WAIT_MS
           });
           
           if (splits && splits.length > 0) {
@@ -63,14 +74,14 @@ class StockSplitService {
           await StockSplit.updateCheckLog(symbol, splits ? splits.length : 0);
           checkedCount++;
           
-          // Small delay between API calls to respect rate limits
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
         } catch (error) {
           if (this.isDeferredFinnhubCheck(error)) {
-            skippedCount++;
-            console.warn(`[StockSplitService] Deferred split check for ${symbol}: ${error.message}`);
-            continue;
+            // The queue stayed saturated for the whole wait. Retrying the rest
+            // of the list now would just time out the same way; leave them for
+            // the next run (least recently checked go first).
+            skippedCount = symbolsToCheck.length - checkedCount;
+            console.warn(`[StockSplitService] Provider saturated, deferring ${skippedCount} remaining split check(s): ${error.message}`);
+            break;
           }
           console.error(`[StockSplitService] Error checking ${symbol}:`, error.message);
           await StockSplit.updateCheckLog(symbol, 0, error.message);
@@ -296,9 +307,9 @@ class StockSplitService {
     try {
       const splits = await finnhub.getStockSplits(symbol, from, to, {
         source: 'stock_split_manual_check',
-        priority: 9,
+        priority: FinnhubPriority.BACKGROUND_MAINTENANCE,
         background: true,
-        maxQueueWaitMs: 0
+        maxQueueWaitMs: SPLIT_CHECK_QUEUE_WAIT_MS
       });
       
       if (splits && splits.length > 0) {

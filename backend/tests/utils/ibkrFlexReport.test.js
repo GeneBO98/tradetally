@@ -186,3 +186,27 @@ describe('IBKR Flex report decoding', () => {
       .toThrow('malformed XML');
   });
 });
+
+describe('Trade Confirmation Flex reports', () => {
+  test('decodes confirmation XML with execution identifiers and missing versus zero commission', async () => {
+    const decoded = decodeIBKRFlexReport(fs.readFileSync(path.join(__dirname, '../fixtures/ibkr-trade-confirmation.xml'), 'utf8'));
+    expect(decoded.report_type).toBe('trade_confirmation');
+    expect(decoded.trade_records.map(row => row.IBExecID)).toEqual(['E1', 'E2']);
+    const parsed = await parseIBKRRecords(decoded.trade_records, {}, 'ibkr');
+    expect(parsed.trades[0].executions.map(e => e.ibkr_commission)).toEqual([null, 0]);
+    expect(parsed.trades[0].executions.every(e => e.ibkr_report_type === 'trade_confirmation')).toBe(true);
+  });
+  test('recognizes an empty confirmation section', () => {
+    const decoded = decodeIBKRFlexReport('<FlexQueryResponse><FlexStatements><FlexStatement><TradeConfirms /></FlexStatement></FlexStatements></FlexQueryResponse>');
+    expect(decoded).toMatchObject({ report_type: 'trade_confirmation', trade_records: [], sections: { trades: true } });
+  });
+  test('keeps the same contract in two accounts as separate round trips', async () => {
+    const headers = 'ClientAccountID,AssetClass,Symbol,Conid,Date/Time,Quantity,Price,Commission,Buy/Sell,ExecID,TradeID,LevelOfDetail';
+    const decoded = decodeIBKRFlexReport([headers,
+      'U1,STK,AAPL,265598,20261106;093000,10,100,0,BUY,E1,T1,EXECUTION',
+      'U2,STK,AAPL,265598,20261106;093001,10,110,0,SELL,E2,T2,EXECUTION'].join('\n'));
+    const parsed = await parseIBKRRecords(decoded.trade_records, {}, 'ibkr');
+    expect(parsed.trades.find(t => t.accountIdentifier === 'U1')).toMatchObject({ side: 'long', exitPrice: null });
+    expect(parsed.trades.every(t => !t.exitPrice)).toBe(true);
+  });
+});

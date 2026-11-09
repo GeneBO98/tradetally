@@ -1,5 +1,6 @@
 jest.mock('../../src/models/BrokerConnection', () => ({
-  findDueForSync: jest.fn()
+  findDueForSync: jest.fn(),
+  findDueForConfirmationSync: jest.fn().mockResolvedValue([])
 }));
 jest.mock('../../src/services/brokerSync', () => ({
   syncConnection: jest.fn()

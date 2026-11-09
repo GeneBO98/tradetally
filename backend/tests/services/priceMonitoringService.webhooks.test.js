@@ -20,6 +20,9 @@ jest.mock('../../src/services/tierService', () => ({
   filterProUserIds: jest.fn(),
   isProUser: jest.fn().mockResolvedValue(true)
 }));
+jest.mock('../../src/services/marketDataActivityService', () => ({
+  getActiveUserIdArray: jest.fn().mockResolvedValue(null)
+}));
 jest.mock('../../src/services/notificationPreferenceService', () => ({
   isNotificationEnabled: jest.fn()
 }));
@@ -34,6 +37,7 @@ const finnhub = require('../../src/utils/finnhub');
 const priceFallbackManager = require('../../src/utils/priceFallbackManager');
 const priceMonitoringService = require('../../src/services/priceMonitoringService');
 const TierService = require('../../src/services/tierService');
+const MarketDataActivityService = require('../../src/services/marketDataActivityService');
 
 describe('priceMonitoringService price alert webhook publication', () => {
   beforeEach(() => {
@@ -141,5 +145,42 @@ describe('priceMonitoringService Pro gating', () => {
     const symbols = await priceMonitoringService.getMonitoredSymbols();
 
     expect(symbols.sort()).toEqual(['NVDA', 'SPY']);
+  });
+  test('limits open trades, watchlists and holdings to active users but keeps price alerts', async () => {
+    MarketDataActivityService.getActiveUserIdArray.mockResolvedValueOnce(['active-user']);
+    TierService.filterProUserIds.mockImplementation(async ids => ids);
+    db.query.mockImplementation(async (sql, params) => {
+      if (sql.includes('FROM trades')) {
+        expect(params).toEqual([['active-user']]);
+        return { rows: [{ symbol: 'SPY' }] };
+      }
+      return {
+        rows: [
+          { symbol: 'TSLA', user_id: 'dormant-user', is_alert: false },
+          { symbol: 'AMD', user_id: 'dormant-user', is_alert: true },
+          { symbol: 'NVDA', user_id: 'active-user', is_alert: false }
+        ]
+      };
+    });
+
+    const symbols = await priceMonitoringService.getMonitoredSymbols();
+
+    expect(symbols.sort()).toEqual(['AMD', 'NVDA', 'SPY']);
+  });
+
+  test('outside extended hours refreshes each equity once after the close and always keeps crypto', async () => {
+    // Sunday 2026-11-08 12:00 ET: the last close was Friday 20:00 ET (40h earlier)
+    const now = new Date('2026-11-08T17:00:00Z');
+    finnhub.isCryptoSymbol = jest.fn(symbol => symbol === 'BTC');
+    db.query.mockResolvedValueOnce({
+      rows: [
+        { symbol: 'AAPL', age_seconds: 30 * 3600 }, // refreshed Saturday: done
+        { symbol: 'MSFT', age_seconds: 41 * 3600 } // last refreshed before the close
+      ]
+    });
+
+    const symbols = await priceMonitoringService.filterOffHoursSymbols(['AAPL', 'MSFT', 'NEW', 'BTC'], now);
+
+    expect(symbols).toEqual(['MSFT', 'NEW', 'BTC']);
   });
 });

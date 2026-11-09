@@ -106,20 +106,27 @@ class StockSplit {
     return result.rows[0];
   }
 
-  static async getSymbolsToCheck(hoursAgo = 24) {
+  /**
+   * Open-trade symbols whose last split check is older than `hoursAgo`.
+   * `activeUserIds` (array) limits the result to positions held by those
+   * users; null means every open position counts. Least recently checked
+   * symbols come first so a run that gets cut short still makes progress.
+   */
+  static async getSymbolsToCheck(hoursAgo = 24, activeUserIds = null) {
     const query = `
-      SELECT DISTINCT t.symbol 
+      SELECT t.symbol
       FROM trades t
+      LEFT JOIN stock_split_check_log l ON l.symbol = t.symbol
       WHERE t.exit_price IS NULL
-      AND NOT EXISTS (
-        SELECT 1 FROM stock_split_check_log l
-        WHERE l.symbol = t.symbol
-        AND l.last_checked_at > NOW() - INTERVAL '${hoursAgo} hours'
-      )
-      ORDER BY t.symbol
+        AND t.symbol IS NOT NULL AND t.symbol != ''
+        AND ($2::uuid[] IS NULL OR t.user_id = ANY($2::uuid[]))
+        AND (l.last_checked_at IS NULL
+             OR l.last_checked_at <= NOW() - make_interval(hours => $1::int))
+      GROUP BY t.symbol, l.last_checked_at
+      ORDER BY l.last_checked_at ASC NULLS FIRST, t.symbol
     `;
-    
-    const result = await db.query(query);
+
+    const result = await db.query(query, [Math.max(1, parseInt(hoursAgo, 10) || 24), activeUserIds]);
     return result.rows.map(row => row.symbol);
   }
 

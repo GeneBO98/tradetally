@@ -326,7 +326,8 @@
                     <span class="font-medium text-gray-900 dark:text-white uppercase">{{ log.brokerType }}</span>
                   </td>
                   <td class="whitespace-nowrap text-gray-500 dark:text-gray-400 capitalize px-4 py-3">
-                    {{ log.syncType }}
+                    {{ log.syncType === 'ibkr_confirmation' ? 'Scheduled' : log.syncType }}
+                    <span v-if="log.syncDetails?.report_type" class="block text-xs">{{ log.syncDetails.report_type === 'trade_confirmation' ? 'Trade Confirmation' : 'Activity' }}</span>
                   </td>
                   <td class="whitespace-nowrap px-4 py-3">
                     <span
@@ -351,6 +352,8 @@
                   </td>
                   <td class="whitespace-nowrap text-gray-900 dark:text-white px-4 py-3">
                     {{ log.tradesImported || 0 }}
+                    <span v-if="log.syncDetails?.updated_count" class="block text-xs text-gray-500 dark:text-gray-400">{{ log.syncDetails.updated_count }} updated</span>
+                    <span v-if="log.syncDetails?.pending_reconciliation_count" class="block text-xs text-gray-500 dark:text-gray-400">{{ log.syncDetails.pending_reconciliation_count }} awaiting Activity reconciliation</span>
                     <span v-if="log.syncDetails?.excluded_trade_count" class="block text-xs text-gray-500 dark:text-gray-400">
                       {{ log.syncDetails.excluded_trade_count }} excluded by you
                     </span>
@@ -797,14 +800,14 @@ async function handleBrokerOAuthConnect(broker, options = {}) {
   }
 }
 
-async function handleSync(connection) {
+async function handleSync(connection, report_type) {
   // Broker sync is a Pro feature; once the grace window ends, free users can't sync.
   if (!canSync.value) {
     store.error = 'Broker sync is a Pro feature. Upgrade to Pro to resume syncing, or use CSV import.'
     return
   }
   try {
-    await store.triggerSync(connection.id)
+    await store.triggerSync(connection.id, report_type ? { report_type } : {})
     scheduleSuccessMessage('Sync started. Check the history below for results.')
 
     // Poll for updates until sync completes

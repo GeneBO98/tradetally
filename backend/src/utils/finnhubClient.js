@@ -7,9 +7,25 @@ const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
 const { validateAiProviderUrl, fetchAiProviderUrl } = require('./urlSecurity');
 const { FinnhubPriority, FinnhubRequestScheduler } = require('./finnhubScheduler');
+const finnhubPersistentCache = require('./finnhubCandleStore');
+const FinnhubUsageMetricsService = require('../services/finnhubUsageMetricsService');
 const { getDateInTimezone, localToUTC } = require('./timezone');
 const { CRYPTO_SYMBOLS, CRYPTO_TO_COINGECKO } = require('./cryptoAssets');
 const { toFinnhubForexSymbol } = require('./forexSymbols');
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// How long slow-changing responses live in finnhub_response_cache. The
+// in-memory cache in front of it is per-process, capped, and empty after a
+// restart; the table makes restarts free and survives eviction.
+const PERSISTENT_TTLS_MS = Object.freeze({
+  company_profile: 7 * DAY_MS,
+  crypto_profile: 7 * DAY_MS,
+  financial_statements: 7 * DAY_MS,
+  financials_reported: 7 * DAY_MS,
+  basic_financials: DAY_MS,
+  dividends: DAY_MS
+});
 
 // Daily chart window settings. A negative reverses the window and a
 // non-finite one yields an invalid date, so anything that is not a bounded
@@ -53,7 +69,8 @@ class FinnhubClient {
       label: 'FINNHUB',
       maxCallsPerMinute: this.maxCallsPerMinute,
       maxCallsPerSecond: this.maxCallsPerSecond,
-      activeReservePerMinute: configuredReserve
+      activeReservePerMinute: configuredReserve,
+      metricsRecorder: (event) => FinnhubUsageMetricsService.recordMinuteMetric(event)
     });
     this.callTimestamps = this.scheduler.callTimestamps;
     this.secondTimestamps = this.scheduler.secondTimestamps;
@@ -78,6 +95,49 @@ class FinnhubClient {
 
   isConfigured() {
     return !!this.apiKey;
+  }
+
+  /**
+   * Two-level read: in-memory cache, then finnhub_response_cache. A DB hit
+   * repopulates the memory cache. Returns undefined on a miss so callers can
+   * cache falsy-but-valid payloads such as [] or {}.
+   */
+  async getPersistentCached(namespace, key) {
+    const memory = await cache.get(namespace, key);
+    if (memory !== null && memory !== undefined) return memory;
+
+    try {
+      const stored = await finnhubPersistentCache.getResponse(namespace, key);
+      if (stored !== null && stored !== undefined) {
+        await cache.set(namespace, key, stored);
+        return stored;
+      }
+    } catch (error) {
+      console.warn(`[FINNHUB-CACHE] Persistent read failed for ${namespace}:${key}: ${error.message}`);
+    }
+    return undefined;
+  }
+
+  async setPersistentCached(namespace, key, value) {
+    await cache.set(namespace, key, value);
+    await finnhubPersistentCache.setResponse(namespace, key, value, PERSISTENT_TTLS_MS[namespace] || DAY_MS);
+  }
+
+  /** Raw /stock/candle payload from finnhub_candle_cache, or null. */
+  async getStoredCandles(symbol, resolution, from, to) {
+    if (!Number.isFinite(Number(from)) || !Number.isFinite(Number(to))) return null;
+    try {
+      return await finnhubPersistentCache.get(symbol, String(resolution), Number(from), Number(to));
+    } catch (error) {
+      console.warn(`[CANDLE-STORE] Read failed for ${symbol}: ${error.message}`);
+      return null;
+    }
+  }
+
+  async storeCandles(symbol, resolution, from, to, candles) {
+    if (!Number.isFinite(Number(from)) || !Number.isFinite(Number(to))) return;
+    // set() itself skips windows that reach into the last hour.
+    await finnhubPersistentCache.set(symbol, String(resolution), Number(from), Number(to), candles);
   }
 
   async waitForRateLimit(context = {}) {
@@ -480,17 +540,19 @@ class FinnhubClient {
   async getCompanyProfile(symbol, options = {}) {
     const symbolUpper = symbol.toUpperCase();
 
-    // Check cache first (24 hour TTL for company profiles)
-    const cached = await cache.get('company_profile', symbolUpper);
-    if (cached) {
+    // Memory, then persisted (7 day TTL) - profiles almost never change
+    const cached = await this.getPersistentCached('company_profile', symbolUpper);
+    if (cached !== undefined) {
       return cached;
     }
 
     try {
       const profile = await this.makeRequest('/stock/profile2', { symbol: symbolUpper }, this.enrichmentContext('company_profile', options));
       
-      // Cache the result
-      await cache.set('company_profile', symbolUpper, profile);
+      // Cache the result (an empty {} for unknown symbols is cached too)
+      if (profile) {
+        await this.setPersistentCached('company_profile', symbolUpper, profile);
+      }
       
       return profile;
     } catch (error) {
@@ -1138,6 +1200,13 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       return cached;
     }
 
+    // Closed historical windows are shared across users and restarts
+    const stored = await this.getStoredCandles(symbolUpper, resolution, from, to);
+    if (stored && stored.s === 'ok' && Array.isArray(stored.c) && stored.c.length > 0) {
+      await cache.set('candles', cacheKey, stored);
+      return stored;
+    }
+
     try {
       const candles = await this.makeRequest('/stock/candle', {
         symbol: symbolUpper,
@@ -1159,6 +1228,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
 
       // Cache the result
       await cache.set('candles', cacheKey, candles);
+      await this.storeCandles(symbolUpper, resolution, from, to, candles);
 
       return candles;
     } catch (error) {
@@ -1451,6 +1521,24 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       return cached;
     }
 
+    const formatCandles = (candles) => candles.c.map((close, i) => ({
+      time: candles.t[i],
+      open: candles.o[i],
+      high: candles.h[i],
+      low: candles.l[i],
+      close,
+      volume: candles.v[i]
+    }));
+
+    // Closed historical windows are served from the persistent store without
+    // a provider call, so they do not count against the user's candle quota.
+    const stored = await this.getStoredCandles(symbolUpper, resolution, from, to);
+    if (stored && stored.s === 'ok' && Array.isArray(stored.c) && stored.c.length > 0) {
+      const formattedStored = formatCandles(stored);
+      await cache.set('stock_candles', cacheKey, formattedStored);
+      return formattedStored;
+    }
+
     // Check tier and usage limits if userId provided
     await this.enforceUsageLimit(userId, 'candle');
 
@@ -1474,20 +1562,11 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       }
 
       // Convert to standard format
-      const formattedCandles = [];
-      for (let i = 0; i < candles.c.length; i++) {
-        formattedCandles.push({
-          time: candles.t[i],
-          open: candles.o[i],
-          high: candles.h[i],
-          low: candles.l[i],
-          close: candles.c[i],
-          volume: candles.v[i]
-        });
-      }
+      const formattedCandles = formatCandles(candles);
 
       // Cache the result
       await cache.set('stock_candles', cacheKey, formattedCandles);
+      await this.storeCandles(symbolUpper, resolution, from, to, candles);
 
       // Track usage if userId provided
       if (userId) {
@@ -1768,8 +1847,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     const cacheKey = `financials_${symbolUpper}_${frequency}`;
 
     // Check cache first (24 hour TTL for financial statements)
-    const cached = await cache.get('financial_statements', cacheKey);
-    if (cached) {
+    const cached = await this.getPersistentCached('financial_statements', cacheKey);
+    if (cached !== undefined) {
       console.log(`[FINANCIALS] Using cached financial statements for ${symbolUpper}`);
       return cached;
     }
@@ -1788,8 +1867,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         return null;
       }
 
-      // Cache the result (24 hours)
-      await cache.set('financial_statements', cacheKey, data);
+      // Cache the result (memory 24h, persisted 7 days)
+      await this.setPersistentCached('financial_statements', cacheKey, data);
 
       console.log(`[FINANCIALS] Retrieved ${data.financials.length} periods for ${symbolUpper}`);
       return data;
@@ -1812,8 +1891,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     const cacheKey = `metrics_${symbolUpper}`;
 
     // Check cache first (24 hour TTL)
-    const cached = await cache.get('basic_financials', cacheKey);
-    if (cached) {
+    const cached = await this.getPersistentCached('basic_financials', cacheKey);
+    if (cached !== undefined) {
       console.log(`[METRICS] Using cached metrics for ${symbolUpper}`);
       return cached;
     }
@@ -1831,8 +1910,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         return null;
       }
 
-      // Cache the result (24 hours)
-      await cache.set('basic_financials', cacheKey, data);
+      // Cache the result (24 hours, persisted across restarts)
+      await this.setPersistentCached('basic_financials', cacheKey, data);
 
       console.log(`[METRICS] Retrieved metrics for ${symbolUpper}`);
       return data;
@@ -1856,8 +1935,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     const cacheKey = `reported_${symbolUpper}_${frequency}`;
 
     // Check cache first (24 hour TTL)
-    const cached = await cache.get('financials_reported', cacheKey);
-    if (cached) {
+    const cached = await this.getPersistentCached('financials_reported', cacheKey);
+    if (cached !== undefined) {
       console.log(`[REPORTED] Using cached reported financials for ${symbolUpper}`);
       return cached;
     }
@@ -1875,8 +1954,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         return null;
       }
 
-      // Cache the result (24 hours)
-      await cache.set('financials_reported', cacheKey, data);
+      // Cache the result (memory 24h, persisted 7 days)
+      await this.setPersistentCached('financials_reported', cacheKey, data);
 
       console.log(`[REPORTED] Retrieved ${data.data.length} periods for ${symbolUpper}`);
       return data;
@@ -1899,8 +1978,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     const cacheKey = `crypto_profile_${symbolUpper}`;
 
     // Check cache first (24 hour TTL)
-    const cached = await cache.get('crypto_profile', cacheKey);
-    if (cached) {
+    const cached = await this.getPersistentCached('crypto_profile', cacheKey);
+    if (cached !== undefined) {
       console.log(`[CRYPTO] Using cached profile for ${symbolUpper}`);
       return cached;
     }
@@ -1917,8 +1996,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         return null;
       }
 
-      // Cache the result (24 hours)
-      await cache.set('crypto_profile', cacheKey, data);
+      // Cache the result (memory 24h, persisted 7 days)
+      await this.setPersistentCached('crypto_profile', cacheKey, data);
 
       console.log(`[CRYPTO] Retrieved profile for ${symbolUpper}: ${data.name}`);
       return data;
@@ -1953,8 +2032,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     const cacheKey = `dividends_${symbolUpper}_${from}_${to}`;
 
     // Check cache first (24 hour TTL)
-    const cached = await cache.get('dividends', cacheKey);
-    if (cached) {
+    const cached = await this.getPersistentCached('dividends', cacheKey);
+    if (cached !== undefined) {
       console.log(`[DIVIDENDS] Using cached dividend data for ${symbolUpper}`);
       return cached;
     }
@@ -1974,11 +2053,11 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
 
       if (dividends.length > 0) {
         console.log(`[DIVIDENDS] Found ${dividends.length} dividends for ${symbolUpper}`);
-        await cache.set('dividends', cacheKey, dividends);
+        await this.setPersistentCached('dividends', cacheKey, dividends);
       } else {
         console.log(`[DIVIDENDS] No dividends found for ${symbolUpper}`);
         // Cache empty result for 24 hours to avoid repeated API calls
-        await cache.set('dividends', cacheKey, []);
+        await this.setPersistentCached('dividends', cacheKey, []);
       }
 
       return dividends;
@@ -1986,7 +2065,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       // Don't throw on 404 or empty results - just return empty array
       if (error.message.includes('404') || error.message.includes('No data')) {
         console.log(`[DIVIDENDS] No dividend data available for ${symbolUpper}`);
-        await cache.set('dividends', cacheKey, []);
+        await this.setPersistentCached('dividends', cacheKey, []);
         return [];
       }
       console.warn(`[DIVIDENDS] Failed to get dividends for ${symbol}: ${error.message}`);

@@ -22,6 +22,19 @@ const DEFAULT_ACTIVE_QUEUE_WAIT_MS = 10000;
 // Pause after an upstream 429 when the provider doesn't send Retry-After.
 const DEFAULT_COOLDOWN_MS = 10000;
 
+// Finnhub answers unknown or unsupported symbols with HTTP 200 and an empty
+// body ({}, [], {s: 'no_data'}, or an all-zero quote) rather than an error.
+// Counting those separately shows which sources burn requests on nothing.
+function isEmptyProviderPayload(result) {
+  if (result === null || result === undefined) return true;
+  if (Array.isArray(result)) return result.length === 0;
+  if (typeof result !== 'object') return false;
+  if (result.s === 'no_data') return true;
+  if (Object.keys(result).length === 0) return true;
+  if (result.c === 0 && result.pc === 0 && !result.t) return true;
+  return false;
+}
+
 class FinnhubSchedulerError extends Error {
   constructor(message, code, details = {}) {
     super(message);
@@ -52,6 +65,7 @@ class FinnhubRequestScheduler {
       )
     );
     this.autoProcess = options.autoProcess !== false;
+    this.metricsRecorder = typeof options.metricsRecorder === 'function' ? options.metricsRecorder : null;
 
     this.callTimestamps = [];
     this.secondTimestamps = [];
@@ -125,6 +139,12 @@ class FinnhubRequestScheduler {
             this.stats.activeTimeouts++;
           }
           this.log('skipped', job, waitedMs, code);
+          this.recordMetric(job, {
+            requestCount: 0,
+            throttledCount: 1,
+            totalThrottleWaitMs: waitedMs,
+            maxThrottleWaitMs: waitedMs
+          });
           reject(new FinnhubSchedulerError(
             `${this.label} request ${background ? 'skipped' : 'timed out'} after ${waitedMs}ms in scheduler`,
             code,
@@ -202,11 +222,29 @@ class FinnhubRequestScheduler {
 
     Promise.resolve()
       .then(job.requestFn)
-      .then(job.resolve)
+      .then((result) => {
+        const empty = isEmptyProviderPayload(result);
+        this.recordMetric(job, {
+          requestCount: 1,
+          successCount: empty ? 0 : 1,
+          emptyCount: empty ? 1 : 0,
+          totalThrottleWaitMs: waitMs,
+          maxThrottleWaitMs: waitMs
+        });
+        job.resolve(result);
+      })
       .catch((error) => {
-        if (error?.response?.status === 429) {
+        const rateLimited = error?.response?.status === 429;
+        if (rateLimited) {
           this.notifyRateLimited(error);
         }
+        this.recordMetric(job, {
+          requestCount: 1,
+          rateLimitedCount: rateLimited ? 1 : 0,
+          errorCount: rateLimited ? 0 : 1,
+          totalThrottleWaitMs: waitMs,
+          maxThrottleWaitMs: waitMs
+        });
         job.reject(error);
       })
       .finally(() => {
@@ -229,6 +267,25 @@ class FinnhubRequestScheduler {
       this.cooldownUntil = until;
       console.warn(`[${this.label}-SCHEDULER] Upstream 429 — pausing all sends for ${cooldownMs}ms`);
     }
+  }
+
+  recordMetric(job, metrics) {
+    if (!this.metricsRecorder) return;
+
+    const payload = {
+      endpoint: job.endpoint,
+      source: job.source,
+      priority: job.priority,
+      background: job.background,
+      configuredLimitPerMinute: this.maxCallsPerMinute,
+      ...metrics
+    };
+
+    Promise.resolve()
+      .then(() => this.metricsRecorder(payload))
+      .catch((error) => {
+        console.warn(`[${this.label}-METRICS] Failed to record usage metric:`, error.message);
+      });
   }
 
   removeJob(job) {
@@ -320,5 +377,6 @@ class FinnhubRequestScheduler {
 module.exports = {
   FinnhubPriority,
   FinnhubRequestScheduler,
-  FinnhubSchedulerError
+  FinnhubSchedulerError,
+  isEmptyProviderPayload
 };

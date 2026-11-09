@@ -63,6 +63,10 @@
             >
               Reconnect {{ brokerStyles.name }}
             </button>
+            <button v-if="connection.brokerType === 'ibkr' && connection.ibkr_trade_confirmation_query_id"
+              @click="emit('sync', connection, 'trade_confirmation'); showMenu = false" :disabled="syncing || syncDisabled || connection.connectionStatus !== 'active'" class="menu-item">
+              Sync today's fills
+            </button>
             <button
               @click="emit('test', connection); showMenu = false"
               class="menu-item"
@@ -85,6 +89,14 @@
         </div>
       </div>
 
+      <div v-if="connection.ibkr_trade_confirmation_query_id" class="mt-3 text-sm text-gray-500 dark:text-gray-400">
+        <p>{{ connection.autoSyncEnabled ? 'Same-day fills checked every 15 minutes' : 'Same-day fills available with manual sync' }}</p>
+        <p v-if="connection.ibkr_last_confirmation_sync_at">Confirmations last synced: {{ formatDate(connection.ibkr_last_confirmation_sync_at) }}</p>
+        <p v-if="connection.brokerMetadata?.ibkr_confirmation?.error" class="mt-2 text-primary-700 dark:text-primary-300" role="status">
+          Confirmation sync: {{ connection.brokerMetadata.ibkr_confirmation.error }}
+          <span v-if="connection.brokerMetadata.ibkr_confirmation.suspended">Update the optional Query ID in Settings to resume. Activity syncing is separate.</span>
+        </p>
+      </div>
       <!-- Last Sync Info -->
       <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
         <div class="flex items-center justify-between text-sm">

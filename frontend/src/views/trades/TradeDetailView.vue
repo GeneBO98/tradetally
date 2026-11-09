@@ -30,6 +30,7 @@
             <h1 class="heading-page">
               {{ trade.symbol }} Trade
             </h1>
+            <IBKRReconciliationStatus :status="trade.ibkr_reconciliation_status" />
             <p class="mt-1 truncate text-sm text-gray-600 dark:text-gray-400">
               <span v-if="symbolCompanyName">{{ symbolCompanyName }} • </span>{{ formatDate(trade.trade_date) }} • {{ trade.side }}
             </p>
@@ -1570,6 +1571,7 @@
 </template>
 
 <script setup>
+import IBKRReconciliationStatus from '@/components/trades/IBKRReconciliationStatus.vue'
 import ExcursionUnitSelect from '@/components/trades/ExcursionUnitSelect.vue'
 import { useExcursionDisplay } from '@/composables/useExcursionDisplay'
 import { pnlClass } from '@/utils/metricTone'

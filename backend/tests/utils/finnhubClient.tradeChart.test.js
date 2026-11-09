@@ -3,6 +3,16 @@ jest.mock('../../src/utils/cache', () => ({
   set: jest.fn(async () => true)
 }));
 
+jest.mock('../../src/utils/finnhubCandleStore', () => ({
+  get: jest.fn(async () => null),
+  set: jest.fn(async () => undefined),
+  getResponse: jest.fn(async () => null),
+  setResponse: jest.fn(async () => undefined)
+}));
+jest.mock('../../src/services/finnhubUsageMetricsService', () => ({
+  recordMinuteMetric: jest.fn(async () => undefined)
+}));
+
 const finnhubClient = require('../../src/utils/finnhubClient');
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;

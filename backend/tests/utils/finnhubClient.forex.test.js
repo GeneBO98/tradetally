@@ -8,6 +8,16 @@ jest.mock('../../src/services/apiUsageService', () => ({
 }));
 jest.mock('../../src/services/tierService', () => ({ getUserTier: jest.fn(async () => 'pro') }));
 
+jest.mock('../../src/utils/finnhubCandleStore', () => ({
+  get: jest.fn(async () => null),
+  set: jest.fn(async () => undefined),
+  getResponse: jest.fn(async () => null),
+  setResponse: jest.fn(async () => undefined)
+}));
+jest.mock('../../src/services/finnhubUsageMetricsService', () => ({
+  recordMinuteMetric: jest.fn(async () => undefined)
+}));
+
 const finnhub = require('../../src/utils/finnhubClient');
 
 afterEach(() => jest.restoreAllMocks());

@@ -64,3 +64,30 @@ describe('ConnectionSettingsModal Schwab account exclusions', () => {
     expect(wrapper.text()).toContain('does not delete trades already imported')
   })
 })
+
+describe('IBKR optional confirmation query', () => {
+  it('saves a new ID with the stored token and sends explicit null when removed', async () => {
+    const connection = { ...schwabConnection(), brokerType: 'ibkr', ibkr_trade_confirmation_query_id: '123' }
+    const wrapper = shallowMount(ConnectionSettingsModal, { props: { connection } })
+    expect(wrapper.text()).toContain('every 15 minutes')
+    await wrapper.get('#settingsConfirmationQuery').setValue('456')
+    await wrapper.findAll('button').find(button => button.text() === 'Save Changes').trigger('click')
+    expect(wrapper.emitted('save')[0][0]).toMatchObject({ ibkr_trade_confirmation_query_id: '456' })
+    expect(wrapper.emitted('save')[0][0]).not.toHaveProperty('flexToken')
+    await wrapper.get('#settingsConfirmationQuery').setValue('')
+    await wrapper.findAll('button').find(button => button.text() === 'Save Changes').trigger('click')
+    expect(wrapper.emitted('save')[1][0]).toMatchObject({ ibkr_trade_confirmation_query_id: null })
+  })
+  it('omits an unchanged confirmation ID so ordinary schedule changes do not revalidate the broker', async () => {
+    const wrapper = shallowMount(ConnectionSettingsModal, { props: { connection: { ...schwabConnection(), brokerType: 'ibkr', ibkr_trade_confirmation_query_id: '123' } } })
+    await wrapper.findAll('button').find(button => button.text() === 'Save Changes').trigger('click')
+    expect(wrapper.emitted('save')[0][0]).not.toHaveProperty('ibkr_trade_confirmation_query_id')
+  })
+})
+
+it('revalidates a suspended confirmation query even when its ID is unchanged', async () => {
+  const wrapper = shallowMount(ConnectionSettingsModal, { props: { connection: { ...schwabConnection(), brokerType: 'ibkr',
+    ibkr_trade_confirmation_query_id: '123', brokerMetadata: { ibkr_confirmation: { suspended: true } } } } })
+  await wrapper.findAll('button').find(button => button.text() === 'Save Changes').trigger('click')
+  expect(wrapper.emitted('save')[0][0]).toMatchObject({ ibkr_trade_confirmation_query_id: '123' })
+})

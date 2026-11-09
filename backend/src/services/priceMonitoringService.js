@@ -5,6 +5,8 @@ const priceFallbackManager = require('../utils/priceFallbackManager');
 const historicalPriceCache = require('../utils/historicalPriceCache');
 const { uuidv4 } = require('../utils/uuid');
 const TierService = require('./tierService');
+const MarketDataActivityService = require('./marketDataActivityService');
+const { isExtendedHoursSession, lastExtendedSessionClose } = require('../utils/usMarketSchedule');
 const NotificationPreferenceService = require('./notificationPreferenceService');
 const pushNotificationService = require('./pushNotificationService');
 const EmailService = require('./emailService');
@@ -83,26 +85,33 @@ class PriceMonitoringService {
     console.log('Price monitoring service stopped');
   }
 
-  // Symbols to refresh each cycle. Open-trade symbols are always included
-  // because they feed the (free) dashboard open-positions quotes via the
+  // Symbols to refresh each cycle. Open-trade symbols are included for every
+  // tier because they feed the (free) dashboard open-positions quotes via the
   // price_monitoring cache. Alert, watchlist and holdings symbols are Pro
   // features, so they are only monitored for users who are currently Pro.
+  //
+  // Open trades, watchlists and holdings are further limited to recently
+  // active users (MarketDataActivityService): most open trades on a large
+  // instance are abandoned imports. Active price alerts are exempt because
+  // they notify users who are not looking at the app.
   async getMonitoredSymbols() {
+    const activeUserIds = await MarketDataActivityService.getActiveUserIdArray();
     const [openTradeResult, proFeatureResult] = await Promise.all([
       db.query(`
         SELECT DISTINCT symbol FROM trades
         WHERE exit_price IS NULL AND exit_time IS NULL
-      `),
+          AND ($1::uuid[] IS NULL OR user_id = ANY($1::uuid[]))
+      `, [activeUserIds]),
       db.query(`
-        SELECT DISTINCT symbol, user_id
+        SELECT DISTINCT symbol, user_id, is_alert
         FROM (
-          SELECT symbol, user_id FROM price_alerts WHERE is_active = TRUE
+          SELECT symbol, user_id, TRUE AS is_alert FROM price_alerts WHERE is_active = TRUE
           UNION
-          SELECT wi.symbol, w.user_id
+          SELECT wi.symbol, w.user_id, FALSE AS is_alert
             FROM watchlist_items wi
             JOIN watchlists w ON w.id = wi.watchlist_id
           UNION
-          SELECT symbol, user_id FROM investment_holdings
+          SELECT symbol, user_id, FALSE AS is_alert FROM investment_holdings
         ) AS pro_symbols
       `)
     ]);
@@ -110,19 +119,55 @@ class PriceMonitoringService {
     const proUserIds = new Set(
       await TierService.filterProUserIds(proFeatureResult.rows.map(row => row.user_id))
     );
+    const activeUserSet = activeUserIds ? new Set(activeUserIds) : null;
 
     const symbols = new Set(openTradeResult.rows.map(row => row.symbol));
     for (const row of proFeatureResult.rows) {
-      if (proUserIds.has(String(row.user_id))) {
+      const userId = String(row.user_id);
+      if (!proUserIds.has(userId)) continue;
+      if (row.is_alert || !activeUserSet || activeUserSet.has(userId)) {
         symbols.add(row.symbol);
       }
     }
     return [...symbols].filter(Boolean);
   }
 
+  // Outside the 04:00-20:00 ET weekday session equity quotes do not move, so
+  // each equity gets one refresh after the session closes (to capture the
+  // final after-hours print) and is then left alone until pre-market. Crypto
+  // trades around the clock and is served by CoinGecko, so it always stays.
+  async filterOffHoursSymbols(symbols, now = new Date()) {
+    const equities = symbols.filter(symbol => !finnhub.isCryptoSymbol(symbol));
+    if (equities.length === 0) return symbols;
+
+    const secondsSinceClose = (now.getTime() - lastExtendedSessionClose(now).getTime()) / 1000;
+    // last_updated is a timestamp without time zone written with
+    // CURRENT_TIMESTAMP, so compare ages inside the same session clock.
+    const result = await db.query(`
+      SELECT symbol, EXTRACT(EPOCH FROM (NOW()::timestamp - last_updated)) AS age_seconds
+      FROM price_monitoring
+      WHERE symbol = ANY($1::text[])
+    `, [equities]);
+    const refreshedSinceClose = new Set(
+      result.rows
+        .filter(row => row.age_seconds !== null && Number(row.age_seconds) < secondsSinceClose)
+        .map(row => row.symbol)
+    );
+
+    return symbols.filter(symbol => finnhub.isCryptoSymbol(symbol) || !refreshedSinceClose.has(symbol));
+  }
+
   async monitorPrices() {
     try {
-      const allSymbols = await this.getMonitoredSymbols();
+      let allSymbols = await this.getMonitoredSymbols();
+
+      if (!isExtendedHoursSession()) {
+        const monitoredCount = allSymbols.length;
+        allSymbols = await this.filterOffHoursSymbols(allSymbols);
+        if (allSymbols.length < monitoredCount) {
+          logger.debug(`Outside extended hours: ${monitoredCount - allSymbols.length} equity quotes already refreshed since the close`);
+        }
+      }
 
       if (allSymbols.length === 0) {
         logger.debug('No symbols to monitor');

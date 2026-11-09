@@ -41,7 +41,14 @@ class BrokerSyncScheduler {
       }
 
       // Find connections due for sync
-      const dueConnections = await BrokerConnection.findDueForSync();
+      const confirmations = (await BrokerConnection.findDueForConfirmationSync()) || [];
+      const activity_connections = await BrokerConnection.findDueForSync();
+      // Confirmation work gets the first slot. Activity backfills retain their
+      // own due times and retry cursor even while confirmation polling runs.
+      const dueConnections = [
+        ...confirmations.map(connection => ({ ...connection, ibkr_confirmation_due: true })),
+        ...activity_connections
+      ];
 
       if (dueConnections.length === 0) {
         console.log(`${logPrefix} No connections due for sync`);
@@ -56,7 +63,11 @@ class BrokerSyncScheduler {
 
       while (queue.length > 0) {
         // Process up to MAX_CONCURRENT_SYNCS at a time
-        const batch = queue.splice(0, MAX_CONCURRENT_SYNCS);
+        const batch = [];
+        for (let index = 0; index < queue.length && batch.length < MAX_CONCURRENT_SYNCS;) {
+          if (batch.some(connection => connection.id === queue[index].id)) { index++; continue; }
+          batch.push(queue.splice(index, 1)[0]);
+        }
 
         const batchResults = await Promise.allSettled(
           batch.map(connection => this.syncConnection(connection))
@@ -124,7 +135,9 @@ class BrokerSyncScheduler {
       const retry = connection.brokerType === 'ibkr'
         ? connection.ibkrBackfillRetry
         : null;
-      const result = await brokerSyncService.syncConnection(connection.id, retry ? {
+      const result = await brokerSyncService.syncConnection(connection.id, connection.ibkr_confirmation_due ? {
+        syncType: 'ibkr_confirmation', report_type: 'trade_confirmation'
+      } : retry ? {
         syncType: 'ibkr_timeout_retry',
         startDate: retry.floor,
         endDate: retry.window_end,
@@ -140,9 +153,13 @@ class BrokerSyncScheduler {
       // Update connection failure status. Errors thrown before the sync log
       // exists (lock contention, pool timeouts) are usually transient and must
       // not lock the connection into 'error'.
-      await BrokerConnection.updateAfterFailure(connection.id, error.message, {
-        transient: brokerSyncService.isTransientSyncError(error)
-      });
+      if (connection.ibkr_confirmation_due) {
+        await BrokerConnection.updateConfirmationSync(connection.id, { error: Object.assign(error, { transient: brokerSyncService.isTransientSyncError(error) }) });
+      } else {
+        await BrokerConnection.updateAfterFailure(connection.id, error.message, {
+          transient: brokerSyncService.isTransientSyncError(error)
+        });
+      }
 
       return {
         success: false,
