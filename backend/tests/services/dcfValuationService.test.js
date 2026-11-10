@@ -502,4 +502,41 @@ describe('DCFValuationService calculation rules', () => {
       financialsSpy.mockRestore();
     }
   });
+
+  test('keeps genuine hypergrowth history when gross profit corroborates the revenue jump', () => {
+    // NVDA annual revenue / gross profit ($B), FY2026 back to FY2021
+    const nvda = [
+      [2026, 215.9, 154.0], [2025, 130.5, 97.9], [2024, 60.9, 44.3],
+      [2023, 27.0, 15.4], [2022, 26.9, 17.5], [2021, 16.7, 10.4]
+    ].map(([fiscalYear, revenue, grossProfit]) => ({ fiscalYear, revenue: revenue * 1e9, grossProfit: grossProfit * 1e9 }));
+
+    const kept = DCFValuationService.filterAnomalousRevenue(nvda);
+
+    expect(kept.map(p => p.fiscalYear)).toEqual([2026, 2025, 2024, 2023, 2022, 2021]);
+    expect(DCFValuationService.calculateCAGR(kept, 'revenue', 5)).toBeCloseTo(Math.pow(215.9 / 16.7, 1 / 5) - 1, 6);
+  });
+
+  test('drops a revenue cell that collapses without a matching gross profit change', () => {
+    const periods = [
+      { fiscalYear: 2019, revenue: 2_150, grossProfit: 1_380 },
+      { fiscalYear: 2018, revenue: 1_650, grossProfit: 1_060 },
+      // Revenue mis-extracted: gross profit exceeds it
+      { fiscalYear: 2017, revenue: 210, grossProfit: 1_050 },
+      { fiscalYear: 2016, revenue: 1_130, grossProfit: 730 }
+    ];
+
+    const kept = DCFValuationService.filterAnomalousRevenue(periods);
+
+    expect(kept.map(p => p.fiscalYear)).toEqual([2019, 2018]);
+  });
+
+  test('drops a large revenue step when gross profit is unavailable', () => {
+    const kept = DCFValuationService.filterAnomalousRevenue([
+      { fiscalYear: 2015, revenue: 29_040 },
+      { fiscalYear: 2014, revenue: 4_650 },
+      { fiscalYear: 2013, revenue: 26_740 }
+    ]);
+
+    expect(kept.map(p => p.fiscalYear)).toEqual([2015]);
+  });
 });

@@ -612,17 +612,18 @@ class DCFValuationService {
 
   /**
    * Trim historical periods where the reported revenue is implausibly small
-   * compared to the most recent year. These are nearly always XBRL
+   * compared to the next-newer year. These are nearly always XBRL
    * extraction failures (older filings used a different concept name, our
    * `findValue` picked up a segment line, or the API truncated the
    * statement). Including them in CAGR / margin averages produces
    * obviously-wrong outputs (e.g. 38% 10Y revenue CAGR, inflated 10Y FCF
    * margin avg pulled up by a single tiny-revenue datapoint).
    *
-   * Walks newest → oldest. As soon as we hit a year whose revenue is less
-   * than 10% of the most recent year's revenue OR less than half of the
-   * immediately newer year's revenue, we treat that year and everything
-   * older as unreliable and drop them.
+   * Walks newest -> oldest. When a year's revenue is less than half of the
+   * immediately newer year's, it is kept only if gross profit moved by a
+   * similar ratio (real hypergrowth like NVDA FY2024 -> FY2025 doubles both
+   * lines; a bad revenue cell leaves gross profit unchanged or larger than
+   * revenue). Otherwise that year and everything older are dropped.
    *
    * @param {Array} financialsSortedDesc - Financials newest-first
    * @returns {Array} Same array truncated at the first anomaly
@@ -639,7 +640,8 @@ class DCFValuationService {
     for (let i = 1; i < financialsSortedDesc.length; i += 1) {
       const period = financialsSortedDesc[i];
       const periodRev = Number(period?.revenue) || 0;
-      const newerRev = Number(kept[kept.length - 1]?.revenue) || 0;
+      const newer = kept[kept.length - 1];
+      const newerRev = Number(newer?.revenue) || 0;
 
       // No revenue reported — keep the period for non-revenue calcs but
       // it'll be excluded from revenue-based ones by their own null guard.
@@ -648,11 +650,7 @@ class DCFValuationService {
         continue;
       }
 
-      // Anomaly tests:
-      //   - period revenue < 10% of the newest year's (catches single bad cells)
-      //   - period revenue < 50% of the next-newer year (catches sudden drops
-      //     that real businesses don't show 5–10 years back from now)
-      if (periodRev < newestRevenue * 0.10 || (newerRev > 0 && periodRev < newerRev * 0.5)) {
+      if (newerRev > 0 && periodRev < newerRev * 0.5 && !this.isRevenueStepCorroborated(period, newer)) {
         console.warn(`[DCF] Dropping fiscal ${period.fiscalYear} and earlier — revenue ${(periodRev/1e9).toFixed(1)}B vs newer ${(newerRev/1e9).toFixed(1)}B looks like a data extraction error`);
         break;
       }
@@ -661,6 +659,30 @@ class DCFValuationService {
     }
 
     return kept;
+  }
+
+  /**
+   * Whether a large YoY revenue change between two adjacent periods is backed
+   * by a proportional gross profit change, i.e. the business really grew
+   * rather than one revenue cell being mis-extracted.
+   * @param {Object} older - Older period
+   * @param {Object} newer - Newer period
+   * @returns {boolean} True when gross profit corroborates the revenue step
+   */
+  static isRevenueStepCorroborated(older, newer) {
+    const olderRev = Number(older?.revenue);
+    const newerRev = Number(newer?.revenue);
+    const olderGp = Number(older?.grossProfit);
+    const newerGp = Number(newer?.grossProfit);
+
+    if (![olderRev, newerRev, olderGp, newerGp].every(v => Number.isFinite(v) && v > 0)) {
+      return false;
+    }
+    // Gross profit can't exceed revenue; if it does, revenue is the bad cell.
+    if (olderGp > olderRev || newerGp > newerRev) return false;
+
+    const relative = (olderGp / newerGp) / (olderRev / newerRev);
+    return relative >= 2 / 3 && relative <= 1.5;
   }
 
   /**
