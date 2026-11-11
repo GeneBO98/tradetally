@@ -841,6 +841,7 @@ const schemas = {
 
   brokerSyncIbkrConnection: Joi.object({
     ibkr_trade_confirmation_query_id: nullableString(100),
+    ibkr_confirmation_interval_minutes: Joi.number().integer().min(15).max(1440).multiple(15),
     flexToken: Joi.string().trim().required(),
     flexQueryId: Joi.string().trim().required(),
     accountLabel: nullableString(255),
@@ -879,6 +880,7 @@ const schemas = {
 
   brokerSyncConnectionUpdate: Joi.object({
     ibkr_trade_confirmation_query_id: nullableString(100),
+    ibkr_confirmation_interval_minutes: Joi.number().integer().min(15).max(1440).multiple(15),
     accountLabel: nullableString(255),
     autoSyncEnabled: Joi.boolean(),
     syncFrequency: Joi.string().valid('manual', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours', 'daily'),

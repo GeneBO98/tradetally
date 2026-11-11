@@ -101,4 +101,24 @@ describe('BrokerSyncView sync outcomes', () => {
     expect(wrapper.get('details').text()).toContain('Open position quantity could not be reconciled safely.')
     expect(mocks.brokerStore.fetchSyncLogs).toHaveBeenCalled()
   })
+  it('expands daily summaries while failures remain visible and can load older grouped history', async () => {
+    mocks.brokerStore.syncLogs.push({ id: 'daily', daily_summary: true, connectionId: 'connection',
+      brokerType: 'ibkr', syncType: 'ibkr_confirmation', status: 'completed', local_date: '2026-11-11',
+      sync_count: 96, warning_count: 1, syncDetails: { warnings: ['One delayed report'], outcome: 'warning' } })
+    mocks.brokerStore.syncLogs.push({ id: 'failure', brokerType: 'ibkr', syncType: 'ibkr_confirmation', status: 'failed' })
+    mocks.brokerStore.history_has_more = true
+    const wrapper = shallowMount(BrokerSyncView)
+    await flushPromises()
+    expect(mocks.brokerStore.fetchSyncLogs).toHaveBeenCalledWith(null, 20, { group_by: 'day', offset: 0, append: false })
+    expect(wrapper.text()).toContain('96 checks')
+    expect(wrapper.text()).toContain('failed')
+    const toggle = wrapper.findAll('button').find(button => button.text() === 'Show checks')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.findComponent({ name: 'ConfirmationSyncDay' }).props('group').id).toBe('daily')
+    await wrapper.findAll('button').find(button => button.text() === 'Load older history').trigger('click')
+    expect(mocks.brokerStore.fetchSyncLogs).toHaveBeenLastCalledWith(null, 20, { group_by: 'day', offset: 4, append: true })
+  })
+
 })

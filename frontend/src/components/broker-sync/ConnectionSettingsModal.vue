@@ -87,9 +87,10 @@
                     <div v-if="connection.brokerType === 'ibkr'">
                         <label for="settingsConfirmationQuery" class="label">Trade Confirmation Flex Query ID (optional)</label>
                         <input id="settingsConfirmationQuery" v-model="form.ibkr_trade_confirmation_query_id" class="input" type="text" placeholder="For same-day fills" />
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Uses your saved Flex token. Auto-Sync checks confirmations every 15 minutes, separately from the Activity schedule below. Clear this field to stop confirmation imports.</p>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Uses your saved Flex token. Confirmation checks use their own interval, separately from the Activity schedule below. Clear this field to stop confirmation imports.</p>
                         <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Use Executions detail, intraday coverage, and the same account and date/time settings as your Activity query. <a class="text-primary-700 underline dark:text-primary-400" href="https://www.ibkrguides.com/clientportal/performanceandstatements/tradeflex.htm" target="_blank" rel="noopener noreferrer">IBKR setup guide</a></p>
                     </div>
+                    <IBKRConfirmationInterval v-if="connection.brokerType === 'ibkr' && form.ibkr_trade_confirmation_query_id.trim()" id="settingsConfirmationInterval" v-model="form.ibkr_confirmation_interval_minutes" />
                     <!-- Auto-Sync Toggle -->
                     <div class="flex items-center justify-between">
                         <div>
@@ -330,7 +331,7 @@
                     </button>
                     <button
                         @click="handleSave"
-                        :disabled="loading"
+                        :disabled="loading || (connection.brokerType === 'ibkr' && form.ibkr_trade_confirmation_query_id.trim().length > 0 && !validConfirmationInterval(form.ibkr_confirmation_interval_minutes))"
                         class="btn-primary"
                     >
                         <span v-if="loading" class="flex items-center">
@@ -348,6 +349,8 @@
 </template>
 
 <script setup>
+import IBKRConfirmationInterval from './IBKRConfirmationInterval.vue'
+import { validConfirmationInterval } from '@/utils/ibkrConfirmationInterval'
 import { ref, computed, watch } from "vue";
 import BaseSelect from "@/components/common/BaseSelect.vue";
 import { useUserTimezone } from "@/composables/useUserTimezone";
@@ -387,6 +390,7 @@ function initialSyncStartDate(value) {
 const form = ref({
     accountLabel: props.connection.accountLabel || "",
     ibkr_trade_confirmation_query_id: props.connection.ibkr_trade_confirmation_query_id || "",
+    ibkr_confirmation_interval_minutes: props.connection.ibkr_confirmation_interval_minutes ?? 15,
     autoSyncEnabled: props.connection.autoSyncEnabled,
     syncFrequency: props.connection.syncFrequency,
     syncTime: props.connection.syncTime?.substring(0, 5) || "06:00",
@@ -408,6 +412,7 @@ watch(
         form.value = {
             accountLabel: newConnection.accountLabel || "",
             ibkr_trade_confirmation_query_id: newConnection.ibkr_trade_confirmation_query_id || "",
+            ibkr_confirmation_interval_minutes: newConnection.ibkr_confirmation_interval_minutes ?? 15,
             autoSyncEnabled: newConnection.autoSyncEnabled,
             syncFrequency: newConnection.syncFrequency,
             syncTime: newConnection.syncTime?.substring(0, 5) || "06:00",
@@ -503,6 +508,7 @@ function setAccountIncluded(accountIdentifier, included) {
 }
 
 function handleSave() {
+    if (props.connection.brokerType === 'ibkr' && form.value.ibkr_trade_confirmation_query_id.trim() && !validConfirmationInterval(form.value.ibkr_confirmation_interval_minutes)) return;
     const updates = {
         accountLabel: form.value.accountLabel,
         autoSyncEnabled: form.value.autoSyncEnabled,
@@ -515,6 +521,9 @@ function handleSave() {
     }
     if (props.connection.brokerType === "schwab") {
         updates.excluded_account_identifiers = form.value.excluded_account_identifiers;
+    }
+    if (props.connection.brokerType === 'ibkr' && form.value.ibkr_trade_confirmation_query_id.trim() && form.value.ibkr_confirmation_interval_minutes !== (props.connection.ibkr_confirmation_interval_minutes ?? 15)) {
+        updates.ibkr_confirmation_interval_minutes = form.value.ibkr_confirmation_interval_minutes;
     }
     emit("save", updates);
 }

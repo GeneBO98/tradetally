@@ -6,6 +6,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
   // State
   const connections = ref([])
   const syncLogs = ref([])
+  const history_has_more = ref(false)
   const loading = ref(false)
   const syncing = ref({}) // Track syncing state per connection ID
   const error = ref(null)
@@ -238,7 +239,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     }
   }
 
-  async function fetchSyncLogs(connectionId = null, limit = 20) {
+  async function fetchSyncLogs(connectionId = null, limit = 20, options = {}) {
     loading.value = true
     error.value = null
 
@@ -246,15 +247,17 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
       let response
       if (connectionId) {
         response = await api.get(`/broker-sync/connections/${connectionId}/logs`, {
-          params: { limit }
+          params: { limit, ...(options.group_by ? { group_by: options.group_by, offset: options.offset || 0 } : {}) }
         })
       } else {
         response = await api.get('/broker-sync/logs', {
-          params: { limit }
+          params: { limit, ...(options.group_by ? { group_by: options.group_by, offset: options.offset || 0 } : {}) }
         })
       }
 
-      syncLogs.value = response.data.data || []
+      const rows = response.data.data || []
+      syncLogs.value = options.append ? [...new Map([...syncLogs.value, ...rows].map(row => [row.id, row])).values()] : rows
+      history_has_more.value = response.data.has_more === true
       return syncLogs.value
     } catch (err) {
       console.error('[BROKER-SYNC] Failed to fetch sync logs:', err)
@@ -314,6 +317,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
   function reset() {
     connections.value = []
     syncLogs.value = []
+    history_has_more.value = false
     loading.value = false
     syncing.value = {}
     error.value = null
@@ -324,6 +328,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     // State
     connections,
     syncLogs,
+    history_has_more,
     loading,
     syncing,
     error,

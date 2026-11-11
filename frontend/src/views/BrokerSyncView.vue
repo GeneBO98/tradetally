@@ -294,9 +294,10 @@
       <div class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-6">
-            <h3 class="heading-card">Sync History</h3>
+            <div><h3 class="heading-card">Sync History</h3><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Automatic IBKR confirmation checks are grouped by day. Failed syncs and entries needing review stay separate.</p></div>
             <button
               @click="refreshLogs"
+              :disabled="history_loading"
               class="btn-link"
             >
               Refresh
@@ -321,63 +322,71 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                <tr v-for="log in store.syncLogs" :key="log.id">
-                  <td class="whitespace-nowrap px-4 py-3">
-                    <span class="font-medium text-gray-900 dark:text-white uppercase">{{ log.brokerType }}</span>
-                  </td>
-                  <td class="whitespace-nowrap text-gray-500 dark:text-gray-400 capitalize px-4 py-3">
-                    {{ log.syncType === 'ibkr_confirmation' ? 'Scheduled' : log.syncType }}
-                    <span v-if="log.syncDetails?.report_type" class="block text-xs">{{ log.syncDetails.report_type === 'trade_confirmation' ? 'Trade Confirmation' : 'Activity' }}</span>
-                  </td>
-                  <td class="whitespace-nowrap px-4 py-3">
-                    <span
-                      class="badge"
-                      :class="getStatusClass(log)"
-                    >
-                      {{ getStatusLabel(log) }}
-                    </span>
-                    <details
-                      v-if="warningsFromSyncLog(log).length > 0"
-                      class="mt-2 max-w-xs text-xs text-yellow-800 dark:text-yellow-300"
-                    >
-                      <summary class="cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded">
-                        View {{ warningsFromSyncLog(log).length }} warning{{ warningsFromSyncLog(log).length === 1 ? '' : 's' }}
-                      </summary>
-                      <ul class="mt-2 space-y-1 list-disc pl-4 whitespace-normal">
-                        <li v-for="(warning, warningIndex) in warningsFromSyncLog(log)" :key="warningIndex">
-                          {{ warning }}
-                        </li>
-                      </ul>
-                    </details>
-                  </td>
-                  <td class="whitespace-nowrap text-gray-900 dark:text-white px-4 py-3">
-                    {{ log.tradesImported || 0 }}
-                    <span v-if="log.syncDetails?.updated_count" class="block text-xs text-gray-500 dark:text-gray-400">{{ log.syncDetails.updated_count }} updated</span>
-                    <span v-if="log.syncDetails?.pending_reconciliation_count" class="block text-xs text-gray-500 dark:text-gray-400">{{ log.syncDetails.pending_reconciliation_count }} awaiting Activity reconciliation</span>
-                    <span v-if="log.syncDetails?.excluded_trade_count" class="block text-xs text-gray-500 dark:text-gray-400">
-                      {{ log.syncDetails.excluded_trade_count }} excluded by you
-                    </span>
-                  </td>
-                  <td class="whitespace-nowrap text-gray-500 dark:text-gray-400 px-4 py-3">
-                    {{ log.duplicatesDetected || 0 }}
-                  </td>
-                  <td class="whitespace-nowrap px-4 py-3">
-                    <button
-                      v-if="manualReviewItemsFromSyncLog(log).length > 0"
-                      type="button"
-                      class="text-sm font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
-                      @click="openManualReviewFromSyncLog(log, true)"
-                    >
-                      Review {{ manualReviewItemsFromSyncLog(log).length }}
-                    </button>
-                    <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
-                  </td>
-                  <td class="whitespace-nowrap text-gray-500 dark:text-gray-400 px-4 py-3">
-                    {{ formatDate(log.startedAt) }}
-                  </td>
-                </tr>
+                <template v-for="log in store.syncLogs" :key="log.id">
+                  <tr>
+                    <td class="whitespace-nowrap px-4 py-3">
+                      <span class="font-medium text-gray-900 dark:text-white uppercase">{{ log.brokerType }}</span>
+                      <span v-if="log.account_label" class="block text-xs text-gray-500 dark:text-gray-400">{{ log.account_label }}</span>
+                      <button v-if="log.daily_summary" type="button" class="btn-link block mt-1 text-xs" :aria-expanded="expanded_history.has(log.id)" :aria-controls="`checks-${log.id}`" @click="toggleHistoryDay(log.id)">{{ expanded_history.has(log.id) ? 'Hide checks' : 'Show checks' }}</button>
+                    </td>
+                    <td class="whitespace-nowrap text-gray-500 dark:text-gray-400 capitalize px-4 py-3">
+                      {{ log.daily_summary ? 'Daily summary' : log.syncType === 'ibkr_confirmation' ? 'Scheduled' : log.syncType }}
+                      <span v-if="log.daily_summary" class="block text-xs">{{ log.sync_count }} checks<span v-if="log.warning_count"> · {{ log.warning_count }} with warnings</span></span>
+                      <span v-if="log.syncDetails?.report_type" class="block text-xs">{{ log.syncDetails.report_type === 'trade_confirmation' ? 'Trade Confirmation' : 'Activity' }}</span>
+                    </td>
+                    <td class="whitespace-nowrap px-4 py-3">
+                      <span
+                        class="badge"
+                        :class="getStatusClass(log)"
+                      >
+                        {{ getStatusLabel(log) }}
+                      </span>
+                      <p v-if="log.errorMessage" class="mt-2 max-w-xs whitespace-normal text-xs text-gray-600 dark:text-gray-300">{{ log.errorMessage }}</p>
+                      <details
+                        v-if="warningsFromSyncLog(log).length > 0"
+                        class="mt-2 max-w-xs text-xs text-yellow-800 dark:text-yellow-300"
+                      >
+                        <summary class="cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded">
+                          View {{ warningsFromSyncLog(log).length }} warning{{ warningsFromSyncLog(log).length === 1 ? '' : 's' }}
+                        </summary>
+                        <ul class="mt-2 space-y-1 list-disc pl-4 whitespace-normal">
+                          <li v-for="(warning, warningIndex) in warningsFromSyncLog(log)" :key="warningIndex">
+                            {{ warning }}
+                          </li>
+                        </ul>
+                      </details>
+                    </td>
+                    <td class="whitespace-nowrap text-gray-900 dark:text-white px-4 py-3">
+                      {{ log.tradesImported || 0 }}
+                      <span v-if="log.syncDetails?.updated_count" class="block text-xs text-gray-500 dark:text-gray-400">{{ log.syncDetails.updated_count }} updated</span>
+                      <span v-if="log.syncDetails?.pending_reconciliation_count" class="block text-xs text-gray-500 dark:text-gray-400">{{ log.syncDetails.pending_reconciliation_count }} awaiting Activity reconciliation</span>
+                      <span v-if="log.syncDetails?.excluded_trade_count" class="block text-xs text-gray-500 dark:text-gray-400">
+                        {{ log.syncDetails.excluded_trade_count }} excluded by you
+                      </span>
+                    </td>
+                    <td class="whitespace-nowrap text-gray-500 dark:text-gray-400 px-4 py-3">
+                      {{ log.duplicatesDetected || 0 }}
+                    </td>
+                    <td class="whitespace-nowrap px-4 py-3">
+                      <button
+                        v-if="manualReviewItemsFromSyncLog(log).length > 0"
+                        type="button"
+                        class="text-sm font-medium text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                        @click="openManualReviewFromSyncLog(log, true)"
+                      >
+                        Review {{ manualReviewItemsFromSyncLog(log).length }}
+                      </button>
+                      <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
+                    </td>
+                    <td class="whitespace-nowrap text-gray-500 dark:text-gray-400 px-4 py-3">
+                      <template v-if="log.daily_summary">{{ log.local_date }}</template><template v-else>{{ formatDate(log.startedAt) }}</template>
+                    </td>
+                  </tr>
+                  <tr v-if="log.daily_summary && expanded_history.has(log.id)" :id="`checks-${log.id}`"><td colspan="7" class="px-4 py-3 bg-gray-50 dark:bg-gray-900/30"><ConfirmationSyncDay :group="log" /></td></tr>
+                </template>
               </tbody>
             </table>
+            <div v-if="store.history_has_more" class="flex justify-center pt-4"><button type="button" class="btn-secondary btn-sm" :disabled="history_loading" @click="fetchHistoryLogs(true)">{{ history_loading ? 'Loading…' : 'Load older history' }}</button></div>
           </div>
         </div>
       </div>
@@ -442,6 +451,7 @@ import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vu
 import Trading212ConnectionModal from '@/components/broker-sync/Trading212ConnectionModal.vue'
 import OandaConnectionModal from '@/components/broker-sync/OandaConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
+import ConfirmationSyncDay from '@/components/broker-sync/ConfirmationSyncDay.vue'
 import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
 import ManualTradeReviewModal from '@/components/import/ManualTradeReviewModal.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
@@ -487,6 +497,8 @@ const showTrading212Modal = ref(false)
 const show_oanda_modal = ref(false)
 const reconnecting_oanda = ref(null)
 const initial_loading = ref(true)
+const expanded_history = ref(new Set())
+const history_loading = ref(false)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const schwabAccounts = ref([])
@@ -614,7 +626,7 @@ async function consumeOAuthCallbackState(query) {
 
   await Promise.all([
     store.fetchConnections(),
-    store.fetchSyncLogs()
+    fetchHistoryLogs()
   ])
 
   if (query.success === 'schwab') {
@@ -652,7 +664,7 @@ onMounted(async () => {
   try {
     await Promise.all([
       store.fetchConnections(),
-      store.fetchSyncLogs(),
+      fetchHistoryLogs(),
       fetchExcludedTrades(),
       store.fetchProviders()
     ])
@@ -739,7 +751,7 @@ async function handleIBKRSave(credentials) {
 
 async function handle_oanda_connected() {
   show_oanda_modal.value = false
-  await Promise.all([store.fetchConnections(), store.fetchSyncLogs()])
+  await Promise.all([store.fetchConnections(), fetchHistoryLogs()])
   scheduleSuccessMessage('OANDA account connected. Select Sync Now to import trades.')
 }
 
@@ -819,7 +831,7 @@ async function handleSync(connection, report_type) {
       attempts++
       await Promise.all([
         store.fetchConnections(),
-        store.fetchSyncLogs()
+        fetchHistoryLogs()
       ])
 
       const inProgressStatuses = ['started', 'fetching', 'parsing', 'importing']
@@ -953,8 +965,22 @@ async function handleDeleteTrades(connection) {
   )
 }
 
+function toggleHistoryDay(id) {
+  const next = new Set(expanded_history.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expanded_history.value = next
+}
+
+async function fetchHistoryLogs(append = false) {
+  history_loading.value = true
+  try {
+    await store.fetchSyncLogs(null, 20, { group_by: 'day', offset: append ? store.syncLogs.length : 0, append })
+  } finally { history_loading.value = false }
+}
+
 async function refreshLogs() {
-  await store.fetchSyncLogs()
+  await fetchHistoryLogs()
 }
 
 async function fetchExcludedTrades() {

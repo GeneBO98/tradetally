@@ -116,6 +116,19 @@ async function redirectBrokerSync(res, provider, stateToken, params = {}, contex
   return res.redirect(buildBrokerSyncRedirect(params, resolvedContext));
 }
 
+function parse_history_options(query) {
+  const limit = Number(query.limit ?? 20);
+  const offset = Number(query.offset ?? 0);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1000000) {
+    return { error: 'History limit must be 1–100 and offset must be a non-negative integer up to 1000000' };
+  }
+  if (query.group_date) {
+    if (typeof query.group_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(query.group_date) || Number.isNaN(Date.parse(`${query.group_date}T00:00:00Z`)) ||
+        new Date(`${query.group_date}T00:00:00Z`).toISOString().slice(0, 10) !== query.group_date) return { error: 'Invalid history date' };
+  }
+  return { limit, offset };
+}
+
 const brokerSyncController = {
   /**
    * Get all broker connections for the current user
@@ -215,6 +228,7 @@ const brokerSyncController = {
       // Create or update connection (duplicate query IDs handled by DB unique constraint)
       const connection = await BrokerConnection.create(userId, {
         brokerType: 'ibkr',
+        ...(req.body.ibkr_confirmation_interval_minutes !== undefined ? { ibkr_confirmation_interval_minutes: req.body.ibkr_confirmation_interval_minutes } : {}),
         ...(Object.prototype.hasOwnProperty.call(req.body, 'ibkr_trade_confirmation_query_id') ? { ibkr_trade_confirmation_query_id: confirmation_id || null } : {}),
         ibkrFlexToken: flexToken,
         ibkrFlexQueryId: flexQueryId,
@@ -788,6 +802,9 @@ const brokerSyncController = {
         });
       }
 
+      if (Object.prototype.hasOwnProperty.call(req.body, 'ibkr_confirmation_interval_minutes') && connection.brokerType !== 'ibkr') {
+        return res.status(400).json({ success: false, error: 'Confirmation intervals are available for IBKR connections only' });
+      }
       if (Object.prototype.hasOwnProperty.call(req.body, 'ibkr_trade_confirmation_query_id')) {
         if (connection.brokerType !== 'ibkr') return res.status(400).json({ success: false, error: 'Confirmation queries are available for IBKR connections only' });
         const confirmation_id = req.body.ibkr_trade_confirmation_query_id || null;
@@ -801,6 +818,7 @@ const brokerSyncController = {
       // Update settings. syncStartDate and accountLabel may be explicitly null
       // (meaning "all time" / "clear label"), so only forward them when present.
       const updates = {};
+      if (req.body.ibkr_confirmation_interval_minutes !== undefined) updates.ibkr_confirmation_interval_minutes = req.body.ibkr_confirmation_interval_minutes;
       if (Object.prototype.hasOwnProperty.call(req.body, 'ibkr_trade_confirmation_query_id')) {
         updates.ibkr_trade_confirmation_query_id = req.body.ibkr_trade_confirmation_query_id || null;
         updates.ibkr_next_confirmation_sync_at = req.body.ibkr_trade_confirmation_query_id ? new Date() : null;
@@ -971,6 +989,15 @@ const brokerSyncController = {
         });
       }
 
+      if (req.query.group_date || req.query.group_by === 'day') {
+        const options = parse_history_options(req.query);
+        if (options.error) return res.status(400).json({ success: false, error: options.error });
+        const timezone = await getUserTimezone(userId);
+        const history = req.query.group_date
+          ? await require('../services/brokerSync/syncHistory').getDay(userId, { ...options, timezone, connection_id: id, local_date: req.query.group_date })
+          : await require('../services/brokerSync/syncHistory').getHistory(userId, { ...options, timezone, connection_id: id });
+        return res.json({ success: true, ...history });
+      }
       const logs = await BrokerConnection.getSyncLogs(id, parseInt(limit));
 
       res.json({
@@ -991,6 +1018,13 @@ const brokerSyncController = {
       const userId = req.user.id;
       const { limit = 50 } = req.query;
 
+      if (req.query.group_by === 'day') {
+        const options = parse_history_options(req.query);
+        if (options.error) return res.status(400).json({ success: false, error: options.error });
+        const timezone = await getUserTimezone(userId);
+        const history = await require('../services/brokerSync/syncHistory').getHistory(userId, { ...options, timezone });
+        return res.json({ success: true, ...history });
+      }
       const logs = await BrokerConnection.getSyncLogsByUser(userId, parseInt(limit));
 
       res.json({

@@ -90,7 +90,7 @@
       </div>
 
       <div v-if="connection.ibkr_trade_confirmation_query_id" class="mt-3 text-sm text-gray-500 dark:text-gray-400">
-        <p>{{ connection.autoSyncEnabled ? 'Same-day fills checked every 15 minutes' : 'Same-day fills available with manual sync' }}</p>
+        <p>{{ connection.autoSyncEnabled ? `Same-day fills checked every ${formatConfirmationInterval(connection.ibkr_confirmation_interval_minutes ?? 15)}` : 'Same-day fills available with manual sync' }}</p>
         <p v-if="connection.ibkr_last_confirmation_sync_at">Confirmations last synced: {{ formatDate(connection.ibkr_last_confirmation_sync_at) }}</p>
         <p v-if="connection.brokerMetadata?.ibkr_confirmation?.error" class="mt-2 text-primary-700 dark:text-primary-300" role="status">
           Confirmation sync: {{ connection.brokerMetadata.ibkr_confirmation.error }}
@@ -139,6 +139,7 @@
 </template>
 
 <script setup>
+import { formatConfirmationInterval } from '@/utils/ibkrConfirmationInterval'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useBrokerSyncStore } from '@/stores/brokerSync'
 import { useUserTimezone } from '@/composables/useUserTimezone'

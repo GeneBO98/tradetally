@@ -69,7 +69,7 @@ describe('IBKR optional confirmation query', () => {
   it('saves a new ID with the stored token and sends explicit null when removed', async () => {
     const connection = { ...schwabConnection(), brokerType: 'ibkr', ibkr_trade_confirmation_query_id: '123' }
     const wrapper = shallowMount(ConnectionSettingsModal, { props: { connection } })
-    expect(wrapper.text()).toContain('every 15 minutes')
+    expect(wrapper.text()).toContain('Confirmation checks use their own interval')
     await wrapper.get('#settingsConfirmationQuery').setValue('456')
     await wrapper.findAll('button').find(button => button.text() === 'Save Changes').trigger('click')
     expect(wrapper.emitted('save')[0][0]).toMatchObject({ ibkr_trade_confirmation_query_id: '456' })
@@ -90,4 +90,19 @@ it('revalidates a suspended confirmation query even when its ID is unchanged', a
     ibkr_trade_confirmation_query_id: '123', brokerMetadata: { ibkr_confirmation: { suspended: true } } } } })
   await wrapper.findAll('button').find(button => button.text() === 'Save Changes').trigger('click')
   expect(wrapper.emitted('save')[0][0]).toMatchObject({ ibkr_trade_confirmation_query_id: '123' })
+})
+
+it('saves an hourly confirmation interval without revalidating an unchanged query', async () => {
+  const wrapper = shallowMount(ConnectionSettingsModal, { props: { connection: {
+    ...schwabConnection(), brokerType: 'ibkr', ibkr_trade_confirmation_query_id: '123', ibkr_confirmation_interval_minutes: 15
+  } } })
+  const interval = wrapper.findComponent({ name: 'IBKRConfirmationInterval' })
+  interval.vm.$emit('update:modelValue', 60)
+  await wrapper.vm.$nextTick()
+  await wrapper.findAll('button').find(button => button.text() === 'Save Changes').trigger('click')
+  expect(wrapper.emitted('save')[0][0]).toMatchObject({ ibkr_confirmation_interval_minutes: 60 })
+  expect(wrapper.emitted('save')[0][0]).not.toHaveProperty('ibkr_trade_confirmation_query_id')
+  interval.vm.$emit('update:modelValue', 16)
+  await wrapper.vm.$nextTick()
+  expect(wrapper.findAll('button').find(button => button.text() === 'Save Changes').attributes('disabled')).toBeDefined()
 })

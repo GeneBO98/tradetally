@@ -52,15 +52,16 @@
             <div>
               <label for="confirmationQueryId" class="label">Trade Confirmation Flex Query ID (optional)</label>
               <input id="confirmationQueryId" v-model="form.ibkr_trade_confirmation_query_id" type="text" class="input" placeholder="For same-day fills" />
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Uses the same Flex token. With Auto-Sync enabled, confirmations are checked every 15 minutes.</p>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Uses the same Flex token. Choose how often Auto-Sync checks confirmations below.</p>
             </div>
+            <IBKRConfirmationInterval v-if="form.ibkr_trade_confirmation_query_id.trim()" id="newConfirmationInterval" v-model="form.ibkr_confirmation_interval_minutes" />
             <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
               <div>
                 <label class="block text-sm font-medium text-gray-900 dark:text-white">
                   Auto-Sync
                 </label>
                 <p class="text-sm text-gray-500 dark:text-gray-400">
-                  Sync Activity on schedule and same-day fills every 15 minutes
+                  Sync Activity and confirmations on their own schedules
                 </p>
               </div>
               <button                 type="button"
@@ -140,6 +141,8 @@
 </template>
 
 <script setup>
+import IBKRConfirmationInterval from './IBKRConfirmationInterval.vue'
+import { validConfirmationInterval } from '@/utils/ibkrConfirmationInterval'
 import { ref, computed } from 'vue'
 import { syncRangePresets, applyPresetToForm, resolveActivePreset, todayIso } from '@/utils/syncRangePresets'
 
@@ -168,6 +171,7 @@ const form = ref({
   flexToken: '',
   flexQueryId: existing?.ibkrFlexQueryId || '',
   ibkr_trade_confirmation_query_id: existing?.ibkr_trade_confirmation_query_id || '',
+  ibkr_confirmation_interval_minutes: existing?.ibkr_confirmation_interval_minutes ?? 15,
   autoSyncEnabled: existing ? existing.autoSyncEnabled !== false : true,
   syncFrequency: existing?.syncFrequency || 'daily',
   syncTime: existing?.syncTime ? String(existing.syncTime).slice(0, 5) : '06:00',
@@ -182,7 +186,7 @@ function applySyncRangePreset(presetId) {
 }
 
 const isValid = computed(() => {
-  return form.value.flexToken.length > 0 && form.value.flexQueryId.length > 0
+  return form.value.flexToken.length > 0 && form.value.flexQueryId.length > 0 && (!form.value.ibkr_trade_confirmation_query_id.trim() || validConfirmationInterval(form.value.ibkr_confirmation_interval_minutes))
 })
 
 function handleSubmit() {
@@ -193,6 +197,7 @@ function handleSubmit() {
     flexToken: form.value.flexToken,
     flexQueryId: form.value.flexQueryId,
     ibkr_trade_confirmation_query_id: form.value.ibkr_trade_confirmation_query_id.trim() || null,
+    ...(form.value.ibkr_trade_confirmation_query_id.trim() ? { ibkr_confirmation_interval_minutes: form.value.ibkr_confirmation_interval_minutes } : {}),
     autoSyncEnabled: form.value.autoSyncEnabled,
     syncFrequency: form.value.syncFrequency,
     syncTime: form.value.syncTime + ':00',

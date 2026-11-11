@@ -1,4 +1,22 @@
 {
+  "ibkr_confirmation_schedule_cases": [
+    {
+      "interval_minutes": 15,
+      "expected_label": "15 minutes"
+    },
+    {
+      "interval_minutes": 60,
+      "expected_label": "1 hour"
+    },
+    {
+      "interval_minutes": 240,
+      "expected_label": "4 hours"
+    },
+    {
+      "interval_minutes": 1440,
+      "expected_label": "24 hours"
+    }
+  ],
   "ibkr_confirmation_reconciliation": {
     "executions": [
       {

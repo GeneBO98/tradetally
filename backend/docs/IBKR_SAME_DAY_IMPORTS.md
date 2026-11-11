@@ -25,11 +25,18 @@ Client Portal trading-session authentication.
 6. Enter the optional confirmation ID in TradeTally's connection form or Settings.
    Settings uses the already encrypted token. Clear the field to remove the query.
    Reconnect preserves it unless explicitly removed.
+7. Choose the **Confirmation sync interval (minutes)** during setup or in Settings.
+   The default is 15 minutes. Enter 60 for hourly checks; custom values must be whole
+   multiples of 15 from 15 through 1440 (24 hours). This does not change Activity's
+   schedule. Changing only this interval uses the saved connection without another
+   credential check.
 
 ## Behavior
 
-- With Auto-Sync enabled, TradeTally checks confirmations every 15 minutes around
-  the clock. Activity runs on its separately configured schedule. This is a polling
+- With Auto-Sync enabled, TradeTally checks confirmations at your configured interval
+  around the clock. Existing connections keep the 15-minute default. Activity runs on
+  its separately configured schedule. The scheduler checks for due work every 15
+  minutes; ongoing syncs or broker retry backoff can delay a check. This is a polling
   interval, not an IBKR delivery guarantee. Both use IBKR's shared token limits.
 - **Sync today's fills** imports the saved confirmation report only. The normal
   manual Sync action imports confirmations first, then Activity. Successful imports
@@ -57,16 +64,41 @@ Client Portal trading-session authentication.
   Activity backfills. Intraday checks do not move the Activity history cursor or
   clear pending Activity retries. A report-not-yet-available response is a warning.
 
+## Sync history
+
+Automatic, completed IBKR confirmation checks are grouped by connection and day in
+Sync History, using your saved display timezone (including daylight saving changes).
+Each row shows its check count, total imports and updates, warning count, distinct
+warning messages, and the latest pending-reconciliation count. That last figure is
+not summed across checks.
+
+Use **Show checks** to expand a day's individual timestamps and results. **Load older
+checks** and **Load older history** keep older entries accessible. Grouping happens
+before the history page limit, so 96 checks do not consume 96 rows of history. Logs
+are retained individually in the database.
+
+Manual syncs, Activity syncs, failures, running jobs, and entries requiring manual
+review remain separate. Warnings on completed automatic checks remain visible in
+the daily summary and in the expanded checks.
+
 ## API additions
 
 Existing routes and legacy fields are preserved. All added fields use snake_case.
 
 - `POST /api/broker-sync/connections/ibkr` and `PUT /api/broker-sync/connections/:id`:
   optional `ibkr_trade_confirmation_query_id`; omission preserves it and null removes it.
+  Optional `ibkr_confirmation_interval_minutes` is an integer multiple of 15 from
+  15 to 1440. Omission preserves an existing interval on reconnect or update.
 - `POST /api/broker-sync/connections/:id/sync`: optional `report_type` of `activity`,
   `trade_confirmation`, or `all`. Manual sync defaults to both configured reports.
 - Connection responses include `ibkr_trade_confirmation_query_id`,
-  `ibkr_next_confirmation_sync_at`, and `ibkr_last_confirmation_sync_at`.
+  `ibkr_next_confirmation_sync_at`, `ibkr_last_confirmation_sync_at`, and
+  `ibkr_confirmation_interval_minutes`.
+- Log endpoints continue to return individual records by default. Request
+  `group_by=day` to paginate daily summaries plus individual important events;
+  `limit` is 1–100, `offset` is 0–1000000, and `has_more` indicates another page.
+  To expand a summary, use the connection log endpoint with `group_date=YYYY-MM-DD`
+  and optional `limit`/`offset`. Ownership is checked before retrieving that day.
 - Trade responses include nullable `ibkr_reconciliation_status`: `pending`,
   `reconciled`, or `needs_review`. Legacy trades remain null until processed.
 - Sync log details include `report_type`, `updated_count`,
@@ -74,6 +106,8 @@ Existing routes and legacy fields are preserved. All added fields use snake_case
 
 Migration 282 only adds nullable columns, a due-time index, and an execution-derived
 status trigger. It does not rewrite existing trades or alter Activity schedules.
+Migration 286 adds the confirmation interval with a 15-minute default and validation;
+it does not delete, combine, or rewrite stored logs.
 
 ## Official IBKR references
 
