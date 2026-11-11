@@ -1308,18 +1308,20 @@ const getSearchHistory = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const favoritesOnly = req.query.favorites === 'true';
 
-    let query = `
-      SELECT DISTINCT ON (symbol) *
+    // One row per symbol, most recently searched first. Searches recorded
+    // without a company name (DCF lookups) take the name from an earlier
+    // search, and a symbol counts as a favorite if any of its rows is.
+    const query = `
+      SELECT symbol,
+             (array_agg(id ORDER BY searched_at DESC))[1] AS id,
+             (array_agg(company_name ORDER BY searched_at DESC) FILTER (WHERE company_name IS NOT NULL))[1] AS company_name,
+             MAX(searched_at) AS searched_at,
+             bool_or(COALESCE(is_favorite, false)) AS is_favorite
       FROM screener_searches
       WHERE user_id = $1
-    `;
-
-    if (favoritesOnly) {
-      query += ` AND is_favorite = true`;
-    }
-
-    query += `
-      ORDER BY symbol, searched_at DESC
+      GROUP BY symbol
+      ${favoritesOnly ? 'HAVING bool_or(COALESCE(is_favorite, false))' : ''}
+      ORDER BY MAX(searched_at) DESC
       LIMIT $2
     `;
 
@@ -1350,13 +1352,12 @@ const toggleFavorite = async (req, res) => {
       return res.status(400).json({ error: 'Symbol is required' });
     }
 
-    // Find most recent search for this symbol
+    // A symbol is a favorite if any of its search rows is
     const findQuery = `
-      SELECT id, is_favorite
+      SELECT bool_or(COALESCE(is_favorite, false)) AS is_favorite
       FROM screener_searches
       WHERE user_id = $1 AND symbol = $2
-      ORDER BY searched_at DESC
-      LIMIT 1
+      HAVING COUNT(*) > 0
     `;
 
     const findResult = await db.query(findQuery, [req.user.id, symbol.toUpperCase()]);
@@ -1588,6 +1589,10 @@ const getDCFMetrics = async (req, res) => {
 
     const metrics = await DCFValuationService.getHistoricalMetrics(symbol);
 
+    // The iOS analyzer only calls this endpoint, so record the search here
+    // too or iOS lookups never reach the shared recent-searches list.
+    await recordSearch(req.user.id, symbol, null);
+
     const { converted, currency } = await convertTradingToDisplay(req, metrics, DCF_METRICS_MONEY_KEYS);
 
     res.json({ ...converted, currency });
@@ -1785,9 +1790,29 @@ const deleteValuation = async (req, res) => {
  */
 const recordSearch = async (userId, symbol, companyName) => {
   try {
+    // The web analyzer loads both the analysis and the DCF metrics for one
+    // search, so a repeat within a few minutes refreshes the latest row
+    // instead of adding another. New rows keep the symbol's favorite flag.
     const query = `
-      INSERT INTO screener_searches (user_id, symbol, company_name)
-      VALUES ($1, $2, $3)
+      WITH refreshed AS (
+        UPDATE screener_searches
+        SET searched_at = CURRENT_TIMESTAMP,
+            company_name = COALESCE($3, company_name)
+        WHERE id = (
+          SELECT id FROM screener_searches
+          WHERE user_id = $1 AND symbol = $2
+            AND searched_at > CURRENT_TIMESTAMP - INTERVAL '5 minutes'
+          ORDER BY searched_at DESC
+          LIMIT 1
+        )
+        RETURNING id
+      )
+      INSERT INTO screener_searches (user_id, symbol, company_name, is_favorite)
+      SELECT $1, $2, $3, COALESCE(
+        (SELECT bool_or(is_favorite) FROM screener_searches WHERE user_id = $1 AND symbol = $2),
+        false
+      )
+      WHERE NOT EXISTS (SELECT 1 FROM refreshed)
     `;
 
     await db.query(query, [userId, symbol.toUpperCase(), companyName || null]);
