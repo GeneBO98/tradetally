@@ -38,7 +38,7 @@ function currentTradingWeekRange(now, timezone) {
 
 async function getRecommendationSummary(userId) {
   let statusCode = 200;
-  const req = { user: { id: userId }, query: { summary: 'true' } };
+  const req = { user: { id: userId }, query: { summary: 'true' }, insightWarmup: true };
   const res = {
     status(code) {
       statusCode = code;

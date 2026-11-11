@@ -150,7 +150,8 @@ import {
   mdiAutoFix,
   mdiAccountAlertOutline,
   mdiClipboardCheckOutline,
-  mdiFire
+  mdiFire,
+  mdiClockAlertOutline
 } from '@mdi/js'
 
 const props = defineProps({
@@ -205,6 +206,7 @@ const iconPath = computed(() => {
     case 'behavior':   return mdiAccountAlertOutline
     case 'discipline': return mdiClipboardCheckOutline
     case 'streak':     return mdiFire
+    case 'position':   return mdiClockAlertOutline
     default:           return mdiLightbulbOnOutline
   }
 })
@@ -225,6 +227,7 @@ const iconTintClass = computed(() => {
     case 'streak':
       return 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
     case 'discipline':
+    case 'position':
       return 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400'
     default:
       return 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
@@ -245,6 +248,7 @@ const kindLabel = computed(() => {
     case 'behavior':   return 'Tendency'
     case 'discipline': return 'Discipline'
     case 'streak':     return 'Streak'
+    case 'position':   return 'Open position'
     default:           return 'Insight'
   }
 })
