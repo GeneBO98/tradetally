@@ -1,120 +1,94 @@
 # TradeTally Docker Deployment Guide
 
-Deploy TradeTally quickly using Docker and Docker Compose.
+Self-host TradeTally with Docker Compose. The stack is two containers: the app (frontend + API) and PostgreSQL 16.
+
+## Image Tags
+
+| Tag | Purpose |
+|-----|---------|
+| `latest` | Stable release (recommended) |
+| `X.Y.Z` | Pinned version that never changes |
+| `nightly` | Untested development build |
 
 ## Quick Start
 
 ### Prerequisites
-- Docker Engine 20.10+
-- Docker Compose 2.0+
+- Docker Engine 20.10+ with the Docker Compose v2 plugin (`docker compose`)
+- 2 GB RAM minimum
 
 ### 1. Download Deployment Files
-
-Create a new directory and download the required files:
 
 ```bash
 mkdir tradetally
 cd tradetally
 
-# Download the docker-compose file
 curl -O https://raw.githubusercontent.com/GeneBO98/tradetally/refs/heads/main/docker-compose.yaml
-
-# Download the environment template
 curl -O https://raw.githubusercontent.com/GeneBO98/tradetally/main/.env.example
-
-# Rename to .env
 mv .env.example .env
 ```
 
 ### 2. Configure Environment
 
-Edit the `.env` file with your settings:
+Edit `.env` and set at least these values:
+
+| Variable | What to set |
+|----------|-------------|
+| `DB_PASSWORD` | A strong database password |
+| `JWT_SECRET` | A long random string, e.g. output of `openssl rand -hex 32` |
+| `FRONTEND_URL` | The exact URL you will open in your browser, e.g. `http://localhost:8080`, `http://192.168.1.50:8080`, or `https://trades.example.com`. Requests from any other origin are rejected. |
+| `BROKER_ENCRYPTION_KEY` | Required only for broker sync (Schwab, IBKR, etc.). Generate with `openssl rand -hex 32` |
+
+Set `DB_PASSWORD` before the first start. PostgreSQL only applies it when the database volume is first created.
+
+Everything else is optional. See [Optional Configuration](#optional-configuration).
+
+### 3. Start TradeTally
 
 ```bash
-nano .env  # or vim .env
+docker compose up -d
+docker compose ps
+docker compose logs -f app
 ```
 
-**Required configurations:**
-- `DB_USER`: Database username (default: trader)
-- `DB_PASSWORD`: Set a strong database password
-- `DB_NAME`: Database name (default: tradetally)
-- `JWT_SECRET`: Change this to a secure random string
-- `CORS_ORIGINS`: Additional CORS origins for mobile apps
+Database migrations run automatically on startup (`RUN_MIGRATIONS=true`). No manual schema step is needed.
 
-**Important optional configurations:**
-- `NODE_ENV`: Environment mode (default: production)
-- `PORT`: Backend port (default: 3000)
-- `FRONTEND_URL`: Frontend URL for CORS (default: http://localhost:5173)
-- `VITE_API_URL`: Frontend API URL (default: http://localhost/api)
-- `REGISTRATION_MODE`: Controls user registration (default: open)
-- `DB_SCHEMA`: PostgreSQL schema for app tables and migrations. Leave blank to use the database `search_path`/`current_schema()`.
+### 4. Create Your Account
 
-**Email configuration (optional but recommended):**
-- `EMAIL_HOST`: SMTP server host
-- `EMAIL_PORT`: SMTP server port
-- `EMAIL_USER`: SMTP username
-- `EMAIL_PASS`: SMTP password
-- `EMAIL_FROM`: From email address
+Open http://localhost:8080 (or your `FRONTEND_URL`) and register. **The first account registered becomes the admin.** If email is not configured, accounts are active immediately without email verification.
 
-**External API keys (optional but recommended for full functionality):**
-- `FINNHUB_API_KEY`: For real-time quotes and CUSIP resolution
-- `ALPHA_VANTAGE_API_KEY`: For trade chart visualization
+Use `REGISTRATION_MODE` to control sign-ups after that: `open` (default), `approval` (admin approves new users), or `disabled`.
 
-**Mobile app support (optional):**
-- `ACCESS_TOKEN_EXPIRE`: Access token expiry (default: 15m)
-- `REFRESH_TOKEN_EXPIRE`: Refresh token expiry (default: 30d)
-- `MAX_DEVICES_PER_USER`: Max devices per user (default: 10)
-- `MAX_FILE_SIZE`: Max upload file size (default: 52428800)
+## Optional Configuration
 
-### 3. Deploy
+**Market data and AI:**
 
-```bash
-# Start the application
-docker-compose up -d
+| Variable | Used for | Get a key |
+|----------|----------|-----------|
+| `FINNHUB_API_KEY` | Quotes, company data, CUSIP resolution | https://finnhub.io/dashboard |
+| `ALPHA_VANTAGE_API_KEY` | Trade charts (daily candles on the free tier) | https://www.alphavantage.co/support/#api-key |
+| `OPENFIGI_API_KEY` | CUSIP to ticker resolution | https://www.openfigi.com/api |
+| `GEMINI_API_KEY` | Server-wide default AI key (users can also add their own in Settings) | https://aistudio.google.com/apikey |
 
-# Check status
-docker-compose ps
+**Email (SMTP):** set `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASS`, and `EMAIL_FROM`. All of host, user, and pass must be set or email stays disabled.
 
-# View logs
-docker-compose logs -f app
-```
+**Mobile app / extra origins:** add comma-separated origins to `CORS_ORIGINS`.
 
-### 4. Initialize Database (First Time Only)
+**Background services:** each scheduler can be turned off with its `ENABLE_*` flag (for example `ENABLE_PRICE_MONITORING=false`) to reduce resource usage.
 
-The database will be automatically created. To verify:
-
-```bash
-# Check if database is ready
-docker exec tradetally-db pg_isready -U trader -d tradetally
-
-# If you need to manually run the schema (only if tables don't exist):
-# docker exec -i tradetally-db psql -U trader -d tradetally < schema.sql
-```
-
-### 5. Access the Application
-
-- **TradeTally**: http://localhost
-- **Database Admin**: http://localhost:8080 (optional)
-
-## Default Login
-
-Create your first user account through the registration page.
+After changing `.env`, apply it with `docker compose up -d`.
 
 ## Management Commands
 
-### View Logs
+### Update
 ```bash
-docker-compose logs -f app
-docker-compose logs -f postgres
+docker compose pull
+docker compose up -d
 ```
 
-### Update Application
+### Logs
 ```bash
-# Pull latest image
-docker-compose pull app
-
-# Restart application (preserves database)
-docker-compose up -d app
+docker compose logs -f app
+docker compose logs -f postgres
 ```
 
 ### Backup Database
@@ -123,73 +97,57 @@ docker exec tradetally-db pg_dump -U trader tradetally > tradetally_backup_$(dat
 ```
 
 ### Restore Database
+Restore into an empty database (for example, a fresh install before registering any account):
 ```bash
 docker exec -i tradetally-db psql -U trader tradetally < tradetally_backup.sql
 ```
 
-### Stop Services
+### Stop
 ```bash
-# Stop all services (preserves data)
-docker-compose down
+# Stop containers (data is kept)
+docker compose down
 
-# Stop and remove volumes (WARNING: deletes all data)
-docker-compose down -v
+# Stop and delete the database volume (WARNING: deletes all data)
+docker compose down -v
 ```
 
-## Directory Structure
+## Where Data Lives
 
-After deployment, your directory should look like:
 ```
 tradetally/
 ├── docker-compose.yaml
 ├── .env
-├── logs/          (created automatically)
-└── data/          (created automatically)
+└── backend/            (created on first start)
+    ├── src/logs/       application logs
+    ├── src/data/       app data files
+    └── uploads/        uploaded images and attachments
 ```
+
+The database is stored in the `postgres_data` Docker volume.
 
 ## Troubleshooting
 
-### Application won't start
-```bash
-# Check logs
-docker-compose logs app
+**"Origin is not allowed" / login or registration fails:** `FRONTEND_URL` does not match the URL in your browser's address bar (scheme, host, and port must all match). Fix it in `.env` and run `docker compose up -d`.
 
-# Check database connection
-docker exec tradetally-app ping postgres
+**App won't start:**
+```bash
+docker compose logs app
+docker compose ps postgres
+docker exec tradetally-db pg_isready -U trader -d tradetally
 ```
 
-### Database connection issues
-```bash
-# Check database status
-docker-compose ps postgres
+**`DB_PASSWORD must be set` / `JWT_SECRET must be set`:** the variable is missing from `.env`, or `.env` is not in the same directory as `docker-compose.yaml`.
 
-# Check database logs
-docker-compose logs postgres
-```
-
-### Performance issues
-- Ensure your server has at least 2GB RAM
-- Check disk space for Docker volumes
-- Monitor with: `docker stats`
+**Database authentication failed after changing `DB_PASSWORD`:** the password is fixed when the volume is created. Change it back, or change it inside PostgreSQL with `ALTER USER`.
 
 ## Security Notes
 
-1. **Change default passwords** in `.env`
-2. **Use a firewall** to restrict access to ports 5432 and 8080
-3. **Set up SSL/TLS** with a reverse proxy like nginx for production
-4. **Regular backups** of your database
-5. **Keep Docker images updated**
+1. Change `DB_PASSWORD` and `JWT_SECRET` from the template values.
+2. Put TradeTally behind a reverse proxy with TLS (Caddy, nginx, Traefik) for anything beyond local use, and set `FRONTEND_URL` to the HTTPS URL.
+3. Only port 8080 is published. PostgreSQL is not exposed outside the Docker network.
+4. Back up the database regularly and keep the image updated.
 
 ## Support
 
-For issues and support:
-- GitHub Issues: https://github.com/GeneBO98/tradetally/issues
-
-## API Keys (Optional)
-
-For full CUSIP resolution functionality:
-
-1. **OpenFIGI API**: https://www.openfigi.com/api
-2. **Google Gemini API**: https://console.cloud.google.com/
-
-Add this to your `.env` file as `OPENFIGI_API_KEY`
+- GitHub: https://github.com/GeneBO98/tradetally
+- Issues: https://github.com/GeneBO98/tradetally/issues
