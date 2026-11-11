@@ -24,7 +24,7 @@
 
         <div>
           <div class="text-label mb-1">Net P&L</div>
-          <div class="text-lg font-semibold" :class="pnlClass">
+          <div class="text-lg font-semibold" :class="trade_pnl_class">
             {{ formatCurrency(trade.pnl) }}
           </div>
           <div class="text-xs text-gray-500 dark:text-gray-400">
@@ -164,6 +164,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { pnlClass } from '@/utils/metricTone'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { formatR } from '@/utils/rFormat'
@@ -183,7 +184,7 @@ const props = defineProps({
   }
 })
 
-const pnlClass = computed(() => {
+const trade_pnl_class = computed(() => {
   const pnl = parseFloat(props.trade.pnl)
   return pnlClass(pnl)
 })
