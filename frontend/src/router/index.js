@@ -130,6 +130,13 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
+      path: '/metrics/tax-report',
+      name: 'tax-report',
+      component: () => import('@/views/TaxReportView.vue'),
+      // /api/tax-report/* is Pro-only; free users go to the upgrade page.
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
       path: '/metrics/allocations',
       name: 'allocation-report',
       component: () => import('@/views/AllocationReportView.vue'),
