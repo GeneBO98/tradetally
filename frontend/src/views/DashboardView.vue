@@ -454,6 +454,11 @@
               <HeroMetricsRibbon :analytics="analytics" :range-label="heroRangeLabel" :r-mode="dashboardRMode" @update:r-mode="setDashboardRMode" />
             </template>
 
+            <!-- Performance Score: one 0-100 number with its six factors -->
+            <template v-if="element.id === 'performance-score'">
+              <PerformanceScoreCard :score="analytics?.performanceScore" :range-label="heroRangeLabel" />
+            </template>
+
             <!-- AI Insight of the Day -->
             <template v-if="element.id === 'ai-insight'">
               <div v-if="showProLock" class="card" data-testid="ai-insight-locked">
@@ -1671,6 +1676,7 @@ const TradeNewsSection = defineAsyncComponent(() => import('@/components/dashboa
 const UpcomingEarningsSection = defineAsyncComponent(() => import('@/components/dashboard/UpcomingEarningsSection.vue'))
 const CalendarHeatmap = defineAsyncComponent(() => import('@/components/dashboard/CalendarHeatmap.vue'))
 const StreakMomentumCard = defineAsyncComponent(() => import('@/components/dashboard/StreakMomentumCard.vue'))
+const PerformanceScoreCard = defineAsyncComponent(() => import('@/components/dashboard/PerformanceScoreCard.vue'))
 const BehavioralAlertsCard = defineAsyncComponent(() => import('@/components/dashboard/BehavioralAlertsCard.vue'))
 const RecentTradesTimeline = defineAsyncComponent(() => import('@/components/dashboard/RecentTradesTimeline.vue'))
 const WinLossPulse = defineAsyncComponent(() => import('@/components/dashboard/WinLossPulse.vue'))
@@ -2072,6 +2078,9 @@ const marketStatusPoller = useVisibilityPolling(() => checkMarketStatus(), 60000
 // re-enable any of them via the Customize panel.
 const sectionDefinitions = [
   { id: 'hero-metrics', title: 'Hero Metrics Ribbon', category: 'stats', defaultVisible: true },
+  // `insertAfter` places a section added after launch next to its anchor in
+  // layouts saved before it existed, instead of at the bottom of the page.
+  { id: 'performance-score', title: 'Performance Score', category: 'stats', defaultVisible: true, insertAfter: 'hero-metrics' },
   { id: 'journal-entry', title: "Today's Journal Entry", category: 'content', defaultVisible: true },
   { id: 'ai-insight', title: 'AI Insight of the Day', category: 'stats', defaultVisible: true },
   { id: 'equity-and-calendar', title: 'Equity Curve & Calendar', category: 'charts', defaultVisible: true },
@@ -2435,8 +2444,19 @@ function loadDashboardLayout() {
       }
     }
 
-    // Append new sections at the end using their registry defaults.
-    const appendedNew = Array.from(normalizedById.values())
+    // Sections missing from the saved layout are new since it was saved. One
+    // that names an anchor goes directly after it; the rest go at the end.
+    // Both use their registry defaults.
+    const appendedNew = []
+    for (const section of normalizedById.values()) {
+      const anchorId = getSectionDefinition(section.id)?.insertAfter
+      const anchorIndex = anchorId ? normalizedLayout.findIndex(s => s.id === anchorId) : -1
+      if (anchorIndex === -1) {
+        appendedNew.push(section)
+      } else {
+        normalizedLayout.splice(anchorIndex + 1, 0, section)
+      }
+    }
 
     dashboardLayout.value = [
       ...normalizedLayout,

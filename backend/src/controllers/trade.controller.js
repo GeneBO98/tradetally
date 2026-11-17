@@ -11,6 +11,17 @@ const cache = require('../utils/cache');
 const AnalyticsCache = require('../services/analyticsCache');
 const { computeTradePnl } = require('../services/pnlEngine');
 const { convertForDisplay } = require('../utils/displayCurrency');
+const { computePerformanceScore } = require('../utils/performanceScore');
+
+// The score is derived at response time rather than stored with the analytics,
+// so payloads cached before it existed still carry it. It is computed from the
+// USD figures and attached after currency conversion: every input is a ratio.
+async function withPerformanceScore(req, analytics) {
+  const performanceScore = computePerformanceScore(analytics);
+  const body = await convertForDisplay(req, analytics);
+  body.performanceScore = performanceScore;
+  return body;
+}
 const { groupTradesIntoPositions, storedCurrency } = require('../utils/openPositionGrouping');
 const yahooFinance = require('../utils/yahooFinance');
 const { convertQuoteCurrency } = require('../utils/quoteCurrency');
@@ -3810,7 +3821,7 @@ const tradeController = {
       const cached = cache.get(cacheKey);
       if (cached) {
         console.log('[CACHE] Analytics cache hit for user:', req.user.id);
-        return res.json(await convertForDisplay(req, cached));
+        return res.json(await withPerformanceScore(req, cached));
       }
 
       console.log('[CACHE] Analytics cache miss for user:', req.user.id);
@@ -3835,7 +3846,7 @@ const tradeController = {
         return computed;
       });
 
-      res.json(await convertForDisplay(req, analytics));
+      res.json(await withPerformanceScore(req, analytics));
     } catch (error) {
       console.error('Analytics error:', error);
       next(error);

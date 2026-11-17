@@ -453,4 +453,80 @@ describe('DashboardView loading and advanced filter wiring', () => {
       expect(last).toContain('minPrice=5')
     })
   })
+
+  describe('performance score section', () => {
+    const analyticsWithScore = {
+      summary: {},
+      performanceBySymbol: [],
+      dailyPnL: [],
+      dailyWinRate: [],
+      topTrades: { best: [], worst: [] },
+      performanceScore: {
+        ready: true,
+        score: 72,
+        band: 'solid',
+        bandLabel: 'Solid',
+        tradesCounted: 40,
+        minTrades: 20,
+        factors: [{ key: 'profitFactor', label: 'Profit factor', description: '', weight: 25, value: 1.8, score: 75 }]
+      }
+    }
+
+    function mockDashboard(settings) {
+      apiMock.get.mockImplementation((url) => {
+        if (typeof url === 'string' && url.startsWith('/settings')) {
+          return Promise.resolve({ data: { settings } })
+        }
+        if (typeof url === 'string' && url.startsWith('/trades/analytics')) {
+          return Promise.resolve({ data: analyticsWithScore })
+        }
+        return defaultGetImplementation(url)
+      })
+    }
+
+    it('renders the score from the analytics response', async () => {
+      mockDashboard({ statisticsCalculation: 'average' })
+      wrapper = await mountDashboard()
+      await flushPromises()
+
+      const card = wrapper.get('[data-testid="performance-score-card"]')
+      expect(card.text()).toContain('72')
+      expect(card.text()).toContain('Solid')
+    })
+
+    it('slots into a layout saved before it existed, directly after the hero ribbon', async () => {
+      mockDashboard({
+        statisticsCalculation: 'average',
+        // Saved before the section existed, with the user's own ordering.
+        dashboardLayout: [
+          { id: 'equity-and-calendar', visible: true },
+          { id: 'hero-metrics', visible: true },
+          { id: 'momentum-and-risk', visible: true }
+        ]
+      })
+      wrapper = await mountDashboard()
+      await flushPromises()
+
+      const order = wrapper
+        .findAll('[data-stub="CalendarHeatmap"], [data-stub="HeroMetricsRibbon"], [data-testid="performance-score-card"], [data-stub="StreakMomentumCard"]')
+        .map(node => node.attributes('data-stub') || node.attributes('data-testid'))
+      expect(order).toEqual(['CalendarHeatmap', 'HeroMetricsRibbon', 'performance-score-card', 'StreakMomentumCard'])
+    })
+
+    it('stays hidden when the user has turned it off', async () => {
+      mockDashboard({
+        statisticsCalculation: 'average',
+        dashboardLayout: [
+          { id: 'hero-metrics', visible: true },
+          { id: 'performance-score', visible: false }
+        ]
+      })
+      wrapper = await mountDashboard()
+      await flushPromises()
+
+      const card = wrapper.find('[data-testid="performance-score-card"]')
+      // Hidden sections stay in the DOM under a `hidden` wrapper outside customize mode.
+      expect(card.exists() ? card.element.closest('.hidden') !== null : true).toBe(true)
+    })
+  })
 })
