@@ -138,7 +138,14 @@
         <div class="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <h2 class="heading-card">Export {{ report.year }}</h2>
         </div>
-        <div class="card-dense-body space-y-4">
+        <!-- Free plans see the whole report; the files are the Pro part. -->
+        <div v-if="showProLock" class="card-dense-body" data-testid="tax-export-locked">
+          <ProUpgradePrompt
+            variant="compact"
+            :description="`Download ${report.year} as a TurboTax file or a Form 8949 CSV, wash sale adjustments included, with TradeTally Pro.`"
+          />
+        </div>
+        <div v-else class="card-dense-body space-y-4">
           <div class="flex flex-col gap-4 sm:flex-row sm:items-end">
             <div class="sm:w-80">
               <label for="tax-box" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -318,12 +325,15 @@
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import { useProAccess } from '@/composables/useProAccess'
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 
 const PAGE_SIZE = 100
 
 const { selectedAccount } = useGlobalAccountFilter()
+const { showProLock } = useProAccess()
 
 const report = ref(null)
 const loading = ref(false)

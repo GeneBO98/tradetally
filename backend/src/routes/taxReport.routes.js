@@ -13,15 +13,14 @@ const taxReportLimiter = createRateLimiter({
 });
 
 router.use(authenticate);
-
-// The tax report is a Pro feature (billing-disabled/self-hosted installs pass through).
-router.use(requiresTier('pro'));
 router.use(taxReportLimiter);
 
-// Realised gains and losses for a tax year, as Form 8949 lines plus summaries
+// Realised gains and losses for a tax year, as Form 8949 lines plus summaries.
+// Open to every plan: seeing the year's numbers is the reason to want the files.
 router.get('/', taxReportController.getReport);
 
-// The same lines as a file: Form 8949 CSV, or TXF for TurboTax Desktop
-router.get('/export', taxReportController.exportReport);
+// The same lines as a file: Form 8949 CSV, or TXF for TurboTax Desktop.
+// Pro only (billing-disabled/self-hosted installs pass through).
+router.get('/export', requiresTier('pro'), taxReportController.exportReport);
 
 module.exports = router;

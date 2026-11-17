@@ -4,6 +4,11 @@ import TaxReportView from './TaxReportView.vue'
 import api from '@/services/api'
 
 vi.mock('@/services/api', () => ({ default: { get: vi.fn() } }))
+const proAccess = vi.hoisted(() => ({ locked: false }))
+vi.mock('@/composables/useProAccess', async () => {
+  const { computed } = await import('vue')
+  return { useProAccess: () => ({ showProLock: computed(() => proAccess.locked) }) }
+})
 vi.mock('@/composables/useGlobalAccountFilter', async () => {
   const { ref } = await import('vue')
   return { useGlobalAccountFilter: () => ({ selectedAccount: ref(null) }) }
@@ -37,6 +42,7 @@ function reportFor(year, overrides = {}) {
 const mountView = () => mount(TaxReportView, {
   global: {
     stubs: {
+      ProUpgradePrompt: { props: ['description'], template: '<div data-stub="upgrade">{{ description }}</div>' },
       RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
       BaseSelect: {
         props: ['modelValue', 'options'],
@@ -52,6 +58,7 @@ const reportCalls = () => api.get.mock.calls.filter(([url]) => url === '/tax-rep
 describe('TaxReportView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    proAccess.locked = false
     api.get.mockImplementation((url, config) => {
       if (url === '/tax-report') return Promise.resolve({ data: reportFor(config.params.year || 2025) })
       return Promise.resolve({ data: new Blob(['V042']) })
@@ -120,6 +127,19 @@ describe('TaxReportView', () => {
     expect(createObjectURL).toHaveBeenCalledTimes(1)
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:tax')
     vi.unstubAllGlobals()
+  })
+
+  it('shows free plans the full report with an upgrade prompt in place of the exports', async () => {
+    proAccess.locked = true
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="tax-net"]').text()).toBe('+$900.00')
+    expect(wrapper.get('[data-testid="tax-rows"]').findAll('tbody tr')).toHaveLength(2)
+    expect(wrapper.get('[data-testid="tax-export-locked"]').text()).toContain('Download 2025 as a TurboTax file')
+    expect(wrapper.find('[data-testid="tax-export-txf"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="tax-export-csv"]').exists()).toBe(false)
   })
 
   it('shows an empty state when there are no closed trades', async () => {

@@ -133,8 +133,8 @@ const router = createRouter({
       path: '/metrics/tax-report',
       name: 'tax-report',
       component: () => import('@/views/TaxReportView.vue'),
-      // /api/tax-report/* is Pro-only; free users go to the upgrade page.
-      meta: { requiresAuth: true, requiresTier: 'pro' }
+      // The report is open to every plan; only its file exports are Pro.
+      meta: { requiresAuth: true }
     },
     {
       path: '/metrics/allocations',
