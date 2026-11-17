@@ -150,6 +150,17 @@ describe('buildTradeLots', () => {
     expect(dispositions[0].quantity).toBe(40);
   });
 
+  it('reports a trade whose stored entry is later than its exit as a same-day, estimated sale', () => {
+    const t = trade({
+      quantity: 10, entry_price: 100, exit_price: 110, pnl: 100,
+      entry_time: '2025-06-18T15:00:00Z', exit_time: '2025-06-15T15:00:00Z'
+    });
+
+    const [d] = buildTradeLots(t, TZ).dispositions;
+
+    expect(d).toMatchObject({ openedDate: '2025-06-15', closedDate: '2025-06-15', approximate: true });
+  });
+
   it('skips a futures trade whose point value is unknown', () => {
     const t = trade({ instrument_type: 'future', point_value: null, executions: [fill('buy', 1, 5000, '2025-01-06T15:00:00Z'), fill('sell', 1, 5010, '2025-01-06T16:00:00Z')] });
 
@@ -299,7 +310,7 @@ describe('buildTaxReport', () => {
     const result = report([future], 2025);
 
     expect(result.rows).toEqual([]);
-    expect(result.summary.section1256).toMatchObject({ count: 1, gainLoss: 1000, longTermPortion: 600, shortTermPortion: 400 });
+    expect(result.summary.section1256).toEqual({ count: 1, gainLoss: 1000, longTermPortion: 600, shortTermPortion: 400 });
     expect(result.summary.netGainLoss).toBe(1000);
   });
 

@@ -114,6 +114,10 @@ function createBuilder(trade, timezone, multiplier) {
     const closingValue = quantity * price * multiplier;
     const openingCost = lot.costPerUnit * quantity;
     const closedDate = dateInTimezone(new Date(closedMs).toISOString(), timezone);
+    // A stored entry time later than the exit is a data error. A tax line
+    // cannot be acquired after it was sold, so report it as a same-day sale
+    // and mark the line as estimated.
+    const datesReversed = lot.openedMs > closedMs;
     lot.remaining -= quantity;
     dispositions.push({
       tradeId: trade.id,
@@ -122,12 +126,12 @@ function createBuilder(trade, timezone, multiplier) {
       // Long: bought then sold. Short: sold short (proceeds), bought to cover (basis).
       proceeds: side === 'long' ? closingValue - cost : openingValue - openingCost,
       basis: side === 'long' ? openingValue + openingCost : closingValue + cost,
-      openedMs: lot.openedMs,
-      openedDate: lot.openedDate,
+      openedMs: datesReversed ? closedMs : lot.openedMs,
+      openedDate: datesReversed ? closedDate : lot.openedDate,
       closedMs,
       closedDate,
       closedDay: dayNumber(closedDate),
-      approximate
+      approximate: approximate || datesReversed
     });
   };
 

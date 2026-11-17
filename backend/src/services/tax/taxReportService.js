@@ -119,7 +119,9 @@ function buildTaxReport(trades, { year, timezone = 'UTC', accounts = null } = {}
   const yearPrefix = `${year}-`;
   const years = new Set();
   const rows = [];
-  const section1256 = { count: 0, proceeds: 0, costBasis: 0, gainLoss: 0 };
+  // Only the net result: a futures contract's "proceeds" would be its full
+  // notional value, which Form 6781 does not ask for and which reads as nonsense.
+  const section1256 = { count: 0, gainLoss: 0 };
   const shortTerm = emptyBucket();
   const longTerm = emptyBucket();
   const washSales = { count: 0, disallowed: 0 };
@@ -134,8 +136,6 @@ function buildTaxReport(trades, { year, timezone = 'UTC', accounts = null } = {}
 
     if (SECTION_1256_TYPES.has(trade.instrument_type)) {
       section1256.count += 1;
-      section1256.proceeds += disposition.proceeds;
-      section1256.costBasis += disposition.basis;
       section1256.gainLoss += disposition.proceeds - disposition.basis;
       continue;
     }
@@ -185,8 +185,6 @@ function buildTaxReport(trades, { year, timezone = 'UTC', accounts = null } = {}
       longTerm: long8949,
       section1256: {
         count: section1256.count,
-        proceeds: round2(section1256.proceeds),
-        costBasis: round2(section1256.costBasis),
         gainLoss: net1256,
         longTermPortion: longPortion1256,
         shortTermPortion: round2(net1256 - longPortion1256)

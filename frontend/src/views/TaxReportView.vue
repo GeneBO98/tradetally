@@ -86,7 +86,22 @@
         <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <h2 class="heading-card">Totals for Schedule D</h2>
         </div>
-        <div class="overflow-x-auto">
+        <!-- Phones: one block per category so the gain is never off-screen. -->
+        <ul class="divide-y divide-gray-200 dark:divide-gray-700 sm:hidden" data-testid="tax-totals-mobile">
+          <li v-for="line in totalLines" :key="line.label" class="px-4 py-3">
+            <div class="flex items-baseline justify-between gap-3">
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ line.label }}</span>
+              <span class="text-mono-num text-sm font-medium" :class="toneClass(line.gainLoss)">{{ signedMoney(line.gainLoss) }}</span>
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ line.note }}</div>
+            <dl v-if="!line.netOnly" class="text-mono-num mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700 dark:text-gray-300">
+              <div class="flex justify-between gap-2"><dt class="text-gray-500 dark:text-gray-400">Proceeds</dt><dd>{{ money(line.proceeds) }}</dd></div>
+              <div class="flex justify-between gap-2"><dt class="text-gray-500 dark:text-gray-400">Basis</dt><dd>{{ money(line.costBasis) }}</dd></div>
+              <div v-if="line.adjustments" class="flex justify-between gap-2"><dt class="text-gray-500 dark:text-gray-400">Adjustments</dt><dd>{{ money(line.adjustments) }}</dd></div>
+            </dl>
+          </li>
+        </ul>
+        <div class="hidden overflow-x-auto sm:block">
           <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700" data-testid="tax-totals">
             <thead class="table-head">
               <tr>
@@ -103,8 +118,8 @@
                   <div class="font-medium text-gray-900 dark:text-white">{{ line.label }}</div>
                   <div class="text-xs text-gray-500 dark:text-gray-400">{{ line.note }}</div>
                 </td>
-                <td class="text-mono-num whitespace-nowrap px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ money(line.proceeds) }}</td>
-                <td class="text-mono-num whitespace-nowrap px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ money(line.costBasis) }}</td>
+                <td class="text-mono-num whitespace-nowrap px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ line.netOnly ? '—' : money(line.proceeds) }}</td>
+                <td class="text-mono-num whitespace-nowrap px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ line.netOnly ? '—' : money(line.costBasis) }}</td>
                 <td class="text-mono-num whitespace-nowrap px-4 py-3 text-right text-gray-700 dark:text-gray-300">
                   {{ line.adjustments ? money(line.adjustments) : '—' }}
                 </td>
@@ -215,7 +230,34 @@
         <div v-if="report.rows.length === 0" class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
           {{ rowFilter === 'all' ? `No stock, option or crypto sales in ${report.year}.` : 'No sales match this filter.' }}
         </div>
-        <div v-else class="overflow-x-auto" :class="loading ? 'opacity-60' : ''">
+        <ul
+          v-if="report.rows.length > 0"
+          class="divide-y divide-gray-200 dark:divide-gray-700 sm:hidden"
+          :class="loading ? 'opacity-60' : ''"
+          data-testid="tax-rows-mobile"
+        >
+          <li v-for="(row, index) in report.rows" :key="`m-${row.tradeId}-${index}`" class="px-4 py-3">
+            <div class="flex items-baseline justify-between gap-3">
+              <router-link
+                :to="`/trades/${row.tradeId}`"
+                class="min-w-0 truncate text-sm font-medium text-primary-700 hover:text-primary-500 dark:text-primary-400"
+              >
+                {{ row.description }}
+              </router-link>
+              <span class="text-mono-num shrink-0 text-sm font-medium" :class="toneClass(row.gainLoss)">{{ signedMoney(row.gainLoss) }}</span>
+            </div>
+            <div class="text-mono-num mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+              <span>{{ usDate(row.dateAcquired) }} to {{ usDate(row.dateSold) }}</span>
+              <span>{{ row.term === 'long' ? 'Long-term' : 'Short-term' }}</span>
+              <span v-if="row.side === 'short'" class="badge-neutral">Short sale</span>
+              <span v-if="row.approximate" class="badge-warning">Estimated</span>
+            </div>
+            <div class="text-mono-num mt-1 text-xs text-gray-700 dark:text-gray-300">
+              {{ money(row.proceeds) }} proceeds, {{ money(row.costBasis) }} basis<template v-if="row.adjustmentCode">, {{ money(row.adjustmentAmount) }} wash sale</template>
+            </div>
+          </li>
+        </ul>
+        <div v-if="report.rows.length > 0" class="hidden overflow-x-auto sm:block" :class="loading ? 'opacity-60' : ''">
           <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700" data-testid="tax-rows">
             <thead class="table-head">
               <tr>
@@ -246,7 +288,7 @@
                   <span
                     v-if="row.approximate"
                     class="badge-warning ml-2"
-                    title="The fills on this trade did not add up to its P&amp;L, so it is shown as one line from the trade totals."
+                    title="The fills or dates on this trade did not add up, so it is shown as one line from the trade totals."
                   >
                     Estimated
                   </span>
@@ -374,7 +416,8 @@ const totalLines = computed(() => {
     { label: 'Long-term', note: 'Form 8949 Part II. Held more than one year.', ...s.longTerm }
   ]
   if (s.section1256.count > 0) {
-    lines.push({ label: 'Futures (section 1256)', note: 'Form 6781.', ...s.section1256, adjustments: 0 })
+    // Form 6781 takes the net result only; there are no proceeds or basis columns to fill.
+    lines.push({ label: 'Futures (section 1256)', note: 'Form 6781. Net result only.', gainLoss: s.section1256.gainLoss, netOnly: true })
   }
   return lines
 })
@@ -383,7 +426,7 @@ const notices = computed(() => {
   const excluded = report.value?.excluded || {}
   const list = []
   if (excluded.approximated > 0) {
-    list.push(`${countLabel(excluded.approximated, 'line')} marked Estimated: the fills on those trades did not add up to the trade's P&L, so each is reported as a single sale from the trade totals.`)
+    list.push(`${countLabel(excluded.approximated, 'line')} marked Estimated: the fills or dates on those trades did not add up, so each is reported as a single sale from the trade totals.`)
   }
   if (excluded.otherCurrency > 0) {
     list.push(`${countLabel(excluded.otherCurrency, 'closed trade')} in a currency other than US dollars ${excluded.otherCurrency === 1 ? 'is' : 'are'} left out.`)
