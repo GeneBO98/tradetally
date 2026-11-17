@@ -7,7 +7,12 @@ jest.mock('../../src/utils/logger', () => ({
   logError: jest.fn()
 }));
 
+jest.mock('../../src/services/csvMappingSuggestionService', () => ({
+  suggest: jest.fn()
+}));
+
 const db = require('../../src/config/database');
+const CsvMappingSuggestionService = require('../../src/services/csvMappingSuggestionService');
 const csvMappingController = require('../../src/controllers/csvMapping.controller');
 
 function createResponse() {
@@ -28,6 +33,46 @@ function createResponse() {
 describe('csvMapping controller', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('suggestMapping', () => {
+    it('returns the AI suggestion for the posted headers', async () => {
+      CsvMappingSuggestionService.suggest.mockResolvedValue({ mapping: { symbol_column: 'Instrument' }, matched: 1 });
+      const req = { user: { id: 'user-1' }, body: { headers: ['Instrument', 'Lots'], sampleRows: { Instrument: ['EURUSD'] } } };
+      const res = createResponse();
+
+      await csvMappingController.suggestMapping(req, res, jest.fn());
+
+      expect(CsvMappingSuggestionService.suggest).toHaveBeenCalledWith('user-1', {
+        headers: ['Instrument', 'Lots'],
+        sampleRows: { Instrument: ['EURUSD'] }
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.payload).toEqual({ success: true, data: { mapping: { symbol_column: 'Instrument' }, matched: 1 } });
+    });
+
+    it('passes the service status and code through for expected failures', async () => {
+      const error = Object.assign(new Error('Insufficient AI credits'), { status: 402, code: 'INSUFFICIENT_CREDITS' });
+      CsvMappingSuggestionService.suggest.mockRejectedValue(error);
+      const res = createResponse();
+      const next = jest.fn();
+
+      await csvMappingController.suggestMapping({ user: { id: 'user-1' }, body: {} }, res, next);
+
+      expect(res.statusCode).toBe(402);
+      expect(res.payload).toEqual({ success: false, code: 'INSUFFICIENT_CREDITS', error: 'Insufficient AI credits' });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('hands unexpected errors to the error middleware', async () => {
+      const error = new Error('boom');
+      CsvMappingSuggestionService.suggest.mockRejectedValue(error);
+      const next = jest.fn();
+
+      await csvMappingController.suggestMapping({ user: { id: 'user-1' }, body: {} }, createResponse(), next);
+
+      expect(next).toHaveBeenCalledWith(error);
+    });
   });
 
   describe('createMapping', () => {

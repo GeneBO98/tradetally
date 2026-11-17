@@ -26,6 +26,26 @@
           </p>
         </div>
 
+        <!-- AI column match: runs on open only when the keyword matching left a
+             required column unmatched; otherwise it is offered, not run. -->
+        <div
+          v-if="aiStatus !== 'idle'"
+          class="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900/40"
+          data-testid="ai-match-status"
+          role="status"
+        >
+          <p class="min-w-0 flex-1 text-gray-700 dark:text-gray-300">{{ aiStatusMessage }}</p>
+          <button
+            v-if="aiStatus !== 'matching' && canRetryAiMatch"
+            type="button"
+            class="shrink-0 text-sm font-medium text-primary-700 hover:text-primary-500 dark:text-primary-400"
+            data-testid="ai-match-retry"
+            @click="runAiMatch()"
+          >
+            {{ aiStatus === 'matched' ? 'Match again' : 'Match with AI instead' }}
+          </button>
+        </div>
+
         <form @submit.prevent="saveMapping" class="mt-5 space-y-4">
           <!-- Column mapper table -->
           <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
@@ -202,6 +222,15 @@ const loading = ref(false)
 const error = ref(null)
 const isReparsing = ref(false)
 const isInitializing = ref(false)
+
+// AI column match. 'idle' hides the status row entirely.
+const aiStatus = ref('idle') // idle | recognized | matching | matched | stale | unavailable | credits | pro | failed
+const aiMatchedCount = ref(0)
+const aiMissingRequired = ref([])
+// Set when the user changes a mapping by hand, so a slow AI reply never
+// overwrites their choice.
+const userEditedMapping = ref(false)
+let aiRequestId = 0
 const displayHeaders = ref([])
 const displaySampleRows = ref({})
 
@@ -270,6 +299,37 @@ const unmatchedRequiredLabel = computed(() => {
   return `Still need: ${missing.join(', ')}`
 })
 
+const canRetryAiMatch = computed(() => !['unavailable', 'credits', 'pro'].includes(aiStatus.value))
+
+const aiStatusMessage = computed(() => {
+  switch (aiStatus.value) {
+    case 'recognized':
+      return 'We recognized the required columns from their names.'
+    case 'pro':
+      return 'AI column matching is a Pro feature, so we pre-filled what we recognized.'
+    case 'matching':
+      return 'AI is matching your columns…'
+    case 'matched': {
+      const count = aiMatchedCount.value
+      const base = `AI matched ${count} ${count === 1 ? 'column' : 'columns'}.`
+      if (aiMissingRequired.value.length > 0) {
+        return `${base} It could not find ${aiMissingRequired.value.join(', ')}; pick ${aiMissingRequired.value.length === 1 ? 'it' : 'them'} below.`
+      }
+      return `${base} Check them and change anything that's wrong.`
+    }
+    case 'stale':
+      return 'The columns changed, so the AI match no longer applies.'
+    case 'credits':
+      return "You're out of AI credits this month, so we pre-filled what we recognized."
+    case 'unavailable':
+      return "AI matching isn't available right now, so we pre-filled what we recognized."
+    case 'failed':
+      return "AI couldn't work out this file, so we pre-filled what we recognized."
+    default:
+      return ''
+  }
+})
+
 function getMappedField(header) {
   for (const fieldName of COLUMN_FIELD_NAMES) {
     if (mappingForm.value[fieldName] === header) return fieldName
@@ -283,6 +343,7 @@ function setMappedField(header, fieldName) {
   if (prev) mappingForm.value[prev] = ''
   // Apply new mapping (latest wins if another header was on the same field)
   if (fieldName) mappingForm.value[fieldName] = header
+  userEditedMapping.value = true
 }
 
 function rowSelectClass(header) {
@@ -370,6 +431,60 @@ async function refreshPreviewFromFile(autoDetectDelimiter = false) {
   }
 }
 
+/**
+ * Ask the backend which column holds each field and pre-fill the form with
+ * the answer. The keyword matches from autoDetectMappings stay in place if
+ * this fails, so the modal is always usable without AI.
+ */
+async function runAiMatch() {
+  const headers = [...displayHeaders.value]
+  if (headers.length < 2) return
+
+  const requestId = ++aiRequestId
+  userEditedMapping.value = false
+  aiStatus.value = 'matching'
+
+  const sampleRows = {}
+  for (const header of headers) {
+    sampleRows[header] = (displaySampleRows.value?.[header] || []).slice(0, 3)
+  }
+
+  try {
+    const response = await api.post('/csv-mappings/suggest', { headers, sampleRows })
+    // A newer request, a re-parse or a manual edit makes this reply stale.
+    if (requestId !== aiRequestId || userEditedMapping.value) return
+
+    const suggestion = response.data?.data
+    const mapping = suggestion?.mapping || {}
+    const matched = COLUMN_FIELD_NAMES.filter(f => mapping[f] && headers.includes(mapping[f]))
+    if (matched.length === 0) {
+      aiStatus.value = 'failed'
+      return
+    }
+
+    clearColumnMappings()
+    for (const fieldName of matched) {
+      mappingForm.value[fieldName] = mapping[fieldName]
+    }
+    if (suggestion.date_format) {
+      mappingForm.value.date_format = suggestion.date_format
+    }
+    aiMatchedCount.value = matched.length
+    aiMissingRequired.value = REQUIRED_FIELD_NAMES
+      .filter(f => !mappingForm.value[f])
+      .map(f => FIELD_OPTIONS.find(opt => opt.value === f)?.label)
+      .filter(Boolean)
+    aiStatus.value = 'matched'
+  } catch (err) {
+    if (requestId !== aiRequestId) return
+    const code = err.response?.data?.code
+    if (code === 'INSUFFICIENT_CREDITS') aiStatus.value = 'credits'
+    else if (code === 'PRO_REQUIRED') aiStatus.value = 'pro'
+    else if (code === 'NO_SUGGESTION') aiStatus.value = 'failed'
+    else aiStatus.value = 'unavailable'
+  }
+}
+
 // Reset form and re-parse when modal opens
 watch(() => props.isOpen, async (isOpen) => {
   if (isOpen) {
@@ -380,17 +495,40 @@ watch(() => props.isOpen, async (isOpen) => {
     mappingForm.value.date_format = 'MM/DD/YYYY'
     mappingForm.value.has_header_row = true
     error.value = null
+    aiStatus.value = 'idle'
     await refreshPreviewFromFile(true)
     isInitializing.value = false
+    // AI is the fallback, not the default: when the keyword matching already
+    // found every required column, offer it instead of spending credits.
+    if (displayHeaders.value.length >= 2) {
+      if (isFormValid.value) {
+        aiStatus.value = 'recognized'
+      } else {
+        // Not awaited: the form is usable with the keyword matches meanwhile.
+        runAiMatch()
+      }
+    }
+  } else {
+    aiRequestId++
   }
-})
+  // immediate: ImportView creates this component with is-open already true
+  // (it sits behind a v-if), so there is no false-to-true change to react to.
+}, { immediate: true })
 
 // Re-parse when CSV settings change (delimiter / header row)
 watch(
   () => [mappingForm.value.delimiter, mappingForm.value.has_header_row],
   async () => {
     if (props.isOpen && props.csvFile && !isInitializing.value) {
+      // The columns are about to change: drop any in-flight or applied AI
+      // match and let the user ask for a new one.
+      aiRequestId++
       await refreshPreviewFromFile(false)
+      if (aiStatus.value === 'matching' || aiStatus.value === 'matched') {
+        aiStatus.value = 'stale'
+      } else if (aiStatus.value === 'recognized' && !isFormValid.value) {
+        aiStatus.value = 'stale'
+      }
     }
   }
 )
