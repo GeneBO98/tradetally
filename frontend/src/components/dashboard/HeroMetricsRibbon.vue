@@ -85,12 +85,14 @@
           </div>
         </div>
 
-        <!-- Sub-stats: 3-col grid, takes ~60% on desktop. Each cell is
+        <!-- Sub-stats: four cells (2x2 on a phone-width ribbon, one row from
+             @md, where Win Rate gets the extra width its W/L line needs),
+             taking ~2/3 on desktop. Each cell is
              flex-col with the number pinned to the bottom via mt-auto so
              stat values line up even when a label wraps to two lines at
              narrow widths. Labels are allowed to wrap (no whitespace-nowrap)
              to keep them from overflowing into adjacent cells. -->
-        <div class="grid grid-cols-3 gap-3 @sm:gap-4 @3xl:flex-[3] @3xl:gap-6 @3xl:border-l @3xl:border-gray-200 @3xl:dark:border-gray-700 @3xl:pl-4 @4xl:pl-6">
+        <div class="grid grid-cols-2 gap-3 @md:grid-cols-[1.5fr_1fr_1fr_1fr] @sm:gap-4 @3xl:flex-[4] @3xl:gap-6 @3xl:border-l @3xl:border-gray-200 @3xl:dark:border-gray-700 @3xl:pl-4 @4xl:pl-6">
           <div class="flex flex-col min-w-0">
             <div class="text-label mb-1">Win Rate</div>
             <div class="mt-auto pt-1">
@@ -142,7 +144,45 @@
               <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" v-else>—</div>
             </div>
           </div>
+
+          <!-- Performance score: one number here; its six factors open below. -->
+          <button
+            type="button"
+            class="group flex flex-col min-w-0 rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 @3xl:border-l @3xl:border-gray-200 @3xl:dark:border-gray-700 @3xl:pl-4 @4xl:pl-6"
+            :class="scoreReady ? 'cursor-pointer' : 'cursor-default'"
+            :disabled="!scoreReady"
+            :aria-expanded="scoreReady ? scoreOpen : undefined"
+            aria-controls="performance-score-details"
+            :title="scoreReady ? 'Show what makes up your performance score' : scorePendingTitle"
+            data-testid="performance-score"
+            @click="toggleScore"
+          >
+            <div class="text-label mb-1">Score</div>
+            <div class="mt-auto pt-1">
+              <div class="flex items-baseline gap-1 min-w-0">
+                <span class="text-mono-num text-lg @sm:text-xl @3xl:text-2xl @4xl:text-3xl font-semibold tracking-tight" :class="scoreClass">
+                  {{ scoreReady ? score.score : '—' }}
+                </span>
+                <span v-if="scoreReady" class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">/ 100</span>
+              </div>
+              <div class="mt-0.5 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                <template v-if="scoreReady">
+                  <span class="truncate group-hover:text-gray-700 dark:group-hover:text-gray-200">{{ score.bandLabel }}</span>
+                  <ChevronDownIcon class="h-3 w-3 shrink-0 transition-transform" :class="scoreOpen ? 'rotate-180' : ''" aria-hidden="true" />
+                </template>
+                <span v-else class="text-mono-num truncate">{{ scorePendingLabel }}</span>
+              </div>
+            </div>
+          </button>
         </div>
+      </div>
+
+      <div
+        v-if="scoreReady && scoreOpen"
+        id="performance-score-details"
+        class="mt-4 pt-3 border-t border-dashed border-gray-200 dark:border-gray-700"
+      >
+        <PerformanceScoreBreakdown :score="score" />
       </div>
 
       <!-- Today strip (when there is activity today) -->
@@ -167,8 +207,10 @@
 
 <script setup>
 import { winRateClass as winRateTone, profitFactorClass as profitFactorTone } from '@/utils/metricTone'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { ChevronDownIcon } from '@heroicons/vue/20/solid'
 import MiniBarChart from '@/components/common/MiniBarChart.vue'
+import PerformanceScoreBreakdown from '@/components/dashboard/PerformanceScoreBreakdown.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { formatDecimal, formatPercent } from '@/utils/formatters'
 import { formatR } from '@/utils/rFormat'
@@ -201,6 +243,48 @@ function formatSignedR(value) {
 }
 
 const summary = computed(() => props.analytics?.summary || {})
+
+// Performance score (`performanceScore` on the analytics payload; absent on
+// older backends). Collapsed by default; the choice is remembered per browser.
+const SCORE_OPEN_KEY = 'dashboard_score_expanded'
+const score = computed(() => props.analytics?.performanceScore || null)
+const scoreReady = computed(() => !!score.value?.ready && Number.isFinite(score.value?.score))
+const scoreOpen = ref(readScoreOpen())
+
+function readScoreOpen() {
+  try {
+    return localStorage.getItem(SCORE_OPEN_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function toggleScore() {
+  if (!scoreReady.value) return
+  scoreOpen.value = !scoreOpen.value
+  try {
+    localStorage.setItem(SCORE_OPEN_KEY, String(scoreOpen.value))
+  } catch {
+    // Private mode or blocked storage: the toggle still works for this visit.
+  }
+}
+
+const scoreClass = computed(() => {
+  if (!scoreReady.value) return 'text-gray-400 dark:text-gray-500'
+  if (score.value.score >= 65) return 'text-green-700 dark:text-green-400'
+  if (score.value.score < 35) return 'text-red-600 dark:text-red-400'
+  return 'text-gray-900 dark:text-white'
+})
+
+const scorePendingLabel = computed(() => {
+  if (!score.value) return '—'
+  return `${score.value.tradesCounted || 0}/${score.value.minTrades || 20} trades`
+})
+
+const scorePendingTitle = computed(() => {
+  if (!score.value) return ''
+  return `Your performance score appears once this period has ${score.value.minTrades || 20} closed trades.`
+})
 
 const netPnl = computed(() => parseFloat(summary.value.totalNetPnL ?? summary.value.totalPnL ?? 0) || 0)
 // Total R across trades with a defined stop loss (NULL r_value trades are
