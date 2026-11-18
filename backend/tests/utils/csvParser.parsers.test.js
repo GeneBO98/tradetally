@@ -1297,6 +1297,11 @@ describe('Tastytrade parser', () => {
     expect(result.trades.length).toBeGreaterThanOrEqual(1);
   });
 
+  test('keeps a closed round trip long with its entry price', async () => {
+    const [trade] = (await parseCSV(buf(tastytradeCSV), 'tastytrade', {})).trades;
+    expect(trade).toMatchObject({ side: 'long', entryPrice: 150, exitPrice: 155 });
+  });
+
   test('handles OCC symbol format for options', async () => {
     const optCSV = [
       'Date,Type,Action,Symbol,Instrument Type,Description,Value,Quantity,Average Price,Commissions,Fees,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,Call or Put',
