@@ -131,4 +131,26 @@ describe('CSV inconsistent-trade repair', () => {
     expect(result).toMatchObject({ side: 'long', quantity: 100, entryPrice: 150 });
     expect(diagnostics.warnings).toHaveLength(0);
   });
+
+  test('grouped lots mixing a closed and an open record are left unchanged', () => {
+    const trade = {
+      symbol: 'AAPL',
+      tradeDate: '2025-01-01',
+      entryTime: '2025-01-01T14:30:00Z',
+      entryPrice: 150.67,
+      quantity: 150,
+      side: 'long',
+      executions: [
+        { side: 'long', quantity: 100, entryPrice: 150, exitPrice: 155, entryTime: '2025-01-01T14:30:00Z', exitTime: '2025-01-01T15:00:00Z' },
+        { side: 'long', quantity: 50, entryPrice: 152, exitPrice: null, entryTime: '2025-01-01T14:40:00Z', exitTime: null }
+      ]
+    };
+    const diagnostics = makeDiagnostics();
+
+    const [result] = repairTradeReversals([trade], diagnostics);
+
+    expect(result).toBe(trade);
+    expect(result.executions).toHaveLength(2);
+    expect(diagnostics.warnings).toHaveLength(0);
+  });
 });
