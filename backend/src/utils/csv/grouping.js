@@ -415,6 +415,12 @@ function executionHasExit(execution) {
     hasValue(execution.exitTime) || hasValue(execution.exit_time);
 }
 
+function isGroupedRoundTripExecution(execution) {
+  if (hasValue(execution.action)) return false;
+  const side = String(execution.side || '').toLowerCase();
+  return (side === 'long' || side === 'short') && executionHasExit(execution);
+}
+
 function getTradeValueMultiplier(trade) {
   if (trade?.instrumentType === 'future' || trade?.instrument_type === 'future') {
     return Number(trade.pointValue || trade.point_value || 1);
@@ -669,7 +675,9 @@ function repairTradeReversals(trades, diagnostics) {
 
   for (const trade of trades) {
     const executions = Array.isArray(trade.executions) ? trade.executions : [];
-    if (executions.length === 0) {
+    // Grouped round-trip records (manual "grouped" executions) describe lots,
+    // not fills, so the fill-level rebuild below cannot reconstruct them.
+    if (executions.length === 0 || executions.some(isGroupedRoundTripExecution)) {
       repairedTrades.push(trade);
       continue;
     }
