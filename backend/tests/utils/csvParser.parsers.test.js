@@ -1249,8 +1249,22 @@ describe('Questrade parser', () => {
 
   test('parses trades (position tracking creates round-trips)', async () => {
     const result = await parseCSV(buf(questradeCSV), 'questrade', {});
-    // Questrade uses position tracking; trades are created when positions close
-    expect(result.trades.length).toBeGreaterThanOrEqual(0);
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toMatchObject({ side: 'long', quantity: 100, entryPrice: 150, exitPrice: 155 });
+    expect(result.trades[0].pnl).toBeCloseTo(490.1, 2);
+  });
+
+  test('splits a reversal into a closed long and an open short', async () => {
+    const reversalCSV = [
+      'Symbol,Action,Fill Qty,Fill Price,Exec Time,Commission',
+      'AAPL,Buy,100,150.00,01/01/2025 09:30:00,0',
+      'AAPL,Sell,200,155.00,01/02/2025 10:00:00,0'
+    ].join('\n');
+    const { trades } = await parseCSV(buf(reversalCSV), 'questrade', {});
+    expect(trades).toHaveLength(2);
+    expect(trades[0]).toMatchObject({ side: 'long', quantity: 100, entryPrice: 150, exitPrice: 155 });
+    expect(trades[1]).toMatchObject({ side: 'short', quantity: 100, entryPrice: 155 });
+    expect(trades[1].exitPrice).toBeFalsy();
   });
 
   test('handles options symbols in Symbol column', async () => {
@@ -1300,6 +1314,19 @@ describe('Tastytrade parser', () => {
   test('keeps a closed round trip long with its entry price', async () => {
     const [trade] = (await parseCSV(buf(tastytradeCSV), 'tastytrade', {})).trades;
     expect(trade).toMatchObject({ side: 'long', entryPrice: 150, exitPrice: 155 });
+  });
+
+  test('splits a reversal into a closed long and an open short', async () => {
+    const reversalCSV = [
+      'Date,Type,Action,Symbol,Instrument Type,Description,Value,Quantity,Average Price,Commissions,Fees,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,Call or Put',
+      '01/01/2025,Trade,Buy to Open,AAPL,Equity,AAPL Apple Inc,15000.00,100,150.00,0.00,0.00,AAPL,AAPL,,,',
+      '01/02/2025,Trade,Sell to Open,AAPL,Equity,AAPL Apple Inc,-31000.00,200,155.00,0.00,0.00,AAPL,AAPL,,,'
+    ].join('\n');
+    const { trades } = await parseCSV(buf(reversalCSV), 'tastytrade', {});
+    expect(trades).toHaveLength(2);
+    expect(trades[0]).toMatchObject({ side: 'long', quantity: 100, entryPrice: 150, exitPrice: 155 });
+    expect(trades[1]).toMatchObject({ side: 'short', quantity: 100, entryPrice: 155 });
+    expect(trades[1].exitPrice).toBeFalsy();
   });
 
   test('handles OCC symbol format for options', async () => {

@@ -85,4 +85,50 @@ describe('CSV inconsistent-trade repair', () => {
     expect(result[0].pnlPercent).toBe(0);
     expect(result[0].executions[0].realized_pnl).toBeNull();
   });
+
+  test.each(['long', 'short'])('a grouped %s round trip with its own exit stays closed', (side) => {
+    const trade = {
+      symbol: 'AAPL',
+      tradeDate: '2025-01-01',
+      entryTime: '2025-01-01T14:30:00Z',
+      exitTime: '2025-01-01T15:00:00Z',
+      entryPrice: 150,
+      exitPrice: 155,
+      quantity: 100,
+      side,
+      pnl: side === 'long' ? 500 : -500,
+      executions: [{
+        side,
+        quantity: 100,
+        entryPrice: 150,
+        exitPrice: 155,
+        entryTime: '2025-01-01T14:30:00Z',
+        exitTime: '2025-01-01T15:00:00Z'
+      }]
+    };
+    const diagnostics = makeDiagnostics();
+
+    const [result] = repairTradeReversals([trade], diagnostics);
+
+    expect(result).toMatchObject({ side, entryPrice: 150, exitPrice: 155, pnl: trade.pnl });
+    expect(diagnostics.warnings).toHaveLength(0);
+  });
+
+  test('a grouped record with a blank exit still counts as open', () => {
+    const trade = {
+      symbol: 'AAPL',
+      tradeDate: '2025-01-01',
+      entryTime: '2025-01-01T14:30:00Z',
+      entryPrice: 150,
+      quantity: 100,
+      side: 'long',
+      executions: [{ side: 'long', quantity: 100, entryPrice: 150, exitPrice: '', exitTime: '' }]
+    };
+    const diagnostics = makeDiagnostics();
+
+    const [result] = repairTradeReversals([trade], diagnostics);
+
+    expect(result).toMatchObject({ side: 'long', quantity: 100, entryPrice: 150 });
+    expect(diagnostics.warnings).toHaveLength(0);
+  });
 });
