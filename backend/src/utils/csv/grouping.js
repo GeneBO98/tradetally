@@ -394,7 +394,8 @@ function getExecutionSignedQuantity(execution) {
   const action = String(execution.action || execution.side || '').toLowerCase();
   const quantity = Number(execution.quantity || 0);
   if (!quantity) return 0;
-  if (action === 'buy' || action === 'cover') return quantity;
+  // Some parsers mark the opening execution with the trade side ('long'/'short').
+  if (action === 'buy' || action === 'cover' || action === 'long') return quantity;
   if (action === 'sell' || action === 'short') return -quantity;
   return 0;
 }
