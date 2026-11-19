@@ -824,6 +824,7 @@ const schemas = {
 
   aiCreateChat: Joi.object({
     message: Joi.string().trim().max(4000).required(),
+    accounts: Joi.array().items(Joi.string().trim().max(200)).max(20),
     request_id: Joi.string().trim().max(100).pattern(/^[a-zA-Z0-9_-]+$/),
     apiKey: Joi.string().trim().max(500),
     modelName: Joi.string().trim().max(200)
@@ -831,6 +832,7 @@ const schemas = {
 
   aiFollowup: Joi.object({
     message: Joi.string().trim().max(4000).required(),
+    accounts: Joi.array().items(Joi.string().trim().max(200)).max(20),
     apiKey: Joi.string().trim().max(500),
     modelName: Joi.string().trim().max(200)
   }),

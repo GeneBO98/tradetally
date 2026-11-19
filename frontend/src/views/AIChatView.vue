@@ -184,7 +184,9 @@
           </form>
           <div class="mt-2 flex flex-wrap justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
             <span>Enter to send, Shift+Enter for a new line. AI responses are not financial advice.</span>
-            <span v-if="aiStore.currentSession">{{ aiStore.followupsRemaining }} messages left in this conversation</span>
+            <span>
+              Context: {{ hasAccountFilter ? selectedAccountLabel : 'All accounts' }}<template v-if="aiStore.currentSession"> · {{ aiStore.followupsRemaining }} messages left in this conversation</template>
+            </span>
           </div>
           <p v-if="!hasCreditsForNext && !aiStore.credits.unlimited" class="mt-2 text-xs text-yellow-600 dark:text-yellow-400">
             Not enough AI credits for another message. Credits reset at the start of each month.
@@ -202,11 +204,13 @@ import { PaperAirplaneIcon, PlusIcon, TrashIcon } from '@heroicons/vue/24/outlin
 import { useAIStore } from '@/stores/ai'
 import { useProAccess } from '@/composables/useProAccess'
 import { useNotification } from '@/composables/useNotification'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import CreditBadge from '@/components/ai/CreditBadge.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 
 const aiStore = useAIStore()
+const { selectedAccountLabel, isFiltered: hasAccountFilter } = useGlobalAccountFilter()
 const route = useRoute()
 const router = useRouter()
 const { isProUser, showProLock } = useProAccess()

@@ -131,6 +131,16 @@ class AITraderContext {
          WHERE t.user_id = $1
            AND t.exit_price IS NOT NULL
            AND t.entry_time >= NOW() - ($2 * INTERVAL '1 day')
+           -- Same default population as TradeQueries: accounts the trader
+           -- excluded from reports stay out of the observed profile.
+           AND NOT EXISTS (
+             SELECT 1 FROM user_accounts reporting_account
+             WHERE reporting_account.user_id = t.user_id
+               AND reporting_account.account_identifier IS NOT NULL
+               AND reporting_account.account_identifier != ''
+               AND reporting_account.account_identifier = t.account_identifier
+               AND reporting_account.include_in_reports = false
+           )
        ),
        hours AS (
          SELECT EXTRACT(HOUR FROM (entry_time AT TIME ZONE tz))::int AS hour, COUNT(*)::int AS n

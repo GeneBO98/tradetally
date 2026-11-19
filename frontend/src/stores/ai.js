@@ -2,6 +2,7 @@ import { resolveMonthlyFilterParams } from '@/utils/datePresets'
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 
 const AI_SESSION_RECOVERY_TIMEOUT_MS = 10 * 60 * 1000
 const AI_SESSION_RECOVERY_POLL_MS = 3000
@@ -246,6 +247,13 @@ export const useAIStore = defineStore('ai', () => {
     throw new Error('The AI analysis did not finish within 10 minutes. It may still appear in your recent sessions once it finishes.')
   }
 
+  // The global account filter scopes chat context; [] means all accounts.
+  // Analysis follow-ups ignore it and keep the scope they were created with.
+  function chatAccountScope() {
+    const { selectedAccount } = useGlobalAccountFilter()
+    return selectedAccount.value ? [selectedAccount.value] : []
+  }
+
   /**
    * Start a free-form chat that uses the whole journal as context
    * @param {string} message - The first message
@@ -264,7 +272,7 @@ export const useAIStore = defineStore('ai', () => {
     }]
 
     try {
-      const response = await api.post('/ai/chat', { message, request_id })
+      const response = await api.post('/ai/chat', { message, request_id, accounts: chatAccountScope() })
 
       currentSession.value = {
         id: response.data.session_id,
@@ -340,7 +348,8 @@ export const useAIStore = defineStore('ai', () => {
 
     try {
       const response = await api.post(`/ai/sessions/${sessionId}/followup`, {
-        message
+        message,
+        accounts: chatAccountScope()
       })
 
       // Add assistant response

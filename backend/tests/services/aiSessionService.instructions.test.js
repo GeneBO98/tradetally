@@ -53,7 +53,7 @@ test('single-trade initial and follow-up calls receive verified screenshots', as
   db.query.mockResolvedValue({ rows: [{ status: 'active', expires_at: new Date(Date.now() + 3600000), followup_count: 0, max_followups: 5, trade_summary: stored, messages: [] }] });
   await Service.sendFollowup('session-1', 'user-1', 'Explain the yellow trendline');
   expect(loadImageContext).toHaveBeenLastCalledWith('user-1', 'trade-1', 'openai', metadata.included_images);
-  expect(AIProvider.generateResponse.mock.calls.at(-1)[2]).toEqual({ images });
+  expect(AIProvider.generateResponse.mock.calls.at(-1)[2]).toEqual({ images, system: expect.stringContaining('[[OFF_TOPIC]]') });
 });
 
 test('image rejection happens before session creation or credit deduction', async () => {

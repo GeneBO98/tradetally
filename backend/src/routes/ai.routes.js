@@ -88,6 +88,11 @@ router.post('/sessions', authenticate, aiLimiter, validate(schemas.aiCreateSessi
  *                 type: string
  *               request_id:
  *                 type: string
+ *               accounts:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Account identifiers to scope the journal context to (the global account filter). Omit or send [] for all reporting accounts. Stored on the chat and used for follow-ups that omit it.
  *     responses:
  *       201:
  *         description: Chat session created with the first reply
@@ -203,6 +208,11 @@ router.delete('/sessions/:id', authenticate, aiController.deleteSession);
  *               message:
  *                 type: string
  *                 description: The follow-up question
+ *               accounts:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Chat sessions only. Account identifiers to scope the journal context to; [] means all accounts. When omitted, the scope the chat was started with is used. Analysis sessions keep the scope they were created with.
  *     responses:
  *       200:
  *         description: Response generated successfully

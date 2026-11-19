@@ -131,7 +131,8 @@ const aiController = {
         {
           apiKey: req.body.apiKey,
           modelName: req.body.modelName,
-          request_id: req.body.request_id
+          request_id: req.body.request_id,
+          accounts: req.body.accounts
         }
       );
 
@@ -197,7 +198,8 @@ const aiController = {
         message.trim(),
         {
           apiKey: req.body.apiKey,
-          modelName: req.body.modelName
+          modelName: req.body.modelName,
+          accounts: req.body.accounts
         }
       );
 

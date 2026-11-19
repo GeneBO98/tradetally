@@ -91,7 +91,7 @@ describe('AISessionService.generateChatReply', () => {
 
     const [userPrompt] = AIProvider.generateResponse.mock.calls[0];
     expect(userPrompt).toContain('TRADES MATCHING THE QUESTION');
-    expect(reply.trade_query).toEqual({ description: 'losers · last week', trade_count: 2, source: 'parser' });
+    expect(reply.trade_query).toEqual({ description: 'losers · last week', trade_count: 2, source: 'parser', carried_over: false, ranking: null, dropped_filters: [] });
   });
 
   test('proposes a memory note alongside the reply', async () => {
