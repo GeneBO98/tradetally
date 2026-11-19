@@ -25,6 +25,9 @@ jest.mock('../../src/utils/tradeFx', () => ({
   fxUsd: (column, alias = 't') => `trade_amount_usd(${alias ? `${alias}.` : ''}${column})`,
   tradeBaseCurrency: row => String(row?.original_currency || 'USD').toUpperCase()
 }));
+jest.mock('../../src/services/portfolioService', () => ({
+  _getDailySeries: jest.fn(async () => [])
+}));
 jest.mock('../../src/utils/positionGrouping', () => ({
   POSITION_GROUP_KEY: 'group_key_sql',
   isPositionGroupingEnabled: jest.fn(async () => false)
@@ -639,5 +642,105 @@ describe('trade detail extras', () => {
     const result = await AIChatContext.getTradeDetails('user-1', ['t-1'], usd, 'Europe/Berlin');
     expect(result.timezone).toBe('Europe/Berlin');
     expect(callsMatching(/FROM users/)).toHaveLength(0);
+  });
+});
+
+describe('price history (performance over time)', () => {
+  const PortfolioService = require('../../src/services/portfolioService');
+  const day = iso => Math.floor(new Date(`${iso}T00:00:00Z`).getTime() / 1000);
+  // Weekday candles from start to end (inclusive) with a close chosen per date.
+  const series = (start, end, closeFor, extra = {}) => {
+    const out = [];
+    for (let d = new Date(`${start}T00:00:00Z`); d <= new Date(`${end}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+      const iso = d.toISOString().slice(0, 10);
+      if (d.getUTCDay() === 0 || d.getUTCDay() === 6) continue;
+      const close = closeFor(iso);
+      out.push({ time: day(iso), open: close, high: close, low: close, close, volume: 1, ...extra });
+    }
+    return out;
+  };
+
+  test('computes multi-period returns, range, and averages anchored on the live quote', () => {
+    const candles = series('2025-11-03', '2026-11-19', iso => (iso >= '2026-11-01' ? 110 : 100));
+    // A Saturday row repeating Friday and today's intraday row must not count.
+    candles.push({ time: day('2026-11-14'), close: 500, high: 500, low: 500 });
+    const stats = AIChatContext.computePriceHistory(candles, { anchorPrice: 121, anchorDate: '2026-11-19' });
+
+    const byLabel = Object.fromEntries(stats.returns.map(r => [r.label, r.pct]));
+    expect(stats.anchored_on_quote).toBe(true);
+    expect(stats.last_close_date).toBe('2026-11-18');
+    expect(byLabel['1W']).toBeCloseTo(10, 5);
+    expect(byLabel['1Y']).toBeCloseTo(21, 5);
+    expect(byLabel.YTD).toBeCloseTo(21, 5);
+    expect(stats.range).toMatchObject({ high: 121, high_date: '2026-11-19', low: 100, full_year: true });
+    expect(stats.sma50).toBeGreaterThan(100);
+    expect(stats.sma200).not.toBeNull();
+    expect(stats.month_ends.at(-1)).toEqual({ month: '2026-10', close: 100 });
+  });
+
+  test('skips periods whose base close is too far from the target date (stale tail)', () => {
+    const candles = series('2026-01-02', '2026-10-01', () => 50);
+    const stats = AIChatContext.computePriceHistory(candles, { anchorPrice: 60, anchorDate: '2026-11-19' });
+    const labels = stats.returns.map(r => r.label);
+    expect(labels).not.toContain('1W');
+    expect(labels).not.toContain('1M');
+    expect(labels).toContain('3M');
+    expect(stats.range.full_year).toBe(false);
+  });
+
+  test('cuts the series at an apparent split so no return spans it, and tolerates missing highs/lows', () => {
+    const candles = series('2025-11-03', '2026-11-18', iso => (iso < '2026-06-01' ? 200 : 100), { high: null, low: null });
+    const stats = AIChatContext.computePriceHistory(candles);
+    expect(stats.break_date).toBe('2026-06-01');
+    expect(stats.returns.map(r => r.label)).not.toContain('1Y');
+    expect(stats.returns.find(r => r.label === '1M').pct).toBeCloseTo(0, 5);
+    expect(stats.range.high).toBe(100);
+    expect(Number.isNaN(stats.range.low)).toBe(false);
+  });
+
+  test('formats levels in the display currency and compares against SPY', () => {
+    const currency = new AICurrency('EUR', { USD: 0.5 });
+    const text = AIChatContext.formatSymbolContexts([{
+      symbol: 'NVDA', currency, trades: [], market_data_available: true,
+      quote: { price: 120, change: 1, change_percent: 1, low: 118, high: 121, previous_close: 119, currency: 'USD', as_of: '2026-11-19T20:00:00Z' },
+      price_history: AIChatContext.computePriceHistory(series('2025-11-03', '2026-11-18', () => 100), { anchorPrice: 120, anchorDate: '2026-11-19' }),
+      benchmark: { symbol: 'SPY', returns: [{ label: '1M', pct: 5 }, { label: '1Y', pct: 10 }] }
+    }]);
+    expect(text).toContain('- Price performance (daily closes from 2025-11-');
+    expect(text).toContain('now = live quote as of 2026-11-19): 1W +20.0%, 1M +20.0%');
+    expect(text).toContain('S&P 500 (SPY) over the same periods: 1M +5.0% (NVDA ahead by 15.0 pts), 1Y +10.0% (NVDA ahead by 10.0 pts)');
+    expect(text).toContain('52-week: low €50.00');
+    expect(text).toContain('high €60.00 (2026-11-19)');
+    expect(text).toContain('Moving averages of daily closes: the current price is 20.0% ABOVE its 50-day average of €50.00');
+  });
+
+  test('falls back to provider metrics, then to an explicit "not available" line', () => {
+    const currency = new AICurrency('USD', { USD: 1 });
+    const metrics = AIChatContext.summarizePriceMetrics({ metric: {
+      '5DayPriceReturnDaily': -0.68, '13WeekPriceReturnDaily': 11.24, yearToDatePriceReturnDaily: 29.64, '52WeekPriceReturnDaily': 31.79,
+      'priceRelativeToS&P50052Week': 21.16, '52WeekHigh': 360.83, '52WeekHighDate': '2026-11-13', '52WeekLow': 243.42, '52WeekLowDate': '2026-01-20', beta: 1.07
+    } });
+    const base = { symbol: 'AAPL', currency, trades: [], market_data_available: true };
+    const withMetrics = AIChatContext.formatSymbolContexts([{ ...base, price_metrics: metrics }]);
+    expect(withMetrics).toContain('Price performance (computed by the market data provider): 5-day -0.7%, 13-week +11.2%, YTD +29.6%, 52-week +31.8%');
+    expect(withMetrics).toContain('Relative to the S&P 500 (percentage points): 52-week +21.2 pts');
+    expect(withMetrics).toContain('52-week range: low $243.42 (2026-01-20), high $360.83 (2026-11-13); beta 1.07');
+
+    const none = AIChatContext.formatSymbolContexts([base]);
+    expect(none).toContain('Price history: not available right now');
+  });
+
+  test('loads the SPY benchmark once for several focus symbols, without the user id', async () => {
+    finnhub.isConfigured.mockReturnValue(false);
+    db.query.mockResolvedValue({ rows: [] });
+    PortfolioService._getDailySeries.mockImplementation(async () => series('2025-11-03', '2026-11-18', () => 100));
+
+    const contexts = await AIChatContext.buildSymbolContexts('user-1', ['AAA', 'BBB', 'CCC'], new AICurrency('USD', { USD: 1 }));
+
+    const spyCalls = PortfolioService._getDailySeries.mock.calls.filter(([symbol]) => symbol === 'SPY');
+    expect(spyCalls).toHaveLength(1);
+    expect(PortfolioService._getDailySeries.mock.calls.every(([, , , userId]) => userId === null)).toBe(true);
+    expect(contexts).toHaveLength(3);
+    expect(contexts.every(context => context.benchmark?.symbol === 'SPY' && context.price_history?.returns.length > 0)).toBe(true);
   });
 });

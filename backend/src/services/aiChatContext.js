@@ -1161,6 +1161,203 @@ class AIChatContext {
    * company profile, recent news, and recent/upcoming earnings when Finnhub
    * is configured. Every market-data call is optional and time-boxed.
    */
+  // ---------------------------------------------------------------------
+  // Price history (performance over time, not just today's move)
+  // ---------------------------------------------------------------------
+
+  static PRICE_HISTORY_DAYS = 400;
+  static PRICE_HISTORY_TIMEOUT_MS = 10000;
+  static BENCHMARK_SYMBOL = 'SPY';
+  static PRICE_PERIODS = [['1W', 7], ['1M', 30], ['3M', 91], ['6M', 182], ['YTD', null], ['1Y', 365]];
+  // A base close further than this from its target date is too far off to
+  // call it that period's return (stale or gappy series).
+  static PRICE_BASE_MAX_GAP_DAYS = 5;
+
+  static isoDay(date) {
+    return date.toISOString().slice(0, 10);
+  }
+
+  static shiftDay(iso, days) {
+    const date = new Date(`${iso}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return this.isoDay(date);
+  }
+
+  static dayGap(fromIso, toIso) {
+    return Math.round((new Date(`${toIso}T00:00:00Z`) - new Date(`${fromIso}T00:00:00Z`)) / 86400000);
+  }
+
+  /**
+   * Daily closes for about the last year from the shared historical_prices
+   * cache, backfilled from the market-data provider (Alpha Vantage fallback)
+   * on a miss. Runs without a user id so chat does not spend the trader's
+   * chart quota.
+   */
+  static async loadDailyCandles(symbol, days = this.PRICE_HISTORY_DAYS) {
+    const PortfolioService = require('./portfolioService');
+    const endDate = this.isoDay(new Date());
+    const startDate = this.shiftDay(endDate, -days);
+    return PortfolioService._getDailySeries(symbol, startDate, endDate, null, { allowAlphaVantageFallback: true });
+  }
+
+  /**
+   * Multi-period performance from daily candles. Pure: candles in, stats out.
+   * "Now" is the live quote when supplied (today's stored row is an intraday
+   * snapshot and is replaced by it), otherwise the last stored close.
+   * Weekend rows (some feeds repeat Friday) are dropped, missing highs/lows
+   * fall back to the close, and a jump that looks like an unadjusted split
+   * cuts the series so no return spans it.
+   * @returns {Object|null} null when there is not enough history
+   */
+  static computePriceHistory(candles, { anchorPrice = null, anchorDate = null } = {}) {
+    const byDate = new Map();
+    for (const candle of candles || []) {
+      const close = this.toNumber(candle?.close);
+      const time = this.toNumber(candle?.time);
+      if (close === null || close <= 0 || time === null) continue;
+      const date = this.isoDay(new Date(time * 1000));
+      const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+      if (weekday === 0 || weekday === 6) continue;
+      const high = this.toNumber(candle.high);
+      const low = this.toNumber(candle.low);
+      byDate.set(date, {
+        date,
+        close,
+        high: high !== null && high > 0 ? high : close,
+        low: low !== null && low > 0 ? low : close
+      });
+    }
+
+    const price = this.toNumber(anchorPrice);
+    const hasAnchor = price !== null && price > 0 && Boolean(anchorDate);
+    let series = [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+    if (hasAnchor) series = series.filter(row => row.date < anchorDate);
+    if (!series.length) return null;
+
+    const anchor = hasAnchor
+      ? { date: anchorDate, close: price, high: price, low: price }
+      : series[series.length - 1];
+    const base = hasAnchor ? series : series.slice(0, -1);
+    if (!base.length) return null;
+
+    // Unadjusted split (or bad print): a one-day move of more than ~80% up
+    // or ~45% down. Keep only the part of the series after the last one.
+    const points = [...base, anchor];
+    let breakDate = null;
+    for (let i = 1; i < points.length; i++) {
+      const ratio = points[i].close / points[i - 1].close;
+      if (ratio > 1.8 || ratio < 0.55) breakDate = points[i].date;
+    }
+    const usable = breakDate ? base.filter(row => row.date >= breakDate) : base;
+
+    const closeOnOrBefore = (target, maxGap = this.PRICE_BASE_MAX_GAP_DAYS) => {
+      let found = null;
+      for (const row of usable) {
+        if (row.date <= target) found = row;
+        else break;
+      }
+      return found && this.dayGap(found.date, target) <= maxGap ? found : null;
+    };
+
+    const returns = [];
+    for (const [label, days] of this.PRICE_PERIODS) {
+      const target = days === null ? `${Number(anchor.date.slice(0, 4)) - 1}-12-31` : this.shiftDay(anchor.date, -days);
+      const baseRow = closeOnOrBefore(target, days === null ? 7 : this.PRICE_BASE_MAX_GAP_DAYS);
+      if (!baseRow) continue;
+      returns.push({ label, pct: ((anchor.close / baseRow.close) - 1) * 100, base_date: baseRow.date, base_close: baseRow.close });
+    }
+
+    const yearAgo = this.shiftDay(anchor.date, -365);
+    const window = [...usable.filter(row => row.date >= yearAgo), anchor];
+    const highRow = window.reduce((best, row) => (row.high > best.high ? row : best), window[0]);
+    const lowRow = window.reduce((best, row) => (row.low < best.low ? row : best), window[0]);
+    const covers52w = usable.length > 0 && this.dayGap(usable[0].date, anchor.date) >= 330;
+
+    const sma = n => (usable.length >= n
+      ? usable.slice(-n).reduce((sum, row) => sum + row.close, 0) / n
+      : null);
+    const sma50 = sma(50);
+    const sma200 = sma(200);
+
+    const monthEnds = new Map();
+    for (const row of usable) {
+      const month = row.date.slice(0, 7);
+      if (month < anchor.date.slice(0, 7)) monthEnds.set(month, row.close);
+    }
+
+    return {
+      as_of: anchor.date,
+      anchored_on_quote: hasAnchor,
+      price: anchor.close,
+      first_date: usable[0]?.date || null,
+      last_close_date: base[base.length - 1].date,
+      sessions: usable.length,
+      break_date: breakDate,
+      returns,
+      range: {
+        full_year: covers52w,
+        high: highRow.high,
+        high_date: highRow.date,
+        low: lowRow.low,
+        low_date: lowRow.date
+      },
+      sma50,
+      sma200,
+      month_ends: [...monthEnds.entries()].slice(-12).map(([month, close]) => ({ month, close }))
+    };
+  }
+
+  // Finnhub /stock/metric figures, used when daily candles are unavailable.
+  static METRIC_RETURN_KEYS = [
+    ['5-day', '5DayPriceReturnDaily'],
+    ['month-to-date', 'monthToDatePriceReturnDaily'],
+    ['13-week', '13WeekPriceReturnDaily'],
+    ['26-week', '26WeekPriceReturnDaily'],
+    ['YTD', 'yearToDatePriceReturnDaily'],
+    ['52-week', '52WeekPriceReturnDaily']
+  ];
+  static METRIC_RELATIVE_KEYS = [
+    ['4-week', 'priceRelativeToS&P5004Week'],
+    ['13-week', 'priceRelativeToS&P50013Week'],
+    ['YTD', 'priceRelativeToS&P500Ytd'],
+    ['52-week', 'priceRelativeToS&P50052Week']
+  ];
+
+  static summarizePriceMetrics(payload) {
+    const metric = payload?.metric;
+    if (!metric) return null;
+    const pick = keys => keys
+      .map(([label, key]) => ({ label, pct: this.toNumber(metric[key]) }))
+      .filter(entry => entry.pct !== null);
+    const returns = pick(this.METRIC_RETURN_KEYS);
+    if (!returns.length) return null;
+    return {
+      returns,
+      relative: pick(this.METRIC_RELATIVE_KEYS),
+      high: this.toNumber(metric['52WeekHigh']),
+      high_date: metric['52WeekHighDate'] || null,
+      low: this.toNumber(metric['52WeekLow']),
+      low_date: metric['52WeekLowDate'] || null,
+      beta: this.toNumber(metric.beta)
+    };
+  }
+
+  /** Benchmark (SPY) performance, loaded once per message for all symbols. */
+  static async buildBenchmarkHistory(userId) {
+    const symbol = this.BENCHMARK_SYMBOL;
+    const [candles, quote] = await Promise.allSettled([
+      this.withTimeout(this.loadDailyCandles(symbol), this.PRICE_HISTORY_TIMEOUT_MS),
+      finnhub.isConfigured() ? this.withTimeout(finnhub.getQuote(symbol, userId)) : Promise.resolve(null)
+    ]);
+    if (candles.status !== 'fulfilled') return null;
+    const q = quote.status === 'fulfilled' ? quote.value : null;
+    const stats = this.computePriceHistory(candles.value, {
+      anchorPrice: this.toNumber(q?.c),
+      anchorDate: q?.t ? this.isoDay(new Date(q.t * 1000)) : null
+    });
+    return stats ? { symbol, ...stats } : null;
+  }
+
   static async buildSymbolContext(userId, symbol, currency = null, scope = {}) {
     currency = currency || await AICurrency.forUser(userId);
     const context = { symbol, currency, trades: [], totals: null, journal: [], scope_label: null, market_data_available: finnhub.isConfigured() };
@@ -1190,22 +1387,32 @@ class AIChatContext {
       }
     })();
 
+    // Daily closes come from the shared cache (or a provider backfill), so
+    // performance over time is available even without a live quote.
+    const candlesLoad = this.withTimeout(this.loadDailyCandles(symbol), this.PRICE_HISTORY_TIMEOUT_MS)
+      .catch(error => {
+        console.warn(`[AI_CHAT] Could not load price history for ${symbol}:`, error.message);
+        return [];
+      });
+
     if (!context.market_data_available) {
-      await history;
-      return context.trades.length ? context : null;
+      const [, candles] = await Promise.all([history, candlesLoad]);
+      context.price_history = this.computePriceHistory(candles);
+      return context.trades.length || context.price_history ? context : null;
     }
 
     const today = new Date();
     const daysFromToday = days => new Date(today.getTime() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    const [[quote, profile, news, earnings]] = await Promise.all([
+    const [[quote, profile, news, earnings], , candles] = await Promise.all([
       Promise.allSettled([
         this.withTimeout(finnhub.getQuote(symbol, userId)),
         this.withTimeout(finnhub.getCompanyProfile(symbol, { userId })),
         this.withTimeout(finnhub.getCompanyNews(symbol, daysFromToday(-7), daysFromToday(0), { userId })),
         this.withTimeout(finnhub.getEarningsCalendar(daysFromToday(-60), daysFromToday(90), symbol))
       ]),
-      history
+      history,
+      candlesLoad
     ]);
 
     if (quote.status === 'fulfilled' && quote.value && this.toNumber(quote.value.c)) {
@@ -1243,6 +1450,18 @@ class AIChatContext {
       context.quote.price_display = currency.convert(context.quote.price, quoteCurrency);
     }
 
+    context.price_history = this.computePriceHistory(candles, {
+      anchorPrice: context.quote?.price ?? null,
+      anchorDate: context.quote?.as_of ? context.quote.as_of.slice(0, 10) : null
+    });
+    if (!context.price_history?.returns?.length) {
+      try {
+        context.price_metrics = this.summarizePriceMetrics(await this.withTimeout(finnhub.getBasicFinancials(symbol)));
+      } catch (error) {
+        console.warn(`[AI_CHAT] Could not load price metrics for ${symbol}:`, error.message);
+      }
+    }
+
     if (news.status === 'fulfilled' && Array.isArray(news.value)) {
       context.news = news.value
         .slice()
@@ -1274,7 +1493,7 @@ class AIChatContext {
 
     // An unrecognized ticker-looking word with no trades and no market data
     // was almost certainly not a symbol; drop it so it doesn't pad the prompt.
-    if (!context.trades.length && !context.quote && !context.profile) return null;
+    if (!context.trades.length && !context.quote && !context.profile && !context.price_history) return null;
 
     return context;
   }
@@ -1292,13 +1511,24 @@ class AIChatContext {
     currency = resolvedCurrency;
     const unique = [...new Set((symbols || []).map(symbol => String(symbol).toUpperCase()))]
       .slice(0, this.MAX_FOCUS_SYMBOLS);
-    const contexts = await Promise.all(unique.map(symbol =>
-      this.buildSymbolContext(userId, symbol, currency, { ...resolved, resolved: true }).catch(error => {
-        console.warn(`[AI_CHAT] Could not build context for ${symbol}:`, error.message);
+    // One benchmark load per message, shared by every focus symbol, so
+    // parallel contexts don't race the same SPY backfill.
+    const benchmarkLoad = unique.includes(this.BENCHMARK_SYMBOL)
+      ? Promise.resolve(null)
+      : this.buildBenchmarkHistory(userId).catch(error => {
+        console.warn('[AI_CHAT] Could not load benchmark history:', error.message);
         return null;
-      })
-    ));
-    return contexts.filter(Boolean);
+      });
+    const [contexts, benchmark] = await Promise.all([
+      Promise.all(unique.map(symbol =>
+        this.buildSymbolContext(userId, symbol, currency, { ...resolved, resolved: true }).catch(error => {
+          console.warn(`[AI_CHAT] Could not build context for ${symbol}:`, error.message);
+          return null;
+        })
+      )),
+      benchmarkLoad
+    ]);
+    return contexts.filter(Boolean).map(context => (benchmark ? { ...context, benchmark } : context));
   }
 
   static formatPosition(position, currency) {
@@ -1527,6 +1757,85 @@ class AIChatContext {
     return lines.join('\n');
   }
 
+  static signedPercent(value) {
+    const number = this.toNumber(value);
+    return number === null ? 'N/A' : `${number >= 0 ? '+' : ''}${number.toFixed(1)}%`;
+  }
+
+  /**
+   * Performance-over-time lines for a symbol focus. Percentages need no
+   * conversion; price levels use the same listing-to-display conversion as
+   * the quote line (or stay in the listing currency, labeled, without a rate).
+   */
+  static formatPriceHistory(context, currency, quoteCode) {
+    const rate = quoteCode !== currency.code ? currency.rateFrom(quoteCode) : 1;
+    const level = value => {
+      const number = this.toNumber(value);
+      if (number === null) return 'N/A';
+      const converted = rate !== null ? number * rate : number;
+      // Cents for normal prices; sub-dollar listings keep more precision.
+      if (Math.abs(converted) < 1) return rate !== null ? this.priceText(currency, converted) : currency.format(converted, quoteCode);
+      return rate !== null ? currency.format(converted) : currency.format(converted, quoteCode);
+    };
+    const history = context.price_history;
+    const lines = [];
+
+    if (history?.returns?.length) {
+      const now = history.anchored_on_quote
+        ? `now = live quote as of ${history.as_of}`
+        : `now = last close on ${history.as_of}`;
+      lines.push(`- Price performance (daily closes from ${history.first_date}; ${now}): ${history.returns.map(r => `${r.label} ${this.signedPercent(r.pct)}`).join(', ')}`);
+
+      const benchmark = context.benchmark;
+      if (benchmark?.returns?.length) {
+        const byLabel = new Map(benchmark.returns.map(r => [r.label, r.pct]));
+        const pairs = history.returns
+          .filter(r => byLabel.has(r.label))
+          .map(r => `${r.label} ${this.signedPercent(byLabel.get(r.label))} (${context.symbol} ${r.pct - byLabel.get(r.label) >= 0 ? 'ahead by' : 'behind by'} ${Math.abs(r.pct - byLabel.get(r.label)).toFixed(1)} pts)`);
+        if (pairs.length) lines.push(`- S&P 500 (${benchmark.symbol}) over the same periods: ${pairs.join(', ')}`);
+      }
+
+      const range = history.range;
+      const fromHigh = ((history.price / range.high) - 1) * 100;
+      const fromLow = ((history.price / range.low) - 1) * 100;
+      lines.push(`- ${range.full_year ? '52-week' : `Range since ${history.first_date}`}: low ${level(range.low)} (${range.low_date}), high ${level(range.high)} (${range.high_date}); now ${Math.abs(fromHigh).toFixed(1)}% ${fromHigh <= 0 ? 'below' : 'above'} the high and ${Math.abs(fromLow).toFixed(1)}% above the low`);
+
+      // Spell out which side the price is on: a bare "(29% below)" next to
+      // the average was read backwards by smaller models.
+      const versus = (label, average) => `the current price is ${Math.abs(((history.price / average) - 1) * 100).toFixed(1)}% ${history.price >= average ? 'ABOVE' : 'BELOW'} its ${label} average of ${level(average)}`;
+      const averages = [
+        history.sma50 !== null ? versus('50-day', history.sma50) : null,
+        history.sma200 !== null ? versus('200-day', history.sma200) : null
+      ].filter(Boolean);
+      if (averages.length) lines.push(`- Moving averages of daily closes: ${averages.join('; ')}`);
+
+      if (history.month_ends.length >= 3) {
+        lines.push(`- Month-end closes: ${history.month_ends.map(m => `${m.month} ${level(m.close)}`).join(', ')}`);
+      }
+      if (history.break_date) {
+        lines.push(`- Note: prices before ${history.break_date} are left out because the series jumps there (likely a stock split), so no figure above spans that date.`);
+      }
+      return lines;
+    }
+
+    const metrics = context.price_metrics;
+    if (metrics?.returns?.length) {
+      lines.push(`- Price performance (computed by the market data provider): ${metrics.returns.map(r => `${r.label} ${this.signedPercent(r.pct)}`).join(', ')}`);
+      if (metrics.relative.length) {
+        lines.push(`- Relative to the S&P 500 (percentage points): ${metrics.relative.map(r => `${r.label} ${this.signedPercent(r.pct).replace('%', ' pts')}`).join(', ')}`);
+      }
+      if (metrics.high !== null && metrics.low !== null) {
+        lines.push(`- 52-week range: low ${level(metrics.low)}${metrics.low_date ? ` (${metrics.low_date})` : ''}, high ${level(metrics.high)}${metrics.high_date ? ` (${metrics.high_date})` : ''}${metrics.beta !== null ? `; beta ${metrics.beta.toFixed(2)}` : ''}`);
+      }
+      return lines;
+    }
+
+    if (context.quote || context.market_data_available) {
+      lines.push("- Price history: not available right now. Today's change is not the stock's performance over time; if asked how it has performed, say longer-term price history was not available.");
+    }
+    return lines;
+  }
+
   static formatSymbolContexts(contexts) {
     if (!contexts?.length) return '';
 
@@ -1557,6 +1866,8 @@ class AIChatContext {
       } else if (!context.market_data_available) {
         lines.push('- Live market data is not configured on this server (no quote, news, or earnings available).');
       }
+
+      lines.push(...this.formatPriceHistory(context, currency, quoteCode));
 
       const openTrades = context.trades.filter(trade => trade.exit_price === null || trade.exit_price === undefined);
       const closedTrades = context.trades.filter(trade => trade.exit_price !== null && trade.exit_price !== undefined);

@@ -1332,7 +1332,8 @@ Be direct, data-driven, and specific. Do not give generic trading advice.`;
 
 GUIDELINES:
 - Ground answers in the trader's own data: reference their positions, P&L, win rates, strategies, and journal notes with specific numbers when relevant.
-- For questions about a stock's outlook, combine the supplied quote, earnings, and news with the trader's position (size, entry, unrealized P&L, stop/target) and their history on that symbol. Lay out bull and bear scenarios and concrete risk-management options rather than a single prediction.
+- For questions about how a stock has performed, use the price performance lines (multi-period returns, the S&P 500 comparison, 52-week range, moving averages, month-end closes): name the periods and the as-of date, and never present today's change alone as its performance over time.
+- For questions about a stock's outlook, combine the supplied quote, price performance, earnings, and news with the trader's position (size, entry, unrealized P&L, stop/target) and their history on that symbol. Lay out bull and bear scenarios and concrete risk-management options rather than a single prediction.
 - When a "TRADES MATCHING THE QUESTION" section is present, it is the set of trades the question was interpreted to be about; state that interpretation briefly if it could be read another way.
 - When a "PERFORMANCE BREAKDOWNS" section is present, use it for questions about which setups, tags, times of day, weekdays, hold times, or sides work best, and point out when a group has too few trades to draw a conclusion.
 - When an account scope is stated, every journal figure covers only those accounts; say so if the trader seems to expect totals across all accounts.
