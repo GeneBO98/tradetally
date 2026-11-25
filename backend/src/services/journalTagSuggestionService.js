@@ -1,6 +1,7 @@
 const AIProvider = require('../utils/aiProvider');
 
 const VERSION = 1;
+const REQUEST_TIMEOUT_MS = 20000;
 const TAGS = {
   'revenge-trade': 'The trader explicitly describes taking trades to recover a loss, get even, or retaliate. A quick re-entry or loss alone is insufficient.',
   fomo: 'The trader describes entering or chasing because of fear of missing a move. Mentioning a rally alone is insufficient.',
@@ -45,13 +46,22 @@ function normalizeDecisions(raw, text) {
 }
 
 async function classifyLightweight(text, settings) {
-  const result = await AIProvider.generateResponseWithUsage(JSON.stringify({ text, tags: TAGS }), settings, {
+  const request = AIProvider.generateResponse(JSON.stringify({ text, tags: TAGS }), settings, {
     system: `${SYSTEM}\nReturn JSON only: {"tags":{"tag-name":{"status":"present|absent|insufficient_evidence","evidence":"exact quote from text, or null"}}}. Include every listed tag. Evidence must describe actual behavior, not a future lesson.`,
-    temperature: 0, maxTokens: 1600, sensitive: true, timeoutMs: 20000
+    temperature: 0, maxTokens: 1600, sensitive: true
   });
-  const parsed = JSON.parse(String(result.text).replace(/^```(?:json)?\s*|\s*```$/g, '').trim());
-  return { decisions: normalizeDecisions(parsed.tags, text), model: settings.modelName,
-    usage: { inputTokens: result.inputTokens, outputTokens: result.outputTokens } };
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('TAG_SUGGESTION_TIMEOUT')), REQUEST_TIMEOUT_MS);
+  });
+  let text_;
+  try {
+    text_ = await Promise.race([request, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+  const parsed = JSON.parse(String(text_).replace(/^```(?:json)?\s*|\s*```$/g, '').trim());
+  return { decisions: normalizeDecisions(parsed.tags, text), model: settings.modelName, usage: null };
 }
 
 // Uses the AI provider the user (or admin) configured for TradeTally.

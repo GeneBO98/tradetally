@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS journal_tag_suggestion_runs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '90 days'
 );
+-- Databases that created this table from an earlier draft lack these columns.
+ALTER TABLE journal_tag_suggestion_runs ADD COLUMN IF NOT EXISTS baseline_tags JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE journal_tag_suggestion_runs ADD COLUMN IF NOT EXISTS shown_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_journal_tag_runs_owner ON journal_tag_suggestion_runs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_journal_tag_runs_expiry ON journal_tag_suggestion_runs(expires_at);
 CREATE INDEX IF NOT EXISTS idx_journal_tag_runs_entry ON journal_tag_suggestion_runs(entry_id) WHERE entry_id IS NOT NULL;

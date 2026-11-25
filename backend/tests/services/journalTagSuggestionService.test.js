@@ -1,4 +1,4 @@
-jest.mock('../../src/utils/aiProvider', () => ({ generateResponseWithUsage: jest.fn() }));
+jest.mock('../../src/utils/aiProvider', () => ({ generateResponse: jest.fn() }));
 const AIProvider = require('../../src/utils/aiProvider');
 const service = require('../../src/services/journalTagSuggestionService');
 
@@ -25,21 +25,21 @@ test('does not accept invented tags, fabricated evidence or model confidence as 
 test('empty notes abstain without calling the AI provider', async () => {
   const result = await service.classify('');
   expect(result.decisions.every(d => d.status === 'insufficient_evidence')).toBe(true);
-  expect(AIProvider.generateResponseWithUsage).not.toHaveBeenCalled();
+  expect(AIProvider.generateResponse).not.toHaveBeenCalled();
 });
 
 test('lightweight classification uses the same ontology and exact-quote validation', async () => {
   const text = 'I froze and skipped my planned entry because I was afraid.';
-  AIProvider.generateResponseWithUsage.mockResolvedValue({ text: JSON.stringify({ tags: {
+  AIProvider.generateResponse.mockResolvedValue(JSON.stringify({ tags: {
     hesitation: { status: 'present', evidence: text }
-  } }), inputTokens: 100, outputTokens: 40 });
+  } }));
   const result = await service.classify(text, { settings: { modelName: 'test-model' } });
   expect(result.decisions.find(d => d.tag === 'hesitation').suggested).toBe(true);
-  expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 40 });
-  expect(AIProvider.generateResponseWithUsage.mock.calls[0][2].system).toContain('future intentions');
+  expect(result.usage).toBeNull();
+  expect(AIProvider.generateResponse.mock.calls[0][2].system).toContain('future intentions');
 });
 
 test('malformed provider output fails without creating labels', async () => {
-  AIProvider.generateResponseWithUsage.mockResolvedValue({ text: 'not JSON' });
+  AIProvider.generateResponse.mockResolvedValue('not JSON');
   await expect(service.classify('A sufficiently long journal note.', { provider: 'lightweight', settings: {} })).rejects.toThrow();
 });
