@@ -35,13 +35,14 @@
       </button>
     </div>
 
-    <div class="flex items-center space-x-1">
+    <div class="flex flex-wrap items-center gap-1">
       <button
         v-for="option in speedOptions"
         :key="option"
         @click="$emit('set-speed', option)"
         class="segment"
         :class="speed === option ? 'segment-active' : ''"
+        :title="`${option}x speed`"
       >
         {{ option }}x
       </button>

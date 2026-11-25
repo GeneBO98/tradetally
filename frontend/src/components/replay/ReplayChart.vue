@@ -39,6 +39,10 @@ const props = defineProps({
     type: Number,
     required: true
   },
+  liveBar: {
+    type: Object,
+    default: null
+  },
   trade: {
     type: Object,
     default: null
@@ -96,27 +100,43 @@ function formatPrice(value) {
   return formatDecimal(value, { nullValue: '' })
 }
 
+const EMA_K = {
+  ema9: 2 / 10,
+  ema20: 2 / 21
+}
+
 function computeIndicatorData() {
   const vwap = []
   const ema9 = []
   const ema20 = []
   const volume = []
-  const k9 = 2 / 10
-  const k20 = 2 / 21
+  const cumPvBefore = []
+  const cumVolBefore = []
   let cumPv = 0
   let cumVol = 0
+  let currentDayKey = null
   let ema9Value = null
   let ema20Value = null
+  const tzOffset = offset()
 
   for (const bar of props.candles) {
+    const dayKey = Math.floor((Number(bar.time) + tzOffset) / 86400)
+    if (currentDayKey !== null && dayKey !== currentDayKey) {
+      cumPv = 0
+      cumVol = 0
+    }
+    currentDayKey = dayKey
+
+    cumPvBefore.push(cumPv)
+    cumVolBefore.push(cumVol)
     const close = Number(bar.close)
     const typical = (Number(bar.high) + Number(bar.low) + close) / 3
     const vol = Number(bar.volume) || 0
     cumPv += typical * vol
     cumVol += vol
     vwap.push(cumVol > 0 ? cumPv / cumVol : close)
-    ema9Value = ema9Value === null ? close : close * k9 + ema9Value * (1 - k9)
-    ema20Value = ema20Value === null ? close : close * k20 + ema20Value * (1 - k20)
+    ema9Value = ema9Value === null ? close : close * EMA_K.ema9 + ema9Value * (1 - EMA_K.ema9)
+    ema20Value = ema20Value === null ? close : close * EMA_K.ema20 + ema20Value * (1 - EMA_K.ema20)
     ema9.push(ema9Value)
     ema20.push(ema20Value)
     volume.push({
@@ -124,11 +144,33 @@ function computeIndicatorData() {
       color: close >= Number(bar.open) ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'
     })
   }
-  return { vwap, ema9, ema20, volume }
+  return { vwap, ema9, ema20, volume, cumPvBefore, cumVolBefore }
 }
 
 function linePoint(key, index) {
   return { time: props.candles[index].time + offset(), value: indicatorData[key][index] }
+}
+
+function liveLinePoint(key, cursor) {
+  const bar = activeBarFor(cursor)
+  const canonical = props.candles[cursor]
+  if (!bar || !canonical || bar === canonical) {
+    return linePoint(key, cursor)
+  }
+  const close = Number(bar.close)
+  let value
+  if (key === 'vwap') {
+    const typical = (Number(bar.high) + Number(bar.low) + close) / 3
+    const vol = Number(bar.volume) || 0
+    const totalPv = indicatorData.cumPvBefore[cursor] + typical * vol
+    const totalVol = indicatorData.cumVolBefore[cursor] + vol
+    value = totalVol > 0 ? totalPv / totalVol : close
+  } else {
+    const k = EMA_K[key]
+    const prev = cursor > 0 ? indicatorData[key][cursor - 1] : null
+    value = prev === null ? close : close * k + prev * (1 - k)
+  }
+  return { time: bar.time + offset(), value }
 }
 
 function volumePoint(index) {
@@ -306,19 +348,41 @@ function buildMarkers(visibleBars) {
   })
 }
 
+function activeBarFor(cursor) {
+  const canonical = props.candles[cursor]
+  if (props.liveBar && canonical && props.liveBar.time === canonical.time) {
+    return props.liveBar
+  }
+  return canonical
+}
+
+function liveVolumePoint(cursor) {
+  const bar = activeBarFor(cursor)
+  if (!bar) return volumePoint(cursor)
+  const close = Number(bar.close)
+  const open = Number(bar.open)
+  return {
+    time: bar.time + offset(),
+    value: Number(bar.volume) || 0,
+    color: close >= open ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'
+  }
+}
+
 function setAllData(cursor) {
-  const visible = props.candles.slice(0, cursor + 1).map(shiftBar)
+  const visible = props.candles.slice(0, cursor + 1).map((bar, i) =>
+    shiftBar(i === cursor ? activeBarFor(cursor) : bar)
+  )
   candleSeries.setData(visible)
   for (const key of ['vwap', 'ema9', 'ema20']) {
     if (indicatorSeries[key]) {
       indicatorSeries[key].setData(
-        props.candles.slice(0, cursor + 1).map((_, i) => linePoint(key, i))
+        props.candles.slice(0, cursor + 1).map((_, i) => (i === cursor ? liveLinePoint(key, cursor) : linePoint(key, i)))
       )
     }
   }
   if (indicatorSeries.volume) {
     indicatorSeries.volume.setData(
-      props.candles.slice(0, cursor + 1).map((_, i) => volumePoint(i))
+      props.candles.slice(0, cursor + 1).map((_, i) => (i === cursor ? liveVolumePoint(cursor) : volumePoint(i)))
     )
   }
   return visible
@@ -334,14 +398,36 @@ function render(force = false) {
       chart.timeScale().fitContent()
     }
   } else if (cursor > renderedCursor) {
+    // Finalize the previously developing bar with its completed OHLCV & indicator values before stepping forward.
+    candleSeries.update(shiftBar(props.candles[renderedCursor]))
+    for (const key of ['vwap', 'ema9', 'ema20']) {
+      if (indicatorSeries[key]) indicatorSeries[key].update(linePoint(key, renderedCursor))
+    }
+    if (indicatorSeries.volume) {
+      indicatorSeries.volume.update(volumePoint(renderedCursor))
+    }
     for (let i = renderedCursor + 1; i <= cursor; i++) {
-      candleSeries.update(shiftBar(props.candles[i]))
+      const isActive = i === cursor
+      candleSeries.update(shiftBar(isActive ? activeBarFor(cursor) : props.candles[i]))
       for (const key of ['vwap', 'ema9', 'ema20']) {
-        if (indicatorSeries[key]) indicatorSeries[key].update(linePoint(key, i))
+        if (indicatorSeries[key]) {
+          indicatorSeries[key].update(isActive ? liveLinePoint(key, cursor) : linePoint(key, i))
+        }
       }
-      if (indicatorSeries.volume) indicatorSeries.volume.update(volumePoint(i))
+      if (indicatorSeries.volume) {
+        indicatorSeries.volume.update(isActive ? liveVolumePoint(cursor) : volumePoint(i))
+      }
     }
     chart.timeScale().scrollToRealTime()
+  } else if (props.liveBar) {
+    // Same bar advancing in real time: update developing candle, indicators, and volume in place.
+    candleSeries.update(shiftBar(activeBarFor(cursor)))
+    for (const key of ['vwap', 'ema9', 'ema20']) {
+      if (indicatorSeries[key]) indicatorSeries[key].update(liveLinePoint(key, cursor))
+    }
+    if (indicatorSeries.volume) {
+      indicatorSeries.volume.update(liveVolumePoint(cursor))
+    }
   }
   renderedCursor = cursor
 
@@ -353,16 +439,35 @@ function render(force = false) {
 }
 
 watch(() => props.cursor, () => render())
+watch(() => props.liveBar, () => render())
 watch(() => props.executedFills.length, () => render())
 watch(() => props.candles, () => createChart())
 watch(() => ({ ...props.indicators }), () => createChart(), { deep: true })
 
 // Recreate on theme change so grid/text colors follow
-watch(
-  () => document.documentElement.classList.contains('dark'),
-  () => createChart()
-)
+let themeObserver = null
+let lastIsDark = false
 
-onMounted(createChart)
-onUnmounted(destroyChart)
+onMounted(() => {
+  lastIsDark = document.documentElement.classList.contains('dark')
+  createChart()
+  if (typeof MutationObserver !== 'undefined') {
+    themeObserver = new MutationObserver(() => {
+      const nextIsDark = document.documentElement.classList.contains('dark')
+      if (nextIsDark !== lastIsDark) {
+        lastIsDark = nextIsDark
+        createChart()
+      }
+    })
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  }
+})
+
+onUnmounted(() => {
+  if (themeObserver) {
+    themeObserver.disconnect()
+    themeObserver = null
+  }
+  destroyChart()
+})
 </script>
