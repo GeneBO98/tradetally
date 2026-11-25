@@ -12,6 +12,8 @@ const fs = require('fs').promises;
 const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
 const User = require('../models/User');
 const { isTokenSessionValid } = require('../middleware/auth');
+const { getUserTimezone, getDateInTimezone } = require('../utils/timezone');
+const { fxUsd } = require('../utils/tradeFx');
 
 
 // Get diary entries for user with filtering and pagination
@@ -180,6 +182,10 @@ const updateEntry = [
       if (formData.lessonsLearned !== undefined) updates.lessonsLearned = formData.lessonsLearned;
 
       const entry = await Diary.update(id, userId, updates);
+      if (entry && Array.isArray(updates.tags)) {
+        try { await require('../services/journalTagFeedbackService').observeEntrySave(userId, entry.id); }
+        catch { console.warn('[JOURNAL_TAGS] Saved-tag feedback unavailable'); }
+      }
 
       if (!entry) {
         return res.status(404).json({ error: 'Diary entry not found' });
@@ -956,7 +962,176 @@ const deleteGeneralNote = async (req, res, next) => {
   }
 };
 
+// Get structured trade summary + existing diary entry for the end-of-day wrap-up
+const getSessionSummary = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const requestedDate = typeof req.query.date === 'string' ? req.query.date.trim() : '';
+
+    let sessionDate = requestedDate;
+    if (sessionDate) {
+      let validDate = false;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) {
+        const [y, m, d] = sessionDate.split('-').map(Number);
+        const dt = new Date(Date.UTC(y, m - 1, d));
+        validDate = dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+      }
+      if (!validDate) {
+        return res.status(400).json({ error: 'Invalid date format. Use a valid YYYY-MM-DD calendar date' });
+      }
+    }
+    if (!sessionDate) {
+      const tz = await getUserTimezone(userId);
+      sessionDate = getDateInTimezone(new Date(), tz, false) || new Date().toISOString().slice(0, 10);
+    }
+
+    const [tradesResult, existingEntryResult] = await Promise.all([
+      db.query(
+        `
+          SELECT
+            t.id,
+            t.symbol,
+            t.entry_time,
+            t.exit_time,
+            ${fxUsd('pnl', 't')} AS pnl
+          FROM trades t
+          WHERE t.user_id = $1
+            AND t.trade_date = $2::date
+            AND t.exit_price IS NOT NULL
+            AND t.pnl IS NOT NULL
+            AND NOT COALESCE('sample' = ANY(t.tags), false)
+          ORDER BY COALESCE(t.exit_time, t.entry_time) ASC, t.id ASC
+        `,
+        [userId, sessionDate]
+      ),
+      db.query(
+        `
+          SELECT *
+          FROM diary_entries
+          WHERE user_id = $1
+            AND entry_date = $2
+            AND entry_type = 'diary'
+            AND NOT COALESCE('sample' = ANY(tags), false)
+          -- Prefer the entry a previous wrap-up created over other journal
+          -- entries written the same day.
+          ORDER BY (COALESCE(title, '') LIKE 'Session Wrap-Up%') DESC,
+                   updated_at DESC NULLS LAST, created_at DESC
+          LIMIT 1
+        `,
+        [userId, sessionDate]
+      )
+    ]);
+
+    const existingEntry = existingEntryResult.rows[0] || null;
+
+    const trades = tradesResult.rows.map(row => ({
+      id: row.id,
+      symbol: String(row.symbol || '').trim().toUpperCase(),
+      pnl: Number(row.pnl) || 0,
+      entryMs: row.entry_time ? new Date(row.entry_time).getTime() : null,
+      exitMs: row.exit_time ? new Date(row.exit_time).getTime() : null
+    }));
+
+    // Collect losing-trade exits sorted by exitMs so overlapping trades still
+    // compare their entry time against the most recent losing exit <= entryMs.
+    const lossExits = trades
+      .filter(t => t.pnl < 0 && Number.isFinite(t.exitMs))
+      .map(t => ({ id: t.id, exitMs: t.exitMs }))
+      .sort((a, b) => a.exitMs - b.exitMs);
+
+    const hasRecentPriorLoss = (trade) => {
+      if (!Number.isFinite(trade.entryMs) || lossExits.length === 0) return false;
+      const windowMs = 30 * 60 * 1000;
+      let lo = 0;
+      let hi = lossExits.length - 1;
+      let idx = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (lossExits[mid].exitMs <= trade.entryMs) {
+          idx = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      while (idx >= 0) {
+        const delta = trade.entryMs - lossExits[idx].exitMs;
+        if (delta > windowMs) return false;
+        if (lossExits[idx].id !== trade.id) return true;
+        idx -= 1;
+      }
+      return false;
+    };
+
+    let netPnl = 0;
+    let wins = 0;
+    let losses = 0;
+    let breakeven = 0;
+    let bestTrade = null;
+    let worstTrade = null;
+    let postLossReentries = 0;
+    const symbolSet = new Set();
+
+    for (const t of trades) {
+      netPnl += t.pnl;
+      if (t.symbol) symbolSet.add(t.symbol);
+      if (t.pnl > 0) {
+        wins += 1;
+        if (!bestTrade || t.pnl > bestTrade.pnl) {
+          bestTrade = { id: t.id, symbol: t.symbol, pnl: Math.round(t.pnl * 100) / 100 };
+        }
+      } else if (t.pnl < 0) {
+        losses += 1;
+        if (!worstTrade || t.pnl < worstTrade.pnl) {
+          worstTrade = { id: t.id, symbol: t.symbol, pnl: Math.round(t.pnl * 100) / 100 };
+        }
+      } else {
+        breakeven += 1;
+      }
+
+      if (hasRecentPriorLoss(t)) {
+        postLossReentries += 1;
+      }
+    }
+
+    const tradeCount = trades.length;
+    const winRate = tradeCount > 0 ? Math.round((wins / tradeCount) * 1000) / 10 : 0;
+
+    res.json({
+      date: sessionDate,
+      tradeCount,
+      wins,
+      losses,
+      breakeven,
+      netPnl: Math.round(netPnl * 100) / 100,
+      winRate,
+      bestTrade,
+      worstTrade,
+      symbols: Array.from(symbolSet).slice(0, 25),
+      linkedTradeIds: trades.slice(0, 500).map(t => t.id),
+      postLossReentries,
+      existingEntry: existingEntry
+        ? {
+            id: existingEntry.id,
+            title: existingEntry.title,
+            content: existingEntry.content,
+            market_bias: existingEntry.market_bias,
+            followed_plan: existingEntry.followed_plan,
+            lessons_learned: existingEntry.lessons_learned,
+            tags: existingEntry.tags || [],
+            watchlist: existingEntry.watchlist || [],
+            linked_trades: existingEntry.linked_trades || []
+          }
+        : null
+    });
+  } catch (error) {
+    console.error('Error building session summary:', error);
+    res.status(500).json({ error: 'Failed to load session summary' });
+  }
+};
+
 module.exports = {
+  getSessionSummary,
   getEntries,
   getTodaysEntry,
   getEntry,

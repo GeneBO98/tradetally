@@ -49,6 +49,15 @@
             </div>
           </div>
 
+          <!-- Quick Session Wrap-Up Button -->
+          <button
+            type="button"
+            class="btn-secondary flex-shrink-0"
+            @click="showSessionWrapUp = true"
+          >
+            Wrap up today
+          </button>
+
           <!-- Create Entry Button -->
           <router-link
             to="/diary/new"
@@ -590,6 +599,8 @@
         />
       </div>
     </div>
+
+    <SessionWrapUpModal v-model="showSessionWrapUp" @saved="loadEntries" />
   </div>
 </template>
 
@@ -609,6 +620,7 @@ import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import { useProAccess } from '@/composables/useProAccess'
 import GeneralNotes from '@/components/diary/GeneralNotes.vue'
 import TemplateManager from '@/components/diary/TemplateManager.vue'
+import SessionWrapUpModal from '@/components/diary/SessionWrapUpModal.vue'
 import LinkedTradesList from '@/components/diary/LinkedTradesList.vue'
 import WatchlistSymbol from '@/components/diary/WatchlistSymbol.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
@@ -637,6 +649,7 @@ const router = useRouter()
 // Component state - load saved view from localStorage
 const savedView = localStorage.getItem('diaryView')
 const currentView = ref(savedView || 'list')
+const showSessionWrapUp = ref(false)
 const savedSearchQuery = localStorage.getItem('diarySearchQuery')
 const searchQuery = ref(savedSearchQuery || '')
 const showDeleteModal = ref(false)

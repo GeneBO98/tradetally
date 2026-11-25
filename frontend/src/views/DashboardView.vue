@@ -112,6 +112,20 @@
           </button>
 
           <button
+            data-tour="session-wrap-up"
+            @click="showSessionWrapUp = true"
+            class="h-10 px-3 inline-flex items-center justify-center gap-1.5 rounded-md border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm font-medium"
+            type="button"
+            title="Wrap up today's session in 60 seconds"
+            aria-label="Wrap up today's session"
+          >
+            <svg class="w-4 h-4 text-primary-700 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="hidden sm:inline">Wrap up</span>
+          </button>
+
+          <button
             v-if="isCustomizing"
             @click="resetDashboardLayout"
             class="px-3 h-10 text-sm font-medium border rounded-md transition-colors bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -558,7 +572,7 @@
 
             <!-- Today's Journal Entry -->
             <template v-if="element.id === 'journal-entry'">
-              <TodaysJournalEntry />
+              <TodaysJournalEntry :key="journalRefreshKey" />
             </template>
 
             <!-- Open Trades Section -->
@@ -1633,6 +1647,7 @@
       </div>
     </div>
 
+    <SessionWrapUpModal v-if="showSessionWrapUp" v-model="showSessionWrapUp" @saved="journalRefreshKey += 1" />
   </div>
 </template>
 
@@ -1672,6 +1687,7 @@ const UpcomingEarningsSection = defineAsyncComponent(() => import('@/components/
 const CalendarHeatmap = defineAsyncComponent(() => import('@/components/dashboard/CalendarHeatmap.vue'))
 const StreakMomentumCard = defineAsyncComponent(() => import('@/components/dashboard/StreakMomentumCard.vue'))
 const BehavioralAlertsCard = defineAsyncComponent(() => import('@/components/dashboard/BehavioralAlertsCard.vue'))
+const SessionWrapUpModal = defineAsyncComponent(() => import('@/components/diary/SessionWrapUpModal.vue'))
 const RecentTradesTimeline = defineAsyncComponent(() => import('@/components/dashboard/RecentTradesTimeline.vue'))
 const WinLossPulse = defineAsyncComponent(() => import('@/components/dashboard/WinLossPulse.vue'))
 const MarketRiskCard = defineAsyncComponent(() => import('@/components/dashboard/MarketRiskCard.vue'))
@@ -1720,6 +1736,8 @@ const router = useRouter()
 
 const loading = computed(() => analyticsLoading.value || quotesLoading.value)
 const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
+const showSessionWrapUp = ref(false)
+const journalRefreshKey = ref(0)
 const userSettings = ref(null)
 const analytics = ref({
   summary: {},

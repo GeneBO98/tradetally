@@ -3,6 +3,8 @@ const router = express.Router();
 const { authenticate, optionalAuth } = require('../middleware/auth');
 const { requiresTier } = require('../middleware/tierAuth');
 const imageUpload = require('../middleware/upload');
+const { createRateLimiter } = require('../utils/rateLimit');
+const { suggestTags, recordFeedback } = require('../controllers/journalTagSuggestions.controller');
 const {
   getEntries,
   getTodaysEntry,
@@ -24,7 +26,8 @@ const {
   getGeneralNotes,
   createGeneralNote,
   updateGeneralNote,
-  deleteGeneralNote
+  deleteGeneralNote,
+  getSessionSummary
 } = require('../controllers/diary.controller');
 
 // Image serving route with optional auth (for direct URL access with token query param)
@@ -51,6 +54,17 @@ router.get('/stats', getStats);
 
 // AI Analysis of diary entries
 // AI diary analysis is Pro-only
+// Structured trade summary + existing diary entry for the end-of-day wrap-up
+router.get('/session-summary', getSessionSummary);
+
+// Evidence-based tag suggestions for a journal note (uses the configured AI provider)
+router.post('/tag-suggestions', requiresTier('pro'), createRateLimiter({
+  windowMs: 15 * 60 * 1000, max: 20
+}), suggestTags);
+router.post('/tag-suggestions/:requestId/feedback', createRateLimiter({
+  windowMs: 15 * 60 * 1000, max: 200
+}), recordFeedback);
+
 router.get('/analyze', requiresTier('pro'), analyzeEntries);
 router.get('/analyze/:requestId', requiresTier('pro'), getAnalysisStatus);
 

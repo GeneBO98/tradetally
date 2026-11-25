@@ -31,7 +31,7 @@ class Diary {
       keyLevels || null,
       watchlist || [],
       linkedTrades || [],
-      followedPlan || null,
+      followedPlan ?? null,
       lessonsLearned || null
     ];
 
