@@ -33,6 +33,36 @@ describe('interpolateBar', () => {
     const end = interpolateBar(bar, 1)
     expect(end).toEqual(bar)
   })
+
+  it('routes the forming candle through real fill prices and still ends on the exact candle', () => {
+    const bar = { time: 1000, open: 100, high: 106, low: 98, close: 104, volume: 600 }
+    const anchors = [{ p: 0.5, price: 103.4 }, { p: 0.25, price: 99.2 }]
+
+    // The price at each fill moment is the fill price, not an estimate
+    expect(interpolateBar(bar, 0.5, anchors).close).toBeCloseTo(103.4, 10)
+    expect(interpolateBar(bar, 0.25, anchors).close).toBeCloseTo(99.2, 10)
+
+    // The pivot that shared the 0.25 slot moved aside, so the real low and high are both still reached
+    let lowSeen = Infinity
+    let highSeen = -Infinity
+    let previous = interpolateBar(bar, 0, anchors)
+    for (let step = 1; step < 1000; step += 1) {
+      const live = interpolateBar(bar, step / 1000, anchors)
+      expect(live.high).toBeGreaterThanOrEqual(previous.high)
+      expect(live.low).toBeLessThanOrEqual(previous.low)
+      expect(live.high).toBeLessThanOrEqual(bar.high)
+      expect(live.low).toBeGreaterThanOrEqual(bar.low)
+      lowSeen = Math.min(lowSeen, live.low)
+      highSeen = Math.max(highSeen, live.high)
+      previous = live
+    }
+    expect(lowSeen).toBeCloseTo(98, 1)
+    expect(highSeen).toBeCloseTo(106, 1)
+    expect(interpolateBar(bar, 1, anchors)).toEqual(bar)
+
+    // A fill price outside the candle's range is clamped to it
+    expect(interpolateBar(bar, 0.5, [{ p: 0.5, price: 120 }]).close).toBe(106)
+  })
 })
 
 describe('useReplayEngine real-time playback', () => {
@@ -105,6 +135,78 @@ describe('useReplayEngine real-time playback', () => {
     vi.advanceTimersByTime(1000)
     expect(engine.playing.value).toBe(false)
     expect(engine.atEnd.value).toBe(true)
+  })
+
+  it('marks unrealized P&L against the real fill price and lands on realized P&L at the exit', () => {
+    const engine = useReplayEngine()
+    const candles = [
+      { time: 1700000400, open: 99, high: 100, low: 98, close: 100, volume: 1000 },
+      { time: 1700000460, open: 100, high: 110, low: 96, close: 108, volume: 1000 },
+      { time: 1700000520, open: 108, high: 112, low: 107, close: 111, volume: 1000 }
+    ]
+    // Buy at second 30 of bar 1 for 104.5, sell at second 30 of bar 2 for 109.25
+    engine.load({
+      candles,
+      fills: [
+        { time: candles[1].time + 30, price: 104.5, quantity: 10, action: 'buy' },
+        { time: candles[2].time + 30, price: 109.25, quantity: 10, action: 'sell' }
+      ],
+      trade: { side: 'long', entry_price: 104.5, quantity: 10, multiplier: 1 },
+      resolution: '1min'
+    })
+
+    engine.play()
+    // Replay starts on the completed bar before entry, so 30s reaches the entry second
+    vi.advanceTimersByTime(30_000)
+    expect(engine.cursor.value).toBe(1)
+    expect(engine.liveBar.value.close).toBeCloseTo(104.5, 6)
+    expect(engine.stats.value.position).toBe(10)
+    expect(engine.stats.value.avg_cost).toBe(104.5)
+    expect(engine.stats.value.unrealized_pnl).toBeCloseTo(0, 6)
+
+    // End of the entry bar: marked at the real close against the real cost
+    vi.advanceTimersByTime(30_000)
+    expect(engine.stats.value.unrealized_pnl).toBeCloseTo((108 - 104.5) * 10, 6)
+
+    // Just before the exit second the open P&L has converged on what the exit realizes
+    vi.advanceTimersByTime(29_900)
+    expect(engine.stats.value.position).toBe(10)
+    expect(engine.stats.value.unrealized_pnl).toBeCloseTo(47.5, 0)
+    vi.advanceTimersByTime(100)
+    expect(engine.stats.value.position).toBe(0)
+    expect(engine.stats.value.realized_pnl).toBeCloseTo(47.5, 6)
+    expect(engine.stats.value.total_pnl).toBeCloseTo(47.5, 6)
+    engine.pause()
+  })
+
+  it('falls back to chart-to-chart P&L when a fill is on a different price scale than the candles', () => {
+    const engine = useReplayEngine()
+    const candles = [
+      { time: 1700000400, open: 99, high: 100, low: 98, close: 100, volume: 1000 },
+      { time: 1700000460, open: 100, high: 110, low: 100, close: 110, volume: 1000 },
+      { time: 1700000520, open: 110, high: 112, low: 109, close: 111, volume: 1000 }
+    ]
+    // An option bought for 2.50 while the chart shows the underlying near 100
+    engine.load({
+      candles,
+      fills: [{ time: candles[1].time + 30, price: 2.5, quantity: 1, action: 'buy' }],
+      trade: { side: 'long', entry_price: 2.5, quantity: 1, multiplier: 100 },
+      resolution: '1min'
+    })
+
+    engine.play()
+    vi.advanceTimersByTime(30_000)
+    // No false spike toward the fill price, and no P&L from comparing 2.50 to ~105
+    expect(engine.liveBar.value.close).toBeGreaterThan(100)
+    expect(engine.stats.value.position).toBe(1)
+    expect(engine.stats.value.avg_cost).toBe(2.5)
+    expect(engine.stats.value.unrealized_pnl).toBeCloseTo(0, 6)
+
+    vi.advanceTimersByTime(30_000)
+    const basis = engine.liveBar.value.close - engine.stats.value.unrealized_pnl / 100
+    expect(basis).toBeGreaterThan(100)
+    expect(basis).toBeLessThan(110)
+    engine.pause()
   })
 
   it('steps daily degraded mode at 1 bar/sec at 1x instead of waiting 24 hours', () => {

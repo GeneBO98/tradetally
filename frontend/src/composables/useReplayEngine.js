@@ -35,12 +35,32 @@ function nowMs() {
   return Date.now()
 }
 
+const PIVOT_NUDGE = 0.03
+const PIVOT_CLEARANCE = 0.015
+
+// Keep a pivot's slot clear of the trader's own fills so the candle can touch
+// both its real extreme and the real fill price.
+function placePivot(target, anchors) {
+  for (let step = 0; step <= 6; step += 1) {
+    for (const candidate of step === 0 ? [target] : [target + step * PIVOT_NUDGE, target - step * PIVOT_NUDGE]) {
+      if (candidate <= 0.02 || candidate >= 0.98) continue
+      if (anchors.every((anchor) => Math.abs(anchor.p - candidate) >= PIVOT_CLEARANCE)) return candidate
+    }
+  }
+  return target
+}
+
 /**
  * Deterministically synthesize the developing state of a candle at progress p in [0, 1].
  * Bullish bars trace open -> low -> high -> close; bearish bars trace open -> high -> low -> close.
  * High/low envelopes expand monotonically and always match the exact real candle at p = 1.
+ *
+ * Only OHLC is known for a candle, so the path between those four prices is an
+ * estimate. `anchors` are the moments where the real price IS known - the
+ * trader's own fills ({ p: progress through the bar, price }) - and the path is
+ * routed through them, so the chart shows the true price at every execution.
  */
-export function interpolateBar(bar, progress) {
+export function interpolateBar(bar, progress, anchors = []) {
   if (!bar) return null
   const p = Math.max(0, Math.min(1, Number(progress)))
   const open = Number(bar.open)
@@ -57,23 +77,40 @@ export function interpolateBar(bar, progress) {
   const firstPivot = bullish ? low : high
   const secondPivot = bullish ? high : low
 
-  let liveClose
+  // One anchor per moment, kept inside the candle's real range.
+  const anchorByProgress = new Map()
+  for (const anchor of anchors || []) {
+    const anchorP = Number(anchor?.p)
+    const price = Number(anchor?.price)
+    if (!Number.isFinite(anchorP) || !Number.isFinite(price) || anchorP <= 0 || anchorP >= 1) continue
+    anchorByProgress.set(anchorP, { p: anchorP, price: Math.max(low, Math.min(high, price)) })
+  }
+  const fixed = Array.from(anchorByProgress.values())
+
+  const waypoints = [
+    { p: 0, price: open },
+    { p: placePivot(0.25, fixed), price: firstPivot },
+    { p: placePivot(0.75, fixed), price: secondPivot },
+    { p: 1, price: close },
+    ...fixed
+  ].sort((a, b) => a.p - b.p)
+
+  let liveClose = open
   let liveHigh = open
   let liveLow = open
-
-  if (p <= 0.25) {
-    const t = p / 0.25
-    liveClose = open + (firstPivot - open) * t
-  } else if (p <= 0.75) {
-    const t = (p - 0.25) / 0.5
-    liveClose = firstPivot + (secondPivot - firstPivot) * t
-    liveHigh = Math.max(liveHigh, firstPivot)
-    liveLow = Math.min(liveLow, firstPivot)
-  } else {
-    const t = (p - 0.75) / 0.25
-    liveClose = secondPivot + (close - secondPivot) * t
-    liveHigh = Math.max(liveHigh, firstPivot, secondPivot)
-    liveLow = Math.min(liveLow, firstPivot, secondPivot)
+  for (let i = 1; i < waypoints.length; i += 1) {
+    const from = waypoints[i - 1]
+    const to = waypoints[i]
+    if (p >= to.p) {
+      liveHigh = Math.max(liveHigh, to.price)
+      liveLow = Math.min(liveLow, to.price)
+      liveClose = to.price
+      continue
+    }
+    const span = to.p - from.p
+    const t = span > 0 ? (p - from.p) / span : 1
+    liveClose = from.price + (to.price - from.price) * t
+    break
   }
 
   liveHigh = Math.max(liveHigh, liveClose)
@@ -87,6 +124,21 @@ export function interpolateBar(bar, progress) {
     close: liveClose,
     volume: Number.isInteger(volume) ? Math.round(volume * p) : Number((volume * p).toFixed(6))
   }
+}
+
+/**
+ * True when a fill price sits inside its candle's real range (with a small
+ * tolerance for venue differences). Fills that do not - adjusted chart data, a
+ * different venue, demo trades, an option charted against its underlying - are
+ * on a different price scale than the chart and cannot be compared to it.
+ */
+export function fillMatchesBar(fill, bar) {
+  const price = Number(fill?.price)
+  const high = Number(bar?.high)
+  const low = Number(bar?.low)
+  if (!Number.isFinite(price) || !Number.isFinite(high) || !Number.isFinite(low)) return false
+  const tolerance = Math.max((high - low) * 0.05, Math.abs(price) * 0.0005)
+  return price >= low - tolerance && price <= high + tolerance
 }
 
 export function useReplayEngine(options = {}) {
@@ -335,7 +387,7 @@ export function useReplayEngine(options = {}) {
   const liveBar = computed(() => {
     if (!currentBar.value) return null
     if (isSteppedMode.value || barProgress.value >= 1) return currentBar.value
-    return interpolateBar(currentBar.value, barProgress.value)
+    return interpolateBar(currentBar.value, barProgress.value, fillAnchorsForBar(cursor.value))
   })
 
   const currentTime = computed(() => {
@@ -365,48 +417,72 @@ export function useReplayEngine(options = {}) {
     return fills.value.filter((fill) => fill.time < cutoff)
   })
 
-  // Market price at the exact moment a fill executed. For intraday real-time playback,
-  // always derive this deterministically from fill.time inside its containing bar so the
-  // unrealized P&L basis stays continuous across bar rollovers, pauses, and scrubs.
-  // In bar-step / daily mode, mark against the containing bar's close.
+  // Real prices known inside each bar: the trader's own fills, keyed by bar index.
+  const fillAnchors = computed(() => {
+    const byBar = new Map()
+    const span = barSpan.value
+    if (bars.value.length === 0 || !(span > 0)) return byBar
+    for (const fill of fills.value) {
+      const index = barIndexContaining(fill.time)
+      const bar = bars.value[index]
+      const price = Number(fill.price)
+      if (!bar || !fillMatchesBar(fill, bar)) continue
+      if (!byBar.has(index)) byBar.set(index, [])
+      byBar.get(index).push({ p: (fill.time - bar.time) / span, price })
+    }
+    return byBar
+  })
+
+  function fillAnchorsForBar(index) {
+    return fillAnchors.value.get(index) || []
+  }
+
+  // Cost basis for unrealized P&L. When the fill price sits inside its candle
+  // it is the real price and is used as is. When it does not, the chart is on
+  // a different price scale than the fill, so the position is marked
+  // chart-to-chart from the chart's own price at the moment of the fill.
   // Realized P&L always uses the true fill prices.
-  function marketPriceAtFill(fill) {
+  function unrealizedBasisForFill(fill) {
     const list = bars.value
     if (list.length === 0) return fill.price
-    const candidate = list[barIndexContaining(fill.time)]
+    const index = barIndexContaining(fill.time)
+    const bar = list[index]
+    if (fillMatchesBar(fill, bar)) return Number(fill.price)
     if (!isSteppedMode.value) {
       const span = barSpan.value
-      const fillProgress = span > 0 ? Math.max(0, Math.min(1, (fill.time - candidate.time) / span)) : 1
-      return Number(interpolateBar(candidate, fillProgress).close)
+      const fillProgress = span > 0 ? Math.max(0, Math.min(1, (fill.time - bar.time) / span)) : 1
+      return Number(interpolateBar(bar, fillProgress, fillAnchorsForBar(index)).close)
     }
-    return Number(candidate.close)
+    return Number(bar.close)
   }
 
   /**
    * Running position and P&L from executed fills. Average-cost accounting;
    * works symmetrically for short positions (negative signed position).
-   * Realized P&L is marked between fill prices (the trader's truth);
-   * unrealized P&L is marked between market prices (the chart's truth).
+   * Realized P&L always uses the trader's real fill prices. Unrealized P&L
+   * marks the open position against the live candle from the same real fill
+   * prices whenever they sit on the chart's price scale (see
+   * unrealizedBasisForFill for the fallback).
    */
   const stats = computed(() => {
     const multiplier = Number(trade.value?.multiplier) || 1
     let position = 0
     let avgCost = 0
-    let avgMarketCost = 0
+    let avgBasis = 0
     let realized = 0
 
     for (const fill of executedFills.value) {
       const qty = fill.action === 'buy' ? fill.quantity : -fill.quantity
-      const marketPrice = marketPriceAtFill(fill)
+      const basis = unrealizedBasisForFill(fill)
       if (position === 0 || Math.sign(qty) === Math.sign(position)) {
         // Opening or adding: update average costs
         const newPosition = position + qty
         if (newPosition !== 0) {
           avgCost = (avgCost * Math.abs(position) + fill.price * Math.abs(qty)) / Math.abs(newPosition)
-          avgMarketCost = (avgMarketCost * Math.abs(position) + marketPrice * Math.abs(qty)) / Math.abs(newPosition)
+          avgBasis = (avgBasis * Math.abs(position) + basis * Math.abs(qty)) / Math.abs(newPosition)
         } else {
           avgCost = 0
-          avgMarketCost = 0
+          avgBasis = 0
         }
         position = newPosition
       } else {
@@ -417,17 +493,17 @@ export function useReplayEngine(options = {}) {
         if (Math.sign(position) === Math.sign(qty) && position !== 0) {
           // Flipped through zero: remainder opens at fill price
           avgCost = fill.price
-          avgMarketCost = marketPrice
+          avgBasis = basis
         } else if (position === 0) {
           avgCost = 0
-          avgMarketCost = 0
+          avgBasis = 0
         }
       }
     }
 
     const markPrice = liveBar.value ? Number(liveBar.value.close) : null
     const unrealized = position !== 0 && markPrice !== null
-      ? (markPrice - avgMarketCost) * Math.abs(position) * Math.sign(position) * multiplier
+      ? (markPrice - avgBasis) * Math.abs(position) * Math.sign(position) * multiplier
       : 0
     const total = realized + unrealized
 
