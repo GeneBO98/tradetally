@@ -126,7 +126,7 @@ class AIProvider {
       const response = await result.response;
       return response.text();
     } catch (error) {
-      console.error('[AI_PROVIDER] Gemini error:', error.message);
+      console.error('[AI_PROVIDER] Gemini error:', options.sensitive ? 'Sensitive request failed' : error.message);
       throw new Error(`Gemini API error: ${error.message}`);
     }
   }
@@ -179,7 +179,7 @@ class AIProvider {
       const data = await response.json();
       return data.content[0].text;
     } catch (error) {
-      console.error('[AI_PROVIDER] Claude error:', error.message);
+      console.error('[AI_PROVIDER] Claude error:', options.sensitive ? 'Sensitive request failed' : error.message);
       throw new Error(`Claude API error: ${error.message}`);
     }
   }
@@ -286,7 +286,7 @@ class AIProvider {
 
       const data = await response.json();
 
-      console.log('[AI_PROVIDER] Response structure:', JSON.stringify(data, null, 2).substring(0, 1000));
+      if (!options.sensitive) console.log('[AI_PROVIDER] Response structure:', JSON.stringify(data, null, 2).substring(0, 1000));
 
       if (!data.choices || data.choices.length === 0) {
         throw new Error('No response generated');
@@ -302,13 +302,13 @@ class AIProvider {
       const finalContent = content || data.output_text || data.output;
 
       if (!finalContent) {
-        console.error('[AI_PROVIDER] Empty content. Full response:', JSON.stringify(data).substring(0, 2000));
+        if (!options.sensitive) console.error('[AI_PROVIDER] Empty content. Full response:', JSON.stringify(data).substring(0, 2000));
         throw new Error('AI returned empty response');
       }
 
       return finalContent;
     } catch (error) {
-      console.error('[AI_PROVIDER] OpenAI-compatible API error:', error.message);
+      console.error('[AI_PROVIDER] OpenAI-compatible API error:', options.sensitive ? 'Sensitive request failed' : error.message);
 
       // Provide helpful error for connection issues
       if (error.code === 'ECONNREFUSED') {

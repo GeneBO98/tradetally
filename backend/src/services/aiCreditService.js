@@ -13,7 +13,8 @@ class AICreditService {
     FOLLOWUP: 2,        // Each follow-up question
     CHAT_MESSAGE: 2,    // Each free-form AI chat message
     CASHFLOW_CLASSIFY: 1, // Each batch of bank transactions sent to the cash-flow classifier
-    CSV_MAPPING_SUGGEST: 1 // One AI column match for an unrecognised CSV export
+    CSV_MAPPING_SUGGEST: 1, // One AI column match for an unrecognised CSV export
+    JOURNAL_TAG_SUGGEST: 1 // Evidence-based journal tag suggestions for one note
   };
 
   // Default monthly allocation for Pro users

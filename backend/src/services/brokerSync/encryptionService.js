@@ -124,10 +124,16 @@ class EncryptionService {
   isEncrypted(value) {
     if (!value || typeof value !== 'string') return false;
 
+    // Buffer.from(..., 'base64') permissively decodes URL-safe characters and
+    // ignores punctuation. Long plaintext sk-proj-* keys must not be mistaken
+    // for the canonical base64 ciphertext emitted by encrypt().
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
+
     try {
       const decoded = Buffer.from(value, 'base64');
       // Minimum length: salt(32) + iv(16) + authTag(16) + at least 1 byte ciphertext
-      return decoded.length >= SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH + 1;
+      return decoded.length >= SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH + 1 &&
+        decoded.toString('base64') === value;
     } catch {
       return false;
     }
