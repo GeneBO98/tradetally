@@ -3044,14 +3044,18 @@ class Trade {
       }
       if (!Array.isArray(executions) || executions.length === 0) continue;
 
-      const side = trade.side;
+      const side = String(trade.side || 'long').toLowerCase();
       const entryPrice = parseFloat(trade.entry_price);
       if (isNaN(entryPrice)) continue;
 
-      // Separate exit fills using same logic as recalculateFromFills
-      const exitFills = executions.filter(e =>
-        (side === 'long' && e.action === 'sell') || (side === 'short' && e.action === 'buy')
-      );
+      // Separate exit fills using case-insensitive action/side rules, as
+      // recalculateFromFills does.
+      const exitFills = executions.filter((e) => {
+        const rawAction = String(e?.action || '').trim();
+        const rawSide = String(e?.side || '').trim();
+        const act = (rawAction || rawSide).toLowerCase();
+        return (side === 'long' && act === 'sell') || (side === 'short' && (act === 'buy' || act === 'cover'));
+      });
 
       // Must have at least 2 exit fills to be included
       if (exitFills.length < 2) continue;

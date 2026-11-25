@@ -141,6 +141,7 @@ class AITraderContext {
                AND reporting_account.account_identifier = t.account_identifier
                AND reporting_account.include_in_reports = false
            )
+           AND NOT COALESCE('sample' = ANY(t.tags), false)
        ),
        hours AS (
          SELECT EXTRACT(HOUR FROM (entry_time AT TIME ZONE tz))::int AS hour, COUNT(*)::int AS n
@@ -361,8 +362,16 @@ class AITraderContext {
         `SELECT p.name, p.description, p.market, p.timeframe, p.side, p.required_strategy,
                 p.required_setup, p.required_tags, p.require_stop_loss, p.minimum_target_r,
                 (SELECT COUNT(*)::int FROM playbook_checklist_items c WHERE c.playbook_id = p.id) AS checklist_items,
-                (SELECT COUNT(*)::int FROM trade_playbook_reviews r WHERE r.playbook_id = p.id) AS reviews,
-                (SELECT AVG(r.adherence_score) FROM trade_playbook_reviews r WHERE r.playbook_id = p.id) AS avg_adherence
+                (SELECT COUNT(*)::int FROM trade_playbook_reviews r
+                   WHERE r.playbook_id = p.id
+                     AND NOT EXISTS (
+                       SELECT 1 FROM trades t WHERE t.id = r.trade_id AND COALESCE('sample' = ANY(t.tags), false)
+                     )) AS reviews,
+                (SELECT AVG(r.adherence_score) FROM trade_playbook_reviews r
+                   WHERE r.playbook_id = p.id
+                     AND NOT EXISTS (
+                       SELECT 1 FROM trades t WHERE t.id = r.trade_id AND COALESCE('sample' = ANY(t.tags), false)
+                     )) AS avg_adherence
          FROM playbooks p
          WHERE p.user_id = $1 AND p.is_active = true
          ORDER BY reviews DESC, p.created_at ASC
@@ -373,8 +382,11 @@ class AITraderContext {
         `SELECT COUNT(*)::int AS reviews,
                 AVG(adherence_score) AS avg_adherence,
                 AVG(CASE WHEN followed_plan THEN 100.0 ELSE 0 END) AS followed_plan_pct
-         FROM trade_playbook_reviews
-         WHERE user_id = $1 AND reviewed_at >= NOW() - ($2 * INTERVAL '1 day')`,
+         FROM trade_playbook_reviews r
+         WHERE r.user_id = $1 AND r.reviewed_at >= NOW() - ($2 * INTERVAL '1 day')
+           AND NOT EXISTS (
+             SELECT 1 FROM trades t WHERE t.id = r.trade_id AND COALESCE('sample' = ANY(t.tags), false)
+           )`,
         [userId, this.BEHAVIOR_WINDOW_DAYS]
       )
     ]);
