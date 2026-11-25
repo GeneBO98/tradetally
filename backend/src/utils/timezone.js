@@ -99,7 +99,9 @@ function getDayOfWeekInTimezone(timestamp, timezone = 'UTC') {
  * @param {boolean} [includeTime] - If true, include time details
  * @returns {Promise<string>} Date (or datetime) in user's timezone
  */
-async function getUserLocalDate(userId, timestamp, includeTime) {
+// With no timestamp this is "today" in the user's timezone (used for today's
+// journal entries and undated new entries).
+async function getUserLocalDate(userId, timestamp = new Date(), includeTime) {
   const userTimezone = await getUserTimezone(userId);
   return getDateInTimezone(timestamp, userTimezone, includeTime);
 }
