@@ -1244,6 +1244,7 @@
       :failed-trades="importResultsData.failedTrades"
       :manual-review-items="importResultsData.manualReviewItems"
       :achievements="importResultsData.achievements"
+      :import-insight="importResultsData.insight"
       :selected-broker="selectedBroker"
       :file-name="selectedFile?.name || ''"
       :user-email="authStore.user?.email || ''"
@@ -3505,9 +3506,23 @@ function pollImportStatus(importId) {
             diagnostics,
             failedTrades,
             manualReviewItems: manualReviewItemsForImport,
-            achievements: []
+            achievements: [],
+            insight: null
           }
           showImportResultsModal.value = true
+
+          if (tradesImported > 0) {
+            api.get('/trades/import-insight', { params: importId ? { importId } : {} })
+              .then((res) => {
+                if (importResultsData.value?.importId === importId && res.data?.ready && res.data?.insight) {
+                  importResultsData.value = {
+                    ...importResultsData.value,
+                    insight: res.data
+                  }
+                }
+              })
+              .catch(() => {})
+          }
         }
 
         if (manualReviewItemsForImport.length > 0) {

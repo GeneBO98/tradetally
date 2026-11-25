@@ -54,6 +54,50 @@
             </p>
           </div>
 
+          <!-- First Leak / Edge Diagnosis (Aha Moment) -->
+          <div
+            v-if="tradesImported > 0 && importInsight?.ready && importInsight?.insight"
+            class="mt-4 text-left"
+            :class="insightCardClass"
+            data-testid="import-first-diagnosis"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="text-label" :class="insightEyebrowClass">
+                    {{ importInsight.insight.tone === 'success' ? 'First edge detected' : 'First leak diagnosis' }}
+                  </p>
+                  <span
+                    v-if="importInsight.scope"
+                    class="text-xs font-medium text-gray-500 dark:text-gray-400"
+                    data-testid="import-insight-scope"
+                  >
+                    {{ importInsight.scope === 'import' ? 'This import' : 'Account history' }}
+                    <template v-if="importInsight.trade_count > 0">
+                      · {{ importInsight.trade_count.toLocaleString() }} closed trade{{ importInsight.trade_count === 1 ? '' : 's' }}
+                    </template>
+                  </span>
+                </div>
+                <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ importInsight.insight.headline }}
+                </p>
+                <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                  {{ importInsight.insight.detail }}
+                </p>
+                <div class="mt-3">
+                  <router-link
+                    :to="importInsight.insight.cta_route || '/metrics'"
+                    class="inline-flex items-center gap-1.5 text-sm font-semibold text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                    @click="$emit('close')"
+                  >
+                    <span>{{ importInsight.insight.cta_label || 'Inspect in Analytics' }}</span>
+                    <span aria-hidden="true">&rarr;</span>
+                  </router-link>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div v-if="reasonBreakdown.length > 0" class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
             <p class="text-sm font-medium text-gray-900 dark:text-white">Top row issues</p>
             <ul class="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
@@ -342,6 +386,10 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  importInsight: {
+    type: Object,
+    default: null
+  },
   selectedBroker: {
     type: String,
     default: ''
@@ -365,6 +413,24 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'load-demo-data', 'view-analytics', 'view-trades', 'support-clicked', 'review-manual-items'])
+
+const insightCardClass = computed(() => {
+  const tone = props.importInsight?.insight?.tone
+  if (tone === 'success') return 'callout-success'
+  if (tone === 'danger') return 'callout-danger'
+  return 'callout-warning'
+})
+
+const insightEyebrowClass = computed(() => {
+  const tone = props.importInsight?.insight?.tone
+  if (tone === 'success') {
+    return 'text-green-700 dark:text-green-400'
+  }
+  if (tone === 'danger') {
+    return 'text-red-700 dark:text-red-400'
+  }
+  return 'text-yellow-700 dark:text-yellow-400'
+})
 
 function handleEscape(e) {
   if (e.key === 'Escape' && props.isOpen) {

@@ -3879,6 +3879,29 @@ const tradeController = {
     }
   },
 
+  /**
+   * First diagnosis after an import (biggest net leak or strongest edge).
+   * GET /api/trades/import-insight?importId=<uuid>
+   */
+  async getImportInsight(req, res, next) {
+    try {
+      const ImportInsightService = require('../services/importInsightService');
+      const rawImportId = typeof req.query.importId === 'string' ? req.query.importId.trim() : '';
+      let importId = null;
+      if (rawImportId) {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawImportId)) {
+          return res.status(400).json({ error: 'Invalid importId format' });
+        }
+        importId = rawImportId;
+      }
+      const result = await ImportInsightService.getImportInsight(req.user.id, { importId });
+      res.json(result);
+    } catch (error) {
+      console.error('[ERROR] Import insight error:', error);
+      next(error);
+    }
+  },
+
   async getMonthlyPerformance(req, res, next) {
     try {
       const year = parseInt(req.query.year) || new Date().getFullYear();

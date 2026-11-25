@@ -416,6 +416,7 @@ router.get('/analytics', flexibleAuth, requireApiScope('trades:read'), tradeCont
  */
 router.get('/analytics/monthly', flexibleAuth, requireApiScope('trades:read'), tradeController.getMonthlyPerformance);
 router.get('/analytics/partial-exits', flexibleAuth, requireApiScope('trades:read'), requiresTier('pro'), tradeController.getPartialExitAnalytics);
+router.get('/import-insight', authenticate, tradeController.getImportInsight);
 
 /**
  * @swagger
