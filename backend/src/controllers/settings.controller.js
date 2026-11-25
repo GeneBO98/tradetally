@@ -1521,6 +1521,15 @@ const settingsController = {
             const tableColumns = await getTableColumns(client, 'user_settings');
             const mergedSettings = { ...keysToSnakeCase(s), ...keysToSnakeCase(tp) };
 
+            // Host CLI providers are admin-only; never allow import to bypass that.
+            if (!canConfigureHostCliProvider(req.user)) {
+              for (const col of ['ai_provider', 'cusip_ai_provider']) {
+                if (HOST_CLI_AI_PROVIDERS.includes(String(mergedSettings[col] ?? '').trim())) {
+                  delete mergedSettings[col];
+                }
+              }
+            }
+
             // Encrypt AI provider keys like the legacy path does. Idempotent
             // for already-encrypted exports; protects plaintext keys from
             // hand-edited or cross-instance v3 files.
@@ -1591,6 +1600,9 @@ const settingsController = {
             }
           } else {
             // Legacy v1.0/2.0 hardcoded settings import
+            if (!canConfigureHostCliProvider(req.user) && HOST_CLI_AI_PROVIDERS.includes(String(s.aiProvider ?? '').trim())) {
+              delete s.aiProvider;
+            }
             if (existingSettings.rows.length === 0) {
               await client.query(
                 `INSERT INTO user_settings (
