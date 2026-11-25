@@ -47,7 +47,7 @@ export const FEATURE_TOURS = [
     id: '2026-11-new-features',
     releasedAt: '2026-11-25',
     title: 'New in TradeTally',
-    summary: 'A one-number Performance Score, a What-If simulator for your trading rules and AI help with unrecognized CSV files.',
+    summary: 'A one-number Performance Score, a 60-second session wrap-up, a What-If simulator, smarter CSV imports and real-time replay.',
     steps: [
       {
         id: 'performance-score',
@@ -56,6 +56,13 @@ export const FEATURE_TOURS = [
         title: 'Your Performance Score',
         body: 'One 0-100 score for the selected date range. Click it to see the six factors behind it: profit factor, expectancy, drawdown control, consistency, win rate and risk-adjusted return.',
         fallbackBody: 'The top row of your dashboard now has a 0-100 Performance Score built from six factors. It appears once you have closed trades in the selected range.'
+      },
+      {
+        id: 'session-wrap-up',
+        route: { name: 'dashboard' },
+        target: 'session-wrap-up',
+        title: 'Wrap up your day in a minute',
+        body: "Click Wrap up after the close. Today's trades are summarized for you, you answer two quick questions, pick a few tags and it saves straight to your journal."
       },
       {
         id: 'what-if-simulator',
@@ -70,7 +77,19 @@ export const FEATURE_TOURS = [
         route: { name: 'import' },
         target: 'import-dropzone',
         title: 'Smarter CSV imports',
-        body: "If TradeTally doesn't recognize your broker's CSV, AI can now suggest how its columns map. You review the suggestion and confirm before anything is imported."
+        body: "If TradeTally doesn't recognize your broker's CSV, AI can now suggest how its columns map. You review the suggestion and confirm before anything is imported. After each import you also get a first diagnosis of your biggest leak or strongest edge."
+      },
+      {
+        id: 'real-time-replay',
+        resolveRoute: async ({ api }) => {
+          const response = await api.get('/trades', { params: { limit: 1 } })
+          const trade = response?.data?.trades?.[0]
+          return trade?.id ? { name: 'trade-detail', params: { id: trade.id } } : null
+        },
+        target: 'trade-replay',
+        title: 'Replay trades in real time',
+        body: 'Press Replay on any trade. At 1x the chart now plays at real market speed, so one second on screen is one second of the session, with your fills marked as they happen.',
+        fallbackBody: 'Open any trade and press Replay. At 1x the chart now plays at real market speed, with your fills marked as they happen.'
       }
     ]
   }

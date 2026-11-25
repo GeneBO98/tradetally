@@ -63,6 +63,7 @@
             <router-link
               :to="`/replay/${trade.id}`"
               class="btn-secondary inline-flex items-center gap-2"
+              data-tour="trade-replay"
             >
               <PlayIcon class="h-4 w-4" />
               <span>Replay</span>
