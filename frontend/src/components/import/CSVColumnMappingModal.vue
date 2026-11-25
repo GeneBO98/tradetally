@@ -173,6 +173,7 @@ import BaseSelect from '@/components/common/BaseSelect.vue'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
 import { parseCSVFilePreview } from '@/utils/csvImportParse'
+import { redactSample } from '@/utils/csvSampleRedaction'
 
 const props = defineProps({
   isOpen: {
@@ -216,6 +217,7 @@ watch(
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEscape)
+  cancelAiMatch()
 })
 
 const loading = ref(false)
@@ -227,10 +229,22 @@ const isInitializing = ref(false)
 const aiStatus = ref('idle') // idle | recognized | matching | matched | stale | unavailable | credits | pro | failed
 const aiMatchedCount = ref(0)
 const aiMissingRequired = ref([])
-// Set when the user changes a mapping by hand, so a slow AI reply never
-// overwrites their choice.
-const userEditedMapping = ref(false)
+// Fields and columns the user set by hand while an AI match was in flight. A
+// slow AI reply fills in around them and never overwrites them.
+const userEditedFields = new Set()
+const userEditedHeaders = new Set()
 let aiRequestId = 0
+let aiAbortController = null
+
+// Stop waiting for an AI reply that can no longer be used. Aborting tells the
+// server nobody is listening, so it does not charge credits for it.
+function cancelAiMatch() {
+  aiRequestId++
+  if (aiAbortController) {
+    aiAbortController.abort()
+    aiAbortController = null
+  }
+}
 const displayHeaders = ref([])
 const displaySampleRows = ref({})
 
@@ -343,7 +357,9 @@ function setMappedField(header, fieldName) {
   if (prev) mappingForm.value[prev] = ''
   // Apply new mapping (latest wins if another header was on the same field)
   if (fieldName) mappingForm.value[fieldName] = header
-  userEditedMapping.value = true
+  if (prev) userEditedFields.add(prev)
+  if (fieldName) userEditedFields.add(fieldName)
+  userEditedHeaders.add(header)
 }
 
 function rowSelectClass(header) {
@@ -440,29 +456,47 @@ async function runAiMatch() {
   const headers = [...displayHeaders.value]
   if (headers.length < 2) return
 
-  const requestId = ++aiRequestId
-  userEditedMapping.value = false
+  cancelAiMatch()
+  const requestId = aiRequestId
+  const controller = new AbortController()
+  aiAbortController = controller
+  userEditedFields.clear()
+  userEditedHeaders.clear()
   aiStatus.value = 'matching'
 
+  // Account numbers and other long identifiers are masked before the samples
+  // leave the browser; the server masks them again before the AI sees them.
   const sampleRows = {}
   for (const header of headers) {
-    sampleRows[header] = (displaySampleRows.value?.[header] || []).slice(0, 3)
+    sampleRows[header] = (displaySampleRows.value?.[header] || [])
+      .slice(0, 3)
+      .map(value => redactSample(header, value))
   }
 
   try {
-    const response = await api.post('/csv-mappings/suggest', { headers, sampleRows })
-    // A newer request, a re-parse or a manual edit makes this reply stale.
-    if (requestId !== aiRequestId || userEditedMapping.value) return
+    const response = await api.post('/csv-mappings/suggest', { headers, sampleRows }, { signal: controller.signal })
+    // A newer request or a re-parse makes this reply stale (and aborted it).
+    if (requestId !== aiRequestId) return
 
     const suggestion = response.data?.data
     const mapping = suggestion?.mapping || {}
-    const matched = COLUMN_FIELD_NAMES.filter(f => mapping[f] && headers.includes(mapping[f]))
+    // Choices the user made while waiting win over the AI's.
+    const matched = COLUMN_FIELD_NAMES.filter(f =>
+      mapping[f] && headers.includes(mapping[f]) &&
+      !userEditedFields.has(f) && !userEditedHeaders.has(mapping[f])
+    )
     if (matched.length === 0) {
-      aiStatus.value = 'failed'
+      aiStatus.value = userEditedFields.size > 0 || userEditedHeaders.size > 0 ? 'idle' : 'failed'
       return
     }
 
-    clearColumnMappings()
+    // The AI's columns win over keyword matches for the same column, but a
+    // keyword match the AI had no answer for is kept.
+    const aiHeaders = new Set(matched.map(f => mapping[f]))
+    for (const fieldName of COLUMN_FIELD_NAMES) {
+      if (userEditedFields.has(fieldName)) continue
+      if (aiHeaders.has(mappingForm.value[fieldName])) mappingForm.value[fieldName] = ''
+    }
     for (const fieldName of matched) {
       mappingForm.value[fieldName] = mapping[fieldName]
     }
@@ -509,7 +543,7 @@ watch(() => props.isOpen, async (isOpen) => {
       }
     }
   } else {
-    aiRequestId++
+    cancelAiMatch()
   }
   // immediate: ImportView creates this component with is-open already true
   // (it sits behind a v-if), so there is no false-to-true change to react to.
@@ -522,7 +556,7 @@ watch(
     if (props.isOpen && props.csvFile && !isInitializing.value) {
       // The columns are about to change: drop any in-flight or applied AI
       // match and let the user ask for a new one.
-      aiRequestId++
+      cancelAiMatch()
       await refreshPreviewFromFile(false)
       if (aiStatus.value === 'matching' || aiStatus.value === 'matched') {
         aiStatus.value = 'stale'

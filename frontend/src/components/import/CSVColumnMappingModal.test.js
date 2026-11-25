@@ -167,4 +167,69 @@ describe('CSVColumnMappingModal AI column match', () => {
 
     expect(wrapper.find('[data-testid="ai-match-status"]').text()).toContain('out of AI credits')
   })
+
+  it('masks account numbers before the samples leave the browser', async () => {
+    api.post.mockResolvedValue({ data: { success: true, data: { mapping: { symbol_column: 'Instrument' }, date_format: null } } })
+    const csv = 'Instrument,Lots,Open,Account,Memo\nEURUSD,0.5,1.0812,DU7654321,from U1234567\n'
+
+    mountModal(csv)
+    await settle()
+
+    const body = api.post.mock.calls[0][1]
+    expect(body.sampleRows.Account).toEqual(['[redacted]'])
+    expect(body.sampleRows.Memo).toEqual(['from U#######'])
+    expect(body.sampleRows.Instrument).toEqual(['EURUSD'])
+    expect(JSON.stringify(body)).not.toMatch(/7654321|1234567/)
+  })
+
+  it('keeps a keyword match the AI had no answer for', async () => {
+    // "Instrument" and "Close" are placed by keyword; the AI only knows Lots and Open.
+    api.post.mockResolvedValue({
+      data: { success: true, data: { mapping: { quantity_column: 'Lots', entry_price_column: 'Open' }, date_format: null } }
+    })
+
+    const wrapper = mountModal()
+    await settle()
+
+    expect(selectFor(wrapper, 'Lots')).toBe('quantity_column')
+    expect(selectFor(wrapper, 'Open')).toBe('entry_price_column')
+    expect(selectFor(wrapper, 'Instrument')).toBe('symbol_column')
+  })
+
+  it('applies a slow AI reply around a choice the user made while waiting', async () => {
+    let resolveSuggest
+    api.post.mockImplementation(() => new Promise(resolve => { resolveSuggest = resolve }))
+
+    const wrapper = mountModal()
+    await settle()
+    expect(wrapper.find('[data-testid="ai-match-status"]').exists()).toBe(true)
+
+    const openRow = wrapper.findAll('.divide-y > div').find(r => r.text().startsWith('Open'))
+    await openRow.find('select').setValue('exit_price_column')
+
+    resolveSuggest({
+      data: { success: true, data: { mapping: { quantity_column: 'Lots', entry_price_column: 'Open', exit_price_column: 'Close' }, date_format: null } }
+    })
+    await settle()
+
+    // The user's choice stands; the rest of the paid-for reply is still used.
+    expect(selectFor(wrapper, 'Open')).toBe('exit_price_column')
+    expect(selectFor(wrapper, 'Lots')).toBe('quantity_column')
+    expect(selectFor(wrapper, 'Close')).toBe('')
+  })
+
+  it('aborts the request when the columns are re-parsed so it is not charged', async () => {
+    let signal
+    api.post.mockImplementation((url, body, config) => {
+      signal = config?.signal
+      return new Promise(() => {})
+    })
+
+    const wrapper = mountModal()
+    await settle()
+    expect(signal.aborted).toBe(false)
+
+    await wrapper.setProps({ isOpen: false })
+    expect(signal.aborted).toBe(true)
+  })
 })

@@ -39,6 +39,60 @@ function suggestionError(code, status, message) {
   return error;
 }
 
+// Sample values are only there to show the model what kind of data a column
+// holds, so account numbers and other long identifiers are masked before the
+// prompt is built. Symbols, prices, quantities and dates stay readable.
+// Mirrors frontend/src/utils/csvSampleRedaction.js.
+//
+// Known limit: an all-numeric account number of 8 digits or fewer, in a column
+// whose header does not say what it is, looks the same as a quantity and is
+// not masked.
+const SENSITIVE_HEADER = /acc(oun)?t|\bacc\b|\ba\/c\b|\biban\b|\bssn\b|social.?sec|tax.?id|\btin\b|routing|card.?(no|num|#)|customer.?(id|no|num|#)|client.?(id|no|num|#)|user.?id|login|konto|compte|cuenta|\bconta\b|rekening/i;
+// Real date and time shapes only, so an identifier such as 123-45-6789 is not
+// mistaken for a date and a date elsewhere in a cell does not exempt the rest.
+const DATE_OR_TIME = /\d{4}-\d{2}-\d{2}(?:[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?|\b\d{4}[/.]\d{1,2}[/.]\d{1,2}\b|\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b|\b\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?\b/g;
+const TOKEN = /[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/g;
+
+function isCalendarLike(text) {
+  const parts = text.split(/[^0-9]+/).filter(Boolean).map(Number);
+  if (text.includes(':') && !/[/.-]\d/.test(text.split(':')[0])) return true;
+  if (parts[0] > 31) return parts[1] >= 1 && parts[1] <= 12 && parts[2] >= 1 && parts[2] <= 31;
+  return parts[0] >= 1 && parts[1] >= 1 && parts[0] <= 31 && parts[1] <= 31 && (parts[0] <= 12 || parts[1] <= 12);
+}
+
+function maskIdentifiers(text) {
+  return text.replace(TOKEN, (token) => {
+    const digits = (token.match(/\d/g) || []).length;
+    const numeric = /^\d+$/.test(token);
+    // Plain numbers stay unless they are too long to be a price or quantity;
+    // mixed identifiers (U1234567, 123-456789-001) are masked from 6 digits.
+    if (numeric ? digits >= 9 : digits >= 6) return token.replace(/\d/g, '#');
+    return token;
+  });
+}
+
+// Mask identifiers anywhere in free text, leaving real dates and times alone.
+function redactText(value) {
+  const text = String(value ?? '');
+  let result = '';
+  let last = 0;
+  for (const match of text.matchAll(DATE_OR_TIME)) {
+    if (!isCalendarLike(match[0])) continue;
+    result += maskIdentifiers(text.slice(last, match.index)) + match[0];
+    last = match.index + match[0].length;
+  }
+  return result + maskIdentifiers(text.slice(last));
+}
+
+const REDACTED = '[redacted]';
+
+function redactSample(header, value) {
+  const text = String(value ?? '');
+  if (!text.trim()) return text;
+  if (SENSITIVE_HEADER.test(String(header || ''))) return REDACTED;
+  return redactText(text);
+}
+
 const clip = (value, length) => String(value ?? '').replace(/[\t\n\r]+/g, ' ').trim().slice(0, length);
 
 /**
@@ -67,7 +121,7 @@ function normalizeInput(headers, sampleRows) {
   for (const header of cleanHeaders) {
     const values = Array.isArray(source[header]) ? source[header] : [];
     samples[header] = values
-      .map((value) => clip(value, MAX_SAMPLE_LENGTH))
+      .map((value) => clip(redactSample(header, clip(value, 500)), MAX_SAMPLE_LENGTH))
       .filter(Boolean)
       .slice(0, MAX_SAMPLES_PER_HEADER);
   }
@@ -77,7 +131,9 @@ function normalizeInput(headers, sampleRows) {
 function buildPrompt(headers, samples) {
   const columns = headers.map((header, index) => ({
     index,
-    header,
+    // A file with no header row has data in its first line, so header text is
+    // masked like any other value. The model answers by index, not by name.
+    header: redactText(header),
     samples: samples[header] || []
   }));
   const fields = MAPPING_FIELDS.map((field) => `- ${field.key}: ${field.hint}`).join('\n');
@@ -159,10 +215,12 @@ class CsvMappingSuggestionService {
   /**
    * @param {string} userId
    * @param {{headers: string[], sampleRows?: Object<string, string[]>}} input
+   * @param {{isCancelled?: () => boolean}} [options] - isCancelled reports that
+   *   the caller stopped waiting, so a reply nobody will see is not charged
    * @returns {Promise<{mapping: Object, date_format: string|null, matched: number,
    *   missing_required: string[], credits_used: number, credits_remaining: number|null}>}
    */
-  static async suggest(userId, { headers, sampleRows } = {}) {
+  static async suggest(userId, { headers, sampleRows } = {}, { isCancelled } = {}) {
     const input = normalizeInput(headers, sampleRows);
 
     const AISessionService = require('./aiSessionService');
@@ -208,6 +266,12 @@ class CsvMappingSuggestionService {
       throw suggestionError('NO_SUGGESTION', 422, 'AI could not work out the columns in this file. Match them yourself below.');
     }
 
+    if (typeof isCancelled === 'function' && isCancelled()) {
+      // The browser dropped the request (file re-parsed or modal closed), so
+      // the suggestion would be thrown away. Nothing is charged.
+      throw suggestionError('CANCELLED', 499, 'Column matching was cancelled');
+    }
+
     let charge = { remaining: creditCheck?.remaining ?? null };
     try {
       charge = await AISessionService.chargeCredits(userId, cost, creditCheck);
@@ -226,6 +290,8 @@ class CsvMappingSuggestionService {
 module.exports = CsvMappingSuggestionService;
 module.exports.normalizeInput = normalizeInput;
 module.exports.buildPrompt = buildPrompt;
+module.exports.redactSample = redactSample;
+module.exports.redactText = redactText;
 module.exports.parseSuggestion = parseSuggestion;
 module.exports.MAPPING_FIELDS = MAPPING_FIELDS;
 module.exports.DATE_FORMATS = DATE_FORMATS;

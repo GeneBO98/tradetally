@@ -46,7 +46,7 @@ describe('csvMapping controller', () => {
       expect(CsvMappingSuggestionService.suggest).toHaveBeenCalledWith('user-1', {
         headers: ['Instrument', 'Lots'],
         sampleRows: { Instrument: ['EURUSD'] }
-      });
+      }, { isCancelled: expect.any(Function) });
       expect(res.statusCode).toBe(200);
       expect(res.payload).toEqual({ success: true, data: { mapping: { symbol_column: 'Instrument' }, matched: 1 } });
     });
