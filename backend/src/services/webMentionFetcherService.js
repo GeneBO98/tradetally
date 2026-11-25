@@ -1,4 +1,5 @@
-const axios = require('axios');
+const fetch = require('node-fetch');
+const { fetchWithValidatedRedirects } = require('../utils/urlSecurity');
 const cheerio = require('cheerio');
 const db = require('../config/database');
 const logger = require('../utils/logger');
@@ -69,16 +70,20 @@ class WebMentionFetcherService {
   }
 
   static async fetchRssSource(source) {
-    const response = await axios.get(source.feed_url, {
+    const response = await fetchWithValidatedRedirects(source.feed_url, fetch, {
       timeout: 10000,
       headers: {
         'User-Agent': USER_AGENT,
         'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml'
       },
-      maxContentLength: 2 * 1024 * 1024
-    });
+      size: 2 * 1024 * 1024
+    }, { mode: 'public', maxRedirects: 3 });
 
-    return this.parseFeed(response.data, source);
+    if (!response.ok) {
+      throw new Error(`Feed request failed with HTTP ${response.status}`);
+    }
+
+    return this.parseFeed(await response.text(), source);
   }
 
   static async fetchFinnhubCacheSource(source) {
