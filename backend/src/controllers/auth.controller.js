@@ -618,9 +618,12 @@ const authController = {
     try {
       // Fetch fresh user (bypasses the auth memo so profile edits reflect
       // immediately) and settings in parallel - they are independent queries.
-      const [user, settings] = await Promise.all([
+      const [user, settings, featureTours] = await Promise.all([
         User.findById(req.user.id),
-        User.getSettings(req.user.id)
+        User.getSettings(req.user.id),
+        // null = unknown, so the client hides the "What's new" prompt rather
+        // than re-showing tours the user already finished or dismissed.
+        User.getFeatureTours(req.user.id).catch(() => null)
       ]);
       const onboardingCompleted = !!(settings && settings.onboarding_completed_at);
 
@@ -640,7 +643,8 @@ const authController = {
           billingEnabled: req.user.billingEnabled,
           onboarding_completed: onboardingCompleted,
           onboarding_step: (settings && settings.onboarding_step) || 0,
-          pro_onboarding_step: (settings && settings.pro_onboarding_step) || 0
+          pro_onboarding_step: (settings && settings.pro_onboarding_step) || 0,
+          feature_tours: featureTours
         },
         settings
       });

@@ -51,6 +51,7 @@
         </main>
         <AppFooter @show-support="showSupportModal = true" />
       </div>
+      <FeatureTourHost />
     </template>
 
     <!-- Unauthenticated / public layout: top nav -->
@@ -170,6 +171,7 @@ import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotificat
 import { useNotification } from '@/composables/useNotification'
 import NavBar from '@/components/layout/NavBar.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
+import FeatureTourHost from '@/components/onboarding/FeatureTourHost.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import NotificationBell from '@/components/common/NotificationBell.vue'
 import { Bars3Icon } from '@heroicons/vue/24/outline'

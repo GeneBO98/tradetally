@@ -40,6 +40,7 @@
                 tabindex="0"
                 role="button"
                 aria-label="Upload a broker trade export file"
+                data-tour="import-dropzone"
                 @dragover.prevent="handleDragOver"
                 @dragleave.prevent="handleDragLeave"
                 @drop.prevent="handleDrop"

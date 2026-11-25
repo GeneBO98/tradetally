@@ -54,6 +54,10 @@ function handleAccountDeletionError(error, res, next) {
   return next(error);
 }
 
+// Tour ids come from frontend/src/constants/featureTours.js.
+const FEATURE_TOUR_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const FEATURE_TOUR_STATUSES = new Set(['completed', 'dismissed']);
+
 const userController = {
   /**
    * Mark guided onboarding as completed (so modal is not shown again)
@@ -63,6 +67,45 @@ const userController = {
     try {
       await User.markOnboardingCompleted(req.user.id);
       res.json({ success: true, message: 'Onboarding completed' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Record that the user completed or dismissed a new-feature tour.
+   * POST /api/users/feature-tours/:tourId  { status: 'completed' | 'dismissed', lastStep? }
+   */
+  async setFeatureTourStatus(req, res, next) {
+    try {
+      const { tourId } = req.params;
+      const { status, lastStep } = req.body || {};
+      if (!FEATURE_TOUR_ID.test(String(tourId || ''))) {
+        return res.status(400).json({ error: 'Invalid tour id' });
+      }
+      if (!FEATURE_TOUR_STATUSES.has(status)) {
+        return res.status(400).json({ error: "status must be 'completed' or 'dismissed'" });
+      }
+      const step = Number.isInteger(lastStep) && lastStep >= 0 && lastStep < 1000 ? lastStep : null;
+      const row = await User.setFeatureTourStatus(req.user.id, tourId, status, step);
+      res.json({ success: true, tour: row });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Clear a tour so it shows again (used by the ?tour= replay link).
+   * DELETE /api/users/feature-tours/:tourId
+   */
+  async resetFeatureTour(req, res, next) {
+    try {
+      const { tourId } = req.params;
+      if (!FEATURE_TOUR_ID.test(String(tourId || ''))) {
+        return res.status(400).json({ error: 'Invalid tour id' });
+      }
+      await User.resetFeatureTour(req.user.id, tourId);
+      res.json({ success: true });
     } catch (error) {
       next(error);
     }

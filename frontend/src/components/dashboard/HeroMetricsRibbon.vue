@@ -155,6 +155,7 @@
             aria-controls="performance-score-details"
             :title="scoreReady ? 'Show what makes up your performance score' : scorePendingTitle"
             data-testid="performance-score"
+            data-tour="performance-score"
             @click="toggleScore"
           >
             <div class="text-label mb-1">Score</div>

@@ -66,6 +66,8 @@ router.put('/profile', authenticate, userController.updateProfile);
 router.post('/onboarding-completed', authenticate, userController.markOnboardingCompleted);
 router.post('/onboarding-step', authenticate, userController.setOnboardingStep);
 router.get('/onboarding-status', authenticate, userController.getOnboardingStatus);
+router.post('/feature-tours/:tourId', authenticate, userController.setFeatureTourStatus);
+router.delete('/feature-tours/:tourId', authenticate, userController.resetFeatureTour);
 
 /**
  * @swagger

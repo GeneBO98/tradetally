@@ -190,7 +190,7 @@
 
             <!-- What-If Mistake Simulator -->
             <template v-else-if="element.id === 'what-if-simulator'">
-              <WhatIfSimulatorCard :filter-params="whatIfFilterParams" />
+              <WhatIfSimulatorCard data-tour="what-if-simulator" :filter-params="whatIfFilterParams" />
             </template>
 
             <!-- Performance Chart -->

@@ -542,6 +542,45 @@ class User {
     return result.rows[0];
   }
 
+  /**
+   * Completed / dismissed new-feature tours for a user, keyed by tour id.
+   * @returns {Promise<Object<string, {status: string, updated_at: string}>>}
+   */
+  static async getFeatureTours(userId) {
+    const result = await db.query(
+      `SELECT tour_id, status, updated_at
+       FROM user_feature_tours
+       WHERE user_id = $1`,
+      [userId]
+    );
+    const tours = {};
+    for (const row of result.rows) {
+      tours[row.tour_id] = { status: row.status, updated_at: row.updated_at };
+    }
+    return tours;
+  }
+
+  static async setFeatureTourStatus(userId, tourId, status, lastStep = null) {
+    const result = await db.query(
+      `INSERT INTO user_feature_tours (user_id, tour_id, status, last_step)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, tour_id) DO UPDATE
+         SET status = EXCLUDED.status,
+             last_step = EXCLUDED.last_step,
+             updated_at = NOW()
+       RETURNING tour_id, status, updated_at`,
+      [userId, tourId, status, lastStep]
+    );
+    return result.rows[0];
+  }
+
+  static async resetFeatureTour(userId, tourId) {
+    await db.query(
+      'DELETE FROM user_feature_tours WHERE user_id = $1 AND tour_id = $2',
+      [userId, tourId]
+    );
+  }
+
   static async getUserCount() {
     const query = `SELECT COUNT(*) as count FROM users WHERE is_active = true`;
     const result = await db.query(query);
