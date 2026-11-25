@@ -1,5 +1,6 @@
 const db = require('../../config/database');
 const AIService = require('../../utils/aiService');
+const { fxUsd } = require('../../utils/tradeFx');
 const maskEmail = require('../../utils/maskEmail');
 
 const MAX_TRADES_IN_PROMPT = 50;
@@ -7,22 +8,31 @@ const MAX_TRADES_IN_PROMPT = 50;
 async function fetchTradeSummariesForPrompt(userId, startDate, endDate) {
   const query = `
     SELECT
-      symbol,
-      side,
-      pnl,
-      pnl_percent,
-      entry_time,
-      exit_time,
-      strategy
-    FROM trades
-    WHERE user_id = $1
-      AND trade_date >= $2::date
-      AND trade_date <= $3::date
-    ORDER BY ABS(COALESCE(pnl, 0)) DESC
+      t.symbol,
+      t.side,
+      ${fxUsd('pnl', 't')} AS pnl,
+      t.pnl_percent,
+      t.entry_time,
+      t.exit_time,
+      t.strategy
+    FROM trades t
+    WHERE t.user_id = $1
+      AND t.trade_date >= $2::date
+      AND t.trade_date <= $3::date
+      AND t.exit_price IS NOT NULL
+      AND t.pnl IS NOT NULL
+      AND NOT COALESCE('sample' = ANY(t.tags), false)
+    ORDER BY ABS(COALESCE(${fxUsd('pnl', 't')}, 0)) DESC
     LIMIT $4
   `;
   const { rows } = await db.query(query, [userId, startDate, endDate, MAX_TRADES_IN_PROMPT]);
   return rows;
+}
+
+function formatSignedUsd(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '$0.00';
+  return `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`;
 }
 
 function buildPrompt(agg, trades, dossierText = '') {
@@ -53,6 +63,13 @@ function buildPrompt(agg, trades, dossierText = '') {
     ? `\nAbout this trader (use for tone and to connect the week to their goals or a known tendency; the week's numbers come only from the summary below):\n${dossierText}\n`
     : '';
 
+  const bestTradeLabel = agg.bestTradeSymbol && Number.isFinite(Number(agg.bestTradePnL))
+    ? `${agg.bestTradeSymbol} ${formatSignedUsd(agg.bestTradePnL)}`
+    : 'none';
+  const worstTradeLabel = agg.worstTradeSymbol && Number.isFinite(Number(agg.worstTradePnL))
+    ? `${agg.worstTradeSymbol} ${formatSignedUsd(agg.worstTradePnL)}`
+    : 'none';
+
   return `You are a trading coach. Write a concise, friendly 2-3 sentence summary of this trader's week. Be specific and reference the data. Do NOT give financial advice. Do NOT use bullet points. Do NOT use markdown. Plain prose only.
 ${dossierSection}
 Week summary:
@@ -61,8 +78,8 @@ Week summary:
 - Win rate: ${winRate}%
 - Profit factor: ${profitFactor}
 - Avg hold time: ${avgHold}
-- Best trade: ${agg.topWinSymbol ? `${agg.topWinSymbol} +$${(agg.topWinPnL || 0).toFixed(2)}` : 'none'}
-- Worst trade: ${agg.worstTradeSymbol ? `${agg.worstTradeSymbol} $${(agg.worstTradePnL || 0).toFixed(2)}` : 'none'}
+- Best trade: ${bestTradeLabel}
+- Worst trade: ${worstTradeLabel}
 - Most concentrated losing symbol: ${agg.topLossSymbol ? `${agg.topLossSymbol} ($${(agg.topLossPnL || 0).toFixed(2)})` : 'none'}
 
 Top trades by absolute P&L (up to ${MAX_TRADES_IN_PROMPT}):
@@ -79,7 +96,10 @@ async function generateRecap(userId, agg, startDate, endDate) {
     }
     const trades = await fetchTradeSummariesForPrompt(userId, startDate, endDate);
     const AITraderContext = require('../aiTraderContext');
-    const dossierText = await AITraderContext.render(userId, { sections: ['profile', 'behavior'] });
+    // Persisted behavioral tables lack per-row sample-trade provenance (signup
+    // runs analyzers over sample trades), so only include the declared profile
+    // alongside the real-only weekly numbers and trades fetched above.
+    const dossierText = await AITraderContext.render(userId, { sections: ['profile'] });
     const prompt = buildPrompt(agg, trades, dossierText);
     const text = await AIService.generateResponse(userId, prompt, {
       maxTokens: 220,

@@ -34,6 +34,9 @@ async function fetchWeeklyAggregates(startDate, endDate, { bypassMarketingConsen
        ${consentFilter}
       WHERE t.trade_date >= $1::date
         AND t.trade_date <= $2::date
+        AND t.exit_price IS NOT NULL
+        AND t.pnl IS NOT NULL
+        AND NOT COALESCE('sample' = ANY(t.tags), false)
     ),
     per_user AS (
       SELECT
@@ -64,6 +67,15 @@ async function fetchWeeklyAggregates(startDate, endDate, { bypassMarketingConsen
       FROM weekly_trades
       WHERE pnl IS NOT NULL
       ORDER BY user_id, pnl ASC
+    ),
+    best_trade AS (
+      SELECT DISTINCT ON (user_id)
+        user_id,
+        symbol AS best_trade_symbol,
+        pnl AS best_trade_pnl
+      FROM weekly_trades
+      WHERE pnl IS NOT NULL
+      ORDER BY user_id, pnl DESC
     ),
     symbol_losses AS (
       SELECT
@@ -97,6 +109,8 @@ async function fetchWeeklyAggregates(startDate, endDate, { bypassMarketingConsen
     )
     SELECT
       pu.*,
+      bt.best_trade_symbol,
+      bt.best_trade_pnl,
       wt.worst_trade_symbol,
       wt.worst_trade_pnl,
       tls.top_loss_symbol,
@@ -104,6 +118,7 @@ async function fetchWeeklyAggregates(startDate, endDate, { bypassMarketingConsen
       tws.top_win_symbol,
       tws.top_win_pnl
     FROM per_user pu
+    LEFT JOIN best_trade bt ON bt.user_id = pu.user_id
     LEFT JOIN worst_trade wt ON wt.user_id = pu.user_id
     LEFT JOIN top_loser_symbol tls ON tls.user_id = pu.user_id
     LEFT JOIN top_winner_symbol tws ON tws.user_id = pu.user_id
@@ -126,6 +141,8 @@ function normalizeRow(row) {
     grossWins: parseFloat(row.gross_wins) || 0,
     grossLosses: parseFloat(row.gross_losses) || 0,
     avgHoldMinutes: row.avg_hold_minutes != null ? parseFloat(row.avg_hold_minutes) : null,
+    bestTradeSymbol: row.best_trade_symbol,
+    bestTradePnL: row.best_trade_pnl != null ? parseFloat(row.best_trade_pnl) : null,
     worstTradeSymbol: row.worst_trade_symbol,
     worstTradePnL: row.worst_trade_pnl != null ? parseFloat(row.worst_trade_pnl) : null,
     topLossSymbol: row.top_loss_symbol,
