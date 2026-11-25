@@ -15,6 +15,7 @@ const AIService = require('../utils/aiService');
 const EmailService = require('./emailService');
 const User = require('../models/User');
 const TierService = require('./tierService');
+const { getUserTimezone } = require('../utils/timezone');
 
 const MIN_GROUP_TRADES = 2;
 const LOSS_STREAK_THRESHOLD = 3;
@@ -23,6 +24,17 @@ const OVERSIZED_LOSER_RATIO = 1.5;
 function toDateString(date) {
   return date.toISOString().split('T')[0];
 }
+
+function formatPgDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(value).slice(0, 10);
+}
+
 
 function shiftDays(dateStr, days) {
   const d = new Date(`${dateStr}T00:00:00Z`);
@@ -61,6 +73,34 @@ class EdgeReportService {
     return { periodStart, periodEnd };
   }
 
+  // Monday-Sunday UTC bounds containing the given YYYY-MM-DD trade date.
+  static getWeekBoundsForDate(dateStr) {
+    const normalized = formatPgDate(dateStr);
+    const date = new Date(`${normalized}T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) return null;
+    const day = date.getUTCDay(); // 0 = Sunday, 1 = Monday, ...
+    const offsetToMonday = day === 0 ? -6 : 1 - day;
+    const periodStart = shiftDays(normalized, offsetToMonday);
+    const periodEnd = shiftDays(periodStart, 6);
+    return { periodStart, periodEnd };
+  }
+
+  // Latest Monday-Sunday week containing at least one real (non-sample) closed trade.
+  static async findMostRecentActiveWeek(userId) {
+    const result = await db.query(
+      `SELECT MAX(trade_date) AS latest_trade_date
+       FROM trades
+       WHERE user_id = $1
+         AND exit_price IS NOT NULL
+         AND pnl IS NOT NULL
+         AND NOT COALESCE('sample' = ANY(tags), false)`,
+      [userId]
+    );
+    const latest = result.rows[0]?.latest_trade_date;
+    if (!latest) return null;
+    return this.getWeekBoundsForDate(latest);
+  }
+
   static summarizeAnalytics(analytics) {
     const summary = analytics?.summary || {};
     return {
@@ -78,15 +118,17 @@ class EdgeReportService {
   // Per-strategy / per-symbol / per-entry-hour aggregates for the week.
   // Kept to three tiny grouped queries; everything else reuses
   // TradeQueries.getAnalytics.
-  static async getDimensionStats(userId, periodStart, periodEnd) {
+  static async getDimensionStats(userId, periodStart, periodEnd, { excludeSample = false } = {}) {
+    const sampleClause = excludeSample ? `\n        AND NOT COALESCE('sample' = ANY(t.tags), false)` : '';
     const baseWhere = `
       WHERE t.user_id = $1
         AND t.trade_date >= $2::date
         AND t.trade_date <= $3::date
         AND t.exit_price IS NOT NULL
-        AND t.pnl IS NOT NULL
+        AND t.pnl IS NOT NULL${sampleClause}
     `;
     const params = [userId, periodStart, periodEnd];
+    const userTz = (await getUserTimezone(userId).catch(() => 'UTC')) || 'UTC';
 
     const [strategyResult, symbolResult, hourResult] = await Promise.all([
       db.query(`
@@ -108,7 +150,7 @@ class EdgeReportService {
         GROUP BY 1
       `, params),
       db.query(`
-        SELECT EXTRACT(HOUR FROM t.entry_time)::integer AS name,
+        SELECT EXTRACT(HOUR FROM t.entry_time AT TIME ZONE $4)::integer AS name,
                COUNT(*)::integer AS trades,
                SUM(${fxUsd('pnl', 't')}) AS total_pnl,
                COUNT(*) FILTER (WHERE t.pnl > 0)::integer AS wins
@@ -116,7 +158,7 @@ class EdgeReportService {
         ${baseWhere}
           AND t.entry_time IS NOT NULL
         GROUP BY 1
-      `, params)
+      `, [...params, userTz])
     ]);
 
     const normalize = (rows, type) => (rows || []).map(row => {
@@ -222,13 +264,14 @@ class EdgeReportService {
     const avgWin = weekSummary.avg_win;
     const avgLoss = Math.abs(weekSummary.avg_loss);
     if (weekSummary.losing_trades >= MIN_GROUP_TRADES && avgWin > 0 && avgLoss > avgWin * OVERSIZED_LOSER_RATIO) {
+      const excessLoss = round2((avgLoss - avgWin) * weekSummary.losing_trades);
       candidates.push({
         type: 'oversized_losses',
         name: 'average loser larger than average winner',
         trades: weekSummary.losing_trades,
-        total_pnl: round2(-avgLoss * weekSummary.losing_trades),
-        impact: avgLoss * weekSummary.losing_trades,
-        description: `Your average loser (${formatMoney(-avgLoss)}) is ${round2(avgLoss / avgWin)}x your average winner (${formatMoney(avgWin)}).`
+        total_pnl: -excessLoss,
+        impact: excessLoss,
+        description: `Your average loser (${formatMoney(-avgLoss)}) is ${round2(avgLoss / avgWin)}x your average winner (${formatMoney(avgWin)}), adding ${formatMoney(excessLoss)} in excess loss.`
       });
     }
 
@@ -273,10 +316,12 @@ class EdgeReportService {
     }
   }
 
-  static async getPlaybookSection(userId) {
+  static async getPlaybookSection(userId, { excludeSample = false } = {}) {
     try {
       const Playbook = require('../models/Playbook');
-      const analytics = await Playbook.getAnalytics(userId);
+      const analytics = excludeSample
+        ? await Playbook.getAnalytics(userId, null, { excludeSample: true })
+        : await Playbook.getAnalytics(userId);
       const overview = analytics?.overview;
       if (!overview || !parseInt(overview.playbook_count)) return null;
       return {
@@ -297,7 +342,7 @@ class EdgeReportService {
     let worst = null;
     for (const row of dailyPnL || []) {
       const pnl = round2(row.daily_pnl);
-      const date = row.trade_date instanceof Date ? toDateString(row.trade_date) : String(row.trade_date);
+      const date = formatPgDate(row.trade_date);
       if (!best || pnl > best.pnl) best = { date, pnl };
       if (!worst || pnl < worst.pnl) worst = { date, pnl };
     }
@@ -305,36 +350,41 @@ class EdgeReportService {
   }
 
   // Builds the structured snake_case report. Returns null for zero-trade weeks.
-  static async buildReport(userId, { periodStart, periodEnd }) {
-    const current = await TradeQueries.getAnalytics(userId, {
+  static async buildReport(userId, { periodStart, periodEnd, excludeSample = false, summaryOnly = false }) {
+    const analyticsFilter = {
       startDate: periodStart,
-      endDate: periodEnd
-    });
+      endDate: periodEnd,
+      ...(excludeSample ? { excludeSample: true } : {})
+    };
+    const current = await TradeQueries.getAnalytics(userId, analyticsFilter);
 
     const week = this.summarizeAnalytics(current);
     if (week.total_trades === 0) {
       return null;
     }
 
-    const prevEnd = shiftDays(periodStart, -1);
-    const prevStart = shiftDays(periodStart, -7);
     let previousWeek = null;
-    try {
-      const previous = await TradeQueries.getAnalytics(userId, {
-        startDate: prevStart,
-        endDate: prevEnd
-      });
-      previousWeek = this.summarizeAnalytics(previous);
-    } catch (error) {
-      console.warn('[EDGE-REPORT] Comparison period unavailable:', error.message);
+    if (!summaryOnly) {
+      const prevEnd = shiftDays(periodStart, -1);
+      const prevStart = shiftDays(periodStart, -7);
+      try {
+        const previous = await TradeQueries.getAnalytics(userId, {
+          startDate: prevStart,
+          endDate: prevEnd,
+          ...(excludeSample ? { excludeSample: true } : {})
+        });
+        previousWeek = this.summarizeAnalytics(previous);
+      } catch (error) {
+        console.warn('[EDGE-REPORT] Comparison period unavailable:', error.message);
+      }
     }
 
-    const dimensions = await this.getDimensionStats(userId, periodStart, periodEnd);
+    const dimensions = await this.getDimensionStats(userId, periodStart, periodEnd, { excludeSample });
     const lossStreak = this.computeLossStreak(current.recentTradePnls);
     const edge = this.pickEdge(dimensions);
     const leak = this.pickLeak(dimensions, week, lossStreak);
     const actionItem = this.deriveActionItem(leak, week);
-    const playbook = await this.getPlaybookSection(userId);
+    const playbook = summaryOnly ? null : await this.getPlaybookSection(userId, { excludeSample });
     const { best_day, worst_day } = this.getBestWorstDay(current.dailyPnL);
 
     return {
@@ -411,8 +461,10 @@ Write the coaching summary now.`;
         return fallback;
       }
       const AITraderContext = require('./aiTraderContext');
+      // Omit persisted behavior/personality tables (which lack sample-trade
+      // provenance) so Edge Report narratives stay grounded in real trades.
       const dossierText = await AITraderContext.render(userId, {
-        sections: ['profile', 'behavior', 'personality', 'playbooks']
+        sections: ['profile', 'playbooks']
       });
       const text = await AIService.generateResponse(userId, this.buildNarrativePrompt(report, dossierText), {
         maxTokens: 400
@@ -438,7 +490,7 @@ Write the coaching summary now.`;
   // Builds, persists (upsert on user_id + period_start), emails when the user
   // opted in and email is configured. Returns the stored row, or null for a
   // zero-trade week.
-  static async generateForUser(userId, { force = false, periodStart, periodEnd } = {}) {
+  static async generateForUser(userId, { force = false, periodStart, periodEnd, excludeSample = false } = {}) {
     if (!periodStart || !periodEnd) {
       const period = this.getDefaultPeriod();
       periodStart = periodStart || period.periodStart;
@@ -452,7 +504,7 @@ Write the coaching summary now.`;
       }
     }
 
-    const report = await this.buildReport(userId, { periodStart, periodEnd });
+    const report = await this.buildReport(userId, { periodStart, periodEnd, excludeSample });
     if (!report) {
       console.log(`[EDGE-REPORT] No trades for user ${userId} between ${periodStart} and ${periodEnd}, skipping report`);
       return null;
@@ -531,7 +583,7 @@ Write the coaching summary now.`;
 
     for (const user of users) {
       try {
-        const row = await this.generateForUser(user.id, { force: true });
+        const row = await this.generateForUser(user.id, { force: true, excludeSample: true });
         if (row) {
           stats.generated++;
         } else {

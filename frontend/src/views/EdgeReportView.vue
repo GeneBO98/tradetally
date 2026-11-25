@@ -9,7 +9,7 @@
         </p>
       </div>
       <button class="btn-primary" :disabled="generating" @click="generateNow">
-        {{ generating ? 'Generating...' : 'Generate for this week' }}
+        {{ generating ? 'Generating...' : 'Generate latest report' }}
       </button>
     </div>
 

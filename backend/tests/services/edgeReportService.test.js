@@ -360,9 +360,9 @@ describe('EdgeReportService', () => {
       const stats = await EdgeReportService.runWeeklyBatch();
 
       expect(spy).toHaveBeenCalledTimes(3);
-      expect(spy).toHaveBeenCalledWith('user-a', { force: true });
-      expect(spy).toHaveBeenCalledWith('user-b', { force: true });
-      expect(spy).toHaveBeenCalledWith('user-c', { force: true });
+      expect(spy).toHaveBeenCalledWith('user-a', { force: true, excludeSample: true });
+      expect(spy).toHaveBeenCalledWith('user-b', { force: true, excludeSample: true });
+      expect(spy).toHaveBeenCalledWith('user-c', { force: true, excludeSample: true });
       expect(stats).toEqual({ users: 3, generated: 1, skipped: 1, failed: 1 });
 
       spy.mockRestore();
@@ -386,9 +386,73 @@ describe('EdgeReportService', () => {
       const stats = await EdgeReportService.runWeeklyBatch();
 
       expect(spy).toHaveBeenCalledTimes(1);
-      expect(spy).toHaveBeenCalledWith('pro-user', { force: true });
+      expect(spy).toHaveBeenCalledWith('pro-user', { force: true, excludeSample: true });
       expect(stats.users).toBe(1);
       spy.mockRestore();
+    });
+  });
+
+  describe('week bounds and sample-trade exclusion', () => {
+    it('computes Monday-Sunday UTC bounds for any date including Sunday', () => {
+      expect(EdgeReportService.getWeekBoundsForDate('2026-06-03')).toEqual({
+        periodStart: '2026-06-01',
+        periodEnd: '2026-06-07'
+      });
+      expect(EdgeReportService.getWeekBoundsForDate('2026-06-07')).toEqual({
+        periodStart: '2026-06-01',
+        periodEnd: '2026-06-07'
+      });
+    });
+
+    it('buildReport excludes sample trades from analytics and dimension queries and skips comparison/playbook in summary-only mode', async () => {
+      TradeQueries.getAnalytics.mockResolvedValueOnce(mockAnalytics({
+        totalTrades: 5,
+        winningTrades: 3,
+        losingTrades: 2,
+        winRate: 60,
+        totalPnL: 250,
+        profitFactor: 1.5,
+        avgWin: 120,
+        avgLoss: -55
+      }));
+      mockDimensionQueries({
+        symbolRows: [
+          { name: 'NVDA', trades: '3', total_pnl: '400', wins: '3' },
+          { name: 'TSLA', trades: '2', total_pnl: '-150', wins: '0' }
+        ]
+      });
+
+      const report = await EdgeReportService.buildReport('user-1', {
+        ...PERIOD,
+        excludeSample: true,
+        summaryOnly: true
+      });
+
+      expect(TradeQueries.getAnalytics).toHaveBeenCalledTimes(1);
+      expect(TradeQueries.getAnalytics).toHaveBeenCalledWith('user-1', {
+        startDate: '2026-06-01',
+        endDate: '2026-06-07',
+        excludeSample: true
+      });
+      expect(Playbook.getAnalytics).not.toHaveBeenCalled();
+      expect(report.previous_week).toBeNull();
+      expect(report.playbook).toBeNull();
+      const tradeQueries = db.query.mock.calls.filter(([sql]) => String(sql).includes('FROM trades'));
+      expect(tradeQueries.length).toBeGreaterThanOrEqual(3);
+      for (const [sql] of tradeQueries) {
+        expect(sql).toContain("NOT COALESCE('sample' = ANY(t.tags), false)");
+      }
+    });
+
+    it('runWeeklyBatch passes excludeSample: true so scheduled reports never include sample trades', async () => {
+      db.query.mockResolvedValueOnce({ rows: [{ id: 'user-1' }] });
+      const genSpy = jest.spyOn(EdgeReportService, 'generateForUser').mockResolvedValueOnce({ id: 'rep-1' });
+
+      const stats = await EdgeReportService.runWeeklyBatch();
+
+      expect(stats).toEqual({ users: 1, generated: 1, skipped: 0, failed: 0 });
+      expect(genSpy).toHaveBeenCalledWith('user-1', { force: true, excludeSample: true });
+      genSpy.mockRestore();
     });
   });
 });

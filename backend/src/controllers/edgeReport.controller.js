@@ -25,10 +25,21 @@ const edgeReportController = {
     }
   },
 
-  // POST /api/edge-reports/generate - on-demand report for the current week
+  // POST /api/edge-reports/generate - on-demand report for the most recent week with trades
   async generateReport(req, res, next) {
     try {
-      const row = await EdgeReportService.generateForUser(req.user.id, { force: true });
+      let row = await EdgeReportService.generateForUser(req.user.id, { force: true, excludeSample: true });
+      if (!row) {
+        const activeWeek = await EdgeReportService.findMostRecentActiveWeek(req.user.id);
+        if (activeWeek) {
+          row = await EdgeReportService.generateForUser(req.user.id, {
+            force: true,
+            excludeSample: true,
+            periodStart: activeWeek.periodStart,
+            periodEnd: activeWeek.periodEnd
+          });
+        }
+      }
       if (!row) {
         return res.json({
           report: null,
