@@ -67,6 +67,7 @@ function buildApp() {
 const PRO_ROUTES = [
   ['get', '/api/analytics/maemfe'],
   ['get', '/api/analytics/maemfe/trades'],
+  ['get', '/api/analytics/what-if'],
   ['get', '/api/analytics/hours'],
   ['get', '/api/analytics/sectors'],
   ['get', '/api/analytics/sectors/available'],
