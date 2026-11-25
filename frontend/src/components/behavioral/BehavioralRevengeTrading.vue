@@ -232,7 +232,7 @@
                                                     >Entry:</span
                                                 >
                                                 <span class="ml-1"
-                                                    >{{ formatCurrency(event.trigger_trade.entry_price) }}</span
+                                                    >{{ price(event.trigger_trade.entry_price) }}</span
                                                 >
                                             </div>
                                             <div>
@@ -241,7 +241,7 @@
                                                     >Exit:</span
                                                 >
                                                 <span class="ml-1"
-                                                    >{{ formatCurrency(event.trigger_trade.exit_price) }}</span
+                                                    >{{ price(event.trigger_trade.exit_price) }}</span
                                                 >
                                             </div>
                                             <div>
@@ -252,7 +252,7 @@
                                                 <span
                                                     class="ml-1 font-medium text-red-600 dark:text-red-400"
                                                 >
-                                                    {{ formatSignedCurrency(getPnLValue(event.trigger_trade)) }}
+                                                    {{ moneySigned(getPnLValue(event.trigger_trade)) }}
                                                 </span>
                                             </div>
                                             <div
@@ -514,7 +514,7 @@
                                                             >Entry:</span
                                                         >
                                                         <span class="ml-1"
-                                                            >{{ formatCurrency(pattern.entry_price) }}</span
+                                                            >{{ price(pattern.entry_price) }}</span
                                                         >
                                                     </div>
                                                     <div>
@@ -523,7 +523,7 @@
                                                             >Exit:</span
                                                         >
                                                         <span class="ml-1"
-                                                            >{{ formatCurrency(pattern.exit_price) }}</span
+                                                            >{{ price(pattern.exit_price) }}</span
                                                         >
                                                     </div>
                                                     <div>
@@ -533,7 +533,7 @@
                                                         >
                                                         <span
                                                             class="ml-1 font-medium"
-                                                            >{{ formatCurrency(pattern.total_cost) }}</span
+                                                            >{{ money(pattern.total_cost) }}</span
                                                         >
                                                     </div>
                                                     <div>
@@ -542,7 +542,7 @@
                                                             >Fees:</span
                                                         >
                                                         <span class="ml-1"
-                                                            >{{ formatCurrency(pattern.total_fees || 0) }}</span
+                                                            >{{ money(pattern.total_fees || 0) }}</span
                                                         >
                                                     </div>
                                                 </div>
@@ -573,7 +573,7 @@
                                                                     ) === 0,
                                                             }"
                                                         >
-                                                            {{ formatSignedCurrency(pattern.gross_pnl) }}
+                                                            {{ moneySigned(pattern.gross_pnl) }}
                                                         </span>
                                                     </div>
                                                     <div>
@@ -598,7 +598,7 @@
                                                                     ) === 0,
                                                             }"
                                                         >
-                                                            {{ formatSignedCurrency(pattern.pnl) }}
+                                                            {{ moneySigned(pattern.pnl) }}
                                                         </span>
                                                     </div>
                                                     <div>
@@ -844,10 +844,10 @@
                                                             ) < 0
                                                         "
                                                     >
-                                                        {{ formatCurrency(Math.abs(Number(event.total_additional_loss))) }}
+                                                        {{ money(Math.abs(Number(event.total_additional_loss))) }}
                                                     </span>
                                                     <span v-else>
-                                                        {{ formatCurrency(event.total_additional_loss || 0) }}
+                                                        {{ money(event.total_additional_loss || 0) }}
                                                     </span>
                                                 </span>
                                             </div>
@@ -894,7 +894,7 @@
                                                 <span
                                                     >The revenge trading made
                                                     the situation worse by
-                                                    adding {{ formatCurrency(Math.abs(Number(event.total_additional_loss))) }}
+                                                    adding {{ money(Math.abs(Number(event.total_additional_loss))) }}
                                                     in additional losses</span
                                                 >
                                             </span>
@@ -913,7 +913,7 @@
                                                 <span
                                                     >The revenge trading
                                                     actually worked this time,
-                                                    recovering {{ formatCurrency(Math.abs(Number(event.total_additional_loss))) }}</span
+                                                    recovering {{ money(Math.abs(Number(event.total_additional_loss))) }}</span
                                                 >
                                             </span>
                                             <span
@@ -1092,9 +1092,11 @@ defineEmits(["rerun", "open-trade", "prev-page", "next-page", "go-to-page"]);
 
 const { formatTime: formatTimeTz } = useUserTimezone();
 const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter();
-// Behavioral endpoints return USD; they are not converted to the display currency.
-const formatCurrency = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: "USD", ...o });
-const formatSignedCurrency = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: "USD", ...o });
+// Money follows the user's display currency (the API converts it). Quote
+// prices stay in the instrument's currency, as they do in trade views.
+const money = (v, o = {}) => _fmtCurrency(Number(v) || 0, o);
+const price = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: "USD", ...o });
+const moneySigned = (v, o = {}) => _fmtSigned(Number(v) || 0, o);
 const formatQuantity = (q) => Number(q).toLocaleString("en-US", { maximumFractionDigits: 4 });
 const formatTime = (dateString) => formatTimeTz(dateString);
 

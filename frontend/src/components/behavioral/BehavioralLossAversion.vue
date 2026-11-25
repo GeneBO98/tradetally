@@ -171,7 +171,7 @@
                                     <span
                                         class="text-sm font-medium text-red-600 dark:text-red-400"
                                     >
-                                        {{ usd(lossAversionData.analysis.financialImpact.estimatedMonthlyCost) }}
+                                        {{ money(lossAversionData.analysis.financialImpact.estimatedMonthlyCost) }}
                                     </span>
                                 </div>
                                 <div class="flex justify-between">
@@ -182,7 +182,7 @@
                                     <span
                                         class="text-sm font-medium text-yellow-600 dark:text-yellow-400"
                                     >
-                                        {{ usd(lossAversionData.analysis.financialImpact.missedProfitPotential) }}
+                                        {{ money(lossAversionData.analysis.financialImpact.missedProfitPotential) }}
                                     </span>
                                 </div>
                                 <div class="flex justify-between">
@@ -193,7 +193,7 @@
                                     <span
                                         class="text-sm font-medium text-red-600 dark:text-red-400"
                                     >
-                                        {{ usd(lossAversionData.analysis.financialImpact.unnecessaryLossExtension) }}
+                                        {{ money(lossAversionData.analysis.financialImpact.unnecessaryLossExtension) }}
                                     </span>
                                 </div>
                             </div>
@@ -303,7 +303,7 @@
                                         <p
                                             class="text-xl font-bold text-primary-900 dark:text-primary-100"
                                         >
-                                            {{ usd(lossAversionData.analysis.priceHistoryAnalysis.totalMissedProfit) }}
+                                            {{ money(lossAversionData.analysis.priceHistoryAnalysis.totalMissedProfit) }}
                                         </p>
                                     </div>
                                     <div>
@@ -362,7 +362,7 @@
                                                 }}% missed opportunity
                                             </p>
                                             <p class="text-xs text-gray-500">
-                                                {{ usd(( trade.potentialAdditionalProfit ?.optimal || 0 )) }}
+                                                {{ money(( trade.potentialAdditionalProfit ?.optimal || 0 )) }}
                                                 additional profit
                                             </p>
                                         </div>
@@ -378,7 +378,7 @@
                                                 Exit Price
                                             </p>
                                             <p class="font-medium">
-                                                {{ usd(( trade.exitPrice || 0 )) }}
+                                                {{ price(( trade.exitPrice || 0 )) }}
                                             </p>
                                         </div>
                                         <div>
@@ -388,7 +388,7 @@
                                                 Actual Profit
                                             </p>
                                             <p class="font-medium">
-                                                {{ usd(( trade.actualProfit || 0 )) }}
+                                                {{ money(( trade.actualProfit || 0 )) }}
                                             </p>
                                         </div>
                                         <div>
@@ -398,7 +398,7 @@
                                                 Peak Price (24h)
                                             </p>
                                             <p class="font-medium">
-                                                {{ usd(trade.side === "long" ? ( trade.priceMovement ?.maxPriceWithin24Hours || 0 ) : ( trade.priceMovement ?.minPriceWithin24Hours || 0 )) }}
+                                                {{ price(trade.side === "long" ? ( trade.priceMovement ?.maxPriceWithin24Hours || 0 ) : ( trade.priceMovement ?.minPriceWithin24Hours || 0 )) }}
                                             </p>
                                         </div>
                                         <div>
@@ -539,9 +539,11 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { formatDecimal, formatPercent, formatQuantity } from '@/utils/formatters'
 
 const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
-// Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
-const usd = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
-const usdSigned = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: 'USD', ...o })
+// Money follows the user's display currency (the API converts it). Quote
+// prices stay in the instrument's currency, as they do in trade views.
+const money = (v, o = {}) => _fmtCurrency(Number(v) || 0, o)
+const price = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
+const moneySigned = (v, o = {}) => _fmtSigned(Number(v) || 0, o)
 
 defineProps({
     lossAversionData: { type: Object, default: null },

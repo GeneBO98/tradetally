@@ -10,7 +10,51 @@ const SessionTimelineService = require('../services/sessionTimelineService');
 const db = require('../config/database');
 const ensureString = require('../utils/ensureString');
 const { fxUsd } = require('../utils/tradeFx');
-const { resolveDisplayCurrency, getRatesToDisplay } = require('../utils/displayCurrency');
+const { resolveDisplayCurrency, getRatesToDisplay, convertForDisplay } = require('../utils/displayCurrency');
+
+// Behavioral payloads are computed and stored in USD. These are the money
+// fields the shared trades-domain naming rules do not recognise (camelCase
+// analysis fields) or deliberately reject (position sizes are dollar notional
+// here, not share counts).
+const BEHAVIORAL_MONEY_KEYS = new Set([
+  'totalMissedProfit', 'actualMissedProfit', 'actualProfit', 'optimal',
+  'withBetterEntry', 'improvement',
+  'estimatedMonthlyCost', 'missedProfitPotential', 'unnecessaryLossExtension',
+  'missed_profit_potential', 'unnecessary_loss_extension',
+  'performanceImpact', 'driftPerformanceImpact', 'drift_performance_impact',
+  'baselinePositionSize', 'peakPositionSize', 'currentPositionSize',
+  'baseline_position_size', 'peak_position_size', 'position_size', 'raw_position_size',
+  'streakPnl', 'subsequentTradeResult', 'totalImpact', 'additionalLoss', 'excessCost',
+  'totalProfit', 'totalStreakProfit', 'totalStreakProfits', 'totalLossesAfterStreaks',
+  'triggerLoss', 'triggerLossAmount', 'revengeLossAmount', 'revengeTradeResult',
+  'revengePnL', 'totalRevengePnL', 'net_debit', 'net_credit'
+]);
+
+// Missed-profit amounts are keyed by the price sample they were computed from
+// (priceAfter1Hour, ...), so they are identified by their parent.
+const BEHAVIORAL_MONEY_PARENTS = new Set(['potentialAdditionalProfit']);
+
+// Quote prices (entries, exits, stops, levels, candles, per-share price
+// differences) stay in the
+// instrument's own currency, the same way trade views show them; only P&L,
+// costs and position values follow the display currency.
+const BEHAVIORAL_PRICE_KEY = /price|^(improvementDollar|open|high|low|close|highs|lows|stop_loss|take_profit|stopLoss|takeProfit|actualStopLoss|recommendedStopLoss|strike)$/i;
+const isBehavioralPriceKey = (key) => BEHAVIORAL_PRICE_KEY.test(key);
+
+// Sentences generated with a dollar amount inside them.
+const BEHAVIORAL_TEXT_KEYS = new Set(['message', 'reasons', 'recommendations', 'ai_recommendations', 'aiRecommendations']);
+
+// Send a behavioral response in the user's display currency. Payloads are
+// cloned first, so cached and stored analyses stay in USD.
+async function sendInDisplayCurrency(req, res, body) {
+  return res.json(await convertForDisplay(req, body, {
+    moneyKeys: BEHAVIORAL_MONEY_KEYS,
+    moneyParentKeys: BEHAVIORAL_MONEY_PARENTS,
+    excludeKey: isBehavioralPriceKey,
+    moneyTextKeys: BEHAVIORAL_TEXT_KEYS,
+    moneyArrayKeys: new Set(['recent_trade_pnls'])
+  }));
+}
 
 /**
  * Convert one USD amount into the user's display currency. Used where an
@@ -77,7 +121,7 @@ const behavioralAnalyticsController = {
 
       const overview = await BehavioralAnalyticsService.getBehavioralOverview(userId, dateFilter);
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: overview
       });
@@ -101,7 +145,7 @@ const behavioralAnalyticsController = {
 
       const analysis = await BehavioralAnalyticsService.getRevengeTradeAnalysis(userId, dateFilter, paginationOptions);
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: analysis
       });
@@ -123,7 +167,7 @@ const behavioralAnalyticsController = {
         end_date: req.query.end_date,
         accounts
       });
-      res.json({ success: true, data: timeline });
+      await sendInDisplayCurrency(req, res, { success: true, data: timeline });
     } catch (error) {
       if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
       return handleAnalyticsError(error, res, next);
@@ -177,7 +221,7 @@ const behavioralAnalyticsController = {
       const userId = req.user.id;
       const alerts = await BehavioralAnalyticsService.getActiveAlerts(userId);
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: alerts
       });
@@ -227,7 +271,7 @@ const behavioralAnalyticsController = {
 
       const analysis = await RevengeTradeDetector.analyzeNewTrade(userId, trade);
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: analysis
       });
@@ -301,7 +345,7 @@ const behavioralAnalyticsController = {
       // Generate insights based on data
       const insights = behavioralAnalyticsController.generateInsights(overview, revengeAnalysis);
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: insights
       });
@@ -985,7 +1029,7 @@ const behavioralAnalyticsController = {
 
       const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId, dateFilter);
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: analysis,
         message: `Historical analysis complete. Analyzed ${analysis.tradesAnalyzed} trades and detected ${analysis.patternsDetected} behavioral patterns.`
@@ -1160,7 +1204,7 @@ const behavioralAnalyticsController = {
 
       const analysis = await BehavioralAnalyticsServiceV2.analyzeHistoricalTradesV2(userId, dateFilter);
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: analysis,
         message: `Historical analysis complete with new thresholds. Analyzed ${analysis.tradesAnalyzed} trades and detected ${analysis.revengeEventsCreated} revenge trading events.`
@@ -1194,7 +1238,7 @@ const behavioralAnalyticsController = {
       
       const streakTrades = eventResult.rows[0].streak_trades;
       if (!streakTrades || streakTrades.length === 0) {
-        return res.json({
+        return await sendInDisplayCurrency(req, res, {
           success: true,
           data: []
         });
@@ -1213,7 +1257,7 @@ const behavioralAnalyticsController = {
       
       const tradesResult = await db.query(tradesQuery, [streakTrades]);
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: tradesResult.rows
       });
@@ -1245,7 +1289,7 @@ const behavioralAnalyticsController = {
       // Simply return existing data - don't auto-run analysis
       // Analysis should only be run when explicitly requested via the analyze-historical endpoint
       console.log(`[OVERCONFIDENCE] Returning analysis with ${analysis.events?.length || 0} events`);
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: {
           analysis: analysis
@@ -1291,7 +1335,7 @@ const behavioralAnalyticsController = {
 
       const analysis = await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId, dateFilter);
 
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: analysis,
         message: `Overconfidence analysis complete. Analyzed ${analysis.tradesAnalyzed} trades and detected ${analysis.overconfidenceEventsCreated} overconfidence events.`
@@ -1346,7 +1390,7 @@ const behavioralAnalyticsController = {
       const AnalyticsCache = require('../services/analyticsCache');
       await AnalyticsCache.delete(userId); // Delete all cache for this user
 
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         message: `Cleared AI recommendations from ${clearResult.rows.length} events. Recommendations will be regenerated with your current AI provider when you view the analysis.`,
         eventsCleared: clearResult.rows.length
@@ -1439,7 +1483,7 @@ const behavioralAnalyticsController = {
 
       const alert = await OverconfidenceAnalyticsService.detectOverconfidenceInRealTime(userId, trade);
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: alert
       });
@@ -1467,7 +1511,7 @@ const behavioralAnalyticsController = {
         });
       }
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: analysis
       });
@@ -1495,7 +1539,7 @@ const behavioralAnalyticsController = {
       
       const trends = await LossAversionAnalyticsService.getHistoricalTrends(userId, parseInt(limit));
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: trends
       });
@@ -1512,14 +1556,14 @@ const behavioralAnalyticsController = {
       const metrics = await LossAversionAnalyticsService.getLatestMetrics(userId);
       
       if (!metrics) {
-        return res.json({
+        return await sendInDisplayCurrency(req, res, {
           success: true,
           data: null,
           message: 'No loss aversion analysis available. Run analysis first.'
         });
       }
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: metrics
       });
@@ -1536,14 +1580,14 @@ const behavioralAnalyticsController = {
       const analysis = await LossAversionAnalyticsService.getCompleteAnalysis(userId);
       
       if (!analysis) {
-        return res.json({
+        return await sendInDisplayCurrency(req, res, {
           success: true,
           data: null,
           message: 'No loss aversion analysis available. Run analysis first.'
         });
       }
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: analysis
       });
@@ -1572,7 +1616,7 @@ const behavioralAnalyticsController = {
         accountsArray
       );
 
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: analysis
       });
@@ -1611,7 +1655,7 @@ const behavioralAnalyticsController = {
         });
       }
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: analysis
       });
@@ -1639,14 +1683,14 @@ const behavioralAnalyticsController = {
       const analysis = await TradingPersonalityService.getCompleteAnalysis(userId);
       
       if (!analysis) {
-        return res.json({
+        return await sendInDisplayCurrency(req, res, {
           success: true,
           data: null,
           message: 'No personality analysis available. Run analysis first.'
         });
       }
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: analysis
       });
@@ -1662,7 +1706,7 @@ const behavioralAnalyticsController = {
       
       const driftAnalysis = await TradingPersonalityService.analyzeBehavioralDrift(userId);
       
-      res.json({
+      await sendInDisplayCurrency(req, res, {
         success: true,
         data: driftAnalysis
       });

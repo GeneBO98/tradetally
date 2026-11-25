@@ -763,7 +763,7 @@
                                                         .performanceImpact > 0,
                                             }"
                                         >
-                                            {{ usdSigned(personalityData.driftAnalysis.performanceImpact) }}
+                                            {{ moneySigned(personalityData.driftAnalysis.performanceImpact) }}
                                         </p>
                                     </div>
                                     <div
@@ -982,9 +982,8 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { formatDecimal, formatPercent } from '@/utils/formatters'
 
 const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
-// Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
-const usd = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
-const usdSigned = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: 'USD', ...o })
+// Money follows the user's display currency (the API converts it).
+const moneySigned = (v, o = {}) => _fmtSigned(Number(v) || 0, o)
 
 defineProps({
     personalityData: { type: Object, default: null },

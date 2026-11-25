@@ -139,13 +139,13 @@
                                         "
                                         class="text-red-600 dark:text-red-400"
                                     >
-                                        -{{ usd(Math.abs( overconfidenceData.analysis.statistics ?.performanceImpact || 0)) }}
+                                        -{{ money(Math.abs( overconfidenceData.analysis.statistics ?.performanceImpact || 0)) }}
                                     </span>
                                     <span
                                         v-else
                                         class="text-green-700 dark:text-green-400"
                                     >
-                                        +{{ usd(Math.abs( overconfidenceData.analysis.statistics ?.performanceImpact || 0)) }}
+                                        +{{ money(Math.abs( overconfidenceData.analysis.statistics ?.performanceImpact || 0)) }}
                                     </span>
                                 </p>
                                 <p
@@ -341,7 +341,7 @@
                                                 >Baseline Size:</span
                                             >
                                             <span class="font-medium ml-1"
-                                                >{{ usd(( event.baselinePositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}</span
+                                                >{{ money(( event.baselinePositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}</span
                                             >
                                         </div>
                                         <div>
@@ -350,7 +350,7 @@
                                                 >Peak Size:</span
                                             >
                                             <span class="font-medium ml-1"
-                                                >{{ usd(( event.peakPositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}</span
+                                                >{{ money(( event.peakPositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}</span
                                             >
                                         </div>
                                     </div>
@@ -369,8 +369,8 @@
                                                     formatPercent(event.positionSizeIncrease ?? 0)
                                                 }}</span
                                             >
-                                            (from {{ usd(( event.baselinePositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}
-                                            baseline to {{ usd(( event.peakPositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}
+                                            (from {{ money(( event.baselinePositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}
+                                            baseline to {{ money(( event.peakPositionSize || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}
                                             peak)</span
                                         >
                                     </div>
@@ -402,7 +402,7 @@
                                                     ) === 0,
                                             }"
                                         >
-                                            {{ usdSigned(parseFloat( event.streakPnl || 0)) }}
+                                            {{ moneySigned(parseFloat( event.streakPnl || 0)) }}
                                         </p>
                                     </div>
                                     <div>
@@ -431,7 +431,7 @@
                                                     ) === 0,
                                             }"
                                         >
-                                            {{ usdSigned(parseFloat( event.subsequentTradeResult || 0)) }}
+                                            {{ moneySigned(parseFloat( event.subsequentTradeResult || 0)) }}
                                         </p>
                                     </div>
                                     <div>
@@ -457,7 +457,7 @@
                                                     ) === 0,
                                             }"
                                         >
-                                            {{ usdSigned(parseFloat( event.totalImpact || 0)) }}
+                                            {{ moneySigned(parseFloat( event.totalImpact || 0)) }}
                                         </p>
                                     </div>
                                 </div>
@@ -598,7 +598,7 @@
                                                             ) === 0,
                                                     }"
                                                 >
-                                                    {{ usdSigned(parseFloat( event.outcomeTradeDetails.pnl || 0)) }}
+                                                    {{ moneySigned(parseFloat( event.outcomeTradeDetails.pnl || 0)) }}
                                                 </p>
                                                 <p
                                                     class="text-xs text-gray-500 dark:text-gray-400"
@@ -618,7 +618,7 @@
                                                     Entry Price
                                                 </p>
                                                 <p class="font-medium">
-                                                    {{ usd(parseFloat( event.outcomeTradeDetails.entry_price || 0)) }}
+                                                    {{ price(parseFloat( event.outcomeTradeDetails.entry_price || 0)) }}
                                                 </p>
                                             </div>
                                             <div>
@@ -628,7 +628,7 @@
                                                     Exit Price
                                                 </p>
                                                 <p class="font-medium">
-                                                    {{ usd(parseFloat( event.outcomeTradeDetails.exit_price || 0)) }}
+                                                    {{ price(parseFloat( event.outcomeTradeDetails.exit_price || 0)) }}
                                                 </p>
                                             </div>
                                             <div>
@@ -638,7 +638,7 @@
                                                     Position Size
                                                 </p>
                                                 <p class="font-medium">
-                                                    {{ usd(( parseFloat( event.outcomeTradeDetails.position_size || 0) ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}
+                                                    {{ money(( parseFloat( event.outcomeTradeDetails.position_size || 0) ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}
                                                 </p>
                                             </div>
                                             <div>
@@ -648,7 +648,7 @@
                                                     Fees
                                                 </p>
                                                 <p class="font-medium">
-                                                    {{ usd(( parseFloat( event.outcomeTradeDetails.commission || 0) + parseFloat( event.outcomeTradeDetails.fees || 0) )) }}
+                                                    {{ money(( parseFloat( event.outcomeTradeDetails.commission || 0) + parseFloat( event.outcomeTradeDetails.fees || 0) )) }}
                                                 </p>
                                             </div>
                                         </div>
@@ -708,7 +708,7 @@
                                             that resulted in this losing trade,
                                             giving back
                                             <strong
-                                                >{{ usd(Math.abs( parseFloat( event.outcomeTradeDetails.pnl || 0))) }}</strong
+                                                >{{ money(Math.abs( parseFloat( event.outcomeTradeDetails.pnl || 0))) }}</strong
                                             >
                                             of the streak's profits.
                                         </p>
@@ -959,7 +959,7 @@
                                                                 .outcomeAnalysis
                                                                 .stopLossAnalysis
                                                                 .recommendedStopLoss
-                                                                ? usd(event.outcomeAnalysis.stopLossAnalysis.recommendedStopLoss)
+                                                                ? price(event.outcomeAnalysis.stopLossAnalysis.recommendedStopLoss)
                                                                 : "N/A"
                                                         }}
                                                     </p>
@@ -1011,7 +1011,7 @@
                                                 class="text-xs text-red-700 dark:text-red-300 mt-2"
                                             >
                                                 Additional loss from not
-                                                respecting stop: {{ usd(event.outcomeAnalysis.stopLossAnalysis.additionalLoss) }}
+                                                respecting stop: {{ money(event.outcomeAnalysis.stopLossAnalysis.additionalLoss) }}
                                             </p>
                                         </div>
                                     </div>
@@ -1191,7 +1191,7 @@
                                                         >
                                                             <span
                                                                 class="font-medium"
-                                                                >{{ usd(( parseFloat( trade.position_size) || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}</span
+                                                                >{{ money(( parseFloat( trade.position_size) || 0 ), { maximumFractionDigits: 0, minimumFractionDigits: 0 }) }}</span
                                                             >
                                                             <span
                                                                 v-if="
@@ -1311,7 +1311,7 @@
                                                                     ) === 0,
                                                             }"
                                                         >
-                                                            {{ usdSigned(parseFloat( trade.pnl || 0)) }}
+                                                            {{ moneySigned(parseFloat( trade.pnl || 0)) }}
                                                         </div>
                                                     </div>
                                                     <div
@@ -1371,9 +1371,11 @@ import {
 } from "@mdi/js";
 
 const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
-// Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
-const usd = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
-const usdSigned = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: 'USD', ...o })
+// Money follows the user's display currency (the API converts it). Quote
+// prices stay in the instrument's currency, as they do in trade views.
+const money = (v, o = {}) => _fmtCurrency(Number(v) || 0, o)
+const price = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
+const moneySigned = (v, o = {}) => _fmtSigned(Number(v) || 0, o)
 
 const props = defineProps({
     overconfidenceData: { type: Object, default: null },

@@ -407,10 +407,10 @@
                                                 ) < 0
                                             "
                                         >
-                                            {{ usd(Math.abs( parseFloat( revengeAnalysis ?.statistics ?.total_additional_loss || 0))) }}
+                                            {{ money(Math.abs( parseFloat( revengeAnalysis ?.statistics ?.total_additional_loss || 0))) }}
                                         </span>
                                         <span v-else>
-                                            {{ usd(parseFloat( revengeAnalysis?.statistics ?.total_additional_loss || 0)) }}
+                                            {{ money(parseFloat( revengeAnalysis?.statistics ?.total_additional_loss || 0)) }}
                                         </span>
                                     </dd>
                                 </dl>
@@ -786,7 +786,7 @@
                                     <p
                                         class="stat-value text-gray-900 dark:text-white text-mono-num"
                                     >
-                                        {{ usd(topMissedTrades.totalMissedProfit) }}
+                                        {{ money(topMissedTrades.totalMissedProfit) }}
                                     </p>
                                 </div>
                                 <div>
@@ -924,7 +924,7 @@
                                         <p
                                             class="text-sm font-medium text-green-700 dark:text-green-400"
                                         >
-                                            +{{ usd(( trade.potentialAdditionalProfit ?.optimal || 0 )) }}
+                                            +{{ money(( trade.potentialAdditionalProfit ?.optimal || 0 )) }}
                                         </p>
                                     </div>
                                 </div>
@@ -940,7 +940,7 @@
                                             Entry Price
                                         </p>
                                         <p class="font-medium">
-                                            {{ usd((trade.entryPrice || 0)) }}
+                                            {{ price((trade.entryPrice || 0)) }}
                                         </p>
                                     </div>
                                     <div>
@@ -950,7 +950,7 @@
                                             Exit Price
                                         </p>
                                         <p class="font-medium">
-                                            {{ usd((trade.exitPrice || 0)) }}
+                                            {{ price((trade.exitPrice || 0)) }}
                                         </p>
                                     </div>
                                     <div>
@@ -962,7 +962,7 @@
                                         <p
                                             class="font-medium text-green-700 dark:text-green-400"
                                         >
-                                            {{ usd(( trade.actualProfit || 0 )) }}
+                                            {{ money(( trade.actualProfit || 0 )) }}
                                         </p>
                                     </div>
                                     <div>
@@ -1001,7 +1001,7 @@
                                             <p
                                                 class="text-lg font-bold text-red-900 dark:text-red-200"
                                             >
-                                                {{ usd(trade.side === "long" ? ( trade.priceMovement ?.maxPriceWithin24Hours || 0 ) : ( trade.priceMovement ?.minPriceWithin24Hours || 0 )) }}
+                                                {{ price(trade.side === "long" ? ( trade.priceMovement ?.maxPriceWithin24Hours || 0 ) : ( trade.priceMovement ?.minPriceWithin24Hours || 0 )) }}
                                             </p>
                                             <p
                                                 class="text-xs text-red-700 dark:text-red-400"
@@ -1041,12 +1041,12 @@
                                             <p
                                                 class="text-lg font-bold text-red-900 dark:text-red-200"
                                             >
-                                                {{ usd(( (trade.actualProfit || 0) + (trade.potentialAdditionalProfit ?.optimal || 0) )) }}
+                                                {{ money(( (trade.actualProfit || 0) + (trade.potentialAdditionalProfit ?.optimal || 0) )) }}
                                             </p>
                                             <p
                                                 class="text-xs text-red-700 dark:text-red-400"
                                             >
-                                                vs {{ usd(( trade.actualProfit || 0 )) }}
+                                                vs {{ money(( trade.actualProfit || 0 )) }}
                                                 actual profit
                                             </p>
                                         </div>
@@ -1096,7 +1096,7 @@
                                                     <p
                                                         class="font-bold text-primary-900 dark:text-primary-200"
                                                     >
-                                                        {{ usd(trade.entryAnalysis.bestEntryPrice) }}
+                                                        {{ price(trade.entryAnalysis.bestEntryPrice) }}
                                                     </p>
                                                     <p
                                                         class="text-xs text-primary-700 dark:text-primary-500"
@@ -1124,7 +1124,7 @@
                                                     <p
                                                         class="text-xs text-primary-700 dark:text-primary-500"
                                                     >
-                                                        {{ usd(trade.entryAnalysis.improvementDollar) }}
+                                                        {{ price(trade.entryAnalysis.improvementDollar) }}
                                                         per share
                                                     </p>
                                                 </div>
@@ -1142,12 +1142,12 @@
                                                     <p
                                                         class="font-bold text-primary-900 dark:text-primary-200"
                                                     >
-                                                        {{ usd(trade.entryAnalysis.improvedPnL.withBetterEntry) }}
+                                                        {{ money(trade.entryAnalysis.improvedPnL.withBetterEntry) }}
                                                     </p>
                                                     <p
                                                         class="text-xs text-green-700 dark:text-green-500"
                                                     >
-                                                        +{{ usd(trade.entryAnalysis.improvedPnL.improvement) }}
+                                                        +{{ money(trade.entryAnalysis.improvedPnL.improvement) }}
                                                     </p>
                                                 </div>
                                             </div>
@@ -1298,7 +1298,7 @@
                                             <span
                                                 class="text-xs text-gray-500 dark:text-gray-400 ml-2"
                                             >
-                                                (+{{ usd(( trade.potentialAdditionalProfit ?.optimal || 0 )) }})
+                                                (+{{ money(( trade.potentialAdditionalProfit ?.optimal || 0 )) }})
                                             </span>
                                         </div>
                                     </div>
@@ -1502,9 +1502,11 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { formatDecimal, formatPercent, formatQuantity } from '@/utils/formatters'
 
 const { formatCurrency: _fmtCurrency, formatSignedCurrency: _fmtSigned } = useCurrencyFormatter()
-// Behavioral, alert and market-data values arrive in USD (not converted to the display currency).
-const usd = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
-const usdSigned = (v, o = {}) => _fmtSigned(Number(v) || 0, { currency: 'USD', ...o })
+// Money follows the user's display currency (the API converts it). Quote
+// prices stay in the instrument's currency, as they do in trade views.
+const money = (v, o = {}) => _fmtCurrency(Number(v) || 0, o)
+const price = (v, o = {}) => _fmtCurrency(Number(v) || 0, { currency: 'USD', ...o })
+const moneySigned = (v, o = {}) => _fmtSigned(Number(v) || 0, o)
 
 const { showSuccess, showError } = useNotification();
 const authStore = useAuthStore();

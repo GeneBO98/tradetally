@@ -67,6 +67,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { Chart } from '@/lib/chartSetup';
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 
 const props = defineProps({ timeline: { type: Object, default: null }, loading: Boolean, error: { type: String, default: '' } });
 const chartCanvas = ref(null);
@@ -119,7 +120,9 @@ const calendarDays = computed(() => {
     return cells;
 });
 function formatDate(value) { return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); }
-function formatPnl(value) { return Number(value).toLocaleString(undefined, { style: 'currency', currency: 'USD', signDisplay: 'always' }); }
+// P&L arrives converted to the user's display currency.
+const { formatSignedCurrency } = useCurrencyFormatter();
+function formatPnl(value) { return formatSignedCurrency(Number(value)); }
 function followUpText(loss) { const count = (props.timeline?.trades || []).filter((trade) => trade.post_loss_ids?.includes(loss.id)).length; return count ? `${count} entr${count === 1 ? 'y' : 'ies'} within 30 minutes` : loss.visible ? 'No entries in the review window' : 'Window reaches into this session'; }
 function moveMonth(amount) {
     const date = new Date(`${displayMonth.value}-01T12:00:00`);

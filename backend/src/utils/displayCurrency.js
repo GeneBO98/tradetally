@@ -179,6 +179,31 @@ function scaleMoneyLabel(label, rate, symbol) {
   return converted.split('$').join(symbol);
 }
 
+// Amounts written into a sentence ("costing you $41.20/month"). Sentences are
+// generated in USD, so each $-amount is converted and re-symbolled, keeping
+// the number of decimals it was written with.
+const TEXT_AMOUNT_PATTERN = /\$(\d[\d,]*(?:\.\d+)?)/g;
+
+function scaleMoneyText(text, rate, currency) {
+  if (typeof text !== 'string' || !text.includes('$')) return text;
+  if (!Number.isFinite(rate) || rate === 1 || !currency) return text;
+  return text.replace(TEXT_AMOUNT_PATTERN, (match, digits) => {
+    const value = Number(digits.replace(/,/g, '')) * rate;
+    if (!Number.isFinite(value)) return match;
+    const decimals = Math.min((digits.split('.')[1] || '').length, 20);
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      }).format(value);
+    } catch {
+      return match;
+    }
+  });
+}
+
 /**
  * Deep-walk an API payload and multiply every money field by rate. Field
  * names follow the trades-domain USD naming conventions; counts, ratios
@@ -196,8 +221,16 @@ function scaleMoneyLabel(label, rate, symbol) {
  * options.moneyArrayKeys: explicit keys whose primitive arrays are monetary.
  * options.skipKeys: object keys (with their subtrees) never scaled here -
  * callers that need a different source currency (chart candles) handle them.
+ * options.moneyKeys: explicit scalar money keys the naming heuristics miss or
+ * deliberately reject (domains with their own field names).
+ * options.moneyParentKeys: objects whose numeric members are all money,
+ * whatever they are named (takes precedence over excludeKey).
+ * options.excludeKey(key): predicate for keys that are never scaled even when
+ * their name looks monetary (quote prices kept in the instrument's currency).
+ * options.moneyTextKeys + textCurrency: keys holding sentences (or lists of
+ * sentences) whose $-amounts are converted in place.
  */
-function scaleMoneyInPayload(payload, rate, { maxDepth = 10, rateFor = null, relabel = null, moneyArrayKeys = null, moneyLabelKeys = null, labelSymbol = '$', skipKeys = null } = {}) {
+function scaleMoneyInPayload(payload, rate, { maxDepth = 10, rateFor = null, relabel = null, moneyArrayKeys = null, moneyLabelKeys = null, labelSymbol = '$', skipKeys = null, moneyKeys = null, moneyParentKeys = null, excludeKey = null, moneyTextKeys = null, textCurrency = null } = {}) {
   if (!Number.isFinite(rate) || (rate === 1 && typeof rateFor !== 'function') || payload === null || typeof payload !== 'object') {
     return payload;
   }
@@ -257,7 +290,19 @@ function scaleMoneyInPayload(payload, rate, { maxDepth = 10, rateFor = null, rel
     for (const [key, value] of Object.entries(node)) {
       if (key === 'native_prices') continue;
       if (skipKeys && skipKeys.has(key) && value !== null && typeof value === 'object') continue;
-      const isMoney = isTradeMoneyKey(key, parentKey);
+      const moneyByParent = Boolean(moneyParentKeys && moneyParentKeys.has(parentKey));
+      const excluded = !moneyByParent && typeof excludeKey === 'function' && excludeKey(key);
+      const isMoney = moneyByParent || (!excluded && ((moneyKeys && moneyKeys.has(key)) || isTradeMoneyKey(key, parentKey)));
+      if (moneyTextKeys && moneyTextKeys.has(key) && effRate !== 1) {
+        if (typeof value === 'string') {
+          node[key] = scaleMoneyText(value, effRate, textCurrency);
+          continue;
+        }
+        if (Array.isArray(value) && value.length > 0 && value.every(item => typeof item === 'string')) {
+          node[key] = value.map(item => scaleMoneyText(item, effRate, textCurrency));
+          continue;
+        }
+      }
       const direct = scaleNumeric(value, effRate);
       if (direct !== null) {
         if (isMoney) node[key] = direct;
@@ -312,7 +357,7 @@ function scaleMoneyInPayload(payload, rate, { maxDepth = 10, rateFor = null, rel
  * reporting-currency calculations and are excluded from the money walker.
  * @returns {Promise<object>} the (possibly cloned) payload with display_currency set
  */
-async function convertForDisplay(req, payload, { clone = true, raw = false, skip = false, rowCurrency = false, moneyArrayKeys = null, moneyLabelKeys = null, skipKeys = null } = {}) {
+async function convertForDisplay(req, payload, { clone = true, raw = false, skip = false, rowCurrency = false, moneyArrayKeys = null, moneyLabelKeys = null, skipKeys = null, moneyKeys = null, moneyParentKeys = null, excludeKey = null, moneyTextKeys = null } = {}) {
   if (payload === null || payload === undefined || typeof payload !== 'object') {
     return payload;
   }
@@ -394,7 +439,12 @@ async function convertForDisplay(req, payload, { clone = true, raw = false, skip
     moneyArrayKeys,
     moneyLabelKeys,
     labelSymbol: currencySymbolFor(displayCurrency),
-    skipKeys
+    skipKeys,
+    moneyKeys,
+    moneyParentKeys,
+    excludeKey,
+    moneyTextKeys,
+    textCurrency: displayCurrency
   });
   out.display_currency = rate ? displayCurrency : 'USD';
   return out;
@@ -404,6 +454,7 @@ module.exports = {
   resolveDisplayCurrency,
   currencySymbolFor,
   scaleMoneyLabel,
+  scaleMoneyText,
   getRatesToDisplay,
   scaleMoneyFields,
   scaleMoneyInPayload,
