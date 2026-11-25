@@ -46,6 +46,7 @@ router.get('/overview', authenticate, analyticsController.getOverview);
  */
 router.get('/maemfe', authenticate, requirePro, analyticsController.getMAEMFE);
 router.get('/maemfe/trades', authenticate, requirePro, analyticsController.getMAEMFETrades);
+router.get('/what-if', authenticate, requirePro, analyticsController.getWhatIfSimulation);
 
 /**
  * @swagger

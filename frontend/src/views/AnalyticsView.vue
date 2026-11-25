@@ -188,6 +188,11 @@
               />
             </template>
 
+            <!-- What-If Mistake Simulator -->
+            <template v-else-if="element.id === 'what-if-simulator'">
+              <WhatIfSimulatorCard :filter-params="whatIfFilterParams" />
+            </template>
+
             <!-- Performance Chart -->
             <template v-else-if="element.id === 'performance-chart'">
       <div class="card">
@@ -734,6 +739,7 @@ import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import { useProAccess } from '@/composables/useProAccess'
 import OverviewStats from '@/components/analytics/OverviewStats.vue'
 import DetailedStats from '@/components/analytics/DetailedStats.vue'
+import WhatIfSimulatorCard from '@/components/analytics/WhatIfSimulatorCard.vue'
 import TagPerformanceTable from '@/components/analytics/TagPerformanceTable.vue'
 import StrategyPerformanceTable from '@/components/analytics/StrategyPerformanceTable.vue'
 import HourOfDayTable from '@/components/analytics/HourOfDayTable.vue'
@@ -956,6 +962,7 @@ const showCompletionMessage = ref(false)
 const chartDefinitions = [
   { id: 'overview', title: 'Overview Stats', defaultSize: 'full', category: 'stats', tab: 'overview' },
   { id: 'detailed-stats', title: 'Detailed Stats', defaultSize: 'full', category: 'stats', tab: 'overview' },
+  { id: 'what-if-simulator', title: 'What-If Mistake Simulator', defaultSize: 'full', category: 'charts', tab: 'overview' },
   { id: 'performance-chart', title: 'Performance Over Time', defaultSize: 'full', category: 'charts', tab: 'time' },
   { id: 'sector-performance', title: 'Sector Performance', defaultSize: 'full', category: 'charts', tab: 'symbol' },
   { id: 'drawdown-chart', title: 'Drawdown Analysis', defaultSize: 'half', category: 'charts', tab: 'time' },
@@ -2160,6 +2167,8 @@ function initializeAllCharts() {
 
 // Helper function to build filter params
 // IMPORTANT: Use filters.value directly, just like trades store does with ...filters.value
+const whatIfFilterParams = computed(() => buildFilterParams())
+
 function buildFilterParams(additionalParams = {}) {
   // Start with additional params, then spread filters.value directly
   // This ensures ALL filters are included, even empty ones (which will be filtered out by the API)

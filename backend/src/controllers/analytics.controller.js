@@ -8,6 +8,7 @@ const User = require('../models/User');
 const Trade = require('../models/Trade');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
+const WhatIfSimulatorService = require('../services/whatIfSimulatorService');
 const MAEEstimator = require('../utils/maeEstimator');
 const symbolCategories = require('../utils/symbolCategories');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
@@ -1084,6 +1085,22 @@ const analyticsController = {
       res.json(await convertForDisplay(req, isPro ? payload : stripProOverviewMetrics(payload)));
     } catch (error) {
       console.error('Analytics overview error:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * What-If Mistake Simulator: per-trade rows plus hindsight patterns and the
+   * inputs for the forward-looking rules (loss limit, trades/day, cutoff,
+   * tags, playbook). The client applies the rules interactively.
+   * GET /api/analytics/what-if
+   */
+  async getWhatIfSimulation(req, res, next) {
+    try {
+      const filters = convertQueryToTradeFilters(req.query);
+      const simulation = await WhatIfSimulatorService.computeSimulation(req.user.id, filters, { includeRuleData: true });
+      res.json(simulation);
+    } catch (error) {
       next(error);
     }
   },
