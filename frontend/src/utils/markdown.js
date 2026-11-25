@@ -61,17 +61,32 @@ export function truncateHtml(html, maxLength) {
 
   if (text.length <= maxLength) return html
 
-  // Simple truncation - just return the first part of the text with ellipsis.
-  // textContent is decoded (e.g. `&lt;img&gt;` becomes `<img>`), and callers
-  // render the result with v-html, so it must be re-escaped before returning.
-  return escapeHtml(text.substring(0, maxLength)) + '...'
-}
+  // Walk text nodes until the character budget runs out, cut that node, and
+  // drop everything after it. This keeps paragraphs, line breaks and lists
+  // intact instead of flattening the preview into a single line. Text nodes
+  // are re-escaped when serialized, so escaped markup stays inert, and the
+  // result is sanitized again because callers render it with v-html.
+  let remaining = maxLength
+  let cutNode = null
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT)
+  let node
+  while ((node = walker.nextNode())) {
+    const value = node.nodeValue || ''
+    if (value.length >= remaining) {
+      node.nodeValue = value.slice(0, remaining).trimEnd() + '...'
+      cutNode = node
+      break
+    }
+    remaining -= value.length
+  }
 
-function escapeHtml(text) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+  let current = cutNode
+  while (current && current !== doc.body) {
+    while (current.nextSibling) {
+      current.parentNode.removeChild(current.nextSibling)
+    }
+    current = current.parentNode
+  }
+
+  return DOMPurify.sanitize(doc.body.innerHTML)
 }

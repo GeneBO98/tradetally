@@ -291,14 +291,29 @@
               v-for="(contentPart, idx) in splitContent(entry.content)"
               :key="idx"
               :class="[ 'text-sm text-gray-700 dark:text-gray-300 prose prose-sm max-w-none dark:prose-invert', splitContent(entry.content).length > 1 ? 'bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg mb-3 last:mb-0' : '' ]"
-              v-html="truncateHtml(parseMarkdown(contentPart), 300)"
+              v-html="previewHtml(contentPart, CONTENT_PREVIEW_LENGTH, entry)"
             ></div>
           </div>
 
           <div v-if="entry.key_levels && entry.key_levels.length > 0" class="mb-3">
             <span class="text-xs font-medium text-yellow-600 dark:text-yellow-400">Key Levels:</span>
-            <div class="text-sm text-gray-600 dark:text-gray-400 mt-1" v-html="truncateHtml(parseMarkdown(entry.key_levels), 150)"></div>
+            <div class="text-sm text-gray-600 dark:text-gray-400 mt-1" v-html="previewHtml(entry.key_levels, SIDE_PREVIEW_LENGTH, entry)"></div>
           </div>
+
+          <div v-if="entry.lessons_learned && entry.lessons_learned.trim()" class="mb-3">
+            <span class="text-xs font-medium text-green-700 dark:text-green-400">Lessons Learned:</span>
+            <div class="text-sm text-gray-700 dark:text-gray-300 mt-1" v-html="previewHtml(entry.lessons_learned, SIDE_PREVIEW_LENGTH, entry)"></div>
+          </div>
+
+          <button
+            v-if="entryIsTruncatable(entry)"
+            type="button"
+            class="text-sm text-primary-700 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300 mb-3"
+            :aria-expanded="isEntryExpanded(entry)"
+            @click="toggleEntryExpanded(entry)"
+          >
+            {{ isEntryExpanded(entry) ? 'Show less' : 'Show more' }}
+          </button>
           
           <div v-if="entry.watchlist && entry.watchlist.length > 0" class="mb-3">
             <span class="text-xs font-medium text-primary-700 dark:text-primary-400 mr-2">Watchlist:</span>
@@ -747,6 +762,37 @@ const marketBiasClasses = (bias) => {
 
 const truncateHtml = (html, maxLength) => {
   return truncateHtmlUtil(html, maxLength)
+}
+
+// Entry previews are shortened on the list; "Show more" renders the full notes.
+const CONTENT_PREVIEW_LENGTH = 300
+const SIDE_PREVIEW_LENGTH = 150
+const expandedEntryIds = ref({})
+
+const isEntryExpanded = (entry) => !!expandedEntryIds.value[entry.id]
+
+const toggleEntryExpanded = (entry) => {
+  expandedEntryIds.value = {
+    ...expandedEntryIds.value,
+    [entry.id]: !expandedEntryIds.value[entry.id]
+  }
+}
+
+const previewHtml = (markdown, maxLength, entry) => {
+  const html = parseMarkdown(markdown)
+  return isEntryExpanded(entry) ? html : truncateHtml(html, maxLength)
+}
+
+const isTruncated = (markdown, maxLength) => {
+  if (!markdown) return false
+  const html = parseMarkdown(markdown)
+  return truncateHtml(html, maxLength) !== html
+}
+
+const entryIsTruncatable = (entry) => {
+  return splitContent(entry.content).some(part => isTruncated(part, CONTENT_PREVIEW_LENGTH)) ||
+    isTruncated(entry.key_levels, SIDE_PREVIEW_LENGTH) ||
+    isTruncated(entry.lessons_learned, SIDE_PREVIEW_LENGTH)
 }
 
 const selected_date_preset = ref(localStorage.getItem('diaryDatePreset') || 'custom')

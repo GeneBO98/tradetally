@@ -72,7 +72,19 @@
             </p>
             <div v-if="template.content" class="text-sm text-gray-600 dark:text-gray-400">
               <span class="font-medium text-gray-700 dark:text-gray-300">Content Preview:</span>
-              <p class="mt-1 line-clamp-2">{{ template.content }}</p>
+              <p
+                class="mt-1 whitespace-pre-line"
+                :class="{ 'line-clamp-4': !expandedTemplateIds[template.id] }"
+              >{{ template.content }}</p>
+              <button
+                v-if="isTemplatePreviewLong(template)"
+                type="button"
+                class="mt-1 text-sm text-primary-700 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
+                :aria-expanded="!!expandedTemplateIds[template.id]"
+                @click="toggleTemplatePreview(template)"
+              >
+                {{ expandedTemplateIds[template.id] ? 'Show less' : 'Show more' }}
+              </button>
             </div>
           </div>
 
@@ -381,6 +393,19 @@ const showDeleteModal = ref(false)
 const editingTemplate = ref(null)
 const templateToDelete = ref(null)
 const tagsInput = ref('')
+
+// Template previews are clamped to 4 lines; "Show more" reveals the full text.
+const expandedTemplateIds = ref({})
+const isTemplatePreviewLong = (template) => {
+  const content = template?.content || ''
+  return content.split('\n').length > 4 || content.length > 320
+}
+const toggleTemplatePreview = (template) => {
+  expandedTemplateIds.value = {
+    ...expandedTemplateIds.value,
+    [template.id]: !expandedTemplateIds.value[template.id]
+  }
+}
 
 const templateForm = ref({
   name: '',
